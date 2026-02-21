@@ -455,7 +455,13 @@ begin
 	end process;
 	
 	--Data bus
-	D_OUT <= P(7) & P(6) & (P(5) or EF) & (P(4) or (not (GotInterrupt) and EF)) & P(3 downto 0) when MC.OUT_BUS = "001" else
+	-- Bit 4 of pushed P (B flag in emulation mode):
+	--   BRK/PHP (GotInterrupt='0'): B=1 (software interrupt)
+	--   Hardware IRQ/NMI (GotInterrupt='1', IsIRQ/NMI): B=0 (hardware interrupt)
+	--   Reset: B=1 (don't care, but consistent)
+	-- Without this fix, the C64 KERNAL at $FF48 misidentifies all hardware IRQs
+	-- as BRK instructions because P(4) is always '1' after reset in emulation mode.
+	D_OUT <= P(7) & P(6) & (P(5) or EF) & ((P(4) or (not GotInterrupt and EF)) and not (GotInterrupt and (IsIRQInterrupt or IsNMIInterrupt) and EF)) & P(3 downto 0) when MC.OUT_BUS = "001" else
 				PC(15 downto 8) when MC.OUT_BUS = "010" and MC.BYTE_SEL(1) = '1' else
 				PC(7 downto 0) when MC.OUT_BUS = "010" and MC.BYTE_SEL(1) = '0' else
 				AA(15 downto 8) when MC.OUT_BUS = "011" and MC.BYTE_SEL(1) = '1' else
