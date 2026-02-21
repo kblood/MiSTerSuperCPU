@@ -1,0 +1,27 @@
+# Nested git from cloned repo (track files, not their git history)
+C64_MiSTer/.git/
+
+# Quartus build artifacts
+C64_MiSTer/output_files/
+C64_MiSTer/db/
+C64_MiSTer/incremental_db/
+C64_MiSTer/simulation/
+C64_MiSTer/greybox_tmp/
+C64_MiSTer/*.qws
+C64_MiSTer/C64_assignment_defaults.qdf
+C64_MiSTer/build_id.v
+
+# Generated PLL databases
+C64_MiSTer/rtl/pll/pll_0002.ppf
+C64_MiSTer/sys/pll_hdmi/pll_hdmi_0002.ppf
+C64_MiSTer/sys/pll_audio/pll_audio_0002.ppf
+
+# Build output copied to root
+*.rbf
+*.sof
+
+# Editor/IDE
+*.bak
+*.swp
+*~
+.vscode/
