@@ -1015,7 +1015,9 @@ wire [17:0] audio_l,audio_r;
 wire  [7:0] r,g,b;
 
 wire        ntsc = status[2];
-wire        supercpu_enable = status[82];
+wire        supercpu_enable = status[82];   // status[82]=0 → Off (6510 default), =1 → On (65C816)
+wire        supercpu_emul;                  // '1' = 65C816 in 6502 emulation mode
+wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16, unused until Phase 4)
 
 fpga64_sid_iec fpga64
 (
@@ -1028,6 +1030,8 @@ fpga64_sid_iec fpga64
 	.turbo_mode({status[47] & ~disk_access, status[46]}),
 	.turbo_speed(status[49:48]),
 	.supercpu_en(supercpu_enable),
+	.supercpu_emul(supercpu_emul),
+	.supercpu_bank(supercpu_bank),
 
 	.ps2_key(key),
 	.kbd_reset((~reset_n & ~status[1]) | reset_keys),

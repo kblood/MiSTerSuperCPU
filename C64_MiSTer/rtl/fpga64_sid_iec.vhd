@@ -69,6 +69,8 @@ port(
 	turbo_mode  : in  std_logic_vector(1 downto 0);
 	turbo_speed : in  std_logic_vector(1 downto 0);
 	supercpu_en : in  std_logic := '0';
+	supercpu_emul : out std_logic;             -- '1' = 65C816 in 6502 emulation mode
+	supercpu_bank : out unsigned(7 downto 0);  -- current bank byte (A23-A16)
 
 	-- VGA/SCART interface
 	vic_variant : in  std_logic_vector(1 downto 0);
@@ -241,6 +243,10 @@ signal nmi_ack_6510 : std_logic;
 signal io_data_i    : unsigned(7 downto 0);
 signal ioe_i        : std_logic;
 signal iof_i        : std_logic;
+
+-- CPU enable gating: only active CPU gets clock enable pulses
+signal enableCpu_6510 : std_logic;
+signal enableCpu_816  : std_logic;
 
 signal io_enable    : std_logic;
 signal cpu_cyc      : std_logic;
@@ -814,13 +820,20 @@ begin
 end process;
 
 -- -----------------------------------------------------------------------
+-- CPU enable gating: only active CPU receives clock enable pulses
+-- This prevents bus contention when switching between 6510 and 65C816
+-- -----------------------------------------------------------------------
+enableCpu_6510 <= (enableCpu and not dma_active) when supercpu_en = '0' else '0';
+enableCpu_816  <= (enableCpu and not dma_active) when supercpu_en = '1' else '0';
+
+-- -----------------------------------------------------------------------
 -- 6510 CPU (active when supercpu_en = '0')
 -- -----------------------------------------------------------------------
 cpu_6510_inst: entity work.cpu_6510
 port map (
 	clk => clk32,
 	reset => reset or supercpu_en,
-	enable => enableCpu and not dma_active,
+	enable => enableCpu_6510,
 	nmi_n => irq_cia2 and nmi_n,
 	nmi_ack => nmi_ack_6510,
 	irq_n => irq_cia1 and irq_vic and irq_n and irq_ext_n,
@@ -842,7 +855,7 @@ cpu_816_inst: entity work.cpu_65c816
 port map (
 	clk => clk32,
 	reset => reset or not supercpu_en,
-	enable => enableCpu and not dma_active,
+	enable => enableCpu_816,
 	nmi_n => irq_cia2 and nmi_n,
 	nmi_ack => nmi_ack_816,
 	irq_n => irq_cia1 and irq_vic and irq_n and irq_ext_n,
@@ -870,6 +883,10 @@ cpuDo_pre   <= cpuDo_816    when supercpu_en = '1' else cpuDo_6510;
 cpuWe_pre   <= cpuWe_816    when supercpu_en = '1' else cpuWe_6510;
 cpuIO       <= cpuIO_816    when supercpu_en = '1' else cpuIO_6510;
 nmi_ack     <= nmi_ack_816  when supercpu_en = '1' else nmi_ack_6510;
+
+-- Route 65C816-specific status signals to ports
+supercpu_emul <= emu_mode_816;
+supercpu_bank <= addr_hi_816;
 
 cass_motor <= cpuIO(5);
 cass_write <= cpuIO(3);
