@@ -220,6 +220,24 @@ signal cpuDi        : unsigned(7 downto 0);
 signal cpuDo        : unsigned(7 downto 0);
 signal cpuDo_pre    : unsigned(7 downto 0);
 signal cpuIO        : unsigned(7 downto 0);
+
+-- 65C816 CPU signals
+signal cpuAddr_816  : unsigned(15 downto 0);
+signal cpuDo_816    : unsigned(7 downto 0);
+signal cpuWe_816    : std_logic;
+signal cpuIO_816    : unsigned(7 downto 0);
+signal nmi_ack_816  : std_logic;
+signal addr_hi_816  : unsigned(7 downto 0);
+signal emu_mode_816 : std_logic;
+signal vpa_816      : std_logic;
+signal vda_816      : std_logic;
+
+-- 6510 CPU signals (renamed from _pre for MUX clarity)
+signal cpuAddr_6510 : unsigned(15 downto 0);
+signal cpuDo_6510   : unsigned(7 downto 0);
+signal cpuWe_6510   : std_logic;
+signal cpuIO_6510   : unsigned(7 downto 0);
+signal nmi_ack_6510 : std_logic;
 signal io_data_i    : unsigned(7 downto 0);
 signal ioe_i        : std_logic;
 signal iof_i        : std_logic;
@@ -796,26 +814,62 @@ begin
 end process;
 
 -- -----------------------------------------------------------------------
--- 6510 CPU / DMA
+-- 6510 CPU (active when supercpu_en = '0')
 -- -----------------------------------------------------------------------
-cpu: entity work.cpu_6510
+cpu_6510_inst: entity work.cpu_6510
 port map (
 	clk => clk32,
-	reset => reset,
+	reset => reset or supercpu_en,
 	enable => enableCpu and not dma_active,
 	nmi_n => irq_cia2 and nmi_n,
-	nmi_ack => nmi_ack,
+	nmi_ack => nmi_ack_6510,
 	irq_n => irq_cia1 and irq_vic and irq_n and irq_ext_n,
 	rdy => baLoc,
 
 	di => cpuDi,
-	addr => cpuAddr_pre,
-	do => cpuDo_pre,
-	we => cpuWe_pre,
+	addr => cpuAddr_6510,
+	do => cpuDo_6510,
+	we => cpuWe_6510,
 
-	diIO => cpuIO(7) & cpuIO(6) & cpuIO(5) & cass_sense & cpuIO(3) & "111",
-	doIO => cpuIO
+	diIO => cpuIO_6510(7) & cpuIO_6510(6) & cpuIO_6510(5) & cass_sense & cpuIO_6510(3) & "111",
+	doIO => cpuIO_6510
 );
+
+-- -----------------------------------------------------------------------
+-- 65C816 CPU (active when supercpu_en = '1')
+-- -----------------------------------------------------------------------
+cpu_816_inst: entity work.cpu_65c816
+port map (
+	clk => clk32,
+	reset => reset or not supercpu_en,
+	enable => enableCpu and not dma_active,
+	nmi_n => irq_cia2 and nmi_n,
+	nmi_ack => nmi_ack_816,
+	irq_n => irq_cia1 and irq_vic and irq_n and irq_ext_n,
+	rdy => baLoc,
+
+	di => cpuDi,
+	addr => cpuAddr_816,
+	do => cpuDo_816,
+	we => cpuWe_816,
+
+	diIO => cpuIO_816(7) & cpuIO_816(6) & cpuIO_816(5) & cass_sense & cpuIO_816(3) & "111",
+	doIO => cpuIO_816,
+
+	addr_hi => addr_hi_816,
+	emulation_mode => emu_mode_816,
+	vpa => vpa_816,
+	vda => vda_816
+);
+
+-- -----------------------------------------------------------------------
+-- CPU MUX: select active CPU based on supercpu_en
+-- -----------------------------------------------------------------------
+cpuAddr_pre <= cpuAddr_816  when supercpu_en = '1' else cpuAddr_6510;
+cpuDo_pre   <= cpuDo_816    when supercpu_en = '1' else cpuDo_6510;
+cpuWe_pre   <= cpuWe_816    when supercpu_en = '1' else cpuWe_6510;
+cpuIO       <= cpuIO_816    when supercpu_en = '1' else cpuIO_6510;
+nmi_ack     <= nmi_ack_816  when supercpu_en = '1' else nmi_ack_6510;
 
 cass_motor <= cpuIO(5);
 cass_write <= cpuIO(3);
