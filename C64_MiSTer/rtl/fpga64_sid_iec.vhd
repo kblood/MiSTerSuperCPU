@@ -68,6 +68,7 @@ port(
 	cia_mode    : in  std_logic;
 	turbo_mode  : in  std_logic_vector(1 downto 0);
 	turbo_speed : in  std_logic_vector(1 downto 0);
+	supercpu_en : in  std_logic := '0';
 
 	-- VGA/SCART interface
 	vic_variant : in  std_logic_vector(1 downto 0);

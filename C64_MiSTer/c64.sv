@@ -286,6 +286,8 @@ localparam CONF_STR = {
 	"O[47:46],Turbo mode,Off,C128,Smart;",
 	"d6O[49:48],Turbo speed,2x,3x,4x;",
 	"-;",
+	"O[82],SuperCPU (65C816),Off,On;",
+	"-;",
 	"R[0],Reset;",
 	"R[17],Reset & Detach Cartridge;",
 	"J,Fire 1,Fire 2,Fire 3,Paddle Btn,Mod1,Mod2;",
@@ -1013,6 +1015,7 @@ wire [17:0] audio_l,audio_r;
 wire  [7:0] r,g,b;
 
 wire        ntsc = status[2];
+wire        supercpu_enable = status[82];
 
 fpga64_sid_iec fpga64
 (
@@ -1024,6 +1027,7 @@ fpga64_sid_iec fpga64
 	
 	.turbo_mode({status[47] & ~disk_access, status[46]}),
 	.turbo_speed(status[49:48]),
+	.supercpu_en(supercpu_enable),
 
 	.ps2_key(key),
 	.kbd_reset((~reset_n & ~status[1]) | reset_keys),
