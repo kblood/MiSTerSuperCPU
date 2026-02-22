@@ -38,7 +38,49 @@ The 65C816 currently runs at 1 MHz (same `enableCpu` timing as T65). Speed does 
 
 ---
 
-## '@' Character Investigation — Running Log
+## '@' Character Investigation — **RESOLVED**
+
+### Root Cause Found
+
+**JiffyDOS KERNAL uses opcode $F2 as a 1-byte instruction in the KERNAL IRQ handler.**
+
+| Address | JiffyDOS | Std KERNAL | T65 behavior | 65C816 behavior |
+|---------|----------|------------|--------------|-----------------|
+| $FA38   | `F2 C8`  | `A8` (TAY) | $F2 = 1-byte NOP/KIL; executes INY at $FA39 | $F2 C8 = SBC ($C8) (2-byte); **skips INY** |
+| $FAAC   | `F2 B0`  | `DD ...`   | $F2 = 1-byte NOP; BCS at $FAAD checks carry | $F2 B0 = SBC ($B0) (2-byte); **wrong carry for BCS** |
+
+**Impact at $FAAC (cursor blink code, fires 60×/second):**
+- T65 path: `F2[1byte]` → `B0 0C` = BCS $FABB → correct cursor char written via $E6AE
+- 65C816 path: `F2 B0` = SBC($B0) → advances to FAAE ($0C) → different branch conditions → wrong character ($00 = '@' screen code) written to screen RAM **60 times/second**
+- This produces the scrolling '@' rows
+
+**Impact at $FA38 (JiffyDOS serial I/O loop):**
+- T65: INY executes at FA39; loop counter correct
+- 65C816: INY skipped; Y stuck → possible infinite loop or wrong loop count
+
+**Why CIA1 disable → '@' changes to 'C':**
+The 60Hz CIA1 IRQ runs the FAAC cursor blink code → produces '@' (from wrong $E6AE call).  
+With CIA1 disabled, FAAC no longer fires via IRQ. But JiffyDOS's BASIC I/O hooks (different code path) have similar $F2 issues that produce 'C' characters from the BASIC main loop.
+
+**Standard C64 KERNAL is NOT affected** — no $F2 in these code paths.
+
+**This is consistent with real SuperCPU behavior:** The real SuperCPU cartridge replaced the KERNAL entirely with a 65C816-compatible ROM. JiffyDOS was never designed to work with SuperCPU without special patches.
+
+### Fix
+
+**Immediate (test first):** Switch OSD to standard C64 KERNAL (not JiffyDOS) in 65C816 mode. The '@' rows should disappear.
+
+**Long-term options (for JiffyDOS compatibility):**
+1. Patch JiffyDOS ROM: replace $F2 at $FA38 and $FAAC with appropriate 1-byte NOP-equivalent for 65C816 context
+2. Create a 65C816-compatible KERNAL (as the real SuperCPU did)
+3. Add emulation-mode override in P65C816/MCode.vhd: when EF='1', treat $F2/$B2/$D2/$52/$72/$92/$12/$32 as 2-byte NOPs (deviates from 65C816 spec but matches T65 behavior for these NMOS KIL opcodes)
+
+### Analysis Tools Created
+
+- `linear_scan.py` — linear disassembler from KERNAL entry points; finds dangerous opcodes in code paths
+- `scan_kernal.py` — raw byte scanner for dangerous opcodes (generates false positives; use linear_scan for accuracy)
+- `analyze_opcode_89.py` — original $89 opcode analysis
+- `disasm_e969.py` — disassembler for $E969 JiffyDOS area
 
 ### Ruled Out
 
