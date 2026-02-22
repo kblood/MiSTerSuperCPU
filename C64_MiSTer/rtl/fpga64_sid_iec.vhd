@@ -928,13 +928,15 @@ dbg_cpu_sp   <= dbg_sp_816 when supercpu_en = '1' else x"0000";
 dbg_cpu_p    <= dbg_p_816  when supercpu_en = '1' else x"00";
 dbg_cpu_ir   <= dbg_ir_816 when supercpu_en = '1' else x"00";
 
--- CIA1 keyboard scan diagnostic: capture PA and PB when CPU reads $DC01 and PB≠$FF
+-- Screen RAM write capture: fires when ANY write to $0400-$07E7 occurs in 65C816 mode.
+-- K:xx = data written to screen RAM (should be $00 = '@' screen code if that's the bug)
+-- R:xx = opcode (IR) of the instruction that caused the write
 process(clk32)
 begin
 	if rising_edge(clk32) then
-		if cs_cia1 = '1' and cpuWe = '0' and cpuAddr(3 downto 0) = x"1" and cia1_pbi /= x"FF" then
-			dbg_cia1_pa_r <= cia1_pao;
-			dbg_cia1_pb_r <= cia1_pbi;
+		if cpuWe = '1' and cpuAddr >= x"0400" and cpuAddr <= x"07E7" and supercpu_en = '1' then
+			dbg_cia1_pa_r <= cpuDo;       -- data written to screen
+			dbg_cia1_pb_r <= dbg_ir_816;  -- opcode that caused the write
 		end if;
 	end if;
 end process;

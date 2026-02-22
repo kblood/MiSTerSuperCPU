@@ -205,7 +205,9 @@ reg [4:0] char_code;
 
 always @(*) begin
 	if (!char_row) begin
-		// Row 1: A:xxxx D:xx K:xx R:xx   (K=CIA1 PA col select, R=CIA1 PB row data at last key detect)
+		// Row 1: A:xxxx D:xx K:xx R:xx
+		// K = last data written to screen RAM ($00 = '@' screen code = bug confirmed)
+		// R = opcode (IR) that caused the screen write
 		case (char_idx)
 			5'd0:  char_code = 5'hA;                   // 'A'
 			5'd1:  char_code = 5'h15;                   // ':'
