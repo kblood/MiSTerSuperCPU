@@ -1035,6 +1035,8 @@ wire        dbg_cpu_en;
 wire [15:0] dbg_cpu_sp;
 wire  [7:0] dbg_cpu_p;
 wire  [7:0] dbg_cpu_ir;
+wire  [7:0] dbg_cia1_pa;
+wire  [7:0] dbg_cia1_pb;
 
 fpga64_sid_iec fpga64
 (
@@ -1056,6 +1058,8 @@ fpga64_sid_iec fpga64
 	.dbg_cpu_sp(dbg_cpu_sp),
 	.dbg_cpu_p(dbg_cpu_p),
 	.dbg_cpu_ir(dbg_cpu_ir),
+	.dbg_cia1_pa(dbg_cia1_pa),
+	.dbg_cia1_pb(dbg_cia1_pb),
 
 	.ps2_key(key),
 	.kbd_reset((~reset_n & ~status[1]) | reset_keys),
@@ -1417,6 +1421,8 @@ debug_overlay debug_ovl
 	.cpu_sp(dbg_cpu_sp),
 	.cpu_p(dbg_cpu_p),
 	.cpu_ir(dbg_cpu_ir),
+	.cia1_pa(dbg_cia1_pa),
+	.cia1_pb(dbg_cia1_pb),
 	.overlay_active(ovl_active),
 	.overlay_r(ovl_r),
 	.overlay_g(ovl_g),

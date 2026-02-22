@@ -26,6 +26,8 @@ module debug_overlay (
 	input  [15:0] cpu_sp,     // stack pointer
 	input   [7:0] cpu_p,      // processor status register
 	input   [7:0] cpu_ir,     // instruction register (current opcode)
+	input   [7:0] cia1_pa,    // CIA1 Port A at last Port B scan (column select when key detected)
+	input   [7:0] cia1_pb,    // CIA1 Port B at last Port B scan (row data when key detected)
 
 	// Video overlay output
 	output reg    overlay_active,
@@ -78,17 +80,21 @@ reg  [7:0] lat_bank;
 reg [15:0] lat_sp;
 reg  [7:0] lat_p;
 reg  [7:0] lat_ir;
+reg  [7:0] lat_cia1_pa;
+reg  [7:0] lat_cia1_pb;
 
 always @(posedge clk) begin
 	if (vblank_r && !vblank) begin
-		lat_addr <= cpu_addr;
-		lat_data <= cpu_data;
-		lat_we   <= cpu_we;
-		lat_emu  <= emu_mode;
-		lat_bank <= bank_addr;
-		lat_sp   <= cpu_sp;
-		lat_p    <= cpu_p;
-		lat_ir   <= cpu_ir;
+		lat_addr    <= cpu_addr;
+		lat_data    <= cpu_data;
+		lat_we      <= cpu_we;
+		lat_emu     <= emu_mode;
+		lat_bank    <= bank_addr;
+		lat_sp      <= cpu_sp;
+		lat_p       <= cpu_p;
+		lat_ir      <= cpu_ir;
+		lat_cia1_pa <= cia1_pa;
+		lat_cia1_pb <= cia1_pb;
 	end
 end
 
@@ -180,9 +186,11 @@ always @(*) begin
 		5'h10:   font_data = 24'h68E99E; // S (code 16)
 		5'h11:   font_data = 24'hE9E888; // P (code 17)
 		5'h12:   font_data = 24'hE444E0; // I (code 18)
+		5'h13:   font_data = 24'h9ACCA9; // K (code 19)
 		5'h14:   font_data = 24'h999BF6; // W (code 20)
 		5'h15:   font_data = 24'h066060; // : (code 21)
 		5'h16:   font_data = 24'h000000; // space (code 22)
+		5'h17:   font_data = 24'hE9ECA9; // R (code 23)
 		default: font_data = 24'h000000;
 	endcase
 end
@@ -197,7 +205,7 @@ reg [4:0] char_code;
 
 always @(*) begin
 	if (!char_row) begin
-		// Row 1: A:xxxx D:xx W:x B:xx
+		// Row 1: A:xxxx D:xx K:xx R:xx   (K=CIA1 PA col select, R=CIA1 PB row data at last key detect)
 		case (char_idx)
 			5'd0:  char_code = 5'hA;                   // 'A'
 			5'd1:  char_code = 5'h15;                   // ':'
@@ -211,15 +219,15 @@ always @(*) begin
 			5'd9:  char_code = {1'b0, lat_data[7:4]};
 			5'd10: char_code = {1'b0, lat_data[3:0]};
 			5'd11: char_code = 5'h16;                   // ' '
-			5'd12: char_code = 5'h14;                   // 'W'
+			5'd12: char_code = 5'h13;                   // 'K' (CIA1 Port A = column select)
 			5'd13: char_code = 5'h15;                   // ':'
-			5'd14: char_code = {4'b0, lat_we};
-			5'd15: char_code = 5'h16;                   // ' '
-			5'd16: char_code = 5'hB;                    // 'B'
-			5'd17: char_code = 5'h15;                   // ':'
-			5'd18: char_code = {1'b0, lat_bank[7:4]};
-			5'd19: char_code = {1'b0, lat_bank[3:0]};
-			5'd20: char_code = 5'h16;                   // ' '
+			5'd14: char_code = {1'b0, lat_cia1_pa[7:4]};
+			5'd15: char_code = {1'b0, lat_cia1_pa[3:0]};
+			5'd16: char_code = 5'h16;                   // ' '
+			5'd17: char_code = 5'h17;                   // 'R' (CIA1 Port B = row data)
+			5'd18: char_code = 5'h15;                   // ':'
+			5'd19: char_code = {1'b0, lat_cia1_pb[7:4]};
+			5'd20: char_code = {1'b0, lat_cia1_pb[3:0]};
 			5'd21: char_code = 5'h16;                   // ' '
 			default: char_code = 5'h16;
 		endcase

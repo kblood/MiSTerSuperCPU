@@ -80,6 +80,9 @@ port(
 	dbg_cpu_sp    : out unsigned(15 downto 0);
 	dbg_cpu_p     : out unsigned(7 downto 0);
 	dbg_cpu_ir    : out unsigned(7 downto 0);
+	-- CIA1 keyboard scan diagnostic: PA/PB captured when CPU reads $DC01 and PB≠$FF
+	dbg_cia1_pa   : out unsigned(7 downto 0);
+	dbg_cia1_pb   : out unsigned(7 downto 0);
 
 	-- VGA/SCART interface
 	vic_variant : in  std_logic_vector(1 downto 0);
@@ -282,6 +285,9 @@ signal cia2_pao     : unsigned(7 downto 0);
 signal cia2_pbi     : unsigned(7 downto 0);
 signal cia2_pbo     : unsigned(7 downto 0);
 signal cia2_pbe     : unsigned(7 downto 0);
+-- CIA1 keyboard scan diagnostic
+signal dbg_cia1_pa_r : unsigned(7 downto 0) := x"FF";
+signal dbg_cia1_pb_r : unsigned(7 downto 0) := x"FF";
 
 signal todclk       : std_logic;
 
@@ -921,6 +927,19 @@ dbg_cpu_en   <= enableCpu_816 when supercpu_en = '1' else enableCpu_6510;
 dbg_cpu_sp   <= dbg_sp_816 when supercpu_en = '1' else x"0000";
 dbg_cpu_p    <= dbg_p_816  when supercpu_en = '1' else x"00";
 dbg_cpu_ir   <= dbg_ir_816 when supercpu_en = '1' else x"00";
+
+-- CIA1 keyboard scan diagnostic: capture PA and PB when CPU reads $DC01 and PB≠$FF
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if cs_cia1 = '1' and cpuWe = '0' and cpuAddr(3 downto 0) = x"1" and cia1_pbi /= x"FF" then
+			dbg_cia1_pa_r <= cia1_pao;
+			dbg_cia1_pb_r <= cia1_pbi;
+		end if;
+	end if;
+end process;
+dbg_cia1_pa <= dbg_cia1_pa_r;
+dbg_cia1_pb <= dbg_cia1_pb_r;
 
 cass_motor <= cpuIO(5);
 cass_write <= cpuIO(3);
