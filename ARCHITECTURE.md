@@ -360,23 +360,30 @@ detection addresses used by SuperCPU-aware software (e.g., SCPU kernal, speed de
 
 Enable via OSD: **Debug Overlay → On** (status bit [83]).
 
-**Row 1 displays:** `A:XXXX  D:XX  W:X  B:XX`  
+**Row 1 displays:** `A:XXXX  D:XX  K:XX  R:XX`  
 **Row 2 displays:** `S:XXXX  P:XX  I:XX  E:X`
 
 | Field | Signal | Source |
 |-------|--------|--------|
-| A | cpuAddr (latched on enableCpu_816) | Bus address |
+| A | cpuAddr | Bus address |
 | D | cpuDo | CPU data output |
-| W | cpuWe | Write enable |
-| B | supercpu_bank | Bank byte (addr_hi_816) |
+| K | dbg_cia1_pa | CIA1 Port A (column select) at last phantom key detection |
+| R | dbg_cia1_pb | CIA1 Port B (row data) at last phantom key detection |
 | S | dbg_cpu_sp | SP from P65C816 |
 | P | dbg_cpu_p | P register (low 8 bits) |
 | I | dbg_cpu_ir | IR (current opcode) |
 | E | supercpu_emul | Emulation mode flag (EF_OUT from P65C816) |
 
-**Observed values during BASIC idle:**  
-`A:E5D1 D:00 W:0 B:00 / S:01F3 P:32 I:85 E:1`  
-→ CPU at $E5D1 = `STA $0292` inside BASIN keyboard wait loop. Stack, flags, mode all normal.
+**K:xx / R:xx diagnostic:** `dbg_cia1_pa` and `dbg_cia1_pb` are captured in
+`fpga64_sid_iec.vhd` whenever the CPU reads CIA1 Port B ($DC01) and the returned
+value is **non-$FF** (a key appears to be detected). This makes the overlay show
+exactly what column was selected and what row was returned at the moment a phantom
+key press was registered.
+
+- **If K:FF / R:FF** → no phantom key detected since last reset (or CIA1 diagnostic never fired in T65 mode)
+- **If K:DF / R:BF** → column 5 was selected (PA=$DF) and bit 6 of Port B was 0 → '@' key detected
+- **Other K:xx** → different column active during the glitch
+
 
 ---
 
@@ -388,7 +395,7 @@ Enable via OSD: **Debug Overlay → On** (status bit [83]).
 only when SuperCPU (65C816) is active. T65 mode is clean. BASIC is fully functional.
 Games load and run correctly (scrolling shows game content, not a bug).
 
-**Analysis so far (all inconclusive):**
+**Analysis so far (all inconclusive via static analysis):**
 - Bus timing: CIA samples at CYCLE_CPUD; P65C816 outputs stable 24 clocks earlier ✓
 - I/O port ($0000/$0001): identical logic in both wrappers ✓
 - IRQ stack: correct 3-byte push in emulation mode (PBR push skipped) ✓
@@ -397,19 +404,22 @@ Games load and run correctly (scrolling shows game content, not a bug).
 - SuperCPU ID registers: verified working ($D0BC=$C9) ✓
 - All KERNAL $FB bytes confirmed as operand bytes (not XCE) ✓
 - EF=1 consistent in debug overlay (no mode switching) ✓
+- CIA1 Port B = $FF via BASIC PEEK($DC01) — no phantom key at rest ✓
 
 **Most likely cause:** Phantom '@' (PETSCII $40) inserted into keyboard buffer
 ($0277–$0286, count at $C6) by CIA1 60Hz IRQ keyboard scan. The scan detects
-'@' key pressed when it shouldn't.
+'@' at Col5/Row6 (PA=$DF, PB bit 6 = 0). This happens TRANSIENTLY during
+the keyboard scan and is not visible via BASIC PEEK (which runs outside the scan).
 
-**Unresolved:** WHY the keyboard scan returns wrong data in 65C816 mode vs T65 mode.
+**Active diagnostic (build d1d05bb):** Enable **Debug Overlay** in OSD.
+Read **K:xx** (CIA1 PA at last non-$FF Port B) and **R:xx** (CIA1 PB value).
+These only update when a phantom key is detected. Expected: K:DF, R:BF.
 
-**Critical diagnostic tests needed (run in BASIC in 65C816 mode):**
-```
-POKE 56333, 127    → disable all CIA1 IRQs; if '@' stops, CIA1 IRQ confirmed
-PRINT PEEK(198)    → keyboard buffer count; should be 0 at idle
-PRINT PEEK(56321)  → CIA1 Port B direct read; should be 255 ($FF) with no key pressed
-```
+**Remaining theories:**
+1. Timing race: 65C816 takes different cycle count for some instruction, causing
+   PA to be wrong when PB is sampled
+2. VDA=0 spurious CIA writes: internal cycles driving wrong ADDR/WE
+3. Keyboard module `backwardsReadingEnabled='1'` feedback with CIA timing
 
 ---
 
