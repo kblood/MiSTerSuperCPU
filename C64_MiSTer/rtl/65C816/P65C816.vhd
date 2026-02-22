@@ -100,8 +100,14 @@ begin
 	
 	DLNoZero <= '0' when D(7 downto 0) = x"00" else '1';
 
+	-- In emulation mode (EF=1), remap 65C816 1-byte opcodes that have different lengths
+	-- from 6502 equivalents to preserve correct instruction stream alignment:
+	-- $AB: 65816=PLB (1 byte) vs 6502=LAX #imm (2 bytes) -> remap to LDA #imm ($A9)
+	-- $2B: 65816=PLD (1 byte) vs 6502=ANC #imm (2 bytes) -> remap to AND #imm ($29)
 	NextIR <= IR when (STATE /= "0000") else
-				 x"00" when GotInterrupt = '1' else 
+				 x"00" when GotInterrupt = '1' else
+				 x"A9" when (EF = '1' and D_IN = x"AB") else
+				 x"29" when (EF = '1' and D_IN = x"2B") else
 				 D_IN; 
 	
 	process(MC, MF, XF, EF, IR, STATE, AALCarry, JumpNoOverflow, IsBranchCycle1, JumpTaken, DLNoZero)
