@@ -72,6 +72,15 @@ port(
 	supercpu_emul : out std_logic;             -- '1' = 65C816 in 6502 emulation mode
 	supercpu_bank : out unsigned(7 downto 0);  -- current bank byte (A23-A16)
 
+	-- Debug outputs (active CPU's bus signals)
+	dbg_cpu_addr  : out unsigned(15 downto 0);
+	dbg_cpu_data  : out unsigned(7 downto 0);
+	dbg_cpu_we    : out std_logic;
+	dbg_cpu_en    : out std_logic;
+	dbg_cpu_sp    : out unsigned(15 downto 0);
+	dbg_cpu_p     : out unsigned(7 downto 0);
+	dbg_cpu_ir    : out unsigned(7 downto 0);
+
 	-- VGA/SCART interface
 	vic_variant : in  std_logic_vector(1 downto 0);
 	ntscMode    : in  std_logic;
@@ -219,6 +228,7 @@ signal cpuWe_pre    : std_logic;
 signal cpuAddr      : unsigned(15 downto 0);
 signal cpuAddr_pre  : unsigned(15 downto 0);
 signal cpuDi        : unsigned(7 downto 0);
+signal cpuDi_raw    : unsigned(7 downto 0);
 signal cpuDo        : unsigned(7 downto 0);
 signal cpuDo_pre    : unsigned(7 downto 0);
 signal cpuIO        : unsigned(7 downto 0);
@@ -233,6 +243,9 @@ signal addr_hi_816  : unsigned(7 downto 0);
 signal emu_mode_816 : std_logic;
 signal vpa_816      : std_logic;
 signal vda_816      : std_logic;
+signal dbg_sp_816   : unsigned(15 downto 0);
+signal dbg_p_816    : unsigned(7 downto 0);
+signal dbg_ir_816   : unsigned(7 downto 0);
 
 -- 6510 CPU signals (renamed from _pre for MUX clarity)
 signal cpuAddr_6510 : unsigned(15 downto 0);
@@ -499,7 +512,7 @@ port map (
 
 	systemWe => systemWe,
 	systemAddr => systemAddr,
-	dataToCpu => cpuDi,
+	dataToCpu => cpuDi_raw,
 	dataToVic => vicDi,
 
 	io_enable => io_enable,
@@ -524,6 +537,14 @@ port map (
 IOE <= ioe_i;
 IOF <= iof_i;
 cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
+
+-- SuperCPU register overlay: intercept reads from $D07x and $D0Bx when SuperCPU enabled.
+-- These addresses fall in the VIC-II mirror space; undefined registers normally return $FF.
+-- $D0BC = SuperCPU identification ($C9 = 201 decimal, "SuperCPU present")
+-- $D07E = SuperCPU firmware version ($B1 = v1.x)
+cpuDi <= x"C9" when (supercpu_en = '1' and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC") else
+         x"B1" when (supercpu_en = '1' and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
+         cpuDi_raw;
 
 process(clk32)
 begin
@@ -872,7 +893,11 @@ port map (
 	addr_hi => addr_hi_816,
 	emulation_mode => emu_mode_816,
 	vpa => vpa_816,
-	vda => vda_816
+	vda => vda_816,
+
+	dbg_sp => dbg_sp_816,
+	dbg_p  => dbg_p_816,
+	dbg_ir => dbg_ir_816
 );
 
 -- -----------------------------------------------------------------------
@@ -887,6 +912,15 @@ nmi_ack     <= nmi_ack_816  when supercpu_en = '1' else nmi_ack_6510;
 -- Route 65C816-specific status signals to ports
 supercpu_emul <= emu_mode_816;
 supercpu_bank <= addr_hi_816;
+
+-- Debug outputs: active CPU's bus signals
+dbg_cpu_addr <= cpuAddr_pre;
+dbg_cpu_data <= cpuDo_pre;
+dbg_cpu_we   <= cpuWe_pre;
+dbg_cpu_en   <= enableCpu_816 when supercpu_en = '1' else enableCpu_6510;
+dbg_cpu_sp   <= dbg_sp_816 when supercpu_en = '1' else x"0000";
+dbg_cpu_p    <= dbg_p_816  when supercpu_en = '1' else x"00";
+dbg_cpu_ir   <= dbg_ir_816 when supercpu_en = '1' else x"00";
 
 cass_motor <= cpuIO(5);
 cass_write <= cpuIO(3);
