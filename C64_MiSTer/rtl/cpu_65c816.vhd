@@ -36,7 +36,12 @@ entity cpu_65c816 is
 		addr_hi       : out unsigned(7 downto 0);  -- bank byte (A16-A23)
 		emulation_mode: out std_logic;              -- '1' = 6502 emulation mode
 		vpa           : out std_logic;              -- Valid Program Address
-		vda           : out std_logic                -- Valid Data Address
+		vda           : out std_logic;               -- Valid Data Address
+
+		-- Debug outputs
+		dbg_sp        : out unsigned(15 downto 0);
+		dbg_p         : out unsigned(7 downto 0);
+		dbg_ir        : out unsigned(7 downto 0)
 	);
 end cpu_65c816;
 
@@ -49,6 +54,9 @@ architecture rtl of cpu_65c816 is
 	signal localWe    : std_logic;  -- active low (R/W#), same as T65
 	signal localEF    : std_logic;
 	signal localVPB   : std_logic;
+	signal localSP    : std_logic_vector(15 downto 0);
+	signal localP     : std_logic_vector(7 downto 0);
+	signal localIR    : std_logic_vector(7 downto 0);
 
 	signal currentIO  : std_logic_vector(7 downto 0);
 	signal ioDir      : std_logic_vector(7 downto 0);
@@ -79,7 +87,10 @@ begin
 		VDA     => vda,
 		MLB     => open,
 		VPB     => localVPB,
-		EF_OUT  => localEF
+		EF_OUT  => localEF,
+		DBG_SP  => localSP,
+		DBG_P   => localP,
+		DBG_IR  => localIR
 	);
 
 	-- 6510 I/O port at $0000-$0001 (active only in bank $00)
@@ -143,5 +154,8 @@ begin
 	we      <= not localWe;  -- invert: T65/P65C816 use active-low R/W#, system uses active-high WE
 	doIO    <= unsigned(currentIO);
 	emulation_mode <= localEF;
+	dbg_sp <= unsigned(localSP);
+	dbg_p  <= unsigned(localP);
+	dbg_ir <= unsigned(localIR);
 
 end architecture;

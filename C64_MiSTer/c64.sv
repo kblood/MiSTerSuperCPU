@@ -185,7 +185,11 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 assign LED_DISK   = 0;
 assign LED_POWER  = 0;
-assign LED_USER   = |drive_led | ioctl_download | ioctl_upload | ezfl_mod | tape_led | ~disk_ready;
+// LED debug probe: overrides normal LED when debug mode is active
+assign LED_USER   = (dbg_led_mode == 2'd1) ? supercpu_emul :
+                    (dbg_led_mode == 2'd2) ? dbg_cpu_en :
+                    (dbg_led_mode == 2'd3) ? dbg_cpu_we :
+                    (|drive_led | ioctl_download | ioctl_upload | ezfl_mod | tape_led | ~disk_ready);
 assign BUTTONS    = 0;
 assign VGA_DISABLE = 0;
 assign VGA_SCALER = 0;
@@ -287,6 +291,8 @@ localparam CONF_STR = {
 	"d6O[49:48],Turbo speed,2x,3x,4x;",
 	"-;",
 	"O[82],SuperCPU (65C816),Off,On;",
+	"O[83],Debug Overlay,Off,On;",
+	"O[85:84],LED Debug,Off,Emulation,CPU Active,CPU Write;",
 	"-;",
 	"R[0],Reset;",
 	"R[17],Reset & Detach Cartridge;",
@@ -1019,6 +1025,17 @@ wire        supercpu_enable = status[82];   // status[82]=0 → Off (6510 defaul
 wire        supercpu_emul;                  // '1' = 65C816 in 6502 emulation mode
 wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16, unused until Phase 4)
 
+// Debug infrastructure
+wire        dbg_overlay_en = status[83];
+wire  [1:0] dbg_led_mode   = status[85:84]; // 0=Off, 1=Emulation, 2=CPU Active, 3=CPU Write
+wire [15:0] dbg_cpu_addr;
+wire  [7:0] dbg_cpu_data;
+wire        dbg_cpu_we;
+wire        dbg_cpu_en;
+wire [15:0] dbg_cpu_sp;
+wire  [7:0] dbg_cpu_p;
+wire  [7:0] dbg_cpu_ir;
+
 fpga64_sid_iec fpga64
 (
 	.clk32(clk_sys),
@@ -1032,6 +1049,13 @@ fpga64_sid_iec fpga64
 	.supercpu_en(supercpu_enable),
 	.supercpu_emul(supercpu_emul),
 	.supercpu_bank(supercpu_bank),
+	.dbg_cpu_addr(dbg_cpu_addr),
+	.dbg_cpu_data(dbg_cpu_data),
+	.dbg_cpu_we(dbg_cpu_we),
+	.dbg_cpu_en(dbg_cpu_en),
+	.dbg_cpu_sp(dbg_cpu_sp),
+	.dbg_cpu_p(dbg_cpu_p),
+	.dbg_cpu_ir(dbg_cpu_ir),
 
 	.ps2_key(key),
 	.kbd_reset((~reset_n & ~status[1]) | reset_keys),
@@ -1373,6 +1397,36 @@ end
 
 assign HDMI_FREEZE = freeze;
 
+// Debug overlay: renders CPU state as hex in top border
+wire       ovl_active;
+wire [7:0] ovl_r, ovl_g, ovl_b;
+
+debug_overlay debug_ovl
+(
+	.clk(clk_sys),
+	.enable(dbg_overlay_en),
+	.hblank(hblank),
+	.vblank(vblank),
+	.cpu_addr(dbg_cpu_addr),
+	.cpu_data(dbg_cpu_data),
+	.cpu_we(dbg_cpu_we),
+	.cpu_en(dbg_cpu_en),
+	.emu_mode(supercpu_emul),
+	.bank_addr(supercpu_bank),
+	.supercpu(supercpu_enable),
+	.cpu_sp(dbg_cpu_sp),
+	.cpu_p(dbg_cpu_p),
+	.cpu_ir(dbg_cpu_ir),
+	.overlay_active(ovl_active),
+	.overlay_r(ovl_r),
+	.overlay_g(ovl_g),
+	.overlay_b(ovl_b)
+);
+
+wire [7:0] r_ovl = ovl_active ? ovl_r : r;
+wire [7:0] g_ovl = ovl_active ? ovl_g : g;
+wire [7:0] b_ovl = ovl_active ? ovl_b : b;
+
 video_mixer #(.GAMMA(1)) video_mixer
 (
 	.CLK_VIDEO(CLK_VIDEO),
@@ -1382,9 +1436,9 @@ video_mixer #(.GAMMA(1)) video_mixer
 	.gamma_bus(gamma_bus),
 
 	.ce_pix(ce_pix),
-	.R(r),
-	.G(g),
-	.B(b),
+	.R(r_ovl),
+	.G(g_ovl),
+	.B(b_ovl),
 	.HSync(hsync_out),
 	.VSync(vsync_out),
 	.HBlank(hblank),
