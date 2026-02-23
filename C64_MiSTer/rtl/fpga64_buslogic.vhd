@@ -49,7 +49,8 @@ entity fpga64_buslogic is
 		c64rom_data : in std_logic_vector(7 downto 0);
 		c64rom_wr   : in std_logic;
 
-		supercpu_en : in std_logic;
+		supercpu_en   : in std_logic;
+		supercpu_bank : in std_logic_vector(7 downto 0);
 
 		cpuWe       : in std_logic;
 		cpuAddr     : in unsigned(15 downto 0);
@@ -120,6 +121,10 @@ architecture rtl of fpga64_buslogic is
 
 	signal currentAddr    : unsigned(15 downto 0);
 	signal scpuRomData    : std_logic_vector(7 downto 0);
+	-- '1' when the 65C816 bank register points to SuperCPU ROM space.
+	-- Covers: full address range in banks $F0-$FF (the ROM banks), and
+	-- $8000-$9FFF in bank $00 (native-mode interrupt handlers live there).
+	signal scpu_rom_en    : std_logic;
 	
 begin
 	chargen: entity work.dprom
@@ -211,6 +216,14 @@ begin
 
 	charData <= charData_jap when c64jap_ena = '1' else charData_std;
 
+	-- SuperCPU ROM bank mapping:
+	-- Banks $F0-$FF: full 64KB accessible as ROM (the JML at reset jumps to bank $F8).
+	-- Bank $00, $8000-$9FFF: native-mode interrupt handlers reside here in the ROM image.
+	scpu_rom_en <= '1' when supercpu_en = '1' and cpuWe = '0' and
+	                        (unsigned(supercpu_bank) >= x"F0" or
+	                         (supercpu_bank = x"00" and cpuAddr(15 downto 13) = "100"))
+	               else '0';
+
 	process(clk)
 	begin
 		if rising_edge(clk) then
@@ -229,13 +242,16 @@ begin
 			  cs_romHLoc, cs_romLLoc, cs_romLoc, cs_CharLoc,
 			  cs_ramLoc, cs_vicLoc, cs_sidLoc, cs_colorLoc,
 			  cs_cia1Loc, cs_cia2Loc, lastVicData,
-			  cs_ioELoc, cs_ioFLoc,
+			  cs_ioELoc, cs_ioFLoc, scpu_rom_en,
 			  io_rom, io_ext, io_data)
 	begin
 		-- If no hardware is addressed the bus is floating.
 		-- It will contain the last data read by the VIC. (if a C64 is shielded correctly)
 		dataToCpu <= lastVicData;
-		if cs_CharLoc = '1' then	
+		if scpu_rom_en = '1' then
+			-- 65C816 bank $F0-$FF or bank-0 $8000-$9FFF: serve from SuperCPU ROM image.
+			dataToCpu <= unsigned(romData);
+		elsif cs_CharLoc = '1' then	
 			dataToCpu <= unsigned(charData);
 		elsif cs_romLoc = '1' then	
 			dataToCpu <= unsigned(romData);

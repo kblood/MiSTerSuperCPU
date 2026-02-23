@@ -539,19 +539,23 @@ port map (
 	c64rom_data => c64rom_data,
 	c64rom_wr => c64rom_wr,
 
-	supercpu_en => supercpu_en
+	supercpu_en => supercpu_en,
+	supercpu_bank => std_logic_vector(addr_hi_816)
 );
 
 IOE <= ioe_i;
 IOF <= iof_i;
 cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 
--- SuperCPU register overlay: intercept reads from $D07x and $D0Bx when SuperCPU enabled.
--- These addresses fall in the VIC-II mirror space; undefined registers normally return $FF.
--- $D0BC = SuperCPU identification ($C9 = 201 decimal, "SuperCPU present")
--- $D07E = SuperCPU firmware version ($B1 = v1.x)
-cpuDi <= x"C9" when (supercpu_en = '1' and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC") else
-         x"B1" when (supercpu_en = '1' and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
+-- SuperCPU register overlay: intercept reads from $D07x and $D0Bx when SuperCPU enabled,
+-- but only in bank $00 (VIC-II mirror space). High-bank ($F0-$FF) accesses serve ROM data
+-- from the buslogic and must not be intercepted here.
+-- $D0BC = SuperCPU identification ($C9 = "SuperCPU present")
+-- $D0B0 = mode detect: $40 = SuperCPU v2 in C64 mode (bits 7:6 = 01)
+-- $D07E = hardware register enable (firmware present, v1.x)
+cpuDi <= x"C9" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC") else
+         x"40" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B0") else
+         x"B1" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
          cpuDi_raw;
 
 process(clk32)
