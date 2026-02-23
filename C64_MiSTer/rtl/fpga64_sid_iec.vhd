@@ -537,7 +537,9 @@ port map (
 
 	c64rom_addr => c64rom_addr,
 	c64rom_data => c64rom_data,
-	c64rom_wr => c64rom_wr
+	c64rom_wr => c64rom_wr,
+
+	supercpu_en => supercpu_en
 );
 
 IOE <= ioe_i;

@@ -49,6 +49,8 @@ entity fpga64_buslogic is
 		c64rom_data : in std_logic_vector(7 downto 0);
 		c64rom_wr   : in std_logic;
 
+		supercpu_en : in std_logic;
+
 		cpuWe       : in std_logic;
 		cpuAddr     : in unsigned(15 downto 0);
 		cpuData     : in unsigned(7 downto 0);
@@ -117,6 +119,7 @@ architecture rtl of fpga64_buslogic is
 	signal ultimax        : std_logic;
 
 	signal currentAddr    : unsigned(15 downto 0);
+	signal scpuRomData    : std_logic_vector(7 downto 0);
 	
 begin
 	chargen: entity work.dprom
@@ -189,7 +192,19 @@ begin
 		q => romData_c64jap
 	);
 
-	romData <= romData_c64jap when c64jap_ena = '1' else
+	scpu_rom: entity work.dprom
+	generic map ("rtl/roms/scpu64.mif", 16)
+	port map
+	(
+		wrclock => clk,
+		rdclock => clk,
+
+		rdaddress => std_logic_vector(cpuAddr),
+		q => scpuRomData
+	);
+
+	romData <= scpuRomData    when supercpu_en = '1' else
+				  romData_c64jap when c64jap_ena = '1' else
 				  romData_c64std when c64std_ena = '1' else
 				  romData_c64gs  when c64gs_ena  = '1' else
 				  romData_c64;
