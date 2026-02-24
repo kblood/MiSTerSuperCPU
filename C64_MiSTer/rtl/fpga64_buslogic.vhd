@@ -50,6 +50,7 @@ entity fpga64_buslogic is
 		c64rom_wr   : in std_logic;
 
 		supercpu_en   : in std_logic;
+		supercpu_rom  : in std_logic;   -- '1' = SuperCPU kickstart ROM active
 		supercpu_bank : in std_logic_vector(7 downto 0);
 
 		cpuWe       : in std_logic;
@@ -227,7 +228,7 @@ begin
 		q => scpuRomData
 	);
 
-	romData <= scpuRomData    when supercpu_en = '1' else
+	romData <= scpuRomData    when supercpu_en = '1' and supercpu_rom = '1' else
 				  romData_c64jap when c64jap_ena = '1' else
 				  romData_c64std when c64std_ena = '1' else
 				  romData_c64gs  when c64gs_ena  = '1' else
@@ -238,7 +239,7 @@ begin
 	-- SuperCPU ROM bank mapping:
 	-- Banks $F0-$FF: full 64KB accessible as ROM (the JML at reset jumps to bank $F8).
 	-- Bank $00, $8000-$9FFF: native-mode interrupt handlers reside here in the ROM image.
-	scpu_rom_en <= '1' when supercpu_en = '1' and cpuWe = '0' and
+	scpu_rom_en <= '1' when supercpu_en = '1' and supercpu_rom = '1' and cpuWe = '0' and
 	                        (unsigned(supercpu_bank) >= x"F0" or
 	                         (supercpu_bank = x"00" and cpuAddr(15 downto 13) = "100"))
 	               else '0';

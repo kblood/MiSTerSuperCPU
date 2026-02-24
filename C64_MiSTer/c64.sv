@@ -291,6 +291,7 @@ localparam CONF_STR = {
 	"d6O[49:48],Turbo speed,2x,3x,4x;",
 	"-;",
 	"O[82],SuperCPU (65C816),Off,On;",
+	"O[86],SCPU Kickstart ROM,Off,On;",
 	"O[83],Debug Overlay,Off,On;",
 	"O[85:84],LED Debug,Off,Emulation,CPU Active,CPU Write;",
 	"-;",
@@ -1022,6 +1023,7 @@ wire  [7:0] r,g,b;
 
 wire        ntsc = status[2];
 wire        supercpu_enable = status[82];   // status[82]=0 → Off (6510 default), =1 → On (65C816)
+wire        scpu_rom_opt    = status[86];   // status[86]=0 → ROM off, =1 → ROM on (kickstart active)
 wire        supercpu_emul;                  // '1' = 65C816 in 6502 emulation mode
 wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16, unused until Phase 4)
 
@@ -1049,6 +1051,7 @@ fpga64_sid_iec fpga64
 	.turbo_mode({status[47] & ~disk_access, status[46]}),
 	.turbo_speed(status[49:48]),
 	.supercpu_en(supercpu_enable),
+	.supercpu_rom(scpu_rom_opt),
 	.supercpu_emul(supercpu_emul),
 	.supercpu_bank(supercpu_bank),
 	.dbg_cpu_addr(dbg_cpu_addr),

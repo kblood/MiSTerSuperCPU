@@ -69,6 +69,7 @@ port(
 	turbo_mode  : in  std_logic_vector(1 downto 0);
 	turbo_speed : in  std_logic_vector(1 downto 0);
 	supercpu_en : in  std_logic := '0';
+	supercpu_rom : in  std_logic := '0'; -- '1' = SuperCPU kickstart ROM active
 	supercpu_emul : out std_logic;             -- '1' = 65C816 in 6502 emulation mode
 	supercpu_bank : out unsigned(7 downto 0);  -- current bank byte (A23-A16)
 
@@ -540,6 +541,7 @@ port map (
 	c64rom_wr => c64rom_wr,
 
 	supercpu_en => supercpu_en,
+	supercpu_rom => supercpu_rom,
 	supercpu_bank => std_logic_vector(addr_hi_816)
 );
 
