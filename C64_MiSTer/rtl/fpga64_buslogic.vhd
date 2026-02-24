@@ -125,6 +125,14 @@ architecture rtl of fpga64_buslogic is
 	-- Covers: full address range in banks $F0-$FF (the ROM banks), and
 	-- $8000-$9FFF in bank $00 (native-mode interrupt handlers live there).
 	signal scpu_rom_en    : std_logic;
+
+	-- SuperCPU system RAM: 512 bytes at bank $00, $D200-$D3FF.
+	-- Intercepts VIC-II mirror range to prevent register corruption when
+	-- the kickstart ROM writes its working variables to this area.
+	type scpu_sysram_t is array (0 to 511) of std_logic_vector(7 downto 0);
+	signal scpu_sysram      : scpu_sysram_t;
+	signal scpu_sysram_cs   : std_logic;
+	signal scpu_sysram_data : std_logic_vector(7 downto 0);
 	
 begin
 	chargen: entity work.dprom
@@ -224,6 +232,25 @@ begin
 	                         (supercpu_bank = x"00" and cpuAddr(15 downto 13) = "100"))
 	               else '0';
 
+	-- SuperCPU system RAM: bank $00, $D200-$D3FF (512 bytes).
+	-- Prevents kickstart writes from corrupting VIC-II registers (VIC mirrors $D000-$D3FF).
+	-- cpuAddr(15:9) = "1101001" selects exactly $D200-$D3FF.
+	scpu_sysram_cs <= '1' when supercpu_en = '1' and supercpu_bank = x"00"
+	                            and cpuAddr(15 downto 9) = "1101001"
+	                  else '0';
+
+	process(clk)
+	begin
+		if rising_edge(clk) then
+			-- Write to SuperCPU system RAM
+			if scpu_sysram_cs = '1' and cpuWe = '1' then
+				scpu_sysram(to_integer(cpuAddr(8 downto 0))) <= std_logic_vector(cpuData);
+			end if;
+			-- Registered read (same latency as dprom)
+			scpu_sysram_data <= scpu_sysram(to_integer(cpuAddr(8 downto 0)));
+		end if;
+	end process;
+
 	process(clk)
 	begin
 		if rising_edge(clk) then
@@ -242,7 +269,7 @@ begin
 			  cs_romHLoc, cs_romLLoc, cs_romLoc, cs_CharLoc,
 			  cs_ramLoc, cs_vicLoc, cs_sidLoc, cs_colorLoc,
 			  cs_cia1Loc, cs_cia2Loc, lastVicData,
-			  cs_ioELoc, cs_ioFLoc, scpu_rom_en,
+			  cs_ioELoc, cs_ioFLoc, scpu_rom_en, scpu_sysram_cs, scpu_sysram_data,
 			  io_rom, io_ext, io_data)
 	begin
 		-- If no hardware is addressed the bus is floating.
@@ -251,6 +278,9 @@ begin
 		if scpu_rom_en = '1' then
 			-- 65C816 bank $F0-$FF or bank-0 $8000-$9FFF: serve from SuperCPU ROM image.
 			dataToCpu <= unsigned(romData);
+		elsif scpu_sysram_cs = '1' then
+			-- SuperCPU system RAM at bank $00, $D200-$D3FF
+			dataToCpu <= unsigned(scpu_sysram_data);
 		elsif cs_CharLoc = '1' then	
 			dataToCpu <= unsigned(charData);
 		elsif cs_romLoc = '1' then	
@@ -405,7 +435,7 @@ begin
 	end process;
 
 	cs_ram <= cs_ramLoc or cs_romLLoc or cs_romHLoc or cs_UMAXromHLoc or cs_UMAXnomapLoc or cs_CharLoc or cs_romLoc;
-	cs_vic <= cs_vicLoc and io_enable;
+	cs_vic <= cs_vicLoc and io_enable and not scpu_sysram_cs;
 	cs_sid <= cs_sidLoc and io_enable;
 	cs_color <= cs_colorLoc and io_enable;
 	cs_cia1 <= cs_cia1Loc and io_enable;
