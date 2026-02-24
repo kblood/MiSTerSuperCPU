@@ -133,6 +133,12 @@ architecture rtl of fpga64_buslogic is
 	signal scpu_sysram      : scpu_sysram_t;
 	signal scpu_sysram_cs   : std_logic;
 	signal scpu_sysram_data : std_logic_vector(7 downto 0);
+
+	-- C64 I/O is only accessible from bank $00.
+	-- In SuperCPU mode, bank $01-$FF accesses bypass I/O (they target SuperRAM).
+	-- Without this gate the kickstart's MVN block moves to bank $01 would
+	-- corrupt VIC-II/SID/CIA registers when they pass through $D000-$DFFF.
+	signal scpu_io_en : std_logic;
 	
 begin
 	chargen: entity work.dprom
@@ -239,6 +245,13 @@ begin
 	                            and cpuAddr(15 downto 9) = "1101001"
 	                  else '0';
 
+	-- I/O gate: C64 peripheral registers (VIC, SID, CIA, color, cartridge I/O) are
+	-- only mapped in bank $00.  In SuperCPU mode every other bank is pure RAM/ROM,
+	-- so all I/O chip-selects must be suppressed when the bank byte is not $00.
+	-- Without this, kickstart block-moves to bank $01–$EF write through $D000–$DFFF
+	-- and corrupt VIC-II / SID / CIA registers.
+	scpu_io_en <= '0' when supercpu_en = '1' and supercpu_bank /= x"00" else '1';
+
 	process(clk)
 	begin
 		if rising_edge(clk) then
@@ -269,7 +282,7 @@ begin
 			  cs_romHLoc, cs_romLLoc, cs_romLoc, cs_CharLoc,
 			  cs_ramLoc, cs_vicLoc, cs_sidLoc, cs_colorLoc,
 			  cs_cia1Loc, cs_cia2Loc, lastVicData,
-			  cs_ioELoc, cs_ioFLoc, scpu_rom_en, scpu_sysram_cs, scpu_sysram_data,
+			  cs_ioELoc, cs_ioFLoc, scpu_rom_en, scpu_sysram_cs, scpu_sysram_data, scpu_io_en,
 			  io_rom, io_ext, io_data)
 	begin
 		-- If no hardware is addressed the bus is floating.
@@ -287,27 +300,27 @@ begin
 			dataToCpu <= unsigned(romData);
 		elsif cs_ramLoc = '1' then
 			dataToCpu <= ramData;
-		elsif cs_vicLoc = '1' then
+		elsif cs_vicLoc = '1' and scpu_io_en = '1' then
 			dataToCpu <= vicData;
-		elsif cs_sidLoc = '1' then
+		elsif cs_sidLoc = '1' and scpu_io_en = '1' then
 			dataToCpu <= sidData;
-		elsif cs_colorLoc = '1' then
+		elsif cs_colorLoc = '1' and scpu_io_en = '1' then
 			dataToCpu(3 downto 0) <= colorData;
-		elsif cs_cia1Loc = '1' then
+		elsif cs_cia1Loc = '1' and scpu_io_en = '1' then
 			dataToCpu <= cia1Data;
-		elsif cs_cia2Loc = '1' then
+		elsif cs_cia2Loc = '1' and scpu_io_en = '1' then
 			dataToCpu <= cia2Data;
 		elsif cs_romLLoc = '1' then
 			dataToCpu <= ramData;
 		elsif cs_romHLoc = '1' then
 			dataToCpu <= ramData;
-		elsif cs_ioELoc = '1' and io_rom = '1' then
+		elsif cs_ioELoc = '1' and scpu_io_en = '1' and io_rom = '1' then
 			dataToCpu <= ramData;
-		elsif cs_ioFLoc = '1' and io_rom = '1' then
+		elsif cs_ioFLoc = '1' and scpu_io_en = '1' and io_rom = '1' then
 			dataToCpu <= ramData;
-		elsif cs_ioELoc = '1' and io_ext = '1' then
+		elsif cs_ioELoc = '1' and scpu_io_en = '1' and io_ext = '1' then
 			dataToCpu <= io_data;
-		elsif cs_ioFLoc = '1' and io_ext = '1' then
+		elsif cs_ioFLoc = '1' and scpu_io_en = '1' and io_ext = '1' then
 			dataToCpu <= io_data;
 		end if;
 	end process;
@@ -435,13 +448,13 @@ begin
 	end process;
 
 	cs_ram <= cs_ramLoc or cs_romLLoc or cs_romHLoc or cs_UMAXromHLoc or cs_UMAXnomapLoc or cs_CharLoc or cs_romLoc;
-	cs_vic <= cs_vicLoc and io_enable and not scpu_sysram_cs;
-	cs_sid <= cs_sidLoc and io_enable;
-	cs_color <= cs_colorLoc and io_enable;
-	cs_cia1 <= cs_cia1Loc and io_enable;
-	cs_cia2 <= cs_cia2Loc and io_enable;
-	cs_ioE <= cs_ioELoc and io_enable;
-	cs_ioF <= cs_ioFLoc and io_enable;
+	cs_vic   <= cs_vicLoc   and io_enable and not scpu_sysram_cs and scpu_io_en;
+	cs_sid   <= cs_sidLoc   and io_enable and scpu_io_en;
+	cs_color <= cs_colorLoc and io_enable and scpu_io_en;
+	cs_cia1  <= cs_cia1Loc  and io_enable and scpu_io_en;
+	cs_cia2  <= cs_cia2Loc  and io_enable and scpu_io_en;
+	cs_ioE   <= cs_ioELoc   and io_enable and scpu_io_en;
+	cs_ioF   <= cs_ioFLoc   and io_enable and scpu_io_en;
 	cs_romL <= cs_romLLoc;
 	cs_romH <= cs_romHLoc;
 	cs_UMAXromH <= cs_UMAXromHLoc;
