@@ -18,16 +18,23 @@
     Override the Quartus install path inside WSL.
     Default: auto-detected from ~/intelFPGA_lite/*/quartus/bin
 
+.PARAMETER Program
+    After a successful build, program the FPGA via USB Blaster using Windows Quartus.
+    Requires Quartus installed at C:\altera_standard\25.1std (or set $env:QUARTUS_WIN_BIN).
+
 .EXAMPLE
     .\build_c64.ps1
     .\build_c64.ps1 -Clean
     .\build_c64.ps1 -SyntaxOnly
+    .\build_c64.ps1 -Program              # build then auto-program via USB Blaster
+    .\build_c64.ps1 -Clean -Program       # clean build then program
     .\build_c64.ps1 -QuartusPath "/home/user/intelFPGA_lite/17.0/quartus/bin"
 #>
 
 param(
     [switch]$Clean,
     [switch]$SyntaxOnly,
+    [switch]$Program,
     [string]$QuartusPath = ""
 )
 
@@ -201,6 +208,28 @@ if ($SyntaxOnly) {
         $destRbf = Join-Path $ProjectRoot "C64.rbf"
         Copy-Item $rbfPath $destRbf -Force
         Write-Host "  Copied:  $destRbf" -ForegroundColor Green
+
+        # Auto-program via USB Blaster if -Program was specified
+        if ($Program) {
+            Write-Step "Programming FPGA via USB Blaster"
+            $winQBin = if ($env:QUARTUS_WIN_BIN) { $env:QUARTUS_WIN_BIN } else { "C:\altera_standard\25.1std\quartus\bin64" }
+            $pgm = Join-Path $winQBin "quartus_pgm.exe"
+            $sof = Join-Path $CoreDir "output_files\C64.sof"
+            if (-not (Test-Path $pgm)) {
+                Write-Host "  WARNING: quartus_pgm.exe not found at $winQBin" -ForegroundColor Yellow
+                Write-Host "  Set `$env:QUARTUS_WIN_BIN or install Quartus at C:\altera_standard\25.1std" -ForegroundColor Yellow
+            } elseif (-not (Test-Path $sof)) {
+                Write-Host "  WARNING: .sof not found, cannot program" -ForegroundColor Yellow
+            } else {
+                $pgmResult = & $pgm -c "DE-SoC [USB-1]" -m JTAG -o "p;$sof@2" 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "  FPGA programmed successfully" -ForegroundColor Green
+                } else {
+                    Write-Host "  Programming failed (is USB Blaster connected?)" -ForegroundColor Yellow
+                    $pgmResult | Select-String "Error|error" | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+                }
+            }
+        }
 
         # Show resource usage summary from fit report
         $fitSummary = Join-Path $CoreDir "output_files\C64.fit.summary"
