@@ -139,6 +139,11 @@ architecture rtl of fpga64_buslogic is
 	-- Without this gate the kickstart's MVN block moves to bank $01 would
 	-- corrupt VIC-II/SID/CIA registers when they pass through $D000-$DFFF.
 	signal scpu_io_en : std_logic;
+
+	-- SYSRAM reset-sweep counter: clears the 512-byte SYSRAM after reset so
+	-- the kickstart always sees a cold-boot state and calls the C64 KERNAL.
+	signal sysram_rst_cnt  : unsigned(8 downto 0) := (others => '0');
+	signal sysram_rst_busy : std_logic := '0';
 	
 begin
 	chargen: entity work.dprom
@@ -255,8 +260,22 @@ begin
 	process(clk)
 	begin
 		if rising_edge(clk) then
-			-- Write to SuperCPU system RAM
-			if scpu_sysram_cs = '1' and cpuWe = '1' then
+			-- On reset, sweep all 512 SYSRAM locations to $00 so the kickstart
+			-- always sees a "cold boot" state and performs a full init (calls KERNAL).
+			-- Without this, after the first boot the kickstart detects its working
+			-- variables in SYSRAM and takes a warm-boot path that skips KERNAL init,
+			-- leaving VIC-II uninitialised and the screen black.
+			if reset = '1' and sysram_rst_busy = '0' then
+				sysram_rst_busy <= '1';
+				sysram_rst_cnt  <= (others => '0');
+			elsif sysram_rst_busy = '1' then
+				scpu_sysram(to_integer(sysram_rst_cnt)) <= (others => '0');
+				if sysram_rst_cnt = 511 then
+					sysram_rst_busy <= '0';
+				else
+					sysram_rst_cnt <= sysram_rst_cnt + 1;
+				end if;
+			elsif scpu_sysram_cs = '1' and cpuWe = '1' then
 				scpu_sysram(to_integer(cpuAddr(8 downto 0))) <= std_logic_vector(cpuData);
 			end if;
 			-- Registered read (same latency as dprom)
@@ -427,7 +446,7 @@ begin
 				end if;
 			end case;
 
-			systemWe <= cpuWe;
+			systemWe <= cpuWe and scpu_io_en;
 		else
 			-- The VIC-II has the bus, but only when aec is asserted
 			if aec = '1' then
