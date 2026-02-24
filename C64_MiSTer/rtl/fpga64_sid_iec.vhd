@@ -562,9 +562,15 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 -- $D0BC = SuperCPU identification ($C9 = "SuperCPU present")
 -- $D0B0 = mode detect: $40 = SuperCPU v2 in C64 mode (bits 7:6 = 01)
 -- $D07E = hardware register enable (firmware present, v1.x)
+-- $D0B2 = ROM control mirror: SIMM detect reads this then writes to $D07E.
+--         Must return $00 (bit7=0 = KERNAL visible) so the STA $D07E in SIMM detect
+--         ($F8:814E) does NOT re-enable the SCPU ROM that was just hidden at $80F7.
+--         On real SuperCPU, $D0B2 and $D07E share the same physical register or $D0B2
+--         returns the last value written to $D07E ($00 after kickstart init).
 cpuDi <= x"C9" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC") else
          x"40" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B0") else
-         x"B1" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B2") else
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
          cpuDi_raw;
 
 process(clk32)
