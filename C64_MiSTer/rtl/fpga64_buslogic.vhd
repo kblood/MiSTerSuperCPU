@@ -51,6 +51,7 @@ entity fpga64_buslogic is
 
 		supercpu_en   : in std_logic;
 		supercpu_rom  : in std_logic;   -- '1' = SuperCPU kickstart ROM active
+		supercpu_rom_vis : in std_logic; -- '1' = SuperCPU ROM at $E000-$FFFF, '0' = C64 KERNAL
 		supercpu_bank : in std_logic_vector(7 downto 0);
 
 		cpuWe       : in std_logic;
@@ -228,7 +229,12 @@ begin
 		q => scpuRomData
 	);
 
-	romData <= scpuRomData    when supercpu_en = '1' and supercpu_rom = '1' else
+	-- romData mux: cs_romLoc reads ($E000-$FFFF in bank $00).
+	-- When SuperCPU ROM is active AND visible (supercpu_rom_vis='1'), serve scpuRomData.
+	-- After the kickstart writes $00 to $D07E (supercpu_rom_vis='0'), the C64 KERNAL is
+	-- revealed here so that "LDA $FFFC" in the kickstart reads $FCE2 (C64 KERNAL
+	-- reset vector) instead of $FC90, allowing RTL to boot the KERNAL.
+	romData <= scpuRomData    when supercpu_en = '1' and supercpu_rom = '1' and supercpu_rom_vis = '1' else
 				  romData_c64jap when c64jap_ena = '1' else
 				  romData_c64std when c64std_ena = '1' else
 				  romData_c64gs  when c64gs_ena  = '1' else
@@ -303,14 +309,17 @@ begin
 			  cs_ramLoc, cs_vicLoc, cs_sidLoc, cs_colorLoc,
 			  cs_cia1Loc, cs_cia2Loc, lastVicData,
 			  cs_ioELoc, cs_ioFLoc, scpu_rom_en, scpu_sysram_cs, scpu_sysram_data, scpu_io_en,
+			  scpuRomData, supercpu_rom_vis,
 			  io_rom, io_ext, io_data)
 	begin
 		-- If no hardware is addressed the bus is floating.
 		-- It will contain the last data read by the VIC. (if a C64 is shielded correctly)
 		dataToCpu <= lastVicData;
 		if scpu_rom_en = '1' then
-			-- 65C816 bank $F0-$FF or bank-0 $8000-$9FFF: serve from SuperCPU ROM image.
-			dataToCpu <= unsigned(romData);
+			-- 65C816 bank $F0-$FF or bank-0 $8000-$9FFF: ALWAYS serve SuperCPU ROM.
+			-- Use scpuRomData directly, NOT romData, so that the $D07E ROM-visibility
+			-- switch (supercpu_rom_vis) cannot hide the kickstart code at bank $F8.
+			dataToCpu <= unsigned(scpuRomData);
 		elsif scpu_sysram_cs = '1' then
 			-- SuperCPU system RAM at bank $00, $D200-$D3FF
 			dataToCpu <= unsigned(scpu_sysram_data);
@@ -447,7 +456,7 @@ begin
 				end if;
 			end case;
 
-			systemWe <= cpuWe and scpu_io_en;
+			systemWe <= cpuWe;
 		else
 			-- The VIC-II has the bus, but only when aec is asserted
 			if aec = '1' then

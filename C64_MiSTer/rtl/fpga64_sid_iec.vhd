@@ -245,6 +245,12 @@ signal cpuIO_816    : unsigned(7 downto 0);
 signal nmi_ack_816  : std_logic;
 signal addr_hi_816  : unsigned(7 downto 0);
 signal emu_mode_816 : std_logic;
+-- $D07E ROM-visibility register.
+-- Reset = '1' (SuperCPU ROM at $E000-$FFFF, so $FFFC = $FC90 = kickstart entry).
+-- Kickstart writes $00 to $D07E at $80F7: ROM-vis = cpuDo(7) = 0 → C64 KERNAL visible.
+-- After this, "LDA $FFFC" in the kickstart reads $FCE2 (C64 KERNAL reset vector)
+-- instead of $FC90, and the RTL trick boots the C64 KERNAL successfully.
+signal scpu_rom_vis : std_logic := '1';
 signal vpa_816      : std_logic;
 signal vda_816      : std_logic;
 signal dbg_sp_816   : unsigned(15 downto 0);
@@ -542,6 +548,7 @@ port map (
 
 	supercpu_en => supercpu_en,
 	supercpu_rom => supercpu_rom,
+	supercpu_rom_vis => scpu_rom_vis,
 	supercpu_bank => std_logic_vector(addr_hi_816)
 );
 
@@ -950,6 +957,20 @@ begin
 end process;
 dbg_cia1_pa <= dbg_cia1_pa_r;
 dbg_cia1_pb <= dbg_cia1_pb_r;
+
+-- $D07E ROM-visibility switch.
+-- Kickstart writes $00 to $D07E at $80F7 to expose C64 KERNAL at $E000-$FFFF.
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if reset = '1' then
+			scpu_rom_vis <= '1'; -- SuperCPU ROM visible on reset
+		elsif supercpu_en = '1' and supercpu_rom = '1' and
+		      cpuWe = '1' and cpuAddr = x"D07E" and addr_hi_816 = x"00" then
+			scpu_rom_vis <= cpuDo(7); -- bit7=0: C64 KERNAL visible; bit7=1: SCPU ROM
+		end if;
+	end if;
+end process;
 
 cass_motor <= cpuIO(5);
 cass_write <= cpuIO(3);
