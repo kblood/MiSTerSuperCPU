@@ -252,6 +252,8 @@ signal emu_mode_816 : std_logic;
 -- instead of $FC90, and the RTL trick boots the C64 KERNAL successfully.
 signal scpu_rom_vis      : std_logic := '1';
 signal supercpu_en_prev  : std_logic := '0';
+-- $D07A speed register: bit5=1 → 1MHz slow, bit5=0 → 20MHz fast (default fast)
+signal scpu_speed_slow   : std_logic := '0';
 signal vpa_816      : std_logic;
 signal vda_816      : std_logic;
 signal dbg_sp_816   : unsigned(15 downto 0);
@@ -572,6 +574,7 @@ cpuDi <= x"C9" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' 
          x"40" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B0") else
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B2") else
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
+         (scpu_speed_slow & "0000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07A") else
          cpuDi_raw;
 
 process(clk32)
@@ -981,10 +984,13 @@ begin
 	if rising_edge(clk32) then
 		supercpu_en_prev <= supercpu_en;
 		if reset = '1' or (supercpu_en = '1' and supercpu_en_prev = '0') then
-			scpu_rom_vis <= '1'; -- SuperCPU ROM visible on CPU start
+			scpu_rom_vis    <= '1'; -- SuperCPU ROM visible on CPU start
+			scpu_speed_slow <= '0'; -- Default: 20MHz fast mode
 		elsif supercpu_en = '1' and supercpu_rom = '1' and
 		      cpuWe = '1' and cpuAddr = x"D07E" and addr_hi_816 = x"00" then
 			scpu_rom_vis <= cpuDo(7); -- bit7=0: C64 KERNAL visible; bit7=1: SCPU ROM
+		elsif supercpu_en = '1' and cpuWe = '1' and cpuAddr = x"D07A" and addr_hi_816 = x"00" then
+			scpu_speed_slow <= cpuDo(5); -- bit5=1: 1MHz compat mode, bit5=0: 20MHz fast
 		end if;
 	end if;
 end process;
@@ -1018,7 +1024,11 @@ begin
 			dma_active <= dma_req;
 			turbo_en <= turbo_mode(0);
 			turbo_m <= "000";
-			if cs_io = '0' and dma_req = '0' and ((turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1') then
+			-- SuperCPU fast mode: force 4x turbo when SuperCPU enabled and $D07A not set to 1MHz.
+			-- cs_io='0' check still protects SID/CIA/VIC (they stay at 1MHz).
+			if supercpu_en = '1' and scpu_speed_slow = '0' and dma_req = '0' and cs_io = '0' then
+				turbo_m <= "111";
+			elsif cs_io = '0' and dma_req = '0' and ((turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1') then
 				case turbo_speed is
 					when "00" => turbo_m <= "010";
 					when "01" => turbo_m <= "110";
