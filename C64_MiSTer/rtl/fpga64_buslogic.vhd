@@ -312,7 +312,7 @@ begin
 			  cs_ramLoc, cs_vicLoc, cs_sidLoc, cs_colorLoc,
 			  cs_cia1Loc, cs_cia2Loc, lastVicData,
 			  cs_ioELoc, cs_ioFLoc, scpu_rom_en, scpu_sysram_cs, scpu_sysram_data, scpu_io_en,
-			  scpuRomData, supercpu_rom_vis,
+			  scpuRomData, supercpu_rom_vis, supercpu_en, supercpu_bank,
 			  io_rom, io_ext, io_data)
 	begin
 		-- If no hardware is addressed the bus is floating.
@@ -323,6 +323,11 @@ begin
 			-- Use scpuRomData directly, NOT romData, so that the $D07E ROM-visibility
 			-- switch (supercpu_rom_vis) cannot hide the kickstart code at bank $F8.
 			dataToCpu <= unsigned(scpuRomData);
+		elsif supercpu_en = '1' and supercpu_bank /= x"00" then
+			-- SuperCPU non-bank-$00: all reads return SDRAM data (SuperRAM / ROM shadow).
+			-- scpu_rom_en has already handled ROM banks above; remaining banks $01-$EF
+			-- are SuperRAM where every address is plain RAM, no C64 I/O/ROM decode.
+			dataToCpu <= ramData;
 		elsif scpu_sysram_cs = '1' then
 			-- SuperCPU system RAM at bank $00, $D200-$D3FF
 			dataToCpu <= unsigned(scpu_sysram_data);
@@ -359,7 +364,8 @@ begin
 
 	ultimax <= exrom and (not game);
 
-	process(cpuHasBus, cpuAddr, ultimax, cpuWe, bankSwitch, exrom, game, aec, vicAddr)
+	process(cpuHasBus, cpuAddr, ultimax, cpuWe, bankSwitch, exrom, game, aec, vicAddr,
+	        supercpu_en, supercpu_bank)
 	begin
 		currentAddr <= (others => '1');
 		systemWe <= '0';
@@ -382,6 +388,12 @@ begin
 		if (cpuHasBus = '1') then
 			-- The 6502 CPU has the bus.					
 			currentAddr <= cpuAddr;
+			-- SuperCPU non-bank-$00: bypass entire C64 address decode.
+			-- Banks $01-$FF are pure SuperRAM (or ROM handled by scpu_rom_en elsewhere).
+			if supercpu_en = '1' and supercpu_bank /= x"00" then
+				cs_ramLoc <= '1';
+				systemWe  <= cpuWe;
+			else
 			case cpuAddr(15 downto 12) is
 			when X"E" | X"F" =>
 				if ultimax = '1' then
@@ -460,6 +472,7 @@ begin
 			end case;
 
 			systemWe <= cpuWe;
+			end if; -- end SuperCPU bank bypass / C64 address decode
 		else
 			-- The VIC-II has the bus, but only when aec is asserted
 			if aec = '1' then

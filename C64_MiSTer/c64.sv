@@ -994,7 +994,7 @@ sdram sdram
 	.clk(clk64),
 	.init(~pll_locked),
 	.refresh(refresh),
-	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : ext_cycle ? reu_ram_addr : cart_addr   ),
+	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : ext_cycle ? reu_ram_addr : scpu_sdram_addr ),
 	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : ext_cycle ? reu_ram_ce   : cart_ce     ),
 	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : ext_cycle ? reu_ram_we   : cart_we     ),
 	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : ext_cycle ? reu_ram_dout : cart_wrdata ),
@@ -1025,7 +1025,16 @@ wire        ntsc = status[2];
 wire        supercpu_enable = status[82];   // status[82]=0 → Off (6510 default), =1 → On (65C816)
 wire        scpu_rom_opt    = status[86];   // status[86]=0 → ROM off, =1 → ROM on (kickstart active)
 wire        supercpu_emul;                  // '1' = 65C816 in 6502 emulation mode
-wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16, unused until Phase 4)
+wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16)
+
+// SuperCPU 16MB SDRAM address: for non-bank-$00 accesses, prepend the bank byte.
+// Bank $00 maps to base 64KB (normal C64 RAM). Banks $01-$FF map to {bank, addr}
+// giving 16MB of SuperRAM space within the 32MB SDRAM.
+// Note: scpu_rom_en in fpga64_buslogic already handles banks $F0-$FF reads from ROM BRAM;
+// writes to ROM-bank addresses go to SDRAM shadow (harmless, never read back).
+wire [24:0] scpu_sdram_addr = (supercpu_enable && (supercpu_bank != 8'h00))
+                               ? {1'b0, supercpu_bank, c64_addr}
+                               : cart_addr;
 
 // Debug infrastructure
 wire        dbg_overlay_en = status[83];
