@@ -1022,12 +1022,17 @@ begin
 		-- 2 points to register DMA request before CPU cycles.
 		if sysCycle = CYCLE_EXT1 or sysCycle = CYCLE_EXT5 then
 			dma_active <= dma_req;
-			turbo_en <= turbo_mode(0);
+			turbo_en <= turbo_mode(0) or (supercpu_en and not scpu_speed_slow);
 			turbo_m <= "000";
-			-- SuperCPU fast mode: force 4x turbo when SuperCPU enabled and $D07A not set to 1MHz.
-			-- cs_io='0' check still protects SID/CIA/VIC (they stay at 1MHz).
+			-- SuperCPU fast mode follows existing turbo speed setting (2x/3x/4x).
+			-- cs_io='0' keeps SID/CIA/VIC accesses at 1MHz.
 			if supercpu_en = '1' and scpu_speed_slow = '0' and dma_req = '0' and cs_io = '0' then
-				turbo_m <= "111";
+				case turbo_speed is
+					when "00" => turbo_m <= "010";
+					when "01" => turbo_m <= "110";
+					when "10" => turbo_m <= "111";
+					when "11" => turbo_m <= "111"; -- unused
+				end case;
 			elsif cs_io = '0' and dma_req = '0' and ((turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1') then
 				case turbo_speed is
 					when "00" => turbo_m <= "010";
