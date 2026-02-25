@@ -1003,9 +1003,6 @@ ramAddr <= systemAddr;
 ramWE   <= systemWe when sysCycle >= CYCLE_CPU0 else '0';
 ramCE   <= cs_ram when sysCycle = CYCLE_VIC0 or cpu_cyc = '1' else '0';
 cpu_cyc <= '1' when 
-				-- SuperCPU fast mode: extra read slot at EXT2 (6-cycle gap from CPUC, 10-cycle gap to VIC0)
-				-- Only for reads (cpuWe='0') to avoid write suppression (ramWE='0' outside CPU window)
-				(sysCycle = CYCLE_EXT2 and supercpu_en = '1' and scpu_speed_slow = '0' and dma_active = '0' and cs_ram = '1' and cpuWe = '0') or
 				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' ) or
@@ -1018,7 +1015,7 @@ begin
 		enableCpu <= cpu_cyc_s(1);
 		io_enable <= io_enable and not enableCpu;
 
-		if sysCycle = CYCLE_EXT0 or sysCycle = CYCLE_EXT4 then
+		if sysCycle = CYCLE_EXT0 then
 			io_enable <= '1';
 		end if;
 
