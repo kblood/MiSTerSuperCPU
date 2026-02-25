@@ -250,7 +250,8 @@ signal emu_mode_816 : std_logic;
 -- Kickstart writes $00 to $D07E at $80F7: ROM-vis = cpuDo(7) = 0 → C64 KERNAL visible.
 -- After this, "LDA $FFFC" in the kickstart reads $FCE2 (C64 KERNAL reset vector)
 -- instead of $FC90, and the RTL trick boots the C64 KERNAL successfully.
-signal scpu_rom_vis : std_logic := '1';
+signal scpu_rom_vis      : std_logic := '1';
+signal supercpu_en_prev  : std_logic := '0';
 signal vpa_816      : std_logic;
 signal vda_816      : std_logic;
 signal dbg_sp_816   : unsigned(15 downto 0);
@@ -949,15 +950,22 @@ dbg_cpu_sp   <= dbg_sp_816 when supercpu_en = '1' else x"0000";
 dbg_cpu_p    <= dbg_p_816  when supercpu_en = '1' else x"00";
 dbg_cpu_ir   <= dbg_ir_816 when supercpu_en = '1' else x"00";
 
--- Screen RAM write capture: fires when ANY write to $0400-$07E7 occurs in 65C816 mode.
--- K:xx = data written to screen RAM (should be $00 = '@' screen code if that's the bug)
--- R:xx = opcode (IR) of the instruction that caused the write
+-- Diagnostic: capture first time CPU enters a non-$00 bank (sticky max bank seen).
+-- K (cia1_pa): highest bank byte (PBR) ever seen while CPU active.
+-- R (cia1_pb): cpuAddr(7:0) at the moment that highest bank was first entered.
+-- Interpretation: K:F8 R:FC = CPU successfully entered bank $F8 at $00FC (JML worked).
+--                 K:00 R:00 = CPU never left bank $00 (JML failed or wrong reset vector).
 process(clk32)
 begin
 	if rising_edge(clk32) then
-		if cpuWe = '1' and cpuAddr >= x"0400" and cpuAddr <= x"07E7" and supercpu_en = '1' then
-			dbg_cia1_pa_r <= cpuDo;       -- data written to screen
-			dbg_cia1_pb_r <= dbg_ir_816;  -- opcode that caused the write
+		if reset = '1' or (supercpu_en = '1' and supercpu_en_prev = '0') then
+			dbg_cia1_pa_r <= x"00";
+			dbg_cia1_pb_r <= x"00";
+		elsif enableCpu_816 = '1' and supercpu_en = '1' then
+			if addr_hi_816 > dbg_cia1_pa_r then
+				dbg_cia1_pa_r <= addr_hi_816;       -- sticky max bank
+				dbg_cia1_pb_r <= cpuAddr(7 downto 0); -- address when max bank was entered
+			end if;
 		end if;
 	end if;
 end process;
@@ -966,11 +974,14 @@ dbg_cia1_pb <= dbg_cia1_pb_r;
 
 -- $D07E ROM-visibility switch.
 -- Kickstart writes $00 to $D07E at $80F7 to expose C64 KERNAL at $E000-$FFFF.
+-- Also reset on supercpu_en rising edge: if the user toggles SuperCPU mode off/on,
+-- the kickstart must start fresh with scpu_rom_vis='1' (SCPU ROM at reset vector).
 process(clk32)
 begin
 	if rising_edge(clk32) then
-		if reset = '1' then
-			scpu_rom_vis <= '1'; -- SuperCPU ROM visible on reset
+		supercpu_en_prev <= supercpu_en;
+		if reset = '1' or (supercpu_en = '1' and supercpu_en_prev = '0') then
+			scpu_rom_vis <= '1'; -- SuperCPU ROM visible on CPU start
 		elsif supercpu_en = '1' and supercpu_rom = '1' and
 		      cpuWe = '1' and cpuAddr = x"D07E" and addr_hi_816 = x"00" then
 			scpu_rom_vis <= cpuDo(7); -- bit7=0: C64 KERNAL visible; bit7=1: SCPU ROM
