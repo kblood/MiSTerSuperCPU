@@ -4,7 +4,7 @@
 // VIC-II video output. Self-contained with embedded 4x6 hex font.
 //
 // Display layout (rendered in top border, 2 rows):
-//   Row 1: A:xxxx D:xx W:x B:xx
+//   Row 1: A:xxxx B:xx K:xx R:xx   (B=current bank, K=max bank seen, R=addr at max bank)
 //   Row 2: S:xxxx P:xx I:xx E:x
 //
 // All position tracking uses registered counters (no division/modulo).
@@ -103,11 +103,11 @@ end
 // -----------------------------------------------------------------------
 
 localparam OVERLAY_X_START = 10'd4;
-localparam OVERLAY_Y_START = 9'd2;
-localparam OVERLAY_Y_END   = 9'd16; // 2 rows x 6px + 2px gap = 14 lines, end at 16
+localparam OVERLAY_Y_START = 9'd40;
+localparam OVERLAY_Y_END   = 9'd53; // 2 rows x 6px + 1px gap = 13 lines, end at 53
 localparam NUM_CHARS       = 5'd22;  // max chars per row
-localparam ROW1_Y_END      = 9'd8;   // row 1: lines 2-7 (6px)
-localparam ROW2_Y_START    = 9'd9;   // row 2: lines 9-14 (1px gap)
+localparam ROW1_Y_END      = 9'd46;  // row 1: lines 40-45 (6px), gap at 46
+localparam ROW2_Y_START    = 9'd47;  // row 2: lines 47-52 (6px)
 
 reg [4:0] char_idx;    // which character position (0-21)
 reg [2:0] px_in_char;  // pixel within character (0-4: 0-3=glyph, 4=gap)
@@ -149,9 +149,9 @@ always @(posedge clk) begin
 	end
 end
 
-// Row selection: row 0 for lines 2-7, row 1 for lines 9-14
+// Row selection: row 0 for lines 40-45, row 1 for lines 47-52
 wire       char_row = (line_cnt >= ROW2_Y_START);
-// Gap line between rows (line 8): no text
+// Gap line between rows (line 46): no text
 wire       in_gap = (line_cnt == ROW1_Y_END);
 // Font row within current character row (0-5)
 wire [2:0] font_row = char_row ? (line_cnt[2:0] - ROW2_Y_START[2:0])
@@ -197,7 +197,7 @@ end
 
 // -----------------------------------------------------------------------
 // Character string mapping (combinational, uses latched data)
-// Row 1: "A:xxxx D:xx W:x B:xx"  (22 chars)
+// Row 1: "A:xxxx B:xx K:xx R:xx"  (22 chars: A=16-bit addr, B=bank, K=max bank, R=addr@max)
 // Row 2: "S:xxxx P:xx I:xx E:x"  (22 chars)
 // -----------------------------------------------------------------------
 
@@ -205,9 +205,9 @@ reg [4:0] char_code;
 
 always @(*) begin
 	if (!char_row) begin
-		// Row 1: A:xxxx D:xx K:xx R:xx
-		// K = last data written to screen RAM ($00 = '@' screen code = bug confirmed)
-		// R = opcode (IR) that caused the screen write
+		// Row 1: A:xxxx B:xx K:xx R:xx
+		// A+B = full 24-bit current PC (16-bit addr + bank byte)
+		// K = highest bank reached (sticky max), R = addr[7:0] when max bank first seen
 		case (char_idx)
 			5'd0:  char_code = 5'hA;                   // 'A'
 			5'd1:  char_code = 5'h15;                   // ':'
@@ -216,10 +216,10 @@ always @(*) begin
 			5'd4:  char_code = {1'b0, lat_addr[7:4]};
 			5'd5:  char_code = {1'b0, lat_addr[3:0]};
 			5'd6:  char_code = 5'h16;                   // ' '
-			5'd7:  char_code = 5'hD;                    // 'D'
+			5'd7:  char_code = 5'hB;                    // 'B' (current bank byte)
 			5'd8:  char_code = 5'h15;                   // ':'
-			5'd9:  char_code = {1'b0, lat_data[7:4]};
-			5'd10: char_code = {1'b0, lat_data[3:0]};
+			5'd9:  char_code = {1'b0, lat_bank[7:4]};
+			5'd10: char_code = {1'b0, lat_bank[3:0]};
 			5'd11: char_code = 5'h16;                   // ' '
 			5'd12: char_code = 5'h13;                   // 'K' (CIA1 Port A = column select)
 			5'd13: char_code = 5'h15;                   // ':'

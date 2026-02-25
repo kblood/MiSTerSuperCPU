@@ -244,10 +244,13 @@ begin
 
 	-- SuperCPU ROM bank mapping:
 	-- Banks $F0-$FF: full 64KB accessible as ROM (the JML at reset jumps to bank $F8).
-	-- Bank $00, $8000-$9FFF: native-mode interrupt handlers reside here in the ROM image.
+	-- Bank $00, $8000-$9FFF: kickstart ROM replaces BASIC during initial boot ONLY.
+	-- Once the kickstart hides itself (supercpu_rom_vis='0'), BASIC ROM must be visible
+	-- again so the KERNAL/BASIC can run normally.
 	scpu_rom_en <= '1' when supercpu_en = '1' and supercpu_rom = '1' and cpuWe = '0' and
 	                        (unsigned(supercpu_bank) >= x"F0" or
-	                         (supercpu_bank = x"00" and cpuAddr(15 downto 13) = "100"))
+	                         (supercpu_bank = x"00" and cpuAddr(15 downto 13) = "100"
+	                          and supercpu_rom_vis = '1'))
 	               else '0';
 
 	-- SuperCPU system RAM: bank $00, $D200-$D3FF (512 bytes).
