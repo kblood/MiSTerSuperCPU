@@ -942,7 +942,9 @@ nmi_ack     <= nmi_ack_816  when supercpu_en = '1' else nmi_ack_6510;
 
 -- Route 65C816-specific status signals to ports
 supercpu_emul <= emu_mode_816;
-supercpu_bank <= addr_hi_816;
+-- Only apply SuperCPU bank to SDRAM addressing on actual CPU memory slots.
+-- VIC and other non-CPU SDRAM accesses must stay in bank $00.
+supercpu_bank <= addr_hi_816 when (supercpu_en = '1' and cpu_cyc = '1') else x"00";
 
 -- Debug outputs: active CPU's bus signals
 dbg_cpu_addr <= cpuAddr_pre;
@@ -1022,24 +1024,22 @@ begin
 		-- 2 points to register DMA request before CPU cycles.
 		if sysCycle = CYCLE_EXT1 or sysCycle = CYCLE_EXT5 then
 			dma_active <= dma_req;
-			turbo_en <= turbo_mode(0) or (supercpu_en and not scpu_speed_slow);
+			turbo_en <= turbo_mode(0);
 			turbo_m <= "000";
-			-- SuperCPU fast mode follows existing turbo speed setting (2x/3x/4x).
-			-- cs_io='0' keeps SID/CIA/VIC accesses at 1MHz.
-			if supercpu_en = '1' and scpu_speed_slow = '0' and dma_req = '0' and cs_io = '0' then
-				case turbo_speed is
-					when "00" => turbo_m <= "010";
-					when "01" => turbo_m <= "110";
-					when "10" => turbo_m <= "111";
-					when "11" => turbo_m <= "111"; -- unused
-				end case;
-			elsif cs_io = '0' and dma_req = '0' and ((turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1') then
-				case turbo_speed is
-					when "00" => turbo_m <= "010";
-					when "01" => turbo_m <= "110";
-					when "10" => turbo_m <= "111";
-					when "11" => turbo_m <= "111"; -- unused
-				end case;
+			-- SuperCPU fast mode uses the existing turbo controls.
+			-- Turbo OFF => 1MHz even with SuperCPU enabled.
+			-- $D07A bit5=1 forces 1MHz (compat mode) when turbo is ON.
+			if cs_io = '0' and dma_req = '0' and ((turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1') then
+				if supercpu_en = '1' and scpu_speed_slow = '1' then
+					turbo_m <= "000";
+				else
+					case turbo_speed is
+						when "00" => turbo_m <= "010";
+						when "01" => turbo_m <= "110";
+						when "10" => turbo_m <= "111";
+						when "11" => turbo_m <= "111"; -- unused
+					end case;
+				end if;
 			end if;
 		end if;
 	end if;

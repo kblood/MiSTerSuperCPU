@@ -235,7 +235,6 @@ begin
 	-- revealed here so that "LDA $FFFC" in the kickstart reads $FCE2 (C64 KERNAL
 	-- reset vector) instead of $FC90, allowing RTL to boot the KERNAL.
 	romData <= scpuRomData    when supercpu_en = '1' and supercpu_rom = '1' and supercpu_rom_vis = '1' else
-				  romData_c64std when supercpu_en = '1' else
 				  romData_c64jap when c64jap_ena = '1' else
 				  romData_c64std when c64std_ena = '1' else
 				  romData_c64gs  when c64gs_ena  = '1' else
