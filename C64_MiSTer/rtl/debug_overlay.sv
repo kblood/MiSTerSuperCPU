@@ -113,15 +113,16 @@ end
 // Character position counters
 // -----------------------------------------------------------------------
 
-// Overlay placed in top border area (line_cnt 0-22 = raster 28-50 = border).
-// 3 rows × 6px + 2 one-pixel gaps = 20 lines, fitting inside the 23-line border.
+// Overlay placed in top border area. Constants chosen so 3×6px rows + 2 gap lines
+// = 20 lines fit in the top border (ends around line_cnt ~37 for PAL).
+// NOTE: in_overlay_y is registered (1 line late), so we trigger at Y_START-1.
 localparam OVERLAY_X_START = 10'd4;
-localparam OVERLAY_Y_START = 9'd4;    // first line of row 1 (safely in border)
-localparam ROW1_Y_END      = 9'd10;   // gap line between row 1 and row 2
-localparam ROW2_Y_START    = 9'd11;   // first line of row 2
-localparam ROW2_Y_END      = 9'd17;   // gap line between row 2 and row 3
-localparam ROW3_Y_START    = 9'd18;   // first line of row 3 (write detector)
-localparam OVERLAY_Y_END   = 9'd24;   // last line + 1 (exclusive)
+localparam OVERLAY_Y_START = 9'd8;    // first line of row 1 (border area, with monitor margin)
+localparam ROW1_Y_END      = 9'd14;   // gap line between row 1 and row 2
+localparam ROW2_Y_START    = 9'd15;   // first line of row 2
+localparam ROW2_Y_END      = 9'd21;   // gap line between row 2 and row 3
+localparam ROW3_Y_START    = 9'd22;   // first line of row 3 (write detector)
+localparam OVERLAY_Y_END   = 9'd28;   // last line + 1 (exclusive)
 localparam NUM_CHARS       = 5'd22;   // max chars per row
 
 reg [4:0] char_idx;    // which character position (0-21)
@@ -153,13 +154,13 @@ always @(posedge clk) begin
 		end
 	end
 
-	// Y range check (registered)
+	// Y range check (registered, so trigger one line EARLY to compensate)
 	if (vblank_r && !vblank)
 		in_overlay_y <= 0;
 	else if (hblank_r && !hblank) begin
-		if (line_cnt == OVERLAY_Y_START)
+		if (line_cnt == OVERLAY_Y_START - 1)   // fire early: active on OVERLAY_Y_START
 			in_overlay_y <= 1;
-		else if (line_cnt == OVERLAY_Y_END)
+		else if (line_cnt == OVERLAY_Y_END - 1) // fire early: inactive on OVERLAY_Y_END
 			in_overlay_y <= 0;
 	end
 end

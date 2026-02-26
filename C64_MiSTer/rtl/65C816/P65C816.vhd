@@ -400,7 +400,7 @@ begin
 					when "111" => P(1) <= ZO; 	-- BIT IMM
 					when others => null;
 				end case;
-			end if;
+							end if;
 		end if;
 	end process;
 
@@ -446,11 +446,13 @@ begin
 						end if;
 					when others => null;
 				end case;
+				-- Reset D to $0000 on XCE to emulation mode (C64 KERNAL requires direct page = 0)
+				if IR = x"FB" and MC.LOAD_P = "101" and P(0) = '1' then
+					D <= (others=>'0');
+				end if;
 			end if;
 		end if;
 	end process;
-	
-	--Data bus
 	D_OUT <= P(7) & P(6) & (P(5) or EF) & ((P(4) or (not GotInterrupt and EF)) and not (GotInterrupt and (IsIRQInterrupt or IsNMIInterrupt) and EF)) & P(3 downto 0) when MC.OUT_BUS = "001" else
 				PC(15 downto 8) when MC.OUT_BUS = "010" and MC.BYTE_SEL(1) = '1' else
 				PC(7 downto 0) when MC.OUT_BUS = "010" and MC.BYTE_SEL(1) = '0' else
