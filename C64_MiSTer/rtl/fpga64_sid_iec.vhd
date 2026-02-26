@@ -1029,7 +1029,10 @@ begin
 			-- SuperCPU fast mode uses the existing turbo controls.
 			-- Turbo OFF => 1MHz even with SuperCPU enabled.
 			-- $D07A bit5=1 forces 1MHz (compat mode) when turbo is ON.
-			if cs_io = '0' and dma_req = '0' and ((turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1') then
+			if cs_io = '0' and dma_req = '0' and (
+			   (supercpu_en = '1' and (turbo_state = '1') and (turbo_mode(0) = '1' or turbo_mode(1) = '1')) or
+			   (supercpu_en = '0' and ((turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1'))
+			) then
 				if supercpu_en = '1' and scpu_speed_slow = '1' then
 					turbo_m <= "000";
 				else
