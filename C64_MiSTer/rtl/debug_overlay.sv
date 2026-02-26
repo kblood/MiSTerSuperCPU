@@ -116,12 +116,12 @@ end
 // Overlay placed in top border area (line_cnt 0-22 = raster 28-50 = border).
 // 3 rows × 6px + 2 one-pixel gaps = 20 lines, fitting inside the 23-line border.
 localparam OVERLAY_X_START = 10'd4;
-localparam OVERLAY_Y_START = 9'd2;    // first line of row 1 (border area)
-localparam ROW1_Y_END      = 9'd8;    // gap line between row 1 and row 2
-localparam ROW2_Y_START    = 9'd9;    // first line of row 2
-localparam ROW2_Y_END      = 9'd15;   // gap line between row 2 and row 3
-localparam ROW3_Y_START    = 9'd16;   // first line of row 3 (write detector)
-localparam OVERLAY_Y_END   = 9'd22;   // last line + 1 (exclusive)
+localparam OVERLAY_Y_START = 9'd4;    // first line of row 1 (safely in border)
+localparam ROW1_Y_END      = 9'd10;   // gap line between row 1 and row 2
+localparam ROW2_Y_START    = 9'd11;   // first line of row 2
+localparam ROW2_Y_END      = 9'd17;   // gap line between row 2 and row 3
+localparam ROW3_Y_START    = 9'd18;   // first line of row 3 (write detector)
+localparam OVERLAY_Y_END   = 9'd24;   // last line + 1 (exclusive)
 localparam NUM_CHARS       = 5'd22;   // max chars per row
 
 reg [4:0] char_idx;    // which character position (0-21)
@@ -204,11 +204,11 @@ always @(*) begin
 		5'h11:   font_data = 24'hE9E888; // P (code 17)
 		5'h12:   font_data = 24'hE444E0; // I (code 18)
 		5'h13:   font_data = 24'h9ACCA9; // K (code 19)
-		5'h14:   font_data = 24'h999BF6; // W (code 20)
+		5'h14:   font_data = 24'h99BFD9; // W (code 20) - zigzag bottom half
 		5'h15:   font_data = 24'h066060; // : (code 21)
 		5'h16:   font_data = 24'h000000; // space (code 22)
 		5'h17:   font_data = 24'hE9ECA9; // R (code 23)
-		5'h18:   font_data = 24'h69F999; // O (code 24) - same as A but is O shape: 24'h699996
+		5'h18:   font_data = 24'h699996; // O (code 24) - oval like 0
 		default: font_data = 24'h000000;
 	endcase
 end

@@ -995,7 +995,7 @@ begin
 			dbg_scr_wr_data_r <= (others => '0');
 			dbg_scr_wr_ir_r   <= (others => '0');
 		elsif supercpu_en = '1' and cpuWe = '1' and sysCycle >= CYCLE_CPU0
-		      and cpuAddr(15 downto 10) = "000001" then
+		      and cpuAddr(15 downto 10) = "000001" and cpuDo = x"00" then
 			dbg_scr_wr_addr_r <= cpuAddr;
 			dbg_scr_wr_data_r <= cpuDo;
 			dbg_scr_wr_ir_r   <= dbg_ir_816;
