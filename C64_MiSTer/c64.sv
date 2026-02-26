@@ -1025,6 +1025,7 @@ wire        ntsc = status[2];
 wire        supercpu_enable = status[82];   // status[82]=0 → Off (6510 default), =1 → On (65C816)
 wire        scpu_rom_opt    = status[86];   // status[86]=0 → ROM off, =1 → ROM on (kickstart active)
 wire        supercpu_emul;                  // '1' = 65C816 in 6502 emulation mode
+wire        supercpu_cycle;                 // '1' during CPU SDRAM access slot
 wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16)
 
 // SuperCPU 16MB SDRAM address: for non-bank-$00 accesses, prepend the bank byte.
@@ -1032,7 +1033,7 @@ wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16)
 // giving 16MB of SuperRAM space within the 32MB SDRAM.
 // Note: scpu_rom_en in fpga64_buslogic already handles banks $F0-$FF reads from ROM BRAM;
 // writes to ROM-bank addresses go to SDRAM shadow (harmless, never read back).
-wire [24:0] scpu_sdram_addr = (supercpu_enable && (supercpu_bank != 8'h00))
+wire [24:0] scpu_sdram_addr = (supercpu_enable && supercpu_cycle && (supercpu_bank != 8'h00))
                                ? {1'b0, supercpu_bank, c64_addr}
                                : cart_addr;
 
@@ -1062,6 +1063,7 @@ fpga64_sid_iec fpga64
 	.supercpu_en(supercpu_enable),
 	.supercpu_rom(scpu_rom_opt),
 	.supercpu_emul(supercpu_emul),
+	.supercpu_cycle(supercpu_cycle),
 	.supercpu_bank(supercpu_bank),
 	.dbg_cpu_addr(dbg_cpu_addr),
 	.dbg_cpu_data(dbg_cpu_data),

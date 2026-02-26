@@ -71,6 +71,7 @@ port(
 	supercpu_en : in  std_logic := '0';
 	supercpu_rom : in  std_logic := '0'; -- '1' = SuperCPU kickstart ROM active
 	supercpu_emul : out std_logic;             -- '1' = 65C816 in 6502 emulation mode
+	supercpu_cycle : out std_logic;            -- '1' during CPU SDRAM access slot
 	supercpu_bank : out unsigned(7 downto 0);  -- current bank byte (A23-A16)
 
 	-- Debug outputs (active CPU's bus signals)
@@ -942,9 +943,8 @@ nmi_ack     <= nmi_ack_816  when supercpu_en = '1' else nmi_ack_6510;
 
 -- Route 65C816-specific status signals to ports
 supercpu_emul <= emu_mode_816;
--- Only apply SuperCPU bank to SDRAM addressing on actual CPU memory slots.
--- VIC and other non-CPU SDRAM accesses must stay in bank $00.
-supercpu_bank <= addr_hi_816 when (supercpu_en = '1' and cpu_cyc = '1') else x"00";
+supercpu_cycle <= cpu_cyc when supercpu_en = '1' else '0';
+supercpu_bank <= addr_hi_816;
 
 -- Debug outputs: active CPU's bus signals
 dbg_cpu_addr <= cpuAddr_pre;
