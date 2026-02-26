@@ -85,6 +85,10 @@ port(
 	-- CIA1 keyboard scan diagnostic: PA/PB captured when CPU reads $DC01 and PB≠$FF
 	dbg_cia1_pa   : out unsigned(7 downto 0);
 	dbg_cia1_pb   : out unsigned(7 downto 0);
+	-- Screen-RAM write detector: captures last CPU write to $0400-$07FF (for @ artifact debug)
+	dbg_scr_wr_addr : out unsigned(15 downto 0);
+	dbg_scr_wr_data : out unsigned(7 downto 0);
+	dbg_scr_wr_ir   : out unsigned(7 downto 0);
 
 	-- VGA/SCART interface
 	vic_variant : in  std_logic_vector(1 downto 0);
@@ -299,6 +303,10 @@ signal cia2_pbe     : unsigned(7 downto 0);
 -- CIA1 keyboard scan diagnostic
 signal dbg_cia1_pa_r : unsigned(7 downto 0) := x"FF";
 signal dbg_cia1_pb_r : unsigned(7 downto 0) := x"FF";
+-- Screen-RAM write detector (latches last CPU write to $0400-$07FF)
+signal dbg_scr_wr_addr_r : unsigned(15 downto 0) := (others => '0');
+signal dbg_scr_wr_data_r : unsigned(7 downto 0) := (others => '0');
+signal dbg_scr_wr_ir_r   : unsigned(7 downto 0) := (others => '0');
 
 signal todclk       : std_logic;
 
@@ -976,6 +984,27 @@ begin
 end process;
 dbg_cia1_pa <= dbg_cia1_pa_r;
 dbg_cia1_pb <= dbg_cia1_pb_r;
+
+-- Screen-RAM write detector: latch addr/data/opcode whenever CPU writes to $0400-$07FF.
+-- This helps identify what instruction writes @($00) to screen RAM causing artifact lines.
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if reset = '1' then
+			dbg_scr_wr_addr_r <= (others => '0');
+			dbg_scr_wr_data_r <= (others => '0');
+			dbg_scr_wr_ir_r   <= (others => '0');
+		elsif supercpu_en = '1' and cpuWe = '1' and sysCycle >= CYCLE_CPU0
+		      and cpuAddr(15 downto 10) = "000001" then
+			dbg_scr_wr_addr_r <= cpuAddr;
+			dbg_scr_wr_data_r <= cpuDo;
+			dbg_scr_wr_ir_r   <= dbg_ir_816;
+		end if;
+	end if;
+end process;
+dbg_scr_wr_addr <= dbg_scr_wr_addr_r;
+dbg_scr_wr_data <= dbg_scr_wr_data_r;
+dbg_scr_wr_ir   <= dbg_scr_wr_ir_r;
 
 -- $D07E ROM-visibility switch.
 -- Kickstart writes $00 to $D07E at $80F7 to expose C64 KERNAL at $E000-$FFFF.

@@ -3,9 +3,10 @@
 // Renders CPU debug state as hex text in the top border area of the
 // VIC-II video output. Self-contained with embedded 4x6 hex font.
 //
-// Display layout (rendered in top border, 2 rows):
+// Display layout (rendered in top border, 3 rows):
 //   Row 1: A:xxxx B:xx K:xx R:xx   (B=current bank, K=max bank seen, R=addr at max bank)
 //   Row 2: S:xxxx P:xx I:xx E:x
+//   Row 3: W:xxxx D:xx O:xx        (W=last screen-RAM write addr, D=data, O=opcode)
 //
 // All position tracking uses registered counters (no division/modulo).
 
@@ -26,8 +27,12 @@ module debug_overlay (
 	input  [15:0] cpu_sp,     // stack pointer
 	input   [7:0] cpu_p,      // processor status register
 	input   [7:0] cpu_ir,     // instruction register (current opcode)
-	input   [7:0] cia1_pa,    // CIA1 Port A at last Port B scan (column select when key detected)
-	input   [7:0] cia1_pb,    // CIA1 Port B at last Port B scan (row data when key detected)
+	input   [7:0] cia1_pa,    // CIA1 Port A (sticky max bank)
+	input   [7:0] cia1_pb,    // CIA1 Port B (addr when max bank entered)
+	// Screen-RAM write detector (last write to $0400-$07FF)
+	input  [15:0] scr_wr_addr,
+	input   [7:0] scr_wr_data,
+	input   [7:0] scr_wr_ir,
 
 	// Video overlay output
 	output reg    overlay_active,
@@ -82,19 +87,25 @@ reg  [7:0] lat_p;
 reg  [7:0] lat_ir;
 reg  [7:0] lat_cia1_pa;
 reg  [7:0] lat_cia1_pb;
+reg [15:0] lat_scr_wr_addr;
+reg  [7:0] lat_scr_wr_data;
+reg  [7:0] lat_scr_wr_ir;
 
 always @(posedge clk) begin
 	if (vblank_r && !vblank) begin
-		lat_addr    <= cpu_addr;
-		lat_data    <= cpu_data;
-		lat_we      <= cpu_we;
-		lat_emu     <= emu_mode;
-		lat_bank    <= bank_addr;
-		lat_sp      <= cpu_sp;
-		lat_p       <= cpu_p;
-		lat_ir      <= cpu_ir;
-		lat_cia1_pa <= cia1_pa;
-		lat_cia1_pb <= cia1_pb;
+		lat_addr        <= cpu_addr;
+		lat_data        <= cpu_data;
+		lat_we          <= cpu_we;
+		lat_emu         <= emu_mode;
+		lat_bank        <= bank_addr;
+		lat_sp          <= cpu_sp;
+		lat_p           <= cpu_p;
+		lat_ir          <= cpu_ir;
+		lat_cia1_pa     <= cia1_pa;
+		lat_cia1_pb     <= cia1_pb;
+		lat_scr_wr_addr <= scr_wr_addr;
+		lat_scr_wr_data <= scr_wr_data;
+		lat_scr_wr_ir   <= scr_wr_ir;
 	end
 end
 
@@ -102,12 +113,16 @@ end
 // Character position counters
 // -----------------------------------------------------------------------
 
+// Overlay placed in top border area (line_cnt 0-22 = raster 28-50 = border).
+// 3 rows × 6px + 2 one-pixel gaps = 20 lines, fitting inside the 23-line border.
 localparam OVERLAY_X_START = 10'd4;
-localparam OVERLAY_Y_START = 9'd40;
-localparam OVERLAY_Y_END   = 9'd53; // 2 rows x 6px + 1px gap = 13 lines, end at 53
-localparam NUM_CHARS       = 5'd22;  // max chars per row
-localparam ROW1_Y_END      = 9'd46;  // row 1: lines 40-45 (6px), gap at 46
-localparam ROW2_Y_START    = 9'd47;  // row 2: lines 47-52 (6px)
+localparam OVERLAY_Y_START = 9'd2;    // first line of row 1 (border area)
+localparam ROW1_Y_END      = 9'd8;    // gap line between row 1 and row 2
+localparam ROW2_Y_START    = 9'd9;    // first line of row 2
+localparam ROW2_Y_END      = 9'd15;   // gap line between row 2 and row 3
+localparam ROW3_Y_START    = 9'd16;   // first line of row 3 (write detector)
+localparam OVERLAY_Y_END   = 9'd22;   // last line + 1 (exclusive)
+localparam NUM_CHARS       = 5'd22;   // max chars per row
 
 reg [4:0] char_idx;    // which character position (0-21)
 reg [2:0] px_in_char;  // pixel within character (0-4: 0-3=glyph, 4=gap)
@@ -149,13 +164,15 @@ always @(posedge clk) begin
 	end
 end
 
-// Row selection: row 0 for lines 40-45, row 1 for lines 47-52
-wire       char_row = (line_cnt >= ROW2_Y_START);
-// Gap line between rows (line 46): no text
-wire       in_gap = (line_cnt == ROW1_Y_END);
-// Font row within current character row (0-5)
-wire [2:0] font_row = char_row ? (line_cnt[2:0] - ROW2_Y_START[2:0])
-                                : (line_cnt[2:0] - OVERLAY_Y_START[2:0]);
+// Row selection: 0=row1, 1=row2, 2=row3
+wire [1:0] char_row = (line_cnt >= ROW3_Y_START) ? 2'd2 :
+                      (line_cnt >= ROW2_Y_START)  ? 2'd1 : 2'd0;
+// Gap lines between rows: no text rendered
+wire       in_gap = (line_cnt == ROW1_Y_END) || (line_cnt == ROW2_Y_END);
+// Font row within current character row (0-5, using 3-bit subtraction)
+wire [2:0] font_row = char_row[1] ? (line_cnt[2:0] - ROW3_Y_START[2:0]) :
+                      char_row[0] ? (line_cnt[2:0] - ROW2_Y_START[2:0]) :
+                                    (line_cnt[2:0] - OVERLAY_Y_START[2:0]);
 
 // -----------------------------------------------------------------------
 // 4x6 hex font ROM
@@ -191,23 +208,24 @@ always @(*) begin
 		5'h15:   font_data = 24'h066060; // : (code 21)
 		5'h16:   font_data = 24'h000000; // space (code 22)
 		5'h17:   font_data = 24'hE9ECA9; // R (code 23)
+		5'h18:   font_data = 24'h69F999; // O (code 24) - same as A but is O shape: 24'h699996
 		default: font_data = 24'h000000;
 	endcase
 end
 
 // -----------------------------------------------------------------------
 // Character string mapping (combinational, uses latched data)
-// Row 1: "A:xxxx B:xx K:xx R:xx"  (22 chars: A=16-bit addr, B=bank, K=max bank, R=addr@max)
-// Row 2: "S:xxxx P:xx I:xx E:x"  (22 chars)
+// Row 1: "A:xxxx B:xx K:xx R:xx"  (22 chars)
+// Row 2: "S:xxxx P:xx I:xx E:x"   (22 chars)
+// Row 3: "W:xxxx D:xx O:xx      " (22 chars, W=write addr, D=data, O=opcode)
 // -----------------------------------------------------------------------
 
 reg [4:0] char_code;
 
 always @(*) begin
-	if (!char_row) begin
+	case (char_row)
+	2'd0: begin
 		// Row 1: A:xxxx B:xx K:xx R:xx
-		// A+B = full 24-bit current PC (16-bit addr + bank byte)
-		// K = highest bank reached (sticky max), R = addr[7:0] when max bank first seen
 		case (char_idx)
 			5'd0:  char_code = 5'hA;                   // 'A'
 			5'd1:  char_code = 5'h15;                   // ':'
@@ -221,19 +239,20 @@ always @(*) begin
 			5'd9:  char_code = {1'b0, lat_bank[7:4]};
 			5'd10: char_code = {1'b0, lat_bank[3:0]};
 			5'd11: char_code = 5'h16;                   // ' '
-			5'd12: char_code = 5'h13;                   // 'K' (CIA1 Port A = column select)
+			5'd12: char_code = 5'h13;                   // 'K' (sticky max bank)
 			5'd13: char_code = 5'h15;                   // ':'
 			5'd14: char_code = {1'b0, lat_cia1_pa[7:4]};
 			5'd15: char_code = {1'b0, lat_cia1_pa[3:0]};
 			5'd16: char_code = 5'h16;                   // ' '
-			5'd17: char_code = 5'h17;                   // 'R' (CIA1 Port B = row data)
+			5'd17: char_code = 5'h17;                   // 'R' (addr at max bank)
 			5'd18: char_code = 5'h15;                   // ':'
 			5'd19: char_code = {1'b0, lat_cia1_pb[7:4]};
 			5'd20: char_code = {1'b0, lat_cia1_pb[3:0]};
-			5'd21: char_code = 5'h16;                   // ' '
+			5'd21: char_code = 5'h16;
 			default: char_code = 5'h16;
 		endcase
-	end else begin
+	end
+	2'd1: begin
 		// Row 2: S:xxxx P:xx I:xx E:x
 		case (char_idx)
 			5'd0:  char_code = 5'h10;                   // 'S'
@@ -256,11 +275,43 @@ always @(*) begin
 			5'd17: char_code = 5'hE;                    // 'E'
 			5'd18: char_code = 5'h15;                   // ':'
 			5'd19: char_code = {4'b0, lat_emu};
-			5'd20: char_code = 5'h16;                   // ' '
-			5'd21: char_code = 5'h16;                   // ' '
+			5'd20: char_code = 5'h16;
+			5'd21: char_code = 5'h16;
 			default: char_code = 5'h16;
 		endcase
 	end
+	default: begin
+		// Row 3: W:xxxx D:xx O:xx  (screen write detector)
+		// W = last write address to $0400-$07FF
+		// D = data written (00 = @ artifact)
+		// O = opcode at time of write
+		case (char_idx)
+			5'd0:  char_code = 5'h14;                         // 'W'
+			5'd1:  char_code = 5'h15;                         // ':'
+			5'd2:  char_code = {1'b0, lat_scr_wr_addr[15:12]};
+			5'd3:  char_code = {1'b0, lat_scr_wr_addr[11:8]};
+			5'd4:  char_code = {1'b0, lat_scr_wr_addr[7:4]};
+			5'd5:  char_code = {1'b0, lat_scr_wr_addr[3:0]};
+			5'd6:  char_code = 5'h16;                         // ' '
+			5'd7:  char_code = 5'hD;                          // 'D'
+			5'd8:  char_code = 5'h15;                         // ':'
+			5'd9:  char_code = {1'b0, lat_scr_wr_data[7:4]};
+			5'd10: char_code = {1'b0, lat_scr_wr_data[3:0]};
+			5'd11: char_code = 5'h16;                         // ' '
+			5'd12: char_code = 5'h18;                         // 'O' (opcode)
+			5'd13: char_code = 5'h15;                         // ':'
+			5'd14: char_code = {1'b0, lat_scr_wr_ir[7:4]};
+			5'd15: char_code = {1'b0, lat_scr_wr_ir[3:0]};
+			5'd16: char_code = 5'h16;
+			5'd17: char_code = 5'h16;
+			5'd18: char_code = 5'h16;
+			5'd19: char_code = 5'h16;
+			5'd20: char_code = 5'h16;
+			5'd21: char_code = 5'h16;
+			default: char_code = 5'h16;
+		endcase
+	end
+	endcase
 end
 
 // -----------------------------------------------------------------------
