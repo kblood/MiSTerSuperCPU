@@ -414,7 +414,9 @@ begin
 			PBR <= (others=>'0');
 			DBR <= (others=>'0');
 		elsif rising_edge(CLK) then
-			if EN = '1' then
+			if (IR = x"FB" and P(0) = '1' and MC.LOAD_P = "101") then
+				D <= (others=>'0');
+			elsif EN = '1' then
 				DR <= D_IN;
 				
 				case MC.LOAD_T is
@@ -446,10 +448,6 @@ begin
 						end if;
 					when others => null;
 				end case;
-				-- Reset D to $0000 on XCE to emulation mode (C64 KERNAL requires direct page = 0)
-				if IR = x"FB" and MC.LOAD_P = "101" and P(0) = '1' then
-					D <= (others=>'0');
-				end if;
 			end if;
 		end if;
 	end process;

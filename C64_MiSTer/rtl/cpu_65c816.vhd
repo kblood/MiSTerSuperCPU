@@ -124,7 +124,9 @@ begin
 	end process;
 
 	-- NMI acknowledge: detect when CPU reads NMI vector (VPB low)
-	-- This mimics T65's NMI_ack behavior
+	-- VPB goes low for ALL vectors; check address to distinguish NMI:
+	--   NMI: $FFFA/$FFFB (emu) / $FFEA/$FFEB (native) => addr(2)=0, addr(1)=1
+	--   IRQ: $FFFE/$FFFF / $FFEE/$FFEF, RESET: $FFFC/$FFFD, etc. differ
 	process(clk)
 	begin
 		if rising_edge(clk) then
@@ -133,19 +135,17 @@ begin
 				nmi_n_prev <= '1';
 			elsif enable = '1' then
 				nmi_n_prev <= nmi_n;
-				-- Detect falling edge of NMI
 				if nmi_n_prev = '1' and nmi_n = '0' then
 					nmi_active <= '1';
 				end if;
-				-- VPB going low means CPU is reading interrupt vector
-				if localVPB = '0' and nmi_active = '1' then
+				if localVPB = '0' and nmi_active = '1' and localA(2) = '0' and localA(1) = '1' then
 					nmi_active <= '0';
 				end if;
 			end if;
 		end if;
 	end process;
 
-	nmi_ack <= '1' when localVPB = '0' and nmi_active = '1' else '0';
+	nmi_ack <= '1' when localVPB = '0' and nmi_active = '1' and localA(2) = '0' and localA(1) = '1' else '0';
 
 	-- Output assignments
 	addr    <= unsigned(localA(15 downto 0));
