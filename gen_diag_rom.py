@@ -259,61 +259,76 @@ rom[hold_fail_branch3] = (hold_fail - hold_fail_branch3 - 1) & 0xFF
 rom[hold_pass_jmp] = lo(hold_pass)
 rom[hold_pass_jmp + 1] = hi(hold_pass)
 
-# === Phase 2B: BRK/RTI test — software interrupt, no CIA involvement ===
-# This isolates whether the corruption is from the CPU's interrupt mechanism
-# itself (BRK uses same microcode as hardware IRQ) or from CIA interaction.
-emit_str(0x04A0, "P2B BRK ")
+# === TEST 7: RTI standalone ===
+# Push known return address + flags to stack, then RTI.
+# This tests if RTI itself works without BRK involvement.
+# Push: PCH=$FC, PCL=$00 (return to $FC00... but we'll use a known landing pad)
+# Push: P=$30 (I=0, no flags)
+# Actually use a landing pad at a known address
 
-# Re-place sentinels
-emit_lda_imm(SENTINEL_VAL1); emit_sta_abs(SENTINEL_ADDR1)
-emit_lda_imm(SENTINEL_VAL2); emit_sta_abs(SENTINEL_ADDR2)
+# Create landing pad: at rti_land, write marker to $03 then JMP past
+rti_land = 0xFE00  # a safe address in ROM area
+wb(rti_land,   0xA9, 0xBB)  # LDA #$BB
+wb(rti_land+2, 0x85, 0x03)  # STA $03
+wb(rti_land+4, 0x4C, 0x00, 0x00)  # JMP (patched later)
+# We'll patch the JMP target after we know where test7_pass is
 
-# Do 256 BRK/RTI cycles (SEI still active, so no hardware IRQs).
-# BRK vector is same as IRQ vector ($FFFE -> $FB00).
-# Handler: LDA $DC0D (harmless, no pending IRQ), INC $02, RTI.
-# After RTI, PC = address after the signature byte.
-emit_lda_imm(0x00); emit(0x85, 0x02)  # counter=0
-emit(0xA2, 0x00)  # LDX #0
-brk_loop = p
-emit(0x00, 0x00)  # BRK + signature byte
-# RTI returns here (PC was pushed as address after BRK, then incremented past signature)
-# Check sentinels
-emit_lda_abs(SENTINEL_ADDR1)
-emit(0xC9, SENTINEL_VAL1)
-emit(0xD0, 0x00)  # BNE brk_fail (patch)
-brk_fail_branch1 = p - 1
-emit_lda_abs(SENTINEL_ADDR2)
-emit(0xC9, SENTINEL_VAL2)
-emit(0xD0, 0x00)  # BNE brk_fail (patch)
-brk_fail_branch2 = p - 1
-emit(0xE8)  # INX
-emit(0xD0, (brk_loop - p - 2) & 0xFF)  # BNE brk_loop (256 iterations)
-# BRK loop passed
-emit_str(0x04A0, "P2B PASS")
-emit_lda_imm(0x0E); emit_sta_abs(0xD020)  # light blue border
-emit_jmp(0)  # placeholder, patched below
-brk_pass_jmp = p - 2
+# Test: push return addr and P, then RTI
+emit_lda_imm(hi(rti_land)); emit(0x48)  # PHA PCH
+emit_lda_imm(lo(rti_land)); emit(0x48)  # PHA PCL
+emit(0x08)              # PHP - push current P
+emit(0x40)              # RTI - should jump to rti_land
+# If RTI fails, we fall through here
+emit_lda_imm(0x06); emit_sta_abs(0x042E)  # 'F' for test 7
+emit_jmp(0)  # JMP to test7_done (patched)
+rti_fail_jmp = p - 2
 
-# BRK fail
-brk_fail = p
-emit_str(0x04A0, "P2B FAIL")
-# Show what sentinel 1 contains
-emit_lda_abs(SENTINEL_ADDR1)
-emit_sta_abs(0x04CB)
-emit_lda_abs(SENTINEL_ADDR2)
-emit_sta_abs(0x04CC)
-emit_lda_imm(0x0A); emit_sta_abs(0xD020)  # light red border
-brk_halt = p
-emit_jmp(brk_halt)
+# RTI should have jumped to rti_land, which writes $BB to $03
+# and jumps here:
+test7_pass = p
+emit(0xA5, 0x03)       # LDA $03
+emit(0xC9, 0xBB)       # CMP #$BB
+emit(0xD0, 0x07)       # BNE fail
+emit_lda_imm(0x10); emit_sta_abs(0x042E)  # 'P' for test 7
+emit_jmp(p + 8)
+emit_lda_imm(0x06); emit_sta_abs(0x042E)  # 'F'
 
-# Patch BRK branches
-rom[brk_fail_branch1] = (brk_fail - brk_fail_branch1 - 1) & 0xFF
-rom[brk_fail_branch2] = (brk_fail - brk_fail_branch2 - 1) & 0xFF
-brk_after = p
-rom[brk_pass_jmp] = lo(brk_after)
-rom[brk_pass_jmp + 1] = hi(brk_after)
+test7_done = p
+# Patch the landing pad JMP and fail JMP
+rom[rti_land+5] = lo(test7_pass)
+rom[rti_land+6] = hi(test7_pass)
+rom[rti_fail_jmp] = lo(test7_done)
+rom[rti_fail_jmp+1] = hi(test7_done)
 
-# === Phase 2: Enable CIA1 Timer A IRQ ===
+# === TEST 8: Single BRK ===
+# Do exactly ONE BRK. If we reach the instruction after the signature
+# byte, BRK+RTI works. Show result on screen.
+# First store a marker at $03 to verify handler ran
+emit_lda_imm(0x00); emit(0x85, 0x03)   # clear marker
+emit_lda_imm(0x00); emit(0x85, 0x02)   # clear counter
+
+# Record where the BRK return should land
+emit(0x00, 0xEA)  # BRK + signature byte ($EA = NOP, just as padding)
+# *** RTI should return HERE ***
+brk_return = p
+
+# If we get here, BRK returned correctly!
+# Verify handler ran (counter should be 1)
+emit(0xA5, 0x02)       # LDA $02
+emit(0xC9, 0x01)       # CMP #$01
+emit(0xD0, 0x07)       # BNE fail
+emit_lda_imm(0x10); emit_sta_abs(0x042F)  # 'P' for test 8
+emit_jmp(p + 8)
+emit_lda_imm(0x06); emit_sta_abs(0x042F)  # 'F'
+
+# === HALT HERE to see test 7/8 results before CIA corruption ===
+# Change border to white ($01) to show we reached this point
+emit_lda_imm(0x01); emit_sta_abs(0xD020)
+emit_str(0x04A0, "ALL DONE")
+halt_all = p
+emit_jmp(halt_all)
+
+# === Phase 2: Enable CIA1 Timer A IRQ (DISABLED - halt above) ===
 emit_lda_imm(0x00); emit(0x85, 0x02)  # counter=0
 emit_str(0x04C8, "P2 IRQ")
 
