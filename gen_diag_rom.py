@@ -66,25 +66,25 @@ SENTINEL_VAL3  = 0xAA
 # Row 7: (stack dump continued)
 # Row 8: (sentinel check display)
 
-# RTI for stray interrupts
-RTI_ADDR = 0xFBF0
+# Place handlers at $FF00-$FF40 area (before vectors at $FFFA)
+RTI_ADDR = 0xFF40
 wb(RTI_ADDR, 0x40)  # RTI
 
 # IRQ handler: acknowledge CIA1, increment counter at $02, RTI
-IRQ_HANDLER = 0xFB00
+IRQ_HANDLER = 0xFF00
 wb(IRQ_HANDLER,   0xAD, 0x0D, 0xDC)  # LDA $DC0D
 wb(IRQ_HANDLER+3, 0xE6, 0x02)         # INC $02
 wb(IRQ_HANDLER+5, 0x40)               # RTI
 
 # Subroutine for test 5
-SUBR_ADDR = 0xFBE0
+SUBR_ADDR = 0xFF20
 wb(SUBR_ADDR,   0xA9, 0x77)  # LDA #$77
 wb(SUBR_ADDR+2, 0x60)        # RTS
 
 # ========================================
 # Main test code at $FC00
 # ========================================
-p = 0xFC00
+p = 0xFA00
 
 # --- Init ---
 emit(0x78)         # SEI
@@ -259,21 +259,63 @@ rom[hold_fail_branch3] = (hold_fail - hold_fail_branch3 - 1) & 0xFF
 rom[hold_pass_jmp] = lo(hold_pass)
 rom[hold_pass_jmp + 1] = hi(hold_pass)
 
-# === Phase 2: Enable CIA1 Timer A IRQ ===
-# First, fill stack page with marker pattern $EE
-emit_lda_imm(0xEE); emit(0xA2, 0x00)   # LDA #$EE, LDX #0
-fill_stack = p
-emit(0x9D, 0x00, 0x01)  # STA $0100,X
-emit(0xE8)               # INX
-emit(0xD0, (fill_stack - p - 2) & 0xFF)  # BNE
+# === Phase 2B: BRK/RTI test — software interrupt, no CIA involvement ===
+# This isolates whether the corruption is from the CPU's interrupt mechanism
+# itself (BRK uses same microcode as hardware IRQ) or from CIA interaction.
+emit_str(0x04A0, "P2B BRK ")
 
-# Re-init stack pointer (we just overwrote the stack page)
-emit(0xA2, 0xFF); emit(0x9A)  # LDX #$FF, TXS
+# Re-place sentinels
+emit_lda_imm(SENTINEL_VAL1); emit_sta_abs(SENTINEL_ADDR1)
+emit_lda_imm(SENTINEL_VAL2); emit_sta_abs(SENTINEL_ADDR2)
 
-# Reset counter
+# Do 256 BRK/RTI cycles (SEI still active, so no hardware IRQs).
+# BRK vector is same as IRQ vector ($FFFE -> $FB00).
+# Handler: LDA $DC0D (harmless, no pending IRQ), INC $02, RTI.
+# After RTI, PC = address after the signature byte.
 emit_lda_imm(0x00); emit(0x85, 0x02)  # counter=0
+emit(0xA2, 0x00)  # LDX #0
+brk_loop = p
+emit(0x00, 0x00)  # BRK + signature byte
+# RTI returns here (PC was pushed as address after BRK, then incremented past signature)
+# Check sentinels
+emit_lda_abs(SENTINEL_ADDR1)
+emit(0xC9, SENTINEL_VAL1)
+emit(0xD0, 0x00)  # BNE brk_fail (patch)
+brk_fail_branch1 = p - 1
+emit_lda_abs(SENTINEL_ADDR2)
+emit(0xC9, SENTINEL_VAL2)
+emit(0xD0, 0x00)  # BNE brk_fail (patch)
+brk_fail_branch2 = p - 1
+emit(0xE8)  # INX
+emit(0xD0, (brk_loop - p - 2) & 0xFF)  # BNE brk_loop (256 iterations)
+# BRK loop passed
+emit_str(0x04A0, "P2B PASS")
+emit_lda_imm(0x0E); emit_sta_abs(0xD020)  # light blue border
+emit_jmp(0)  # placeholder, patched below
+brk_pass_jmp = p - 2
 
-emit_str(0x04A0, "P2 IRQ")
+# BRK fail
+brk_fail = p
+emit_str(0x04A0, "P2B FAIL")
+# Show what sentinel 1 contains
+emit_lda_abs(SENTINEL_ADDR1)
+emit_sta_abs(0x04CB)
+emit_lda_abs(SENTINEL_ADDR2)
+emit_sta_abs(0x04CC)
+emit_lda_imm(0x0A); emit_sta_abs(0xD020)  # light red border
+brk_halt = p
+emit_jmp(brk_halt)
+
+# Patch BRK branches
+rom[brk_fail_branch1] = (brk_fail - brk_fail_branch1 - 1) & 0xFF
+rom[brk_fail_branch2] = (brk_fail - brk_fail_branch2 - 1) & 0xFF
+brk_after = p
+rom[brk_pass_jmp] = lo(brk_after)
+rom[brk_pass_jmp + 1] = hi(brk_after)
+
+# === Phase 2: Enable CIA1 Timer A IRQ ===
+emit_lda_imm(0x00); emit(0x85, 0x02)  # counter=0
+emit_str(0x04C8, "P2 IRQ")
 
 # CIA1 Timer A = $4025 (~60Hz at 1MHz)
 emit_lda_imm(0x25); emit_sta_abs(0xDC04)
@@ -286,68 +328,17 @@ emit(0x58)  # CLI - enable interrupts
 # === Main loop: show counter, check integrity, dump stack ===
 main_loop = p
 
-# Show counter as 2 hex digits at $04C8
-emit(0xA5, 0x02)   # LDA $02
-emit(0x4A); emit(0x4A); emit(0x4A); emit(0x4A)  # LSR x4
-emit(0x09, 0x30)   # ORA #$30
-emit_sta_abs(0x04C8)
-
+# Show counter at $04F0
 emit(0xA5, 0x02)   # LDA $02
 emit(0x29, 0x0F)   # AND #$0F
 emit(0x09, 0x30)   # ORA #$30
-emit_sta_abs(0x04C9)
+emit_sta_abs(0x04F0)
 
 # Check sentinel 1
 emit_lda_abs(SENTINEL_ADDR1)
 emit(0xC9, SENTINEL_VAL1)
 emit(0xF0, 0x05)   # BEQ ok1
 emit_lda_imm(0x02); emit_sta_abs(0xD020)  # red border
-
-# Check sentinel 2
-emit_lda_abs(SENTINEL_ADDR2)
-emit(0xC9, SENTINEL_VAL2)
-emit(0xF0, 0x05)   # BEQ ok2
-emit_lda_imm(0x02); emit_sta_abs(0xD020)  # red border
-
-# Dump top 16 bytes of stack ($01F0-$01FF) to screen row 7 ($04B8)
-# If IRQ pushes are correct, $01FD-$01FF will have pushed values,
-# rest should still be $EE marker
-emit(0xA2, 0x00)   # LDX #0
-dump_loop = p
-emit(0xBD, 0xF0, 0x01)  # LDA $01F0,X
-# Convert high nybble to screen char
-emit(0x4A); emit(0x4A); emit(0x4A); emit(0x4A)
-emit(0x18)  # CLC
-emit(0x69, 0x30)  # ADC #$30 - '0' screen code
-emit(0x9D, 0xF0, 0x04)  # STA $04F0,X (row 7 area, packed)
-# Next byte
-emit(0xE8)  # INX
-emit(0xE0, 0x10)  # CPX #16
-emit(0xD0, (dump_loop - p - 2) & 0xFF)
-
-# Check for stray writes below stack
-# If anything at $0100-$01EF is != $EE, stack writes went astray
-emit(0xA2, 0x00)
-stray_check = p
-emit(0xBD, 0x00, 0x01)  # LDA $0100,X
-emit(0xC9, 0xEE)         # CMP #$EE
-emit(0xF0, 0x00)         # BEQ ok_stray (patch below)
-stray_beq = p - 1
-# Stray write detected! Show "STRAY" and halt
-# Store the stray address (X) and value (A already has it) for debug
-emit(0x8D, 0x18, 0x05)   # STA $0518 (show bad value on screen row 8)
-emit(0x8A)               # TXA
-emit(0x8D, 0x19, 0x05)   # STA $0519 (show bad address low byte)
-emit_lda_imm(0x02); emit_sta_abs(0xD020)  # red border
-stray_halt = p
-emit_jmp(stray_halt)  # halt
-
-# ok_stray:
-ok_stray = p
-rom[stray_beq] = (ok_stray - stray_beq - 1) & 0xFF
-emit(0xE8)  # INX
-emit(0xE0, 0xF0)  # CPX #$F0 (check $0100-$01EF)
-emit(0xD0, (stray_check - p - 2) & 0xFF)
 
 emit_jmp(main_loop)
 
@@ -356,7 +347,7 @@ assert p < 0xFF00, f"Overflow at ${p:04X}!"
 
 # ---- Vectors ----
 wb(0xFFFA, lo(RTI_ADDR), hi(RTI_ADDR))      # NMI
-wb(0xFFFC, 0x00, 0xFC)                       # RESET -> $FC00
+wb(0xFFFC, 0x00, 0xFA)                       # RESET -> $FA00
 wb(0xFFFE, lo(IRQ_HANDLER), hi(IRQ_HANDLER)) # IRQ
 
 wb(0xFFEA, lo(RTI_ADDR), hi(RTI_ADDR))      # NMI native
