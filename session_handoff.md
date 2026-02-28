@@ -1,4 +1,4 @@
-# Session Handoff — SDRAM Returns $00 During Badline C-Access (Confirmed)
+# Session Handoff — VIC C-Access Pipeline Investigation
 
 ## Read These Files First
 - `C:\LLM\C64\MiSTerSuperCPU\RootCause.md`
@@ -7,47 +7,94 @@
 - `C:\LLM\C64\MiSTerSuperCPU\C64_MiSTer\c64.sv`
 - `C:\LLM\C64\MiSTerSuperCPU\C64_MiSTer\rtl\sdram.v` (SDRAM controller)
 
-## Current State — v4 Capture Ready to Build & Test
-- **SDRAM returning $00 during real badline c-access: CONFIRMED**
-- v4 capture (pipeline-aligned) syntax-checks, needs full build + hardware test
-- All changes in tree. User does builds.
+## Current State — v6 Implemented, Artifact Still Reproducible
+- v5 was validated on hardware: row-3 capture hit with `I:0617 01 00 17`.
+- `I:` is only a label bug in `debug_overlay.sv`; this capture path is the v5
+  c-access detector and should be read as `C:0617 01 00 17`.
+- Decoded capture:
+  - vicAddr@CPUC = $0617 (screen RAM range)
+  - cpuHasBus@CPUC = 0 (real badline steal)
+  - aec@VIC2 = 1 (VIC consuming RAM data path)
+  - vicDi@VIC2 = $00 (VIC observed `@` code)
+  - systemAddr[7:0]@CPUC = $17 (low byte matched vicAddr)
 
-## What We Know (Hardware Evidence)
+### Latest hardware capture after v6
+- Row 3 now shows the corrected format and label:
+  - `C:0590 01 D:00 S:0590`
+- Interpretation:
+  - Address path match confirmed (`vicAddr == systemAddr` at capture point).
+  - Still seeing badline c-access `$00` consumed by VIC.
+  - This narrows remaining fault to data-side behavior (true RAM content vs stale/clobbered return data), not address mux selection at capture time.
 
-### Root cause confirmed: SDRAM data path
-- During real badline c-access (cpuHasBus=0, aec=1), `vicDi = $00` instead of $20
-- The VIC aec mux is correct: aec=1 → vicDiAec = vicDi (SDRAM data used, not vicBus)
-- vicBus = $FF (normal) — the bus latch is not involved
-- **The SDRAM controller returns $00 for a screen RAM read that should return $20**
+## v6 Work Completed (this session)
+1. Fix row-3 VIC-hit label from `I:` to `C:`.
+2. Change VIC-owned buslogic address selection to always drive `currentAddr <= vicAddr`
+   when `cpuHasBus = 0` (remove `aec`-dependent `cpuAddr` fallback in VIC-owned cycles).
+3. Expand VIC-hit diagnostics by latching/exporting full `systemAddr[15:0]`
+   at CPUC and wiring it to overlay/debug path.
 
-### SDRAM pipeline timing (critical understanding)
-The SDRAM controller (sdram.v) takes 5 clk64 (= 2.5 clk32) from CE to data valid.
-This creates a 1-slot pipeline:
+## New Diagnostic ROM Work (MVP)
+- Added menu-driven diagnostic KERNAL MVP generator:
+  - `tools/diagrom/gen_diag_kernal_mvp.py`
+- Wrapped into existing ROM-builder deployment flow (`debug_system.rom`).
+- Key observation:
+  - MVP debug ROM still shows scrolling lines.
+  - Earlier standalone V22 diagnostic ROM reportedly does not (or stopped after earlier revs).
+  - This supports the hypothesis that workload/timing/profile details matter, not just "diagnostic vs standard ROM" as a binary distinction.
+- MVP UI bug (status column overlap) was fixed.
+- SuperCPU detect false-skip risk was reduced by forcing `$00/$01` memory map init before `$D0B2` probe.
 
-| CE fires | Data ready | VIC latches | What VIC gets |
-|---|---|---|---|
-| VIC0 | VIC2.5 | **CPUE** (phi=1, c-access) | VIC0 read result |
-| CPUC | CPUE.5 | **next VIC2** (phi=0, g-access) | CPUC read result |
+## Critical Discovery: Previous Pipeline Model Was WRONG
 
-The c-access (screen code fetch) latched at CPUE uses data from the **VIC0** SDRAM read.
-The g-access (bitmap fetch) latched at VIC2 uses data from the **previous CPUC** SDRAM read.
+### The CORRECT SDRAM pipeline timing
+The VIC entity outputs different addresses depending on phi:
+- `phi = '0'` (VIC phase): g-access address (character bitmap, CB & nextChar & rowCounter, ~$1000+)
+- `phi = '1'` (CPU phase): c-access address (screen RAM, VM & colCounter, $0400+)
 
-### Capture iteration history
-1. **v1 (CYCLE_VIC3)**: Checked vicDi at VIC3 — no trigger (was checking g-access bitmap data)
-2. **v2 (CYCLE_CPUE, no gate)**: Triggered immediately — false positive (non-badline, vicBus=$00)
-3. **v3 (CYCLE_CPUE + cpuHasBus=0)**: `R:0401 01 00 FF` — **CONFIRMED**: SDRAM returns $00 during real badline
-4. **v4 (pipeline-aligned)**: Latches vicAddr+systemAddr at VIC0, checks at CPUE. Pending test.
+With `registeredAddress => true`, vicAddr = vicAddrReg (1-clock delay of vicAddrLoc).
 
-## v4 Capture Design (Current Tree)
-- Latches `vicAddr` AND `systemAddr[7:0]` at **CYCLE_VIC0** (pipeline-correct)
-- Checks `vicDiAec` at **CYCLE_CPUE** with `cpuHasBus='0'` gate
-- Row 3 format: `R:vvvv BA DD SS`
-  - vvvv = vicAddr at VIC0
-  - B = baLoc, A = aec (at CPUE)
-  - DD = vicDi[5:0] at CPUE
-  - SS = systemAddr[7:0] at VIC0
-- **Key check**: if vvvv[7:0] = SS → correct address reached SDRAM, data is wrong
-  if vvvv[7:0] ≠ SS → buslogic mux routed wrong address at VIC0
+| CE fires at | Address on bus | Type | Data ready | VIC latches at | Purpose |
+|---|---|---|---|---|---|
+| **VIC0** | g-access (~$1000+) | bitmap/char | VIC2.5 | **CPUE** (enaData) | Character bitmap row |
+| **CPUC** | c-access ($0400+) | screen code | CPUE.5 | **next VIC2** (enaData) | Screen code for display |
+
+**Previous (WRONG) model said VIC0→CPUE was c-access. It's actually g-access!**
+
+### Why v3 capture was misleading
+v3 triggered at CPUE with vicDiAec=$00 and cpuHasBus=0. We interpreted this as
+"SDRAM returns $00 for screen code read". But CPUE has G-ACCESS data (bitmap),
+not c-access data. $00 in bitmap data just means an empty pixel row — perfectly
+normal. The v3 result may have been a false positive.
+
+### Evidence trail
+1. `video_vicII_656x.vhd` line 480: `if phi = '1' then vicAddrLoc <= VM & colCounter;`
+   → c-access address only when phi='1' (CPU phase)
+2. `video_vicII_656x.vhd` lines 448-452: when phi='0', default = g-access address
+3. VIC entity line 279: `vicAddr <= vicAddrReg when registeredAddress` (1-clock delayed)
+4. `registeredAddress => true` in instantiation (line 642)
+5. `enableVic` fires at VIC2 and CPUE (line 491-494) — two data latches per C64 cycle
+6. phi0_cpu = '0' during VIC0-VIC3, '1' during CPU0-CPUF
+
+### What the v4 capture checked (BROKEN)
+- Latched vicAddr at VIC0 → this was g-access address (~$1000+)
+- Checked `vic_rd_addr_lat(15 downto 10) = "000001"` ($0400-$07FF)
+- G-access address is NEVER in $0400-$07FF → condition NEVER true
+- That's why the capture showed W: (write-side fallback) after 2+ minutes
+
+## v5 Capture Design (Current Tree)
+- Step 1: At **CPUC**, latch vicAddr (= c-access address VM & colCounter) and systemAddr[7:0]
+  - Also latch cpuHasBus and set `vic_ca_pending = '1'`
+- Step 2: At **VIC2** (next enaData pulse), check vicDi (= SDRAM data from CPUC read)
+  - Gate: `vic_ca_pending='1'` AND `cpuHasBus_lat='0'` AND addr in $0400-$07FF AND vicDi=$00
+  - If triggered: sticky capture, display `C:vvvv HA D:DD S:SSSS`
+- Row 3 format: `C:vvvv HA D:DD S:SSSS`
+  - vvvv = vicAddr at CPUC (c-access address)
+  - H = cpuHasBus at CPUC (should be 0 during badline steal)
+  - A = aec at VIC2 (should be 1)
+  - DD = vicDi[5:0] at VIC2 (c-access data from SDRAM)
+  - SS = systemAddr[7:0] at CPUC (verify SDRAM got correct address)
+- **Key check**: if vvvv[7:0] = SS → correct address reached SDRAM
+  if vvvv[7:0] ≠ SS → buslogic mux routed wrong address
 
 ## Key Architecture Details
 
@@ -77,14 +124,29 @@ If new CE arrives while q≠0, the q+1 increment WINS over q<=1 — new CE is IG
 - `ext_cycle` active only during DMA0-DMA3 (before VIC0)
 - During VIC0-CPUF: SDRAM uses `scpu_sdram_addr` with `cart_ce`
 
-## Hypotheses for Wrong SDRAM Data
-1. **Wrong address at VIC0**: buslogic routes cpuAddr instead of vicAddr at VIC0
-   (v4 capture checks this via systemAddr comparison)
-2. **VIC outputs non-screen address at VIC0**: VIC entity does refresh/sprite fetch
-   instead of c-access, reading from a $00-containing location
-3. **SDRAM CE collision**: Something triggers an extra SDRAM read between VIC0 and CPUE,
-   restarting the state machine and clobbering VIC0's data
-4. **Refresh collision**: Auto-refresh command issued while VIC0 read is in progress
+### BUT: What about EXT-phase SDRAM reads between CPUE.5 and next VIC2?
+The c-access data from CPUC arrives at CPUE.5 and must persist in dout_r until
+the next cycle's VIC2. Between these points: CPUF, EXT0-7, DMA0-3, EXT4-7, VIC0, VIC1.
+If any EXT/DMA phase triggers an SDRAM read, it could overwrite dout_r!
+This is a potential issue to investigate if v5 capture doesn't trigger.
+
+## Revised Hypotheses for @ Artifact
+1. **CPUC read returns wrong data**: c-access SDRAM read at CPUC gets $00 instead
+   of correct screen code — v5 capture directly tests this
+2. **Data hold/clobber between read and consume**: SDRAM read during EXT/DMA/other phases between CPUE.5
+   and next VIC2 overwrites the c-access data before VIC latches it
+3. **Not a c-access issue at all**: the @ artifact has a different cause than
+   VIC reading wrong screen codes (e.g., VIC internal state corruption, wrong
+   colCounter, char ROM addressing issue)
+4. **Original hypothesis may still hold**: maybe the pipeline model needs further
+   verification — v5 results will clarify
+
+## Immediate Next Steps
+1. Add capture of "last CPU write to exact VIC-hit address" (addr/data/PC) to decide:
+   - true `$00` content vs read-side corruption.
+2. If write history does not explain `$00`, add explicit VIC data hold register experiment
+   (decouple VIC consume point from shared SDRAM `dout_r` lifetime).
+3. If needed, expose raw `$D0B2` value in diagnostic ROM UI to validate SuperCPU detection path.
 
 ## User Observations About the Artifact
 - Scrolling `@` lines appear on READY screen with SCPU enabled + standard KERNAL ROM
@@ -93,10 +155,29 @@ If new CE arrives while q≠0, the q+1 increment WINS over q<=1 — new CE is IG
 - Lines move at different speed/direction depending on which ROM code is executing
 - Diagnostic ROM V22 does NOT show lines (all 10 tests pass)
 
+## Capture Iteration History
+1. **v1 (CYCLE_VIC3)**: Checked vicDi at VIC3 — no trigger
+2. **v2 (CYCLE_CPUE, no gate)**: Triggered immediately — false positive (non-badline)
+3. **v3 (CYCLE_CPUE + cpuHasBus=0)**: `R:0401 01 00 FF` — triggered, but was
+   checking g-access data (bitmap), not c-access. The $00 may be normal bitmap data.
+4. **v4 (VIC0 addr + CPUE data)**: BROKEN — VIC0 has g-access address, never matches
+   $0400-$07FF screen RAM range. Capture never triggered.
+5. **v5 (CPUC addr + VIC2 data)**: Pipeline-corrected. Latches c-access addr at CPUC,
+   checks data at VIC2. Confirmed on hardware.
+6. **v6 (label+mux+full systemAddr)**: Implemented and tested. Address match confirmed (`C:0590 ... S:0590`), issue persists.
+
 ## Files Modified (relative to C64_MiSTer/)
-- `rtl/fpga64_sid_iec.vhd` — v4 VIC read capture (pipeline-aligned VIC0→CPUE)
-- `rtl/debug_overlay.sv` — row 3 format: `R:vvvv BA DD SS`
-- `c64.sv` — wiring (unchanged this session)
+- `rtl/fpga64_sid_iec.vhd` — v5 VIC c-access capture (CPUC→VIC2 pipeline)
+- `rtl/debug_overlay.sv` — row 3 format: `C:vvvv HA D:DD S:SSSS`
+- `rtl/fpga64_buslogic.vhd` — VIC-owned address selection cleanup
+- `c64.sv` — wiring for added `dbg_vic_zero_sysaddr`
+
+## Tooling/Docs Added This Session
+- `tools/rom_builder/` wrapper/deploy improvements (path handling, manifest robustness, MiSTer path with spaces)
+- `tools/diagrom/` diagnostic KERNAL MVP generator
+- Skill docs split:
+  - `Skill_MiSTer.md` (general)
+  - `Skill_MiSTer_C64.md` (C64-specific)
 
 ## Build Command
 ```powershell

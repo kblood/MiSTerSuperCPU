@@ -6,7 +6,7 @@
 // Display layout (rendered in top border, 3 rows):
 //   Row 1: A:xxxx B:xx K:xx R:xx   (B=current bank, K=max bank seen, R=addr at max bank)
 //   Row 2: S:xxxx P:xx I:xx E:x
-//   Row 3: W:xxxx D:xx P:xxxx oo   (rolling write) or R:vvvv AH DD BB (c-access $00 hit)
+//   Row 3: W:xxxx D:xx P:xxxx oo   (rolling write) or C:vvvv HA D:DD S:SSSS (c-access $00 hit)
 //
 // All position tracking uses registered counters (no division/modulo).
 
@@ -39,6 +39,7 @@ module debug_overlay (
 	input         vic_zero_hit,  // sticky flag: '1' when VIC read $00 from screen RAM
 	input  [15:0] vic_zero_addr, // VIC address where $00 was read
 	input  [15:0] vic_zero_cpu,  // CPU address at that moment
+	input  [15:0] vic_zero_sysaddr, // full systemAddr latched at CPUC
 
 	// Video overlay output
 	output reg    overlay_active,
@@ -101,6 +102,7 @@ reg        lat_scr_zero_hit;
 reg        lat_vic_zero_hit;
 reg [15:0] lat_vic_zero_addr;
 reg [15:0] lat_vic_zero_cpu;
+reg [15:0] lat_vic_zero_sysaddr;
 
 always @(posedge clk) begin
 	if (vblank_r && !vblank) begin
@@ -122,6 +124,7 @@ always @(posedge clk) begin
 		lat_vic_zero_hit  <= vic_zero_hit;
 		lat_vic_zero_addr <= vic_zero_addr;
 		lat_vic_zero_cpu  <= vic_zero_cpu;
+		lat_vic_zero_sysaddr <= vic_zero_sysaddr;
 	end
 end
 
@@ -299,38 +302,39 @@ always @(*) begin
 	end
 	default: begin
 		// Row 3 - three priority levels:
-		//   VIC hit:   R:vvvv BA DD BB  (v=vicAddr, B=baLoc, A=aec, D=vicDi, B=vicBus)
+		//   VIC hit:   C:vvvv HA D:DD S:SSSS (v=vicAddr@CPUC, H=cpuHasBus, A=aec, D=vicDi@VIC2, S=systemAddr@CPUC)
 		//   Write hit: 0:xxxx D:00 P:xxxx   (write-side $00 frozen)
 		//   Rolling:   W:xxxx D:xx P:xxxx oo (normal rolling capture)
 		if (lat_vic_zero_hit) begin
-			// Badline c-access $00 detected (cpuHasBus=0, real steal)
-			// Format: R:vvvv BA DD SS
-			//   vvvv = vicAddr at VIC0 (pipeline: this data arrives at CPUE)
-			//   B = baLoc (bit 15), A = aec (bit 14)
-			//   DD = vicDi[5:0] at CPUE (bits 13:8)
-			//   SS = systemAddr[7:0] at VIC0 (actual SDRAM addr low byte)
+			// Badline c-access $00 detected at VIC2 (pipeline-correct)
+			// Format: C:vvvv HA D:DD S:SSSS
+			//   vvvv = vicAddr at CPUC (c-access address, VM & colCounter)
+			//   H = cpuHasBus at CPUC (bit 15, should be 0 during badline)
+			//   A = aec at VIC2 (bit 14, should be 1)
+			//   DD = vicDi[5:0] at VIC2 (bits 13:8, c-access data from SDRAM)
+			//   SSSS = full systemAddr[15:0] at CPUC
 			case (char_idx)
-				5'd0:  char_code = 5'h17;                            // 'R'
+				5'd0:  char_code = 5'hC;                             // 'C'
 				5'd1:  char_code = 5'h15;                            // ':'
 				5'd2:  char_code = {1'b0, lat_vic_zero_addr[15:12]};
 				5'd3:  char_code = {1'b0, lat_vic_zero_addr[11:8]};
 				5'd4:  char_code = {1'b0, lat_vic_zero_addr[7:4]};
 				5'd5:  char_code = {1'b0, lat_vic_zero_addr[3:0]};
 				5'd6:  char_code = 5'h16;                            // ' '
-				5'd7:  char_code = {1'b0, 3'b0, lat_vic_zero_cpu[15]}; // baLoc
-				5'd8:  char_code = {1'b0, 3'b0, lat_vic_zero_cpu[14]}; // aec
+				5'd7:  char_code = {1'b0, 3'b0, lat_vic_zero_cpu[15]}; // cpuHasBus@CPUC
+				5'd8:  char_code = {1'b0, 3'b0, lat_vic_zero_cpu[14]}; // aec@VIC2
 				5'd9:  char_code = 5'h16;                            // ' '
-				5'd10: char_code = {1'b0, 2'b0, lat_vic_zero_cpu[13:12]}; // vicDi[5:4]
-				5'd11: char_code = {1'b0, lat_vic_zero_cpu[11:8]};   // vicDi[3:0]
-				5'd12: char_code = 5'h16;                            // ' '
-				5'd13: char_code = {1'b0, lat_vic_zero_cpu[7:4]};    // sysAddr[7:4]
-				5'd14: char_code = {1'b0, lat_vic_zero_cpu[3:0]};    // sysAddr[3:0]
-				5'd15: char_code = 5'h16;
-				5'd16: char_code = 5'h16;
-				5'd17: char_code = 5'h16;
-				5'd18: char_code = 5'h16;
-				5'd19: char_code = 5'h16;
-				5'd20: char_code = 5'h16;
+				5'd10: char_code = 5'hD;                             // 'D'
+				5'd11: char_code = 5'h15;                            // ':'
+				5'd12: char_code = {1'b0, 2'b0, lat_vic_zero_cpu[13:12]}; // vicDi[5:4]@VIC2
+				5'd13: char_code = {1'b0, lat_vic_zero_cpu[11:8]};   // vicDi[3:0]@VIC2
+				5'd14: char_code = 5'h16;                            // ' '
+				5'd15: char_code = 5'h10;                            // 'S'
+				5'd16: char_code = 5'h15;                            // ':'
+				5'd17: char_code = {1'b0, lat_vic_zero_sysaddr[15:12]};
+				5'd18: char_code = {1'b0, lat_vic_zero_sysaddr[11:8]};
+				5'd19: char_code = {1'b0, lat_vic_zero_sysaddr[7:4]};
+				5'd20: char_code = {1'b0, lat_vic_zero_sysaddr[3:0]};
 				5'd21: char_code = 5'h16;
 				default: char_code = 5'h16;
 			endcase

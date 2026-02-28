@@ -23,6 +23,35 @@ Two distinct issues were investigated:
 - This means the artifact is specific to the standard KERNAL ROM execution environment,
   not a general CPU correctness issue.
 
+## Latest status update (v6 + diag MVP)
+- v6 instrumentation changes were implemented:
+  - Row-3 label fixed to `C`.
+  - VIC-owned buslogic path forced to `currentAddr <= vicAddr` when `cpuHasBus=0`.
+  - Full `systemAddr[15:0]` captured/exported with VIC hit.
+- Hardware capture after v6:
+  - `C:0590 01 D:00 S:0590`
+  - Confirms address match at hit time (`vicAddr == systemAddr`) while VIC still consumes `$00`.
+- New diagnostic KERNAL MVP (menu-driven) was created and loaded as `debug_system.rom`.
+  - MVP also reproduces scrolling-line behavior.
+  - Earlier standalone V22 diagnostic ROM reportedly does not.
+  - Therefore behavior is sensitive to exact ROM workload/timing, not simply "diagnostic ROM" category.
+
+## New evidence (v5 c-access capture)
+- v5 captured: `I:0617 01 00 17`.
+- The `I:` prefix is a display glyph bug in the overlay VIC-hit row and should be `C:`.
+- Decode:
+  - `0617` = vicAddr latched at CPUC (c-access screen RAM address)
+  - `0` = cpuHasBus@CPUC (real badline steal)
+  - `1` = aec@VIC2
+  - `00` = vicDi@VIC2 (VIC consumed `$00`)
+  - `17` = systemAddr[7:0]@CPUC (address low byte match)
+- This confirms the corrected CPUC->VIC2 c-access pipeline is triggering as intended.
+
+## v6 implementation set (completed)
+1. Row-3 VIC-hit label fixed to `C`.
+2. In buslogic VIC-owned path (`cpuHasBus=0`), `currentAddr` now uses `vicAddr`.
+3. Full `systemAddr[15:0]` capture/export added for VIC-hit diagnostics.
+
 ## Hardware evidence — write-side ruled out
 
 1. **Baseline overlay capture (before cursor filtering)**
@@ -64,11 +93,12 @@ Two distinct issues were investigated:
    - aec=1 confirms vicDiAec=vicDi (mux is correct). vicBus=$FF (not involved).
    - The VIC latches vicDi=$00 (screen code `@`) instead of $20 (space).
 
-## Confirmed root cause: SDRAM returns wrong data during badline c-access
+## Current best root-cause statement
 
-The VIC-II receives $00 from the SDRAM data path during real badline character
-pointer fetches (c-access). The aec mux is correct, the address routing is plausible.
-The SDRAM data itself is wrong.
+The VIC-II receives `$00` during real badline c-access fetches.
+Address routing at capture point matches (`vicAddr == systemAddr`), so the remaining
+fault is data-side: either true RAM content is `$00` at that location, or returned data
+is stale/clobbered before VIC consumes it.
 
 ## SDRAM pipeline timing analysis
 
@@ -87,21 +117,19 @@ VIC latches:
 **The c-access screen code data the VIC latches at CPUE comes from the VIC0 SDRAM read.**
 This is a deliberate pipeline: VIC outputs c-access address at VIC0, data arrives at CPUE.
 
-## Active instrumentation (current tree, v4)
-- Capture latches vicAddr AND systemAddr at **VIC0** (pipeline-correct for c-access)
-- Checks `vicDiAec` at **CPUE** with `cpuHasBus='0'` gate (real badline only)
-- Row 3 format: `R:vvvv BA DD SS`
-  - vvvv = vicAddr at VIC0 (address VIC requested)
-  - B = baLoc, A = aec (at CPUE)
-  - DD = vicDi[5:0] at CPUE (SDRAM data)
-  - SS = systemAddr[7:0] at VIC0 (actual address sent to SDRAM)
-- If vvvv[7:0] ≠ SS → buslogic routed wrong address to SDRAM at VIC0
+## Active instrumentation (current tree, v6)
+- Capture latches vicAddr + full systemAddr at **CPUC** (c-access address phase)
+- Checks `vicDi` at **next VIC2** with badline gate (`cpuHasBus_lat='0'`)
+- Row 3 format: `C:vvvv HA D:DD S:SSSS`
+  - `vvvv` = vicAddr@CPUC
+  - `H` = cpuHasBus@CPUC
+  - `A` = aec@VIC2
+  - `DD` = vicDi@VIC2
+  - `SSSS` = full systemAddr@CPUC
 
 ## Next diagnostic steps
-1. **Build and test v4 capture**: Check if vicAddr matches systemAddr at VIC0.
-   If they differ, the buslogic address mux is corrupted at VIC0 time.
-   If they match, SDRAM is reading from the correct address but returning wrong data.
-2. **Investigate SDRAM read collision**: Check whether a SuperCPU-related SDRAM access
-   between VIC0 and CPUE could restart the SDRAM controller's state machine (q counter),
-   clobbering the VIC0 read before data is captured.
-3. **Check refresh timing**: Verify auto-refresh doesn't collide with VIC0 CE.
+1. Add capture of last CPU write to the exact VIC-hit address (addr/data/PC) to separate:
+   - true `$00` content vs read-path corruption.
+2. If write history does not explain `$00`, test explicit VIC data-hold register path
+   (decouple VIC consume point from shared SDRAM `dout_r` lifetime).
+3. If needed, add debug exposure of raw `$D0B2` in diag ROM UI to validate SuperCPU detect path.

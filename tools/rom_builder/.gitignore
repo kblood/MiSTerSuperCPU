@@ -1,0 +1,7 @@
+out/*
+tmp/*
+rom_inputs/*
+!out/.gitkeep
+!tmp/.gitkeep
+!rom_inputs/.gitkeep
+!rom_inputs/README.md

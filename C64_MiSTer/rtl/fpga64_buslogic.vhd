@@ -474,12 +474,9 @@ begin
 			systemWe <= cpuWe;
 			end if; -- end SuperCPU bank bypass / C64 address decode
 		else
-			-- The VIC-II has the bus, but only when aec is asserted
-			if aec = '1' then
-				currentAddr <= vicAddr;
-			else
-				currentAddr <= cpuAddr;
-			end if;
+			-- The VIC-II owns the memory address path whenever cpuHasBus='0'.
+			-- Keep currentAddr on vicAddr unconditionally in this branch.
+			currentAddr <= vicAddr;
 
 			if ultimax = '0' and vicAddr(14 downto 12)="001" then
 				vicCharLoc <= '1';

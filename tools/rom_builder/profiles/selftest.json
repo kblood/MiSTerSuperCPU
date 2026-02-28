@@ -1,0 +1,20 @@
+{
+  "system_roms": [
+    {
+      "name": "selftest_system",
+      "basic": "../tmp/basic.bin",
+      "kernal": "../tmp/kernal.bin",
+      "drive1541": "../tmp/dos1541.bin",
+      "output": "../out/selftest_system.rom"
+    }
+  ],
+  "supercpu_mifs": [
+    {
+      "name": "selftest_scpu",
+      "input_bin": "../tmp/scpu_kick.bin",
+      "output_mif": "../out/selftest_scpu.mif",
+      "depth": 64,
+      "fill_byte_hex": "FF"
+    }
+  ]
+}

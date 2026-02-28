@@ -1057,6 +1057,7 @@ wire        dbg_scr_zero_hit;
 wire        dbg_vic_zero_hit;
 wire [15:0] dbg_vic_zero_addr;
 wire [15:0] dbg_vic_zero_cpu;
+wire [15:0] dbg_vic_zero_sysaddr;
 
 fpga64_sid_iec fpga64
 (
@@ -1090,6 +1091,7 @@ fpga64_sid_iec fpga64
 	.dbg_vic_zero_hit(dbg_vic_zero_hit),
 	.dbg_vic_zero_addr(dbg_vic_zero_addr),
 	.dbg_vic_zero_cpu(dbg_vic_zero_cpu),
+	.dbg_vic_zero_sysaddr(dbg_vic_zero_sysaddr),
 
 	.ps2_key(key),
 	.kbd_reset((~reset_n & ~status[1]) | reset_keys),
@@ -1461,6 +1463,7 @@ debug_overlay debug_ovl
 	.vic_zero_hit(dbg_vic_zero_hit),
 	.vic_zero_addr(dbg_vic_zero_addr),
 	.vic_zero_cpu(dbg_vic_zero_cpu),
+	.vic_zero_sysaddr(dbg_vic_zero_sysaddr),
 	.overlay_active(ovl_active),
 	.overlay_r(ovl_r),
 	.overlay_g(ovl_g),

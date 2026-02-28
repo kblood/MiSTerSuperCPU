@@ -1,0 +1,11 @@
+{
+  "system_roms": [
+    {
+      "name": "jiffy_mister_test",
+      "basic": "../rom_inputs/jiffy_mister_basic.bin",
+      "kernal": "../rom_inputs/jiffy_mister_kernal.bin",
+      "drive1541": "../rom_inputs/jiffy_mister_dos1541.bin",
+      "output": "../out/jiffy_mister_test.rom"
+    }
+  ]
+}
