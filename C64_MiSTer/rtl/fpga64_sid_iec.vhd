@@ -87,8 +87,14 @@ port(
 	dbg_cia1_pb   : out unsigned(7 downto 0);
 	-- Screen-RAM write detector: captures last CPU write to $0400-$07FF (for @ artifact debug)
 	dbg_scr_wr_addr : out unsigned(15 downto 0);
+	dbg_scr_wr_pc   : out unsigned(15 downto 0);
 	dbg_scr_wr_data : out unsigned(7 downto 0);
 	dbg_scr_wr_ir   : out unsigned(7 downto 0);
+	dbg_scr_zero_hit: out std_logic;
+	-- VIC read-side capture
+	dbg_vic_zero_hit : out std_logic;
+	dbg_vic_zero_addr: out unsigned(15 downto 0);
+	dbg_vic_zero_cpu : out unsigned(15 downto 0);
 
 	-- VGA/SCART interface
 	vic_variant : in  std_logic_vector(1 downto 0);
@@ -261,6 +267,7 @@ signal supercpu_en_prev  : std_logic := '0';
 signal scpu_speed_slow   : std_logic := '0';
 signal vpa_816      : std_logic;
 signal vda_816      : std_logic;
+signal dbg_pc_816   : unsigned(15 downto 0);
 signal dbg_sp_816   : unsigned(15 downto 0);
 signal dbg_p_816    : unsigned(7 downto 0);
 signal dbg_ir_816   : unsigned(7 downto 0);
@@ -305,8 +312,18 @@ signal dbg_cia1_pa_r : unsigned(7 downto 0) := x"FF";
 signal dbg_cia1_pb_r : unsigned(7 downto 0) := x"FF";
 -- Screen-RAM write detector (latches last CPU write to $0400-$07FF)
 signal dbg_scr_wr_addr_r : unsigned(15 downto 0) := (others => '0');
+signal dbg_scr_wr_pc_r   : unsigned(15 downto 0) := (others => '0');
 signal dbg_scr_wr_data_r : unsigned(7 downto 0) := (others => '0');
 signal dbg_scr_wr_ir_r   : unsigned(7 downto 0) := (others => '0');
+signal dbg_scr_wr_arm_r  : std_logic := '0';
+signal dbg_scr_wr_arm_ctr: unsigned(24 downto 0) := (others => '0');
+signal dbg_scr_zero_hit_r: std_logic := '0'; -- sticky: '1' once a $00 write to screen RAM is detected
+-- VIC read-side capture: detects when VIC reads $00 from screen RAM
+signal dbg_vic_zero_hit_r : std_logic := '0'; -- sticky: '1' once VIC reads $00 from screen RAM
+signal dbg_vic_zero_addr_r: unsigned(15 downto 0) := (others => '0'); -- VIC address when $00 was read
+signal dbg_vic_zero_cpu_r : unsigned(15 downto 0) := (others => '0'); -- CPU address at that moment
+signal vic_rd_addr_lat    : unsigned(15 downto 0) := (others => '0'); -- latch VIC address at VIC0
+signal vic_rd_sysaddr_lat : unsigned(7 downto 0) := (others => '0'); -- latch systemAddr low byte at VIC0
 
 signal todclk       : std_logic;
 
@@ -935,6 +952,7 @@ port map (
 	vpa => vpa_816,
 	vda => vda_816,
 
+	dbg_pc => dbg_pc_816,
 	dbg_sp => dbg_sp_816,
 	dbg_p  => dbg_p_816,
 	dbg_ir => dbg_ir_816
@@ -951,7 +969,8 @@ nmi_ack     <= nmi_ack_816  when supercpu_en = '1' else nmi_ack_6510;
 
 -- Route 65C816-specific status signals to ports
 supercpu_emul <= emu_mode_816;
-supercpu_cycle <= cpu_cyc when supercpu_en = '1' else '0';
+-- Only assert banked SDRAM addressing during actual CPU RAM/ROM bus ownership.
+supercpu_cycle <= cpu_cyc and cs_ram and cpuHasBus when supercpu_en = '1' else '0';
 supercpu_bank <= addr_hi_816;
 
 -- Debug outputs: active CPU's bus signals
@@ -985,26 +1004,110 @@ end process;
 dbg_cia1_pa <= dbg_cia1_pa_r;
 dbg_cia1_pb <= dbg_cia1_pb_r;
 
--- Screen-RAM write detector: latch addr/data/opcode whenever CPU writes to $0400-$07FF.
--- This helps identify what instruction writes @($00) to screen RAM causing artifact lines.
+-- Screen-RAM write detector: latch addr/data/opcode/PC whenever CPU writes to $0400-$07FF.
+-- Used to distinguish CPU-driven screen updates from non-CPU (read-side/timing) artifacts.
 process(clk32)
 begin
 	if rising_edge(clk32) then
 		if reset = '1' then
 			dbg_scr_wr_addr_r <= (others => '0');
+			dbg_scr_wr_pc_r   <= (others => '0');
 			dbg_scr_wr_data_r <= (others => '0');
 			dbg_scr_wr_ir_r   <= (others => '0');
+			dbg_scr_wr_arm_r  <= '0';
+			dbg_scr_wr_arm_ctr <= (others => '0');
+			dbg_scr_zero_hit_r <= '0';
+		elsif supercpu_en = '0' then
+			dbg_scr_wr_arm_r  <= '0';
+			dbg_scr_wr_arm_ctr <= (others => '0');
+			dbg_scr_zero_hit_r <= '0';
+		elsif dbg_scr_wr_arm_r = '0' then
+			dbg_scr_wr_arm_ctr <= dbg_scr_wr_arm_ctr + 1;
+			if dbg_scr_wr_arm_ctr = to_unsigned(31999999, dbg_scr_wr_arm_ctr'length) then
+				dbg_scr_wr_arm_r <= '1';
+			end if;
 		elsif supercpu_en = '1' and cpuWe = '1' and sysCycle >= CYCLE_CPU0
-		      and cpuAddr(15 downto 10) = "000001" and cpuDo = x"00" then
-			dbg_scr_wr_addr_r <= cpuAddr;
-			dbg_scr_wr_data_r <= cpuDo;
-			dbg_scr_wr_ir_r   <= dbg_ir_816;
+		      and cpuAddr(15 downto 10) = "000001" then
+			-- STICKY $00 capture: first zero-write to screen RAM locks the display.
+			-- Once triggered, dbg_scr_zero_hit_r='1' freezes the capture registers
+			-- so we can see where/how the $00 (@ artifact) was written.
+			if cpuDo = x"00" and dbg_scr_zero_hit_r = '0' then
+				dbg_scr_wr_addr_r <= cpuAddr;
+				dbg_scr_wr_pc_r   <= dbg_pc_816;
+				dbg_scr_wr_data_r <= cpuDo;
+				dbg_scr_wr_ir_r   <= dbg_ir_816;
+				dbg_scr_zero_hit_r <= '1';
+			elsif dbg_scr_zero_hit_r = '0' then
+				-- Rolling capture: filter ALL cursor-blink writes (PC=$EA20, any address).
+				-- Previous filter was too narrow (only $04F0); cursor moves around.
+				if dbg_pc_816 /= x"EA20" then
+					dbg_scr_wr_addr_r <= cpuAddr;
+					dbg_scr_wr_pc_r   <= dbg_pc_816;
+					dbg_scr_wr_data_r <= cpuDo;
+					dbg_scr_wr_ir_r   <= dbg_ir_816;
+				end if;
+			end if;
 		end if;
 	end if;
 end process;
 dbg_scr_wr_addr <= dbg_scr_wr_addr_r;
+dbg_scr_wr_pc   <= dbg_scr_wr_pc_r;
 dbg_scr_wr_data <= dbg_scr_wr_data_r;
 dbg_scr_wr_ir   <= dbg_scr_wr_ir_r;
+dbg_scr_zero_hit <= dbg_scr_zero_hit_r;
+
+-- VIC read-side capture: detect when VIC receives $00 during REAL c-access.
+--
+-- SDRAM pipeline timing (critical!):
+--   VIC0 CE → data in dout_r at VIC0+2.5 clk32 (between VIC2 and VIC3)
+--   CPUC CE → data in dout_r at CPUC+2.5 clk32 (between CPUE and CPUF)
+-- Therefore at CPUE rising edge, dout_r still holds the VIC0 read result!
+-- The c-access data VIC latches at CPUE comes from the VIC0 SDRAM read.
+-- So we must capture vicAddr at VIC0 (the address for c-access data).
+--
+-- Packed cpu_r format:
+--   (15)    = baLoc
+--   (14)    = aec
+--   (13:8)  = vicDi(5 downto 0) at CPUE
+--   (7:0)   = systemAddr(7 downto 0) at VIC0 (verify SDRAM addr is correct)
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if reset = '1' then
+			dbg_vic_zero_hit_r  <= '0';
+			dbg_vic_zero_addr_r <= (others => '0');
+			dbg_vic_zero_cpu_r  <= (others => '0');
+			vic_rd_addr_lat     <= (others => '0');
+			vic_rd_sysaddr_lat  <= (others => '0');
+		elsif supercpu_en = '0' then
+			dbg_vic_zero_hit_r  <= '0';
+		else
+			-- Latch BOTH vicAddr AND systemAddr at VIC0:
+			-- vicAddr = what VIC entity outputs
+			-- systemAddr = what actually goes to SDRAM (after buslogic mux)
+			if sysCycle = CYCLE_VIC0 then
+				vic_rd_addr_lat    <= vicAddr;
+				vic_rd_sysaddr_lat <= systemAddr(7 downto 0);
+			end if;
+			-- Check at CPUE during REAL badline c-access only:
+			-- cpuHasBus='0' means BA was low → VIC is stealing CPU cycles
+			-- vic_rd_addr_lat is from VIC0 (correct pipeline alignment)
+			if sysCycle = CYCLE_CPUE and dbg_vic_zero_hit_r = '0'
+			   and dbg_scr_wr_arm_r = '1'
+			   and cpuHasBus = '0'
+			   and vic_rd_addr_lat(15 downto 10) = "000001"
+			   and vicDiAec = x"00" then
+				dbg_vic_zero_hit_r  <= '1';
+				dbg_vic_zero_addr_r <= vic_rd_addr_lat;
+				dbg_vic_zero_cpu_r  <= baLoc & aec
+				                     & vicDi(5 downto 0) & vic_rd_sysaddr_lat;
+			end if;
+		end if;
+	end if;
+end process;
+dbg_vic_zero_hit  <= dbg_vic_zero_hit_r;
+dbg_vic_zero_addr <= dbg_vic_zero_addr_r;
+dbg_vic_zero_cpu  <= dbg_vic_zero_cpu_r;
 
 -- $D07E ROM-visibility switch.
 -- Kickstart writes $00 to $D07E at $80F7 to expose C64 KERNAL at $E000-$FFFF.

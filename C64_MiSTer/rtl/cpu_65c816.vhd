@@ -39,6 +39,7 @@ entity cpu_65c816 is
 		vda           : out std_logic;               -- Valid Data Address
 
 		-- Debug outputs
+		dbg_pc        : out unsigned(15 downto 0);
 		dbg_sp        : out unsigned(15 downto 0);
 		dbg_p         : out unsigned(7 downto 0);
 		dbg_ir        : out unsigned(7 downto 0)
@@ -54,6 +55,7 @@ architecture rtl of cpu_65c816 is
 	signal localWe    : std_logic;  -- active low (R/W#), same as T65
 	signal localEF    : std_logic;
 	signal localVPB   : std_logic;
+	signal localPC    : std_logic_vector(15 downto 0);
 	signal localSP    : std_logic_vector(15 downto 0);
 	signal localP     : std_logic_vector(7 downto 0);
 	signal localIR    : std_logic_vector(7 downto 0);
@@ -88,13 +90,14 @@ begin
 		MLB     => open,
 		VPB     => localVPB,
 		EF_OUT  => localEF,
+		DBG_PC  => localPC,
 		DBG_SP  => localSP,
 		DBG_P   => localP,
 		DBG_IR  => localIR
 	);
 
 	-- 6510 I/O port at $0000-$0001 (active only in bank $00)
-	accessIO <= '1' when localA(23 downto 1) = "00000000000000000000000" else '0';
+accessIO <= '1' when localA(23 downto 1) = "00000000000000000000000" else '0';
 	localDi  <= localDo when localWe = '0'
 	            else std_logic_vector(di) when accessIO = '0'
 	            else ioDir when localA(0) = '0'
@@ -145,7 +148,7 @@ begin
 		end if;
 	end process;
 
-	nmi_ack <= '1' when localVPB = '0' and nmi_active = '1' and localA(2) = '0' and localA(1) = '1' else '0';
+	nmi_ack <= '1' when localVPB = '0' and localA(2) = '0' and localA(1) = '1' else '0';
 
 	-- Output assignments
 	addr    <= unsigned(localA(15 downto 0));
@@ -154,6 +157,7 @@ begin
 	we      <= not localWe;  -- invert: T65/P65C816 use active-low R/W#, system uses active-high WE
 	doIO    <= unsigned(currentIO);
 	emulation_mode <= localEF;
+	dbg_pc <= unsigned(localPC);
 	dbg_sp <= unsigned(localSP);
 	dbg_p  <= unsigned(localP);
 	dbg_ir <= unsigned(localIR);

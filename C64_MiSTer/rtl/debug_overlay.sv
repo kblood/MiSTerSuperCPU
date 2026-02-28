@@ -6,7 +6,7 @@
 // Display layout (rendered in top border, 3 rows):
 //   Row 1: A:xxxx B:xx K:xx R:xx   (B=current bank, K=max bank seen, R=addr at max bank)
 //   Row 2: S:xxxx P:xx I:xx E:x
-//   Row 3: W:xxxx D:xx O:xx        (W=last screen-RAM write addr, D=data, O=opcode)
+//   Row 3: W:xxxx D:xx P:xxxx oo   (rolling write) or R:vvvv AH DD BB (c-access $00 hit)
 //
 // All position tracking uses registered counters (no division/modulo).
 
@@ -31,8 +31,14 @@ module debug_overlay (
 	input   [7:0] cia1_pb,    // CIA1 Port B (addr when max bank entered)
 	// Screen-RAM write detector (last write to $0400-$07FF)
 	input  [15:0] scr_wr_addr,
+	input  [15:0] scr_wr_pc,
 	input   [7:0] scr_wr_data,
 	input   [7:0] scr_wr_ir,
+	input         scr_zero_hit, // sticky flag: '1' when a $00 write was captured
+	// VIC read-side capture
+	input         vic_zero_hit,  // sticky flag: '1' when VIC read $00 from screen RAM
+	input  [15:0] vic_zero_addr, // VIC address where $00 was read
+	input  [15:0] vic_zero_cpu,  // CPU address at that moment
 
 	// Video overlay output
 	output reg    overlay_active,
@@ -88,8 +94,13 @@ reg  [7:0] lat_ir;
 reg  [7:0] lat_cia1_pa;
 reg  [7:0] lat_cia1_pb;
 reg [15:0] lat_scr_wr_addr;
+reg [15:0] lat_scr_wr_pc;
 reg  [7:0] lat_scr_wr_data;
 reg  [7:0] lat_scr_wr_ir;
+reg        lat_scr_zero_hit;
+reg        lat_vic_zero_hit;
+reg [15:0] lat_vic_zero_addr;
+reg [15:0] lat_vic_zero_cpu;
 
 always @(posedge clk) begin
 	if (vblank_r && !vblank) begin
@@ -104,8 +115,13 @@ always @(posedge clk) begin
 		lat_cia1_pa     <= cia1_pa;
 		lat_cia1_pb     <= cia1_pb;
 		lat_scr_wr_addr <= scr_wr_addr;
+		lat_scr_wr_pc   <= scr_wr_pc;
 		lat_scr_wr_data <= scr_wr_data;
 		lat_scr_wr_ir   <= scr_wr_ir;
+		lat_scr_zero_hit <= scr_zero_hit;
+		lat_vic_zero_hit  <= vic_zero_hit;
+		lat_vic_zero_addr <= vic_zero_addr;
+		lat_vic_zero_cpu  <= vic_zero_cpu;
 	end
 end
 
@@ -218,7 +234,7 @@ end
 // Character string mapping (combinational, uses latched data)
 // Row 1: "A:xxxx B:xx K:xx R:xx"  (22 chars)
 // Row 2: "S:xxxx P:xx I:xx E:x"   (22 chars)
-// Row 3: "W:xxxx D:xx O:xx      " (22 chars, W=write addr, D=data, O=opcode)
+// Row 3: "W:xxxx D:xx P:xxxx oo " (22 chars, W=write addr, D=data, P=PC, oo=opcode)
 // -----------------------------------------------------------------------
 
 reg [4:0] char_code;
@@ -282,35 +298,71 @@ always @(*) begin
 		endcase
 	end
 	default: begin
-		// Row 3: W:xxxx D:xx O:xx  (screen write detector)
-		// W = last write address to $0400-$07FF
-		// D = data written (00 = @ artifact)
-		// O = opcode at time of write
-		case (char_idx)
-			5'd0:  char_code = 5'h14;                         // 'W'
-			5'd1:  char_code = 5'h15;                         // ':'
-			5'd2:  char_code = {1'b0, lat_scr_wr_addr[15:12]};
-			5'd3:  char_code = {1'b0, lat_scr_wr_addr[11:8]};
-			5'd4:  char_code = {1'b0, lat_scr_wr_addr[7:4]};
-			5'd5:  char_code = {1'b0, lat_scr_wr_addr[3:0]};
-			5'd6:  char_code = 5'h16;                         // ' '
-			5'd7:  char_code = 5'hD;                          // 'D'
-			5'd8:  char_code = 5'h15;                         // ':'
-			5'd9:  char_code = {1'b0, lat_scr_wr_data[7:4]};
-			5'd10: char_code = {1'b0, lat_scr_wr_data[3:0]};
-			5'd11: char_code = 5'h16;                         // ' '
-			5'd12: char_code = 5'h18;                         // 'O' (opcode)
-			5'd13: char_code = 5'h15;                         // ':'
-			5'd14: char_code = {1'b0, lat_scr_wr_ir[7:4]};
-			5'd15: char_code = {1'b0, lat_scr_wr_ir[3:0]};
-			5'd16: char_code = 5'h16;
-			5'd17: char_code = 5'h16;
-			5'd18: char_code = 5'h16;
-			5'd19: char_code = 5'h16;
-			5'd20: char_code = 5'h16;
-			5'd21: char_code = 5'h16;
-			default: char_code = 5'h16;
-		endcase
+		// Row 3 - three priority levels:
+		//   VIC hit:   R:vvvv BA DD BB  (v=vicAddr, B=baLoc, A=aec, D=vicDi, B=vicBus)
+		//   Write hit: 0:xxxx D:00 P:xxxx   (write-side $00 frozen)
+		//   Rolling:   W:xxxx D:xx P:xxxx oo (normal rolling capture)
+		if (lat_vic_zero_hit) begin
+			// Badline c-access $00 detected (cpuHasBus=0, real steal)
+			// Format: R:vvvv BA DD SS
+			//   vvvv = vicAddr at VIC0 (pipeline: this data arrives at CPUE)
+			//   B = baLoc (bit 15), A = aec (bit 14)
+			//   DD = vicDi[5:0] at CPUE (bits 13:8)
+			//   SS = systemAddr[7:0] at VIC0 (actual SDRAM addr low byte)
+			case (char_idx)
+				5'd0:  char_code = 5'h17;                            // 'R'
+				5'd1:  char_code = 5'h15;                            // ':'
+				5'd2:  char_code = {1'b0, lat_vic_zero_addr[15:12]};
+				5'd3:  char_code = {1'b0, lat_vic_zero_addr[11:8]};
+				5'd4:  char_code = {1'b0, lat_vic_zero_addr[7:4]};
+				5'd5:  char_code = {1'b0, lat_vic_zero_addr[3:0]};
+				5'd6:  char_code = 5'h16;                            // ' '
+				5'd7:  char_code = {1'b0, 3'b0, lat_vic_zero_cpu[15]}; // baLoc
+				5'd8:  char_code = {1'b0, 3'b0, lat_vic_zero_cpu[14]}; // aec
+				5'd9:  char_code = 5'h16;                            // ' '
+				5'd10: char_code = {1'b0, 2'b0, lat_vic_zero_cpu[13:12]}; // vicDi[5:4]
+				5'd11: char_code = {1'b0, lat_vic_zero_cpu[11:8]};   // vicDi[3:0]
+				5'd12: char_code = 5'h16;                            // ' '
+				5'd13: char_code = {1'b0, lat_vic_zero_cpu[7:4]};    // sysAddr[7:4]
+				5'd14: char_code = {1'b0, lat_vic_zero_cpu[3:0]};    // sysAddr[3:0]
+				5'd15: char_code = 5'h16;
+				5'd16: char_code = 5'h16;
+				5'd17: char_code = 5'h16;
+				5'd18: char_code = 5'h16;
+				5'd19: char_code = 5'h16;
+				5'd20: char_code = 5'h16;
+				5'd21: char_code = 5'h16;
+				default: char_code = 5'h16;
+			endcase
+		end
+		else begin
+			// Write-side or rolling capture
+			case (char_idx)
+				5'd0:  char_code = lat_scr_zero_hit ? 5'h0 : 5'h14; // '0' if frozen, 'W' if rolling
+				5'd1:  char_code = 5'h15;                         // ':'
+				5'd2:  char_code = {1'b0, lat_scr_wr_addr[15:12]};
+				5'd3:  char_code = {1'b0, lat_scr_wr_addr[11:8]};
+				5'd4:  char_code = {1'b0, lat_scr_wr_addr[7:4]};
+				5'd5:  char_code = {1'b0, lat_scr_wr_addr[3:0]};
+				5'd6:  char_code = 5'h16;                         // ' '
+				5'd7:  char_code = 5'hD;                          // 'D'
+				5'd8:  char_code = 5'h15;                         // ':'
+				5'd9:  char_code = {1'b0, lat_scr_wr_data[7:4]};
+				5'd10: char_code = {1'b0, lat_scr_wr_data[3:0]};
+				5'd11: char_code = 5'h16;                         // ' '
+				5'd12: char_code = 5'h11;                         // 'P' (PC at write)
+				5'd13: char_code = 5'h15;                         // ':'
+				5'd14: char_code = {1'b0, lat_scr_wr_pc[15:12]};
+				5'd15: char_code = {1'b0, lat_scr_wr_pc[11:8]};
+				5'd16: char_code = {1'b0, lat_scr_wr_pc[7:4]};
+				5'd17: char_code = {1'b0, lat_scr_wr_pc[3:0]};
+				5'd18: char_code = 5'h16;                         // ' '
+				5'd19: char_code = {1'b0, lat_scr_wr_ir[7:4]};
+				5'd20: char_code = {1'b0, lat_scr_wr_ir[3:0]};
+				5'd21: char_code = 5'h16;
+				default: char_code = 5'h16;
+			endcase
+		end
 	end
 	endcase
 end

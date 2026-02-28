@@ -24,6 +24,7 @@ entity P65C816 is
 		  MLB 		: out std_logic;
 		  VPB 		: out std_logic;
 		  EF_OUT	: out std_logic;
+		  DBG_PC	: out std_logic_vector(15 downto 0);
 		  DBG_SP	: out std_logic_vector(15 downto 0);
 		  DBG_P	: out std_logic_vector(7 downto 0);
 		  DBG_IR	: out std_logic_vector(7 downto 0)
@@ -261,6 +262,7 @@ begin
 	EF <= P(8);
 
 	EF_OUT <= EF;
+	DBG_PC <= PC;
 	DBG_SP <= SP;
 	DBG_P  <= P(7 downto 0);
 	DBG_IR <= IR;

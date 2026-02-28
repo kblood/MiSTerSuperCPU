@@ -1050,8 +1050,13 @@ wire  [7:0] dbg_cpu_ir;
 wire  [7:0] dbg_cia1_pa;
 wire  [7:0] dbg_cia1_pb;
 wire [15:0] dbg_scr_wr_addr;
+wire [15:0] dbg_scr_wr_pc;
 wire  [7:0] dbg_scr_wr_data;
 wire  [7:0] dbg_scr_wr_ir;
+wire        dbg_scr_zero_hit;
+wire        dbg_vic_zero_hit;
+wire [15:0] dbg_vic_zero_addr;
+wire [15:0] dbg_vic_zero_cpu;
 
 fpga64_sid_iec fpga64
 (
@@ -1078,8 +1083,13 @@ fpga64_sid_iec fpga64
 	.dbg_cia1_pa(dbg_cia1_pa),
 	.dbg_cia1_pb(dbg_cia1_pb),
 	.dbg_scr_wr_addr(dbg_scr_wr_addr),
+	.dbg_scr_wr_pc(dbg_scr_wr_pc),
 	.dbg_scr_wr_data(dbg_scr_wr_data),
 	.dbg_scr_wr_ir(dbg_scr_wr_ir),
+	.dbg_scr_zero_hit(dbg_scr_zero_hit),
+	.dbg_vic_zero_hit(dbg_vic_zero_hit),
+	.dbg_vic_zero_addr(dbg_vic_zero_addr),
+	.dbg_vic_zero_cpu(dbg_vic_zero_cpu),
 
 	.ps2_key(key),
 	.kbd_reset((~reset_n & ~status[1]) | reset_keys),
@@ -1444,8 +1454,13 @@ debug_overlay debug_ovl
 	.cia1_pa(dbg_cia1_pa),
 	.cia1_pb(dbg_cia1_pb),
 	.scr_wr_addr(dbg_scr_wr_addr),
+	.scr_wr_pc(dbg_scr_wr_pc),
 	.scr_wr_data(dbg_scr_wr_data),
 	.scr_wr_ir(dbg_scr_wr_ir),
+	.scr_zero_hit(dbg_scr_zero_hit),
+	.vic_zero_hit(dbg_vic_zero_hit),
+	.vic_zero_addr(dbg_vic_zero_addr),
+	.vic_zero_cpu(dbg_vic_zero_cpu),
 	.overlay_active(ovl_active),
 	.overlay_r(ovl_r),
 	.overlay_g(ovl_g),

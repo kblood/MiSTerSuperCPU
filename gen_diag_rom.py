@@ -106,17 +106,24 @@ wb(NMI_ADDR+10, 0x40)                 # RTI
 
 # IRQ/BRK handler for diagnostics:
 # - increments $02 on each entry
-# - captures BRK-pushed bytes from stack
-# - returns via RTI (tests BRK->RTI path directly)
+# - acknowledges CIA1 IRQ flags
+# - conditionally stops Timer A when ZP $04 != 0 (one-shot mode)
+# - captures pushed bytes from stack
+# - returns via RTI
 IRQ_HANDLER = 0xFF00
 wb(IRQ_HANDLER,    0xE6, 0x02)              # INC $02
-wb(IRQ_HANDLER+2,  0xAD, 0xFD, 0x01)        # LDA pushed P
-wb(IRQ_HANDLER+5,  0x8D, 0x43, 0x04)        # STA $0443
-wb(IRQ_HANDLER+8,  0xAD, 0xFE, 0x01)        # LDA pushed PCL
-wb(IRQ_HANDLER+11, 0x8D, 0x40, 0x04)        # STA $0440
-wb(IRQ_HANDLER+14, 0xAD, 0xFF, 0x01)        # LDA pushed PCH
-wb(IRQ_HANDLER+17, 0x8D, 0x41, 0x04)        # STA $0441
-wb(IRQ_HANDLER+20, 0x40)                    # RTI
+wb(IRQ_HANDLER+2,  0xAD, 0x0D, 0xDC)        # LDA $DC0D (ack CIA IRQ flags)
+wb(IRQ_HANDLER+5,  0xA5, 0x04)              # LDA $04 (IRQ mode)
+wb(IRQ_HANDLER+7,  0xF0, 0x05)              # BEQ skip_stop
+wb(IRQ_HANDLER+9,  0xA9, 0x00)              # LDA #$00
+wb(IRQ_HANDLER+11, 0x8D, 0x0E, 0xDC)        # STA $DC0E (stop Timer A)
+wb(IRQ_HANDLER+14, 0xAD, 0xFD, 0x01)        # skip_stop: LDA pushed P
+wb(IRQ_HANDLER+17, 0x8D, 0x43, 0x04)        # STA $0443
+wb(IRQ_HANDLER+20, 0xAD, 0xFE, 0x01)        # LDA pushed PCL
+wb(IRQ_HANDLER+23, 0x8D, 0x40, 0x04)        # STA $0440
+wb(IRQ_HANDLER+26, 0xAD, 0xFF, 0x01)        # LDA pushed PCH
+wb(IRQ_HANDLER+29, 0x8D, 0x41, 0x04)        # STA $0441
+wb(IRQ_HANDLER+32, 0x40)                    # RTI
 
 # Subroutine for test 5 (must not overlap IRQ handler bytes at $FF00-$FF29)
 SUBR_ADDR = 0xFF30
@@ -166,7 +173,7 @@ emit(0xE8)
 emit(0xD0, (cl2 - p - 2) & 0xFF)
 
 # --- Header (explicit ROM signature) ---
-emit_str(0x0400, "ROM V20 ACTIVE", 0xD800, 0x07)
+emit_str(0x0400, "ROM V22 ACTIVE", 0xD800, 0x07)
 
 # === TEST 1: LDA #imm, STA abs, LDA abs, CMP ===
 emit_lda_imm(0x42)
@@ -240,8 +247,8 @@ emit_lda_imm(0x10); emit_sta_abs(0x042D)
 emit_jmp(p + 8)
 emit_lda_imm(0x06); emit_sta_abs(0x042D)
 
-# === Phase 1 complete: "P1 V20" ===
-emit_str(0x0450, "P1 V20")
+# === Phase 1 complete: "P1 V22" ===
+emit_str(0x0450, "P1 V22")
 # Border green = phase 1 pass
 emit_lda_imm(0x05); emit_sta_abs(0xD020)
 
@@ -249,7 +256,7 @@ emit_lda_imm(0x05); emit_sta_abs(0xD020)
 # Place sentinels at multiple locations
 emit_lda_imm(SENTINEL_VAL2); emit_sta_abs(SENTINEL_ADDR2)
 emit_lda_imm(SENTINEL_VAL3); emit_sta_abs(SENTINEL_ADDR3)
-emit_str(0x0478, "V20 HOLD")
+emit_str(0x0478, "V22 HOLD")
 
 # Delay loop: count $00 to $FF in Y, repeat $10 times in X
 # This is ~65536 iterations with SEI active (no IRQs)
@@ -295,7 +302,7 @@ emit_jmp(halt_fail)  # infinite halt
 
 # Hold PASS (orange border = new ROM signature reached hold-pass)
 hold_pass = p
-emit_str(0x0478, "V20 PASS")
+emit_str(0x0478, "V22 PASS")
 emit_lda_imm(0x08); emit_sta_abs(0xD020)  # orange border
 
 # Patch branches
@@ -481,41 +488,157 @@ rom[t8_fail_3] = (t8_fail - t8_fail_3 - 1) & 0xFF
 rom[t8_pass_jmp] = lo(t8_done)
 rom[t8_pass_jmp + 1] = hi(t8_done)
 
-# === HALT HERE to see test 7/8 results before CIA corruption ===
-# Change border to white ($01) to show we reached this point
-emit_lda_imm(0x01); emit_sta_abs(0xD020)
+# === TEST 9: Single hardware IRQ (CIA Timer A) ===
+# Validate hardware IRQ push/return path (separate from BRK).
+emit_lda_imm(0x0E); emit_sta_abs(0xD020)   # light blue: entering test 9
+emit_lda_imm(0x00); emit(0x85, 0x02)       # clear IRQ counter
+emit_lda_imm(0x20); emit_sta_abs(0x0444)   # T9 low-byte class
+emit_lda_imm(0x20); emit_sta_abs(0x0445)   # T9 high-byte class
+emit_lda_imm(0x20); emit_sta_abs(0x0446)   # T9 raw PCL copy
+emit_lda_imm(0x20); emit_sta_abs(0x0447)   # T9 raw PCH copy
+emit_lda_imm(0x01); emit(0x85, 0x04)       # IRQ mode: one-shot stop in handler
+
+# Configure CIA1 Timer A one-shot IRQ
+emit_lda_imm(0x7F); emit_sta_abs(0xDC0D)   # clear/disable CIA IRQ sources
+emit_lda_imm(0x20); emit_sta_abs(0xDC04)   # TA low
+emit_lda_imm(0x00); emit_sta_abs(0xDC05)   # TA high
+emit_lda_imm(0x81); emit_sta_abs(0xDC0D)   # enable TA IRQ
+emit_lda_imm(0x19); emit_sta_abs(0xDC0E)   # force-load + start + one-shot
+emit(0x58)                                  # CLI
+
+# Poll until first IRQ increments $02
+irq_poll = p
+emit(0xA5, 0x02)                            # LDA $02
+emit(0xD0, 0x00)                            # BNE irq_done (patched)
+bne_irq_done = p - 1
+emit(0xEA)                                  # NOP
+emit_jmp(irq_poll)
+irq_done = p
+rom[bne_irq_done] = (irq_done - bne_irq_done - 1) & 0xFF
+emit(0x78)                                  # SEI
+
+# Copy raw pushed bytes for hardware IRQ display
+emit_lda_abs(0x0440); emit_sta_abs(0x0446)
+emit_lda_abs(0x0441); emit_sta_abs(0x0447)
+
+# Low-byte class against expected poll-loop return points:
+# irq_poll+0, +2, +4, +5 => class '0','1','2','3'; else 'X'
+irq_low0 = lo(irq_poll)
+irq_low1 = (irq_low0 + 2) & 0xFF
+irq_low2 = (irq_low0 + 4) & 0xFF
+irq_low3 = (irq_low0 + 5) & 0xFF
+emit_lda_abs(0x0440)
+emit(0xC9, irq_low0); emit(0xF0, 0x00); beq_irq_low0 = p - 1
+emit(0xC9, irq_low1); emit(0xF0, 0x00); beq_irq_low1 = p - 1
+emit(0xC9, irq_low2); emit(0xF0, 0x00); beq_irq_low2 = p - 1
+emit(0xC9, irq_low3); emit(0xF0, 0x00); beq_irq_low3 = p - 1
+emit_lda_imm(0x18)                          # 'X'
+emit(0xD0, 0x00); bne_irq_low_x = p - 1
+irq_low_case0 = p
+emit_lda_imm(0x30)                          # '0'
+emit(0xD0, 0x00); bne_irq_low_s0 = p - 1
+irq_low_case1 = p
+emit_lda_imm(0x31)                          # '1'
+emit(0xD0, 0x00); bne_irq_low_s1 = p - 1
+irq_low_case2 = p
+emit_lda_imm(0x32)                          # '2'
+emit(0xD0, 0x00); bne_irq_low_s2 = p - 1
+irq_low_case3 = p
+emit_lda_imm(0x33)                          # '3'
+irq_low_store = p
+emit_sta_abs(0x0444)
+
+rom[beq_irq_low0] = (irq_low_case0 - beq_irq_low0 - 1) & 0xFF
+rom[beq_irq_low1] = (irq_low_case1 - beq_irq_low1 - 1) & 0xFF
+rom[beq_irq_low2] = (irq_low_case2 - beq_irq_low2 - 1) & 0xFF
+rom[beq_irq_low3] = (irq_low_case3 - beq_irq_low3 - 1) & 0xFF
+rom[bne_irq_low_x] = (irq_low_store - bne_irq_low_x - 1) & 0xFF
+rom[bne_irq_low_s0] = (irq_low_store - bne_irq_low_s0 - 1) & 0xFF
+rom[bne_irq_low_s1] = (irq_low_store - bne_irq_low_s1 - 1) & 0xFF
+rom[bne_irq_low_s2] = (irq_low_store - bne_irq_low_s2 - 1) & 0xFF
+
+# High-byte class: expected = hi(irq_poll) => '0', else 'X'
+emit_lda_abs(0x0441)
+emit(0xC9, hi(irq_poll)); emit(0xF0, 0x00); beq_irq_high0 = p - 1
+emit_lda_imm(0x18)                          # 'X'
+emit(0xD0, 0x00); bne_irq_high_x = p - 1
+irq_high_case0 = p
+emit_lda_imm(0x30)                          # '0'
+irq_high_store = p
+emit_sta_abs(0x0445)
+rom[beq_irq_high0] = (irq_high_case0 - beq_irq_high0 - 1) & 0xFF
+rom[bne_irq_high_x] = (irq_high_store - bne_irq_high_x - 1) & 0xFF
+
+# Test 9 pass criteria: exactly one IRQ, high class '0', low class not 'X'
+emit(0xA5, 0x02)                            # LDA $02
+emit(0xC9, 0x01)                            # CMP #$01
+emit(0xD0, 0x00); t9_fail_1 = p - 1
+emit_lda_abs(0x0445)
+emit(0xC9, 0x30)                            # high class '0'
+emit(0xD0, 0x00); t9_fail_2 = p - 1
+emit_lda_abs(0x0444)
+emit(0xC9, 0x18)                            # low class 'X'
+emit(0xF0, 0x00); t9_fail_3 = p - 1
+emit_lda_imm(0x10); emit_sta_abs(0x0430)    # 'P' for test 9
+emit_jmp(0)
+t9_pass_jmp = p - 2
+t9_fail = p
+emit_lda_imm(0x06); emit_sta_abs(0x0430)    # 'F'
+t9_done = p
+rom[t9_fail_1] = (t9_fail - t9_fail_1 - 1) & 0xFF
+rom[t9_fail_2] = (t9_fail - t9_fail_2 - 1) & 0xFF
+rom[t9_fail_3] = (t9_fail - t9_fail_3 - 1) & 0xFF
+rom[t9_pass_jmp] = lo(t9_done)
+rom[t9_pass_jmp + 1] = hi(t9_done)
+
+# === TEST 10: Continuous hardware IRQ stress ===
+# Run repeated IRQs and verify stack pointer returns to $FF.
+emit_lda_imm(0x0B); emit_sta_abs(0xD020)    # light green: entering test 10
+emit_lda_imm(0x00); emit(0x85, 0x02)        # clear IRQ counter
+emit_lda_imm(0x00); emit(0x85, 0x04)        # IRQ mode: continuous (do not stop)
+emit_lda_imm(0x20); emit_sta_abs(0x0448)    # T10 status marker
+
+# Configure CIA1 Timer A continuous IRQ
+emit_lda_imm(0x7F); emit_sta_abs(0xDC0D)    # clear/disable IRQ sources
+emit_lda_imm(0x80); emit_sta_abs(0xDC04)    # TA low
+emit_lda_imm(0x00); emit_sta_abs(0xDC05)    # TA high
+emit_lda_imm(0x81); emit_sta_abs(0xDC0D)    # enable TA IRQ
+emit_lda_imm(0x11); emit_sta_abs(0xDC0E)    # force-load + start + continuous
+emit(0x58)                                   # CLI
+
+t10_loop = p
+emit(0xBA)                                   # TSX
+emit(0xE0, 0xFF)                             # CPX #$FF
+emit(0xD0, 0x00); t10_sp_fail_branch = p - 1
+emit(0xA5, 0x02)                             # LDA $02
+emit(0xC9, 0x20)                             # CMP #$20
+emit(0xB0, 0x00); t10_done_branch = p - 1    # BCS t10_done
+emit(0xEA)                                   # NOP
+emit_jmp(t10_loop)
+
+t10_sp_fail = p
+emit_lda_imm(0x13); emit_sta_abs(0x0448)     # 'S' stack mismatch
+emit_lda_imm(0x06); emit_sta_abs(0x0431)     # 'F' test 10
+emit(0x78)                                   # SEI
+emit_lda_imm(0x00); emit_sta_abs(0xDC0E)     # stop timer
+emit_jmp(0)
+t10_fail_jmp = p - 2
+
+t10_done = p
+emit(0x78)                                   # SEI
+emit_lda_imm(0x00); emit_sta_abs(0xDC0E)     # stop timer
+emit_lda_imm(0x10); emit_sta_abs(0x0431)     # 'P' test 10
+t10_done_exit = p
+rom[t10_sp_fail_branch] = (t10_sp_fail - t10_sp_fail_branch - 1) & 0xFF
+rom[t10_done_branch] = (t10_done - t10_done_branch - 1) & 0xFF
+rom[t10_fail_jmp] = lo(t10_done_exit)
+rom[t10_fail_jmp + 1] = hi(t10_done_exit)
+
+# Final halt
+emit_lda_imm(0x01); emit_sta_abs(0xD020)    # white border
 emit_str(0x04A0, "ALL DONE")
 halt_all = p
 emit_jmp(halt_all)
-
-# === Phase 2: Enable CIA1 Timer A IRQ (DISABLED - halt above) ===
-emit_lda_imm(0x00); emit(0x85, 0x02)  # counter=0
-emit_str(0x04C8, "P2 IRQ")
-
-# CIA1 Timer A = $4025 (~60Hz at 1MHz)
-emit_lda_imm(0x25); emit_sta_abs(0xDC04)
-emit_lda_imm(0x40); emit_sta_abs(0xDC05)
-emit_lda_imm(0x81); emit_sta_abs(0xDC0D)  # enable TA IRQ
-emit_lda_imm(0x11); emit_sta_abs(0xDC0E)  # start timer
-
-emit(0x58)  # CLI - enable interrupts
-
-# === Main loop: show counter, check integrity, dump stack ===
-main_loop = p
-
-# Show counter at $04F0
-emit(0xA5, 0x02)   # LDA $02
-emit(0x29, 0x0F)   # AND #$0F
-emit(0x09, 0x30)   # ORA #$30
-emit_sta_abs(0x04F0)
-
-# Check sentinel 1
-emit_lda_abs(SENTINEL_ADDR1)
-emit(0xC9, SENTINEL_VAL1)
-emit(0xF0, 0x05)   # BEQ ok1
-emit_lda_imm(0x02); emit_sta_abs(0xD020)  # red border
-
-emit_jmp(main_loop)
 
 print(f"Code ends at ${p:04X} ({p - 0xFC00} bytes used)")
 assert p < 0xFF00, f"Overflow at ${p:04X}!"
