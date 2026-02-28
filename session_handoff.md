@@ -148,6 +148,12 @@ This is a potential issue to investigate if v5 capture doesn't trigger.
    (decouple VIC consume point from shared SDRAM `dout_r` lifetime).
 3. If needed, expose raw `$D0B2` value in diagnostic ROM UI to validate SuperCPU detection path.
 
+## Backlog Note (Future)
+- Consider making SuperCPU kick ROM externally loadable at runtime (similar to System ROM load path)
+  so `scpu64.mif` does not need to be compiled into the core.
+  - Pros: saves BRAM, easier SCPU ROM iteration without full core rebuild.
+  - Cons: requires core-side loader + fallback logic.
+
 ## User Observations About the Artifact
 - Scrolling `@` lines appear on READY screen with SCPU enabled + standard KERNAL ROM
 - Turbo mode does NOT affect the lines (turbo is off by default)

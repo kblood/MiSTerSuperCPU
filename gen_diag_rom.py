@@ -7,6 +7,8 @@ Phase 2: Enable IRQs - checks if screen corrupts with interrupts
 Phase 2S: Stack integrity check - verifies IRQ stack pushes don't go astray
 """
 
+import argparse
+
 rom = bytearray([0xFF] * 65536)
 
 def wb(addr, *data):
@@ -653,7 +655,7 @@ wb(0xFFEE, lo(RTI_ADDR), hi(RTI_ADDR))      # IRQ native
 wb(0xFFE4, lo(RTI_ADDR), hi(RTI_ADDR))      # COP native
 wb(0xFFE6, lo(RTI_ADDR), hi(RTI_ADDR))      # BRK native
 
-# Generate MIF
+# Generate MIF + raw 64KB kick ROM binary
 lines = ['WIDTH=8;', 'DEPTH=65536;', '', 'ADDRESS_RADIX=HEX;',
          'DATA_RADIX=HEX;', '', 'CONTENT BEGIN']
 for i, b in enumerate(rom):
@@ -665,7 +667,34 @@ mif_path = 'C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/roms/scpu64.mif'
 with open(mif_path, 'w') as f:
     f.write('\n'.join(lines))
 
+parser = argparse.ArgumentParser(description="Generate V22 SuperCPU diag ROM artifacts.")
+parser.add_argument(
+    "--update-debug-kernal",
+    action="store_true",
+    help="Also copy V22 kernal into rom_inputs/debug_kernal.bin (default: off).",
+)
+args = parser.parse_args()
+
+bin_path = 'C:/LLM/C64/MiSTerSuperCPU/tools/rom_builder/rom_inputs/scpu_kick.bin'
+with open(bin_path, 'wb') as f:
+    f.write(rom)
+
+# Also emit V22 as a loadable 8KB C64 KERNAL image for debug_system.rom workflow.
+# This is the $E000-$FFFF slice of the same diagnostic ROM.
+kernal_v22_path = 'C:/LLM/C64/MiSTerSuperCPU/tools/rom_builder/rom_inputs/debug_kernal_v22.bin'
+with open(kernal_v22_path, 'wb') as f:
+    f.write(rom[0xE000:0x10000])
+
 print(f"Written: {mif_path}")
+print(f"Written: {bin_path} ({len(rom)} bytes)")
+print(f"Written: {kernal_v22_path} (8192 bytes)")
+if args.update_debug_kernal:
+    debug_kernal_path = 'C:/LLM/C64/MiSTerSuperCPU/tools/rom_builder/rom_inputs/debug_kernal.bin'
+    with open(debug_kernal_path, 'wb') as f:
+        f.write(rom[0xE000:0x10000])
+    print(f"Updated: {debug_kernal_path} (8192 bytes, V22)")
+else:
+    print("Left rom_inputs/debug_kernal.bin unchanged.")
 print(f"RESET=${rom[0xFFFD]:02X}{rom[0xFFFC]:02X}  "
       f"IRQ=${rom[0xFFFF]:02X}{rom[0xFFFE]:02X}  "
       f"NMI=${rom[0xFFFB]:02X}{rom[0xFFFA]:02X}")

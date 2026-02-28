@@ -1,0 +1,20 @@
+{
+  "system_roms": [
+    {
+      "name": "debug_kernal_pack_v22",
+      "basic": "../rom_inputs/basic.bin",
+      "kernal": "../rom_inputs/debug_kernal_v22.bin",
+      "drive1541": "../rom_inputs/dos1541.bin",
+      "output": "../out/debug_system_v22.rom"
+    }
+  ],
+  "supercpu_mifs": [
+    {
+      "name": "scpu_kick_debug_local",
+      "input_bin": "../rom_inputs/scpu_kick.bin",
+      "output_mif": "../../../C64_MiSTer/rtl/roms/scpu64.mif",
+      "depth": 65536,
+      "fill_byte_hex": "FF"
+    }
+  ]
+}
