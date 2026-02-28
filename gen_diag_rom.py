@@ -55,6 +55,26 @@ SENTINEL_VAL2  = 0x05    # 'E' screen code
 SENTINEL_ADDR3 = 0x0600  # below visible screen
 SENTINEL_VAL3  = 0xAA
 
+# RTI fingerprint bytes: chosen so all tested permutations stay in ROM ($E000-$FFFF)
+# Keep P with I=1 to avoid unrelated IRQ re-entry during standalone RTI.
+RTI_SIG_H = 0xE0
+RTI_SIG_L = 0xEC
+RTI_SIG_P = 0xFC
+RTI_SIG_N0 = 0xF0  # stack wrap byte at $0100
+RTI_SIG_N1 = 0xF4  # stack wrap byte at $0101
+
+# (target_address, marker_screen_code)
+RTI_TRAMPOLINES = [
+    ((RTI_SIG_H << 8) | RTI_SIG_L, 0x31),  # expected: H:L
+    ((RTI_SIG_L << 8) | RTI_SIG_H, 0x32),  # swapped: L:H
+    ((RTI_SIG_H << 8) | RTI_SIG_P, 0x33),  # off-by-one: H:P
+    ((RTI_SIG_P << 8) | RTI_SIG_H, 0x34),  # off-by-one: P:H
+    ((RTI_SIG_L << 8) | RTI_SIG_P, 0x35),  # off-by-one: L:P
+    ((RTI_SIG_P << 8) | RTI_SIG_L, 0x36),  # off-by-one: P:L
+    ((RTI_SIG_N0 << 8) | RTI_SIG_H, 0x37), # wrap (+1): N0:H
+    ((RTI_SIG_N1 << 8) | RTI_SIG_N0, 0x38),# wrap (+2): N1:N0
+]
+
 # Screen layout:
 # Row 0: DIAG 816
 # Row 1: PPPPPP (test results) — sentinel at $0428
@@ -66,20 +86,46 @@ SENTINEL_VAL3  = 0xAA
 # Row 7: (stack dump continued)
 # Row 8: (sentinel check display)
 
-# Place handlers at $FF00-$FF40 area (before vectors at $FFFA)
+# Place handlers at $FF00-$FF70 area (before vectors at $FFFA)
 RTI_ADDR = 0xFF40
-wb(RTI_ADDR, 0x40)  # RTI
+# Marker RTI stub at $FF40:
+# if CPU mistakenly returns to $FF40, this writes '9' at $043E and hard-loops.
+wb(RTI_ADDR,   0xA9, 0x02)            # LDA #red
+wb(RTI_ADDR+2, 0x8D, 0x20, 0xD0)      # STA $D020
+wb(RTI_ADDR+5, 0xA9, 0x39)            # LDA #'9'
+wb(RTI_ADDR+7, 0x8D, 0x3E, 0x04)      # STA $043E
+wb(RTI_ADDR+10, 0x4C, lo(RTI_ADDR), hi(RTI_ADDR))  # JMP $FF40
 
-# IRQ handler: acknowledge CIA1, increment counter at $02, RTI
+NMI_ADDR = 0xFF60
+# Dedicated NMI trap (separate from $FF40 return trap) so we can distinguish sources.
+wb(NMI_ADDR,   0xA9, 0x03)            # LDA #cyan
+wb(NMI_ADDR+2, 0x8D, 0x20, 0xD0)      # STA $D020
+wb(NMI_ADDR+5, 0xA9, 0x0E)            # LDA #'N' (screen code)
+wb(NMI_ADDR+7, 0x8D, 0x3D, 0x04)      # STA $043D
+wb(NMI_ADDR+10, 0x40)                 # RTI
+
+# IRQ/BRK handler for diagnostics:
+# - increments $02 on each entry
+# - captures BRK-pushed bytes from stack
+# - returns via RTI (tests BRK->RTI path directly)
 IRQ_HANDLER = 0xFF00
-wb(IRQ_HANDLER,   0xAD, 0x0D, 0xDC)  # LDA $DC0D
-wb(IRQ_HANDLER+3, 0xE6, 0x02)         # INC $02
-wb(IRQ_HANDLER+5, 0x40)               # RTI
+wb(IRQ_HANDLER,    0xE6, 0x02)              # INC $02
+wb(IRQ_HANDLER+2,  0xAD, 0xFD, 0x01)        # LDA pushed P
+wb(IRQ_HANDLER+5,  0x8D, 0x43, 0x04)        # STA $0443
+wb(IRQ_HANDLER+8,  0xAD, 0xFE, 0x01)        # LDA pushed PCL
+wb(IRQ_HANDLER+11, 0x8D, 0x40, 0x04)        # STA $0440
+wb(IRQ_HANDLER+14, 0xAD, 0xFF, 0x01)        # LDA pushed PCH
+wb(IRQ_HANDLER+17, 0x8D, 0x41, 0x04)        # STA $0441
+wb(IRQ_HANDLER+20, 0x40)                    # RTI
 
-# Subroutine for test 5
-SUBR_ADDR = 0xFF20
+# Subroutine for test 5 (must not overlap IRQ handler bytes at $FF00-$FF29)
+SUBR_ADDR = 0xFF30
 wb(SUBR_ADDR,   0xA9, 0x77)  # LDA #$77
 wb(SUBR_ADDR+2, 0x60)        # RTS
+
+# RTI fingerprint trampolines (patched later to jump back into test code)
+for addr, marker in RTI_TRAMPOLINES:
+    wb(addr, 0xA9, marker, 0x85, 0x03, 0x8D, 0x3E, 0x04, 0x4C, 0x00, 0x00)  # LDA #m; STA $03/$043E; JMP ????
 
 # ========================================
 # Main test code at $FC00
@@ -93,8 +139,8 @@ emit(0xA2, 0xFF)   # LDX #$FF
 emit(0x9A)         # TXS
 
 # --- VIC-II setup ---
-emit_lda_imm(0x06); emit_sta_abs(0xD020)  # border=blue
-emit_lda_imm(0x06); emit_sta_abs(0xD021)  # bg=blue
+emit_lda_imm(0x04); emit_sta_abs(0xD020)  # border=purple (ROM signature)
+emit_lda_imm(0x00); emit_sta_abs(0xD021)  # bg=black (ROM signature)
 emit_lda_imm(0x1B); emit_sta_abs(0xD011)  # screen on
 emit_lda_imm(0x08); emit_sta_abs(0xD016)  # 40 cols
 emit_lda_imm(0x14); emit_sta_abs(0xD018)  # screen $0400
@@ -119,8 +165,8 @@ emit(0x9D, 0xE8, 0xDA)
 emit(0xE8)
 emit(0xD0, (cl2 - p - 2) & 0xFF)
 
-# --- Header "DIAG 816" at $0400 ---
-emit_str(0x0400, "DIAG 816", 0xD800, 0x0D)
+# --- Header (explicit ROM signature) ---
+emit_str(0x0400, "ROM V20 ACTIVE", 0xD800, 0x07)
 
 # === TEST 1: LDA #imm, STA abs, LDA abs, CMP ===
 emit_lda_imm(0x42)
@@ -194,8 +240,8 @@ emit_lda_imm(0x10); emit_sta_abs(0x042D)
 emit_jmp(p + 8)
 emit_lda_imm(0x06); emit_sta_abs(0x042D)
 
-# === Phase 1 complete: "P1 OK" ===
-emit_str(0x0450, "P1 OK")
+# === Phase 1 complete: "P1 V20" ===
+emit_str(0x0450, "P1 V20")
 # Border green = phase 1 pass
 emit_lda_imm(0x05); emit_sta_abs(0xD020)
 
@@ -203,7 +249,7 @@ emit_lda_imm(0x05); emit_sta_abs(0xD020)
 # Place sentinels at multiple locations
 emit_lda_imm(SENTINEL_VAL2); emit_sta_abs(SENTINEL_ADDR2)
 emit_lda_imm(SENTINEL_VAL3); emit_sta_abs(SENTINEL_ADDR3)
-emit_str(0x0478, "P1H HOLD")
+emit_str(0x0478, "V20 HOLD")
 
 # Delay loop: count $00 to $FF in Y, repeat $10 times in X
 # This is ~65536 iterations with SEI active (no IRQs)
@@ -215,17 +261,17 @@ hold_inner = p
 emit_lda_abs(SENTINEL_ADDR1)
 emit(0xC9, SENTINEL_VAL1)
 emit(0xD0, 0x1C)   # BNE hold_fail (will be patched)
-hold_fail_branch1 = p - 2  # remember for patching
+hold_fail_branch1 = p - 1  # remember branch offset byte for patching
 # Check sentinel 2
 emit_lda_abs(SENTINEL_ADDR2)
 emit(0xC9, SENTINEL_VAL2)
 emit(0xD0, 0x14)  # BNE hold_fail (will patch)
-hold_fail_branch2 = p - 2
+hold_fail_branch2 = p - 1
 # Check sentinel 3 (non-screen RAM)
 emit_lda_abs(SENTINEL_ADDR3)
 emit(0xC9, SENTINEL_VAL3)
 emit(0xD0, 0x0C)  # BNE hold_fail (will patch)
-hold_fail_branch3 = p - 2
+hold_fail_branch3 = p - 1
 emit(0xC8)  # INY
 emit(0xD0, (hold_inner - p - 2) & 0xFF)  # BNE inner
 emit(0xCA)  # DEX
@@ -247,10 +293,10 @@ emit_sta_abs(0x04CA)  # show raw value of sentinel 3
 halt_fail = p
 emit_jmp(halt_fail)  # infinite halt
 
-# Hold PASS
+# Hold PASS (orange border = new ROM signature reached hold-pass)
 hold_pass = p
-emit_str(0x0478, "P1H PASS")
-emit_lda_imm(0x0D); emit_sta_abs(0xD020)  # light green border
+emit_str(0x0478, "V20 PASS")
+emit_lda_imm(0x08); emit_sta_abs(0xD020)  # orange border
 
 # Patch branches
 rom[hold_fail_branch1] = (hold_fail - hold_fail_branch1 - 1) & 0xFF
@@ -259,67 +305,181 @@ rom[hold_fail_branch3] = (hold_fail - hold_fail_branch3 - 1) & 0xFF
 rom[hold_pass_jmp] = lo(hold_pass)
 rom[hold_pass_jmp + 1] = hi(hold_pass)
 
-# === TEST 7: RTI standalone ===
-# Push known return address + flags to stack, then RTI.
-# This tests if RTI itself works without BRK involvement.
-# Push: PCH=$FC, PCL=$00 (return to $FC00... but we'll use a known landing pad)
-# Push: P=$30 (I=0, no flags)
-# Actually use a landing pad at a known address
+# === TEST 7: RTI fingerprint ===
+# Pre-fill stack bytes directly (no PHA/PHP), execute RTI, and let ROM
+# trampolines report which byte pair became the restored PC.
+emit_lda_imm(0x00); emit(0x85, 0x03)  # clear marker
+emit_lda_imm(0x20); emit_sta_abs(0x043E)  # clear on-screen RTI marker
+emit_lda_imm(0x07); emit_sta_abs(0xD020)  # yellow: entered test 7
+emit_lda_imm(RTI_SIG_N0); emit_sta_abs(0x0100)  # wrap byte +1
+emit_lda_imm(RTI_SIG_N1); emit_sta_abs(0x0101)  # wrap byte +2
+emit_lda_imm(RTI_SIG_P); emit_sta_abs(0x01FD)  # stack P
+emit_lda_imm(RTI_SIG_L); emit_sta_abs(0x01FE)  # stack PCL
+emit_lda_imm(RTI_SIG_H); emit_sta_abs(0x01FF)  # stack PCH
+emit(0xA2, 0xFC); emit(0x9A)  # LDX #$FC / TXS
 
-# Create landing pad: at rti_land, write marker to $03 then JMP past
-rti_land = 0xFE00  # a safe address in ROM area
-wb(rti_land,   0xA9, 0xBB)  # LDA #$BB
-wb(rti_land+2, 0x85, 0x03)  # STA $03
-wb(rti_land+4, 0x4C, 0x00, 0x00)  # JMP (patched later)
-# We'll patch the JMP target after we know where test7_pass is
+# Pre-checks: confirm TXS and stack writes before executing RTI.
+emit(0xBA)            # TSX
+emit(0xE0, 0xFC)      # CPX #$FC
+emit(0xD0, 0x00)      # BNE tsx_fail (patched)
+tsx_fail_branch = p - 1
 
-# Test: push return addr and P, then RTI
-emit_lda_imm(hi(rti_land)); emit(0x48)  # PHA PCH
-emit_lda_imm(lo(rti_land)); emit(0x48)  # PHA PCL
-emit(0x08)              # PHP - push current P
-emit(0x40)              # RTI - should jump to rti_land
-# If RTI fails, we fall through here
-emit_lda_imm(0x06); emit_sta_abs(0x042E)  # 'F' for test 7
-emit_jmp(0)  # JMP to test7_done (patched)
-rti_fail_jmp = p - 2
+emit_lda_abs(0x01FD)
+emit(0xC9, RTI_SIG_P)
+emit(0xD0, 0x00)      # BNE p_fail (patched)
+p_fail_branch = p - 1
 
-# RTI should have jumped to rti_land, which writes $BB to $03
-# and jumps here:
-test7_pass = p
-emit(0xA5, 0x03)       # LDA $03
-emit(0xC9, 0xBB)       # CMP #$BB
-emit(0xD0, 0x07)       # BNE fail
+emit_lda_abs(0x01FE)
+emit(0xC9, RTI_SIG_L)
+emit(0xD0, 0x00)      # BNE l_fail (patched)
+l_fail_branch = p - 1
+
+emit_lda_abs(0x01FF)
+emit(0xC9, RTI_SIG_H)
+emit(0xD0, 0x00)      # BNE h_fail (patched)
+h_fail_branch = p - 1
+
+emit_jmp(0)           # jump over fail handlers (patched)
+precheck_ok_jmp = p - 2
+
+tsx_fail = p
+emit_lda_imm(0x02); emit_sta_abs(0xD020)
+emit_lda_imm(0x18); emit_sta_abs(0x043E)  # 'X' = TXS/SP mismatch
+halt_tsx = p
+emit_jmp(halt_tsx)
+
+p_fail = p
+emit_lda_imm(0x02); emit_sta_abs(0xD020)
+emit_lda_imm(0x01); emit_sta_abs(0x043E)  # 'A' = $01FD mismatch
+halt_p = p
+emit_jmp(halt_p)
+
+l_fail = p
+emit_lda_imm(0x02); emit_sta_abs(0xD020)
+emit_lda_imm(0x02); emit_sta_abs(0x043E)  # 'B' = $01FE mismatch
+halt_l = p
+emit_jmp(halt_l)
+
+h_fail = p
+emit_lda_imm(0x02); emit_sta_abs(0xD020)
+emit_lda_imm(0x03); emit_sta_abs(0x043E)  # 'C' = $01FF mismatch
+halt_h = p
+emit_jmp(halt_h)
+
+rti_execute = p
+rom[precheck_ok_jmp] = lo(rti_execute)
+rom[precheck_ok_jmp + 1] = hi(rti_execute)
+rom[tsx_fail_branch] = (tsx_fail - tsx_fail_branch - 1) & 0xFF
+rom[p_fail_branch] = (p_fail - p_fail_branch - 1) & 0xFF
+rom[l_fail_branch] = (l_fail - l_fail_branch - 1) & 0xFF
+rom[h_fail_branch] = (h_fail - h_fail_branch - 1) & 0xFF
+
+emit(0x40)                            # RTI
+# If RTI somehow falls through, store marker '0'
+emit_lda_imm(0x30); emit(0x85, 0x03)
+
+# Trampolines jump back here
+test7_probe_return = p
+for addr, _marker in RTI_TRAMPOLINES:
+    rom[addr + 8] = lo(test7_probe_return)
+    rom[addr + 9] = hi(test7_probe_return)
+
+emit_lda_imm(0x0E); emit_sta_abs(0xD020)  # light blue: returned from RTI
+emit(0xA5, 0x03)                      # LDA $03 (digit '1'..'6' / '0')
+emit_sta_abs(0x043E)                  # show RTI path marker on screen
+emit(0xC9, 0x31)                      # expected marker = '1' (H:L)
+emit(0xD0, 0x07)                      # BNE fail
 emit_lda_imm(0x10); emit_sta_abs(0x042E)  # 'P' for test 7
 emit_jmp(p + 8)
 emit_lda_imm(0x06); emit_sta_abs(0x042E)  # 'F'
 
-test7_done = p
-# Patch the landing pad JMP and fail JMP
-rom[rti_land+5] = lo(test7_pass)
-rom[rti_land+6] = hi(test7_pass)
-rom[rti_fail_jmp] = lo(test7_done)
-rom[rti_fail_jmp+1] = hi(test7_done)
-
 # === TEST 8: Single BRK ===
 # Do exactly ONE BRK. If we reach the instruction after the signature
 # byte, BRK+RTI works. Show result on screen.
-# First store a marker at $03 to verify handler ran
-emit_lda_imm(0x00); emit(0x85, 0x03)   # clear marker
-emit_lda_imm(0x00); emit(0x85, 0x02)   # clear counter
+# Clear BRK diagnostics region
+emit_lda_imm(0x00); emit(0x85, 0x02)      # clear counter
+emit_lda_imm(0x20); emit_sta_abs(0x043F)  # low-byte class marker
+emit_lda_imm(0x20); emit_sta_abs(0x0440)  # captured pushed PCL (raw)
+emit_lda_imm(0x20); emit_sta_abs(0x0441)  # captured pushed PCH (raw)
+emit_lda_imm(0x20); emit_sta_abs(0x0442)  # high-byte class marker
+emit_lda_imm(0x20); emit_sta_abs(0x0443)  # captured pushed P (raw)
+emit(0xA2, 0xFF); emit(0x9A)              # force SP=$01FF before BRK
 
 # Record where the BRK return should land
 emit(0x00, 0xEA)  # BRK + signature byte ($EA = NOP, just as padding)
 # *** RTI should return HERE ***
 brk_return = p
+# Classify captured BRK low byte at $043F:
+# '0' exact, '1' expected-1, '2' expected+1, '3' expected+2, 'X' other
+emit_lda_abs(0x0440)
+emit(0xC9, lo(brk_return))
+emit(0xF0, 0x00); beq_low_exact = p - 1
+emit(0xC9, (lo(brk_return) - 1) & 0xFF)
+emit(0xF0, 0x00); beq_low_m1 = p - 1
+emit(0xC9, (lo(brk_return) + 1) & 0xFF)
+emit(0xF0, 0x00); beq_low_p1 = p - 1
+emit(0xC9, (lo(brk_return) + 2) & 0xFF)
+emit(0xF0, 0x00); beq_low_p2 = p - 1
+emit_lda_imm(0x18)  # 'X'
+emit(0xD0, 0x00); bne_low_store_x = p - 1
+low_exact = p
+emit_lda_imm(0x30)  # '0'
+emit(0xD0, 0x00); bne_low_store_0 = p - 1
+low_m1 = p
+emit_lda_imm(0x31)  # '1'
+emit(0xD0, 0x00); bne_low_store_1 = p - 1
+low_p1 = p
+emit_lda_imm(0x32)  # '2'
+emit(0xD0, 0x00); bne_low_store_2 = p - 1
+low_p2 = p
+emit_lda_imm(0x33)  # '3'
+low_store = p
+emit_sta_abs(0x043F)
 
-# If we get here, BRK returned correctly!
-# Verify handler ran (counter should be 1)
+# Classify captured BRK high byte at $0442: '0' exact, 'X' other
+emit_lda_abs(0x0441)
+emit(0xC9, hi(brk_return))
+emit(0xF0, 0x00); beq_high_exact = p - 1
+emit_lda_imm(0x18)  # 'X'
+emit(0xD0, 0x00); bne_high_store_x = p - 1
+high_exact = p
+emit_lda_imm(0x30)  # '0'
+high_store = p
+emit_sta_abs(0x0442)
+
+# Patch BRK classification branches
+rom[beq_low_exact] = (low_exact - beq_low_exact - 1) & 0xFF
+rom[beq_low_m1] = (low_m1 - beq_low_m1 - 1) & 0xFF
+rom[beq_low_p1] = (low_p1 - beq_low_p1 - 1) & 0xFF
+rom[beq_low_p2] = (low_p2 - beq_low_p2 - 1) & 0xFF
+rom[bne_low_store_x] = (low_store - bne_low_store_x - 1) & 0xFF
+rom[bne_low_store_0] = (low_store - bne_low_store_0 - 1) & 0xFF
+rom[bne_low_store_1] = (low_store - bne_low_store_1 - 1) & 0xFF
+rom[bne_low_store_2] = (low_store - bne_low_store_2 - 1) & 0xFF
+rom[beq_high_exact] = (high_exact - beq_high_exact - 1) & 0xFF
+rom[bne_high_store_x] = (high_store - bne_high_store_x - 1) & 0xFF
+
+# Test 8 pass criteria: one BRK hit + exact low/high pushed return bytes
 emit(0xA5, 0x02)       # LDA $02
 emit(0xC9, 0x01)       # CMP #$01
-emit(0xD0, 0x07)       # BNE fail
+emit(0xD0, 0x00); t8_fail_1 = p - 1
+emit_lda_abs(0x043F)
+emit(0xC9, 0x30)       # low class '0'
+emit(0xD0, 0x00); t8_fail_2 = p - 1
+emit_lda_abs(0x0442)
+emit(0xC9, 0x30)       # high class '0'
+emit(0xD0, 0x00); t8_fail_3 = p - 1
 emit_lda_imm(0x10); emit_sta_abs(0x042F)  # 'P' for test 8
-emit_jmp(p + 8)
+emit_jmp(0)
+t8_pass_jmp = p - 2
+t8_fail = p
 emit_lda_imm(0x06); emit_sta_abs(0x042F)  # 'F'
+t8_done = p
+rom[t8_fail_1] = (t8_fail - t8_fail_1 - 1) & 0xFF
+rom[t8_fail_2] = (t8_fail - t8_fail_2 - 1) & 0xFF
+rom[t8_fail_3] = (t8_fail - t8_fail_3 - 1) & 0xFF
+rom[t8_pass_jmp] = lo(t8_done)
+rom[t8_pass_jmp + 1] = hi(t8_done)
 
 # === HALT HERE to see test 7/8 results before CIA corruption ===
 # Change border to white ($01) to show we reached this point
@@ -361,11 +521,11 @@ print(f"Code ends at ${p:04X} ({p - 0xFC00} bytes used)")
 assert p < 0xFF00, f"Overflow at ${p:04X}!"
 
 # ---- Vectors ----
-wb(0xFFFA, lo(RTI_ADDR), hi(RTI_ADDR))      # NMI
+wb(0xFFFA, lo(NMI_ADDR), hi(NMI_ADDR))      # NMI
 wb(0xFFFC, 0x00, 0xFA)                       # RESET -> $FA00
 wb(0xFFFE, lo(IRQ_HANDLER), hi(IRQ_HANDLER)) # IRQ
 
-wb(0xFFEA, lo(RTI_ADDR), hi(RTI_ADDR))      # NMI native
+wb(0xFFEA, lo(NMI_ADDR), hi(NMI_ADDR))      # NMI native
 wb(0xFFEE, lo(RTI_ADDR), hi(RTI_ADDR))      # IRQ native
 wb(0xFFE4, lo(RTI_ADDR), hi(RTI_ADDR))      # COP native
 wb(0xFFE6, lo(RTI_ADDR), hi(RTI_ADDR))      # BRK native

@@ -6,6 +6,33 @@ MiSTer C64 core, screen RAM ($0400-$07E7) gets corrupted with scrolling
 lines of repeated characters. This happens with the standard C64 KERNAL
 and with our custom diagnostic ROM.
 
+## Resolution Update (2026-02-28)
+
+Final hardware diagnostics identified and confirmed the primary fault:
+
+1. **RTI microcode regression (root cause)**
+   - An extra RTI stack-read stage was introduced during debugging in
+     `rtl/65C816/MCode.vhd` (`-- 40 RTI` path).
+   - That extra stage broke BRK/IRQ handler return flow in emulation mode.
+   - Reverting RTI to the original microcode sequence restored correct return
+     behavior.
+
+2. **BRK/COP stack push handling**
+   - BRK/COP emulation-mode sequence now uses explicit duplicated PCL write
+     (`PCL->[00:SP]` then `PCL->[00:SP--]`) before pushing `P`.
+   - This aligns with observed stack behavior and passes the final diagnostics.
+
+3. **Diagnostic ROM harness bug fixed**
+   - Test subroutine at `$FF20` overlapped IRQ handler bytes and corrupted
+     debug readouts.
+   - Subroutine moved to `$FF30`, making BRK/RTI markers reliable.
+
+4. **Verification outcome**
+   - V19 diagnostics (BRK handler direct jump bypassing RTI) reached full pass
+     (`8 Ps`, white border), proving BRK pushed bytes were correct.
+   - V20 diagnostics (real RTI path restored) also reached full pass.
+   - Standard C64 ROM boot in the previously failing mode now works again.
+
 ## Diagnostic Results
 
 ### Phase 1 - Instruction Tests: ALL PASS
