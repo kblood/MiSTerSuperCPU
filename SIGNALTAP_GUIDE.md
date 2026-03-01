@@ -15,14 +15,14 @@ signals in real time over USB-Blaster without modifying any I/O pins.
 - Verified cable visibility:
   - `jtagconfig` shows `DE-SoC [USB-1]` and device `5CSEBA6`
 - Compile flow for this repo:
-  - Build with Quartus 22.1 Lite via `build_c64.ps1`
-  - Use Quartus 17 tools for JTAG/SignalTap runtime if preferred
+  - Preferred: Quartus 17 build/runtime on Windows
+  - `build_c64.ps1` supports: `-UseWindowsQuartus`
 
 Quick commands:
 
 ```powershell
 # 1) Compile core with embedded SignalTap
-.\build_c64.ps1
+.\build_c64.ps1 -UseWindowsQuartus
 
 # 2) Program .sof over JTAG (USB-Blaster)
 .\program_sof_jtag.ps1
@@ -192,6 +192,23 @@ Check: What is `turbo_m`? (0 = 1MHz, > 0 = accelerated)
 | "Can't find DE-SoC" | Run `jtagconfig` from Quartus bin directory; should list `DE-SoC [USB-1]` with device `5CSEBA6(..)/SOCVHPS` |
 | "SOF programs but no capture" | Make sure the `.stp` file was saved and project was recompiled with SignalTap enabled |
 | Build fails after adding STP | Check resource usage; reduce sample depth or remove signals to stay under 63% RAM |
+
+### Known failure pattern seen in this repo (March 1, 2026)
+
+- Symptoms:
+  - `Invalid JTAG configuration`
+  - `Instance not found`
+  - many red signal names in SignalTap
+  - exported CSV contains `Flow Summary` instead of sampled signal data
+- Likely cause:
+  - STP/profile drift across edits (`supercpu_debug.stp` vs `supercpu_debug_1.stp`) and stale node mapping.
+  - In one bad state, STP had signals but no active instance section; in another, it had `auto_signaltap_0` metadata not matching current programmed image.
+- Recovery steps:
+  1. Use **one canonical file only**: `C64_MiSTer/supercpu_debug.stp`.
+  2. Remove stale red nodes and re-add from current Node Finder results.
+  3. Save STP, run clean full compile, then reprogram `.sof`.
+  4. Reopen SignalTap and rescan chain.
+  5. Export from SignalTap **Data Log** (must contain signal columns/samples; reject files that start with `Flow Summary`).
 
 ---
 

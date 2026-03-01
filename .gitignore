@@ -25,3 +25,7 @@ C64_MiSTer/sys/pll_audio/pll_audio_0002.ppf
 *.swp
 *~
 .vscode/
+
+# Local scratch/debug tooling artifacts
+.abacusai/tmp/
+C64_MiSTer/signalprobe_qsf.tcl

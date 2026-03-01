@@ -1,5 +1,53 @@
 # Session Handoff — VIC C-Access Pipeline Investigation
 
+## Update — March 1, 2026 (SignalTap Reset Attempt, Unstable)
+
+### What changed in this attempt
+- Build flow was moved back to **Quartus 17-first** behavior.
+- `build_c64.ps1` now supports explicit Windows build mode:
+  - `.\build_c64.ps1 -UseWindowsQuartus`
+- Multiple clean full compiles were run in Quartus 17 and `.sof` was programmed via JTAG.
+
+### SignalTap status at stop point
+- JTAG chain is healthy (`DE-SoC [USB-1]`, device `5CSEBA6` visible).
+- Compile/program succeeds, but SignalTap session became inconsistent due to profile churn:
+  - `supercpu_debug.stp` and `supercpu_debug_1.stp` diverged.
+  - At one point, `supercpu_debug.stp` had no `<instance ...>` section (empty Instance Manager).
+  - At other points, profile carried `auto_signaltap_0` metadata that did not match active image.
+  - GUI showed combinations of:
+    - `Invalid JTAG configuration`
+    - `Instance not found`
+    - red node names (stale/unmapped signals).
+
+### Key pitfall identified
+- Mixing edited profiles and stale post-fit node mappings caused runtime mismatch:
+  - STP instance/signal-set in GUI did not consistently match embedded debug fabric in programmed `.sof`.
+  - Export attempts produced **Flow Summary CSV** (compile report), not SignalTap waveform/data logs.
+
+### Current recommendation before any further SignalTap work
+1. Pause SignalTap-based debugging for now (current state is fragile/noisy).
+2. If resumed later, start from one canonical STP only (`supercpu_debug.stp`) and avoid `_1` variants.
+3. Recreate instance and nodes from current build database, then do one clean compile/program cycle.
+4. Validate export path by confirming CSV contains signal columns/sample rows (not Flow Summary header).
+
+### Non-SignalTap Fallback Debug Plan (Recommended Short-Term)
+1. Keep using on-screen overlay rows 3/4 as primary ground truth (`C:/M/D/P` + `A/P/C/B` fields).
+2. Add one new lightweight overlay field for `last CPU write full address domain` (bank + 16-bit addr) and compare against VIC-hit address in same domain.
+3. Add a temporary sticky counter for `low-bits match but full-match fail` to confirm/deny address-domain mismatch.
+4. Add a compile-time option to latch VIC c-access data into a dedicated hold register and consume from that register at VIC2 (A/B experiment for data-lifetime corruption).
+5. Instrument diagnostic ROM UI with minimal telemetry only:
+   - latest `$0400` write addr/data/bank/PC
+   - optional raw `$D0B2` display for SuperCPU detect-path sanity.
+6. Run ROM mode matrix without SignalTap:
+   - baseline C64 (no SCPU)
+   - SCPU + standard ROM
+   - SCPU + SCPU ROM
+   and record overlay snapshots for each.
+7. Use these pass/fail criteria:
+   - If address-domain mismatch counters rise, fix matcher/address-domain plumbing first.
+   - If address matches but VIC still consumes `$00`, prioritize data hold/lifetime mitigation path.
+   - If behavior is ROM/workload-sensitive only, prioritize ROM-path timing stress reduction and write-provenance instrumentation.
+
 ## Update — March 1, 2026 (Latest)
 
 ### Confirmed behavior from hardware overlay
