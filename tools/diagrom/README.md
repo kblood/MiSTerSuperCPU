@@ -64,6 +64,13 @@ python .\gen_diag_rom.py
 
 This keeps `rom_inputs/debug_kernal.bin` unchanged and writes V22 KERNAL separately:
 - `tools/rom_builder/rom_inputs/debug_kernal_v22.bin`
+- `C64_MiSTer/rtl/roms/scpu64.mif` is also left unchanged by default.
+
+If you explicitly want to overwrite `scpu64.mif` from V22 output:
+
+```powershell
+python .\gen_diag_rom.py --update-scpu-mif
+```
 
 Build a separate loadable V22 system ROM (without replacing your main debug ROM):
 
@@ -74,6 +81,14 @@ Build a separate loadable V22 system ROM (without replacing your main debug ROM)
 
 Output:
 - `tools/rom_builder/out/debug_system_v22.rom`
+
+Deploy V22 separately (example):
+
+```powershell
+.\tools\rom_builder\deploy_to_mister.ps1 `
+  -LocalFile .\tools\rom_builder\out\debug_system_v22.rom `
+  -RemotePath '/media/usb0/Games/C64/C64 Kernals/debug_system_v22.rom'
+```
 
 If you want to rebuild `scpu64.mif` from `scpu_kick.bin` via the ROM builder:
 

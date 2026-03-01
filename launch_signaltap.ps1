@@ -5,15 +5,21 @@
 #
 # Usage:  .\launch_signaltap.ps1
 
-$QBin   = "C:\altera_standard\25.1std\quartus\bin64"
-$StpFile = "C:\LLM\C64\MiSTerSuperCPU\C64_MiSTer\rtl\supercpu_debug.stp"
+$QBin    = "C:\intelFPGA_lite\17.0\quartus\bin64"
+$StpFile = "C:\LLM\C64\MiSTerSuperCPU\C64_MiSTer\supercpu_debug.stp"
 $SofFile = "C:\LLM\C64\MiSTerSuperCPU\C64_MiSTer\output_files\C64.sof"
 
 $stpw = Join-Path $QBin "quartus_stpw.exe"
+$jtag = Join-Path $QBin "jtagconfig.exe"
 
 if (-not (Test-Path $stpw)) {
     Write-Error "quartus_stpw.exe not found at $QBin"
     exit 1
+}
+
+if (Test-Path $jtag) {
+    Write-Host "JTAG chain:" -ForegroundColor Cyan
+    & $jtag
 }
 
 if (Test-Path $StpFile) {

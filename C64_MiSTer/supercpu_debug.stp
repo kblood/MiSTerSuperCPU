@@ -1,4 +1,4 @@
-<SIGNALTAP_FILE version="1.0" written_by="quartus_stp" QUARTUS_VERSION="22.1">
+<SIGNALTAP_FILE version="1.0" written_by="quartus_stp" QUARTUS_VERSION="17.0">
 <NODE_INFO>
 <INSTANCE_ID>0</INSTANCE_ID>
 <INSTANCE_ALIAS>supercpu_debug</INSTANCE_ALIAS>
@@ -10,8 +10,8 @@
 <SIGNAL_SETS>
 <SIGNAL_SET>
 <EXPAND_STATUS>EXPANDED</EXPAND_STATUS>
-<ACQ_DATA_IN_BITS>2048</ACQ_DATA_IN_BITS>
-<ACQ_DATA_BITS>2048</ACQ_DATA_BITS>
+<ACQ_DATA_IN_BITS>4096</ACQ_DATA_IN_BITS>
+<ACQ_DATA_BITS>4096</ACQ_DATA_BITS>
 <ACQ_WIN_NOT_RUN_FLAG>1</ACQ_WIN_NOT_RUN_FLAG>
 <ACQ_POWER_UP_TRIGGER_FLAG>0</ACQ_POWER_UP_TRIGGER_FLAG>
 <ACQ_COUNT>0</ACQ_COUNT>
@@ -36,7 +36,7 @@
 <TERMS>
 <TERM>
 <TERM_TYPE>SIMPLE</TERM_TYPE>
-<SIGNAL>emu:emu|fpga64_sid_iec:fpga64|enableCpu_816</SIGNAL>
+<SIGNAL>emu:emu|fpga64_sid_iec:fpga64|dbg_vic_zero_hit_r</SIGNAL>
 <OP>==</OP>
 <VAL>1</VAL>
 </TERM>
@@ -44,58 +44,145 @@
 </TRIGGER_CONDITION>
 </TRIGGER>
 <SIGNALS>
-<!-- CPU enable / active signal -->
+<!-- Trigger: first VIC-side $00 hit in screen c-access path -->
 <SIGNAL>
-<NAME>emu:emu|fpga64_sid_iec:fpga64|enableCpu_816</NAME>
-<ALIAS>enableCpu_816</ALIAS>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|dbg_vic_zero_hit_r</NAME>
+<ALIAS>vic_zero_hit</ALIAS>
 <IS_TRIGGER>1</IS_TRIGGER>
 </SIGNAL>
-<!-- 65C816 address bus (16-bit lower word) -->
+<!-- Core execution context -->
 <SIGNAL>
 <NAME>emu:emu|fpga64_sid_iec:fpga64|cpuAddr_816[15..0]</NAME>
 <ALIAS>cpuAddr_816</ALIAS>
 <IS_TRIGGER>0</IS_TRIGGER>
 </SIGNAL>
-<!-- Bank byte (PBR - A23:16) -->
 <SIGNAL>
 <NAME>emu:emu|fpga64_sid_iec:fpga64|addr_hi_816[7..0]</NAME>
-<ALIAS>addr_hi_816_bank</ALIAS>
+<ALIAS>cpu_bank</ALIAS>
 <IS_TRIGGER>0</IS_TRIGGER>
 </SIGNAL>
-<!-- Emulation mode flag -->
 <SIGNAL>
 <NAME>emu:emu|fpga64_sid_iec:fpga64|emu_mode_816</NAME>
 <ALIAS>emu_mode</ALIAS>
 <IS_TRIGGER>0</IS_TRIGGER>
 </SIGNAL>
-<!-- Data to CPU (what the CPU is reading) -->
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|dbg_pc_816[15..0]</NAME>
+<ALIAS>pc_816</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|dbg_ir_816[7..0]</NAME>
+<ALIAS>ir_816</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|cpuDo_816[7..0]</NAME>
+<ALIAS>cpuDo_816</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
 <SIGNAL>
 <NAME>emu:emu|fpga64_sid_iec:fpga64|cpuDi[7..0]</NAME>
 <ALIAS>cpuDi</ALIAS>
 <IS_TRIGGER>0</IS_TRIGGER>
 </SIGNAL>
-<!-- CPU write enable -->
 <SIGNAL>
 <NAME>emu:emu|fpga64_sid_iec:fpga64|cpuWe_816</NAME>
-<ALIAS>cpuWe</ALIAS>
+<ALIAS>cpuWe_816</ALIAS>
 <IS_TRIGGER>0</IS_TRIGGER>
 </SIGNAL>
-<!-- SuperCPU ROM visibility register -->
 <SIGNAL>
-<NAME>emu:emu|fpga64_sid_iec:fpga64|scpu_rom_vis</NAME>
-<ALIAS>scpu_rom_vis</ALIAS>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|enableCpu_816</NAME>
+<ALIAS>enableCpu_816</ALIAS>
 <IS_TRIGGER>0</IS_TRIGGER>
 </SIGNAL>
-<!-- Reset signal -->
+<!-- Screen write capture -->
 <SIGNAL>
-<NAME>emu:emu|fpga64_sid_iec:fpga64|reset</NAME>
-<ALIAS>reset</ALIAS>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|dbg_scr_wr_addr_r[15..0]</NAME>
+<ALIAS>scr_wr_addr</ALIAS>
 <IS_TRIGGER>0</IS_TRIGGER>
 </SIGNAL>
-<!-- supercpu_en -->
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|dbg_scr_wr_data_r[7..0]</NAME>
+<ALIAS>scr_wr_data</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|dbg_scr_wr_pc_r[15..0]</NAME>
+<ALIAS>scr_wr_pc</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|dbg_scr_wr_bank_r[7..0]</NAME>
+<ALIAS>scr_wr_bank</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|dbg_scr_wr_arm_r</NAME>
+<ALIAS>scr_arm</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<!-- VIC-side c-access pipeline -->
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|vic_ca_addr_lat[15..0]</NAME>
+<ALIAS>vic_ca_addr</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|vic_ca_data_lat[7..0]</NAME>
+<ALIAS>vic_ca_data</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|vic_ca_pending</NAME>
+<ALIAS>vic_ca_pending</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|vic_ca_data_valid</NAME>
+<ALIAS>vic_ca_data_valid</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|vicDi_hold_or_live[7..0]</NAME>
+<ALIAS>vicDi_hold_or_live</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<!-- Match/provenance and counters -->
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|dbg_vic_zero_addr_r[15..0]</NAME>
+<ALIAS>vic_zero_addr</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|dbg_vic_wr_match_r</NAME>
+<ALIAS>vic_wr_match</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|dbg_vic_wr_pc_r[15..0]</NAME>
+<ALIAS>vic_wr_pc</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|dbg_vic_prearm_cnt_r[7..0]</NAME>
+<ALIAS>vic_prearm_cnt</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|dbg_vic_hit_cnt_r[7..0]</NAME>
+<ALIAS>vic_hit_cnt</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<!-- Global mode signals -->
 <SIGNAL>
 <NAME>emu:emu|fpga64_sid_iec:fpga64|supercpu_en</NAME>
 <ALIAS>supercpu_en</ALIAS>
+<IS_TRIGGER>0</IS_TRIGGER>
+</SIGNAL>
+<SIGNAL>
+<NAME>emu:emu|fpga64_sid_iec:fpga64|scpu_rom_vis</NAME>
+<ALIAS>scpu_rom_vis</ALIAS>
 <IS_TRIGGER>0</IS_TRIGGER>
 </SIGNAL>
 </SIGNALS>

@@ -1,0 +1,1175 @@
+=== Checking prerequisites ===
+  WSL: OK
+  Detecting Quartus installation in WSL...
+  Quartus: /home/caldor/intelFPGA_lite/22.1std.1/quartus/bin
+  Version 22.1std.1 Build 917 02/14/2023 SC Lite Edition
+  Quartus major version: 22
+
+  Core directory exists: C:\LLM\C64\MiSTerSuperCPU\C64_MiSTer
+  PLL file exists: sys\pll_q22.qip
+
+=== Running syntax check (analysis & elaboration only) ===
+  Working directory: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer
+  Command: quartus_sh --flow analysis_and_elaboration C64
+
+/home/caldor/intelFPGA_lite/22.1std.1/quartus/adm/qenv.sh: line 83: warning: setlocale: LC_CTYPE: cannot change locale (en_US.UTF-8): No such file or directory
+Info: *******************************************************************
+Info: Running Quartus Prime Shell
+    Info: Version 22.1std.1 Build 917 02/14/2023 SC Lite Edition
+    Info: Copyright (C) 2023  Intel Corporation. All rights reserved.
+    Info: Your use of Intel Corporation's design tools, logic functions 
+    Info: and other software and tools, and any partner logic 
+    Info: functions, and any output files from any of the foregoing 
+    Info: (including device programming or simulation files), and any 
+    Info: associated documentation or information are expressly subject 
+    Info: to the terms and conditions of the Intel Program License 
+    Info: Subscription Agreement, the Intel Quartus Prime License Agreement,
+    Info: the Intel FPGA IP License Agreement, or other applicable license
+    Info: agreement, including, without limitation, that your use is for
+    Info: the sole purpose of programming logic devices manufactured by
+    Info: Intel and sold by Intel or its authorized distributors.  Please
+    Info: refer to the applicable agreement for further details, at
+    Info: https://fpgasoftware.intel.com/eula.
+    Info: Processing started: Fri Feb 27 07:30:50 2026
+Info: Command: quartus_sh --flow analysis_and_elaboration C64
+Info: Quartus(args): analysis_and_elaboration C64
+Info: Project Name = /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/C64
+Info: Revision Name = C64
+Info: *******************************************************************
+Info: Running Quartus Prime Analysis & Elaboration
+    Info: Version 22.1std.1 Build 917 02/14/2023 SC Lite Edition
+    Info: Processing started: Fri Feb 27 07:30:52 2026
+Info: Command: quartus_map --read_settings_files=on --write_settings_files=off C64 -c C64 --analysis_and_elaboration
+Info (16303): High Performance Effort optimization mode selected -- timing performance will be prioritized at the potential cost of increased compilation time
+Info (20030): Parallel compilation is enabled and will use 16 of the 32 processors detected
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/pll.v
+    Info (12023): Found entity 1: pll File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/pll.v Line: 8
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/pll/pll_0002.v
+    Info (12023): Found entity 1: pll_0002 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/pll/pll_0002.v Line: 2
+Info (12021): Found 1 design units, including 1 entities, in source file sys/pll_hdmi.v
+    Info (12023): Found entity 1: pll_hdmi File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_hdmi.v Line: 8
+Info (12021): Found 1 design units, including 1 entities, in source file sys/pll_hdmi/pll_hdmi_0002.v
+    Info (12023): Found entity 1: pll_hdmi_0002 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_hdmi/pll_hdmi_0002.v Line: 2
+Info (12021): Found 1 design units, including 1 entities, in source file sys/pll_audio.v
+    Info (12023): Found entity 1: pll_audio File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_audio.v Line: 8
+Info (12021): Found 1 design units, including 1 entities, in source file sys/pll_audio/pll_audio_0002.v
+    Info (12023): Found entity 1: pll_audio_0002 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_audio/pll_audio_0002.v Line: 2
+Info (12021): Found 1 design units, including 1 entities, in source file sys/pll_cfg/pll_cfg.v
+    Info (12023): Found entity 1: pll_cfg File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/pll_cfg.v Line: 8
+Info (12021): Found 1 design units, including 1 entities, in source file sys/pll_cfg/pll_cfg_hdmi.v
+    Info (12023): Found entity 1: pll_cfg_hdmi File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/pll_cfg_hdmi.v Line: 16
+Info (12021): Found 1 design units, including 1 entities, in source file sys/pll_cfg/altera_pll_reconfig_top.v
+    Info (12023): Found entity 1: altera_pll_reconfig_top File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/altera_pll_reconfig_top.v Line: 16
+Info (12021): Found 3 design units, including 3 entities, in source file sys/sys_top.v
+    Info (12023): Found entity 1: sys_top File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 22
+    Info (12023): Found entity 2: sync_fix File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1870
+    Info (12023): Found entity 3: csync File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1902
+Info (12021): Found 2 design units, including 1 entities, in source file sys/ascal.vhd
+    Info (12022): Found design unit 1: ascal-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/ascal.vhd Line: 269
+    Info (12023): Found entity 1: ascal File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/ascal.vhd Line: 114
+Info (12021): Found 2 design units, including 1 entities, in source file sys/pll_hdmi_adj.vhd
+    Info (12022): Found design unit 1: pll_hdmi_adj-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_hdmi_adj.vhd Line: 53
+    Info (12023): Found entity 1: pll_hdmi_adj File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_hdmi_adj.vhd Line: 21
+Info (12021): Found 3 design units, including 3 entities, in source file sys/math.sv
+    Info (12023): Found entity 1: sys_udiv File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/math.sv Line: 3
+    Info (12023): Found entity 2: sys_umul File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/math.sv Line: 46
+    Info (12023): Found entity 3: sys_umuldiv File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/math.sv Line: 85
+Info (12021): Found 5 design units, including 5 entities, in source file sys/hq2x.sv
+    Info (12023): Found entity 1: Hq2x File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hq2x.sv Line: 13
+    Info (12023): Found entity 2: hq2x_in File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hq2x.sv Line: 226
+    Info (12023): Found entity 3: hq2x_buf File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hq2x.sv Line: 250
+    Info (12023): Found entity 4: DiffCheck File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hq2x.sv Line: 271
+    Info (12023): Found entity 5: Blend File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hq2x.sv Line: 298
+Info (12021): Found 1 design units, including 1 entities, in source file sys/scandoubler.v
+    Info (12023): Found entity 1: scandoubler File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/scandoubler.v Line: 22
+Info (12021): Found 1 design units, including 1 entities, in source file sys/scanlines.v
+    Info (12023): Found entity 1: scanlines File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/scanlines.v Line: 1
+Info (12021): Found 1 design units, including 1 entities, in source file sys/shadowmask.sv
+    Info (12023): Found entity 1: shadowmask File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/shadowmask.sv Line: 1
+Info (12021): Found 2 design units, including 2 entities, in source file sys/video_cleaner.sv
+    Info (12023): Found entity 1: video_cleaner File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_cleaner.sv Line: 12
+    Info (12023): Found entity 2: s_fix File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_cleaner.sv Line: 81
+Info (12021): Found 2 design units, including 2 entities, in source file sys/gamma_corr.sv
+    Info (12023): Found entity 1: gamma_corr File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/gamma_corr.sv Line: 1
+    Info (12023): Found entity 2: gamma_fast File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/gamma_corr.sv Line: 62
+Info (12021): Found 1 design units, including 1 entities, in source file sys/video_mixer.sv
+    Info (12023): Found entity 1: video_mixer File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_mixer.sv Line: 19
+Info (12021): Found 2 design units, including 2 entities, in source file sys/video_freak.sv
+    Info (12023): Found entity 1: video_freak File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_freak.sv Line: 16
+    Info (12023): Found entity 2: video_scale_int File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_freak.sv Line: 141
+Info (12021): Found 2 design units, including 2 entities, in source file sys/video_freezer.sv
+    Info (12023): Found entity 1: video_freezer File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_freezer.sv Line: 21
+    Info (12023): Found entity 2: sync_lock File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_freezer.sv Line: 80
+Info (12021): Found 2 design units, including 2 entities, in source file sys/arcade_video.v
+    Info (12023): Found entity 1: arcade_video File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/arcade_video.v Line: 29
+    Info (12023): Found entity 2: screen_rotate File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/arcade_video.v Line: 168
+Info (12021): Found 1 design units, including 1 entities, in source file sys/osd.v
+    Info (12023): Found entity 1: osd File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/osd.v Line: 4
+Info (12021): Found 1 design units, including 1 entities, in source file sys/vga_out.sv
+    Info (12023): Found entity 1: vga_out File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/vga_out.sv Line: 2
+Info (12021): Found 1 design units, including 1 entities, in source file sys/yc_out.sv
+    Info (12023): Found entity 1: yc_out File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/yc_out.sv Line: 28
+Info (12021): Found 1 design units, including 1 entities, in source file sys/i2c.v
+    Info (12023): Found entity 1: i2c File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/i2c.v Line: 2
+Info (12021): Found 1 design units, including 1 entities, in source file sys/alsa.sv
+    Info (12023): Found entity 1: alsa File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/alsa.sv Line: 22
+Info (12021): Found 1 design units, including 1 entities, in source file sys/i2s.v
+    Info (12023): Found entity 1: i2s File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/i2s.v Line: 2
+Info (12021): Found 1 design units, including 1 entities, in source file sys/spdif.v
+    Info (12023): Found entity 1: spdif File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/spdif.v Line: 33
+Info (12021): Found 2 design units, including 2 entities, in source file sys/audio_out.v
+    Info (12023): Found entity 1: audio_out File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/audio_out.v Line: 2
+    Info (12023): Found entity 2: aud_mix_top File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/audio_out.v Line: 258
+Info (12021): Found 3 design units, including 3 entities, in source file sys/iir_filter.v
+    Info (12023): Found entity 1: IIR_filter File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/iir_filter.v Line: 22
+    Info (12023): Found entity 2: iir_filter_tap File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/iir_filter.v Line: 148
+    Info (12023): Found entity 3: DC_blocker File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/iir_filter.v Line: 189
+Info (12021): Found 2 design units, including 2 entities, in source file sys/ltc2308.sv
+    Info (12023): Found entity 1: ltc2308 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/ltc2308.sv Line: 28
+    Info (12023): Found entity 2: ltc2308_tape File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/ltc2308.sv Line: 105
+Info (12021): Found 1 design units, including 1 entities, in source file sys/sigma_delta_dac.v
+    Info (12023): Found entity 1: sigma_delta_dac File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sigma_delta_dac.v Line: 6
+Info (12021): Found 1 design units, including 1 entities, in source file sys/mt32pi.sv
+    Info (12023): Found entity 1: mt32pi File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/mt32pi.sv Line: 8
+Info (12021): Found 1 design units, including 1 entities, in source file sys/mcp23009.sv
+    Info (12023): Found entity 1: mcp23009 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/mcp23009.sv Line: 5
+Info (12021): Found 1 design units, including 1 entities, in source file sys/f2sdram_safe_terminator.sv
+    Info (12023): Found entity 1: f2sdram_safe_terminator File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/f2sdram_safe_terminator.sv Line: 55
+Info (12021): Found 1 design units, including 1 entities, in source file sys/ddr_svc.sv
+    Info (12023): Found entity 1: ddr_svc File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/ddr_svc.sv Line: 23
+Info (12021): Found 2 design units, including 2 entities, in source file sys/sysmem.sv
+    Info (12023): Found entity 1: sysmem_lite File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sysmem.sv Line: 2
+    Info (12023): Found entity 2: sysmem_HPS_fpga_interfaces File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sysmem.sv Line: 241
+Info (12021): Found 1 design units, including 1 entities, in source file sys/sd_card.sv
+    Info (12023): Found entity 1: sd_card File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sd_card.sv Line: 28
+Info (12021): Found 4 design units, including 4 entities, in source file sys/hps_io.sv
+    Info (12023): Found entity 1: hps_io File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hps_io.sv Line: 30
+    Info (12023): Found entity 2: ps2_device File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hps_io.sv Line: 716
+    Info (12023): Found entity 3: video_calc File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hps_io.sv Line: 859
+    Info (12023): Found entity 4: confstr_rom File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hps_io.sv Line: 1027
+Info (12021): Found 2 design units, including 0 entities, in source file rtl/65C816/P65816_pkg.vhd
+    Info (12022): Found design unit 1: P65816_pkg File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/P65816_pkg.vhd Line: 5
+    Info (12022): Found design unit 2: P65816_pkg-body File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/P65816_pkg.vhd Line: 57
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/65C816/AddrGen.vhd
+    Info (12022): Found design unit 1: AddrGen-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/AddrGen.vhd Line: 35
+    Info (12023): Found entity 1: AddrGen File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/AddrGen.vhd Line: 7
+Info (12021): Found 6 design units, including 3 entities, in source file rtl/65C816/BCDAdder.vhd
+    Info (12022): Found design unit 1: bit_adder-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/BCDAdder.vhd Line: 17
+    Info (12022): Found design unit 2: adder4-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/BCDAdder.vhd Line: 51
+    Info (12022): Found design unit 3: BCDAdder-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/BCDAdder.vhd Line: 96
+    Info (12023): Found entity 1: bit_adder File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/BCDAdder.vhd Line: 7
+    Info (12023): Found entity 2: adder4 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/BCDAdder.vhd Line: 41
+    Info (12023): Found entity 3: BCDAdder File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/BCDAdder.vhd Line: 81
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/65C816/AddSubBCD.vhd
+    Info (12022): Found design unit 1: AddSubBCD-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/AddSubBCD.vhd Line: 21
+    Info (12023): Found entity 1: AddSubBCD File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/AddSubBCD.vhd Line: 7
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/65C816/ALU.vhd
+    Info (12022): Found design unit 1: ALU-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/ALU.vhd Line: 26
+    Info (12023): Found entity 1: ALU File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/ALU.vhd Line: 7
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/65C816/MCode.vhd
+    Info (12022): Found design unit 1: MCode-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/MCode.vhd Line: 18
+    Info (12023): Found entity 1: MCode File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/MCode.vhd Line: 7
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/65C816/P65C816.vhd
+    Info (12022): Found design unit 1: P65C816-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/P65C816.vhd Line: 33
+    Info (12023): Found entity 1: P65C816 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/P65C816.vhd Line: 7
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/cpu_65c816.vhd
+    Info (12022): Found design unit 1: cpu_65c816-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/cpu_65c816.vhd Line: 50
+    Info (12023): Found entity 1: cpu_65c816 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/cpu_65c816.vhd Line: 17
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/debug_overlay.sv
+    Info (12023): Found entity 1: debug_overlay File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug_overlay.sv Line: 13
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/sid/sid_top.sv
+    Info (12023): Found entity 1: sid_top File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_top.sv Line: 2
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/sid/sid_voice.sv
+    Info (12023): Found entity 1: sid_voice File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_voice.sv Line: 3
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/sid/sid_tables.sv
+    Info (12023): Found entity 1: sid_tables File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_tables.sv Line: 2
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/sid/sid_filter.sv
+    Info (12023): Found entity 1: sid_filter File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_filter.sv Line: 20
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/sid/sid_envelope.sv
+    Info (12023): Found entity 1: sid_envelope File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_envelope.sv Line: 2
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/sid/sid_dac.sv
+    Info (12023): Found entity 1: sid_dac File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_dac.sv Line: 47
+Info (12021): Found 2 design units, including 2 entities, in source file rtl/opl3/opl3.sv
+    Info (12023): Found entity 1: opl3 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3.sv Line: 27
+    Info (12023): Found entity 2: timer File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3.sv Line: 150
+Info (12021): Found 3 design units, including 3 entities, in source file rtl/opl3/opl3fm.sv
+    Info (12023): Found entity 1: opl3sw File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3fm.sv Line: 52
+    Info (12023): Found entity 2: opl3_mem File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3fm.sv Line: 189
+    Info (12023): Found entity 3: opl3_fifo File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3fm.sv Line: 227
+Info (12021): Found 2 design units, including 2 entities, in source file rtl/opl3/opl3seq.sv
+    Info (12023): Found entity 1: opl3seq File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3seq.sv Line: 72
+    Info (12023): Found entity 2: sampler File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3seq.sv Line: 462
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/opl3/compressor.sv
+    Info (12023): Found entity 1: compressor File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/compressor.sv Line: 21
+Info (12021): Found 2 design units, including 2 entities, in source file rtl/opl3/NextZ80Reg.v
+    Info (12023): Found entity 1: Z80Reg File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/NextZ80Reg.v Line: 45
+    Info (12023): Found entity 2: RegSelect File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/NextZ80Reg.v Line: 147
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/opl3/NextZ80CPU.v
+    Info (12023): Found entity 1: NextZ80 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/NextZ80CPU.v Line: 67
+Info (12021): Found 3 design units, including 3 entities, in source file rtl/opl3/NextZ80ALU.v
+    Info (12023): Found entity 1: ALU8 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/NextZ80ALU.v Line: 86
+    Info (12023): Found entity 2: daa File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/NextZ80ALU.v Line: 317
+    Info (12023): Found entity 3: ALU16 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/NextZ80ALU.v Line: 351
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/iec_drive/iec_drive.sv
+    Info (12023): Found entity 1: iec_drive File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/iec_drive.sv Line: 8
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/iec_drive/c1541_multi.sv
+    Info (12023): Found entity 1: c1541_multi File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_multi.sv Line: 11
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/iec_drive/c1541_drv.sv
+    Info (12023): Found entity 1: c1541_drv File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_drv.sv Line: 20
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/iec_drive/c1541_gcr.sv
+    Info (12023): Found entity 1: c1541_gcr File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_gcr.sv Line: 16
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/iec_drive/c1541_direct_gcr.sv
+    Info (12023): Found entity 1: c1541_direct_gcr File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_direct_gcr.sv Line: 15
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/iec_drive/c1541_track.sv
+    Info (12023): Found entity 1: c1541_track File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_track.sv Line: 21
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/iec_drive/c1541_logic.sv
+    Info (12023): Found entity 1: c1541_logic File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_logic.sv Line: 10
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/iec_drive/c1581_multi.sv
+    Info (12023): Found entity 1: c1581_multi File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1581_multi.sv Line: 11
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/iec_drive/c1581_drv.sv
+    Info (12023): Found entity 1: c1581_drv File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1581_drv.sv Line: 10
+Info (12021): Found 2 design units, including 2 entities, in source file rtl/iec_drive/fdc1772.v
+    Info (12023): Found entity 1: fdc1772 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 24
+    Info (12023): Found entity 2: fdc1772_dpram File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 1043
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/iec_drive/floppy.v
+    Info (12023): Found entity 1: floppy File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/floppy.v Line: 20
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/iec_drive/iecdrv_via6522.vhd
+    Info (12022): Found design unit 1: iecdrv_via6522-Gideon File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/iecdrv_via6522.vhd Line: 62
+    Info (12023): Found entity 1: iecdrv_via6522 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/iecdrv_via6522.vhd Line: 19
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/iec_drive/iecdrv_mos8520.v
+    Info (12023): Found entity 1: iecdrv_mos8520 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/iecdrv_mos8520.v Line: 9
+Info (12021): Found 3 design units, including 3 entities, in source file rtl/iec_drive/iecdrv_misc.sv
+    Info (12023): Found entity 1: iecdrv_sync File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/iecdrv_misc.sv Line: 2
+    Info (12023): Found entity 2: iecdrv_mem File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/iecdrv_misc.sv Line: 20
+    Info (12023): Found entity 3: iecdrv_bitmem File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/iecdrv_misc.sv Line: 71
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/iec_drive/lfsr.v
+    Info (12023): Found entity 1: random File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/lfsr.v Line: 1
+Info (12021): Found 2 design units, including 0 entities, in source file rtl/t65/T65_Pack.vhd
+    Info (12022): Found design unit 1: T65_Pack File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/t65/T65_Pack.vhd Line: 55
+    Info (12022): Found design unit 2: T65_Pack-body File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/t65/T65_Pack.vhd Line: 154
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/t65/T65_ALU.vhd
+    Info (12022): Found design unit 1: T65_ALU-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/t65/T65_ALU.vhd Line: 70
+    Info (12023): Found entity 1: T65_ALU File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/t65/T65_ALU.vhd Line: 57
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/t65/T65_MCode.vhd
+    Info (12022): Found design unit 1: T65_MCode-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/t65/T65_MCode.vhd Line: 94
+    Info (12023): Found entity 1: T65_MCode File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/t65/T65_MCode.vhd Line: 58
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/t65/T65.vhd
+    Info (12022): Found design unit 1: T65-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/t65/T65.vhd Line: 166
+    Info (12023): Found entity 1: T65 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/t65/T65.vhd Line: 134
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/cpu_6510.vhd
+    Info (12022): Found design unit 1: cpu_6510-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/cpu_6510.vhd Line: 45
+    Info (12023): Found entity 1: cpu_6510 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/cpu_6510.vhd Line: 23
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/mos6526.v
+    Info (12023): Found entity 1: mos6526 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/mos6526.v Line: 7
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/rtcF83.sv
+    Info (12023): Found entity 1: rtcF83 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/rtcF83.sv Line: 22
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/sdram.v
+    Info (12023): Found entity 1: sdram File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sdram.v Line: 23
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/dprom.vhd
+    Info (12022): Found design unit 1: dprom-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/dprom.vhd Line: 32
+    Info (12023): Found entity 1: dprom File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/dprom.vhd Line: 8
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/spram.vhd
+    Info (12022): Found design unit 1: spram-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/spram.vhd Line: 25
+    Info (12023): Found entity 1: spram File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/spram.vhd Line: 6
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/cartridge.v
+    Info (12023): Found entity 1: cartridge File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/cartridge.v Line: 7
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/reu.v
+    Info (12023): Found entity 1: reu File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/reu.v Line: 6
+Info (12021): Found 2 design units, including 2 entities, in source file rtl/am29f040.sv
+    Info (12023): Found entity 1: am29f040 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/am29f040.sv Line: 20
+    Info (12023): Found entity 2: ez_rom File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/am29f040.sv Line: 246
+Info (12021): Found 4 design units, including 2 entities, in source file rtl/c1530.vhd
+    Info (12022): Found design unit 1: c1530-struct File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/c1530.vhd Line: 41
+    Info (12022): Found design unit 2: tap_fifo-SYN File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/c1530.vhd Line: 285
+    Info (12023): Found entity 1: c1530 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/c1530.vhd Line: 15
+    Info (12023): Found entity 2: tap_fifo File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/c1530.vhd Line: 271
+Info (12021): Found 1 design units, including 1 entities, in source file rtl/c1351.v
+    Info (12023): Found entity 1: c1351 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/c1351.v Line: 22
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/video_sync.vhd
+    Info (12022): Found design unit 1: video_sync-struct File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/video_sync.vhd Line: 29
+    Info (12023): Found entity 1: video_sync File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/video_sync.vhd Line: 14
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/video_vicII_656x.vhd
+    Info (12022): Found design unit 1: video_vicii_656x-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/video_vicII_656x.vhd Line: 78
+    Info (12023): Found entity 1: video_vicii_656x File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/video_vicII_656x.vhd Line: 22
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/fpga64_rgbcolor.vhd
+    Info (12022): Found design unit 1: fpga64_rgbcolor-Behavioral File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_rgbcolor.vhd Line: 33
+    Info (12023): Found entity 1: fpga64_rgbcolor File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_rgbcolor.vhd Line: 22
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/fpga64_keyboard.vhd
+    Info (12022): Found design unit 1: fpga64_keyboard-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_keyboard.vhd Line: 64
+    Info (12023): Found entity 1: fpga64_keyboard File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_keyboard.vhd Line: 36
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/fpga64_buslogic.vhd
+    Info (12022): Found design unit 1: fpga64_buslogic-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 93
+    Info (12023): Found entity 1: fpga64_buslogic File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 25
+Info (12021): Found 2 design units, including 1 entities, in source file rtl/fpga64_sid_iec.vhd
+    Info (12022): Found design unit 1: fpga64_sid_iec-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 188
+    Info (12023): Found entity 1: fpga64_sid_iec File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 43
+Info (12021): Found 1 design units, including 1 entities, in source file c64.sv
+    Info (12023): Found entity 1: emu File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 26
+Info (12127): Elaborating entity "sys_top" for the top level hierarchy
+Info (12128): Elaborating entity "mcp23009" for hierarchy "mcp23009:mcp23009" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 175
+Info (12128): Elaborating entity "i2c" for hierarchy "mcp23009:mcp23009|i2c:i2c" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/mcp23009.sv Line: 41
+Info (12128): Elaborating entity "sysmem_lite" for hierarchy "sysmem_lite:sysmem" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 638
+Info (12128): Elaborating entity "f2sdram_safe_terminator" for hierarchy "sysmem_lite:sysmem|f2sdram_safe_terminator:f2sdram_safe_terminator_ram1" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sysmem.sv Line: 91
+Info (12128): Elaborating entity "f2sdram_safe_terminator" for hierarchy "sysmem_lite:sysmem|f2sdram_safe_terminator:f2sdram_safe_terminator_vbuf" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sysmem.sv Line: 183
+Info (12128): Elaborating entity "sysmem_HPS_fpga_interfaces" for hierarchy "sysmem_lite:sysmem|sysmem_HPS_fpga_interfaces:fpga_interfaces" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sysmem.sv Line: 223
+Info (12128): Elaborating entity "ddr_svc" for hierarchy "ddr_svc:ddr_svc" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 679
+Info (12128): Elaborating entity "ascal" for hierarchy "ascal:ascal" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 815
+Info (12128): Elaborating entity "altsyncram" for hierarchy "ascal:ascal|altsyncram:i_mem[0].r[7]__1"
+Info (12130): Elaborated megafunction instantiation "ascal:ascal|altsyncram:i_mem[0].r[7]__1"
+Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:i_mem[0].r[7]__1" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "24"
+    Info (12134): Parameter "WIDTHAD_A" = "11"
+    Info (12134): Parameter "NUMWORDS_A" = "2048"
+    Info (12134): Parameter "WIDTH_B" = "24"
+    Info (12134): Parameter "WIDTHAD_B" = "11"
+    Info (12134): Parameter "NUMWORDS_B" = "2048"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
+    Info (12134): Parameter "RDCONTROL_REG_B" = "CLOCK0"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_89q1.tdf
+    Info (12023): Found entity 1: altsyncram_89q1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_89q1.tdf Line: 28
+Info (12128): Elaborating entity "altsyncram_89q1" for hierarchy "ascal:ascal|altsyncram:i_mem[0].r[7]__1|altsyncram_89q1:auto_generated" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altsyncram.tdf Line: 792
+Info (12128): Elaborating entity "altsyncram" for hierarchy "ascal:ascal|altsyncram:o_line0[0].r[7]__2"
+Info (12130): Elaborated megafunction instantiation "ascal:ascal|altsyncram:o_line0[0].r[7]__2"
+Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:o_line0[0].r[7]__2" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "24"
+    Info (12134): Parameter "WIDTHAD_A" = "11"
+    Info (12134): Parameter "NUMWORDS_A" = "2048"
+    Info (12134): Parameter "WIDTH_B" = "24"
+    Info (12134): Parameter "WIDTHAD_B" = "11"
+    Info (12134): Parameter "NUMWORDS_B" = "2048"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_ccn1.tdf
+    Info (12023): Found entity 1: altsyncram_ccn1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_ccn1.tdf Line: 28
+Info (12128): Elaborating entity "altsyncram_ccn1" for hierarchy "ascal:ascal|altsyncram:o_line0[0].r[7]__2|altsyncram_ccn1:auto_generated" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altsyncram.tdf Line: 792
+Info (12128): Elaborating entity "altsyncram" for hierarchy "ascal:ascal|altsyncram:o_linf0[0].r[7]__6"
+Info (12130): Elaborated megafunction instantiation "ascal:ascal|altsyncram:o_linf0[0].r[7]__6"
+Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:o_linf0[0].r[7]__6" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "24"
+    Info (12134): Parameter "WIDTHAD_A" = "8"
+    Info (12134): Parameter "NUMWORDS_A" = "256"
+    Info (12134): Parameter "WIDTH_B" = "24"
+    Info (12134): Parameter "WIDTHAD_B" = "8"
+    Info (12134): Parameter "NUMWORDS_B" = "256"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_m6n1.tdf
+    Info (12023): Found entity 1: altsyncram_m6n1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_m6n1.tdf Line: 28
+Info (12128): Elaborating entity "altsyncram_m6n1" for hierarchy "ascal:ascal|altsyncram:o_linf0[0].r[7]__6|altsyncram_m6n1:auto_generated" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altsyncram.tdf Line: 792
+Info (12128): Elaborating entity "sys_umuldiv" for hierarchy "sys_umuldiv:ar_muldiv" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 875
+Info (12128): Elaborating entity "sys_umul" for hierarchy "sys_umuldiv:ar_muldiv|sys_umul:umul" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/math.sv Line: 105
+Info (12128): Elaborating entity "sys_udiv" for hierarchy "sys_umuldiv:ar_muldiv|sys_udiv:udiv" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/math.sv Line: 107
+Info (12128): Elaborating entity "pll_hdmi_adj" for hierarchy "pll_hdmi_adj:pll_hdmi_adj" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1000
+Info (12128): Elaborating entity "pll_hdmi" for hierarchy "pll_hdmi:pll_hdmi" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1034
+Info (12128): Elaborating entity "pll_hdmi_0002" for hierarchy "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_hdmi.v Line: 23
+Info (12128): Elaborating entity "altera_pll" for hierarchy "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_hdmi/pll_hdmi_0002.v Line: 239
+Info (10008): Verilog HDL or VHDL information: EDA Netlist Writer cannot regroup multidimensional array "wire_to_nowhere_64" into its bus
+Info (12130): Elaborated megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_hdmi/pll_hdmi_0002.v Line: 239
+Info (12133): Instantiated megafunction "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i" with the following parameter: File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_hdmi/pll_hdmi_0002.v Line: 239
+    Info (12134): Parameter "fractional_vco_multiplier" = "true"
+    Info (12134): Parameter "reference_clock_frequency" = "50.0 MHz"
+    Info (12134): Parameter "pll_fractional_cout" = "32"
+    Info (12134): Parameter "pll_dsm_out_sel" = "1st_order"
+    Info (12134): Parameter "operation_mode" = "direct"
+    Info (12134): Parameter "number_of_clocks" = "1"
+    Info (12134): Parameter "output_clock_frequency0" = "148.500000 MHz"
+    Info (12134): Parameter "phase_shift0" = "0 ps"
+    Info (12134): Parameter "duty_cycle0" = "50"
+    Info (12134): Parameter "output_clock_frequency1" = "0 MHz"
+    Info (12134): Parameter "phase_shift1" = "0 ps"
+    Info (12134): Parameter "duty_cycle1" = "50"
+    Info (12134): Parameter "output_clock_frequency2" = "0 MHz"
+    Info (12134): Parameter "phase_shift2" = "0 ps"
+    Info (12134): Parameter "duty_cycle2" = "50"
+    Info (12134): Parameter "output_clock_frequency3" = "0 MHz"
+    Info (12134): Parameter "phase_shift3" = "0 ps"
+    Info (12134): Parameter "duty_cycle3" = "50"
+    Info (12134): Parameter "output_clock_frequency4" = "0 MHz"
+    Info (12134): Parameter "phase_shift4" = "0 ps"
+    Info (12134): Parameter "duty_cycle4" = "50"
+    Info (12134): Parameter "output_clock_frequency5" = "0 MHz"
+    Info (12134): Parameter "phase_shift5" = "0 ps"
+    Info (12134): Parameter "duty_cycle5" = "50"
+    Info (12134): Parameter "output_clock_frequency6" = "0 MHz"
+    Info (12134): Parameter "phase_shift6" = "0 ps"
+    Info (12134): Parameter "duty_cycle6" = "50"
+    Info (12134): Parameter "output_clock_frequency7" = "0 MHz"
+    Info (12134): Parameter "phase_shift7" = "0 ps"
+    Info (12134): Parameter "duty_cycle7" = "50"
+    Info (12134): Parameter "output_clock_frequency8" = "0 MHz"
+    Info (12134): Parameter "phase_shift8" = "0 ps"
+    Info (12134): Parameter "duty_cycle8" = "50"
+    Info (12134): Parameter "output_clock_frequency9" = "0 MHz"
+    Info (12134): Parameter "phase_shift9" = "0 ps"
+    Info (12134): Parameter "duty_cycle9" = "50"
+    Info (12134): Parameter "output_clock_frequency10" = "0 MHz"
+    Info (12134): Parameter "phase_shift10" = "0 ps"
+    Info (12134): Parameter "duty_cycle10" = "50"
+    Info (12134): Parameter "output_clock_frequency11" = "0 MHz"
+    Info (12134): Parameter "phase_shift11" = "0 ps"
+    Info (12134): Parameter "duty_cycle11" = "50"
+    Info (12134): Parameter "output_clock_frequency12" = "0 MHz"
+    Info (12134): Parameter "phase_shift12" = "0 ps"
+    Info (12134): Parameter "duty_cycle12" = "50"
+    Info (12134): Parameter "output_clock_frequency13" = "0 MHz"
+    Info (12134): Parameter "phase_shift13" = "0 ps"
+    Info (12134): Parameter "duty_cycle13" = "50"
+    Info (12134): Parameter "output_clock_frequency14" = "0 MHz"
+    Info (12134): Parameter "phase_shift14" = "0 ps"
+    Info (12134): Parameter "duty_cycle14" = "50"
+    Info (12134): Parameter "output_clock_frequency15" = "0 MHz"
+    Info (12134): Parameter "phase_shift15" = "0 ps"
+    Info (12134): Parameter "duty_cycle15" = "50"
+    Info (12134): Parameter "output_clock_frequency16" = "0 MHz"
+    Info (12134): Parameter "phase_shift16" = "0 ps"
+    Info (12134): Parameter "duty_cycle16" = "50"
+    Info (12134): Parameter "output_clock_frequency17" = "0 MHz"
+    Info (12134): Parameter "phase_shift17" = "0 ps"
+    Info (12134): Parameter "duty_cycle17" = "50"
+    Info (12134): Parameter "pll_type" = "Cyclone V"
+    Info (12134): Parameter "pll_subtype" = "Reconfigurable"
+    Info (12134): Parameter "m_cnt_hi_div" = "4"
+    Info (12134): Parameter "m_cnt_lo_div" = "4"
+    Info (12134): Parameter "n_cnt_hi_div" = "256"
+    Info (12134): Parameter "n_cnt_lo_div" = "256"
+    Info (12134): Parameter "m_cnt_bypass_en" = "false"
+    Info (12134): Parameter "n_cnt_bypass_en" = "true"
+    Info (12134): Parameter "m_cnt_odd_div_duty_en" = "false"
+    Info (12134): Parameter "n_cnt_odd_div_duty_en" = "false"
+    Info (12134): Parameter "c_cnt_hi_div0" = "2"
+    Info (12134): Parameter "c_cnt_lo_div0" = "1"
+    Info (12134): Parameter "c_cnt_prst0" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst0" = "0"
+    Info (12134): Parameter "c_cnt_in_src0" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en0" = "false"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en0" = "true"
+    Info (12134): Parameter "c_cnt_hi_div1" = "1"
+    Info (12134): Parameter "c_cnt_lo_div1" = "1"
+    Info (12134): Parameter "c_cnt_prst1" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst1" = "0"
+    Info (12134): Parameter "c_cnt_in_src1" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en1" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en1" = "false"
+    Info (12134): Parameter "c_cnt_hi_div2" = "1"
+    Info (12134): Parameter "c_cnt_lo_div2" = "1"
+    Info (12134): Parameter "c_cnt_prst2" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst2" = "0"
+    Info (12134): Parameter "c_cnt_in_src2" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en2" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en2" = "false"
+    Info (12134): Parameter "c_cnt_hi_div3" = "1"
+    Info (12134): Parameter "c_cnt_lo_div3" = "1"
+    Info (12134): Parameter "c_cnt_prst3" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst3" = "0"
+    Info (12134): Parameter "c_cnt_in_src3" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en3" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en3" = "false"
+    Info (12134): Parameter "c_cnt_hi_div4" = "1"
+    Info (12134): Parameter "c_cnt_lo_div4" = "1"
+    Info (12134): Parameter "c_cnt_prst4" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst4" = "0"
+    Info (12134): Parameter "c_cnt_in_src4" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en4" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en4" = "false"
+    Info (12134): Parameter "c_cnt_hi_div5" = "1"
+    Info (12134): Parameter "c_cnt_lo_div5" = "1"
+    Info (12134): Parameter "c_cnt_prst5" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst5" = "0"
+    Info (12134): Parameter "c_cnt_in_src5" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en5" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en5" = "false"
+    Info (12134): Parameter "c_cnt_hi_div6" = "1"
+    Info (12134): Parameter "c_cnt_lo_div6" = "1"
+    Info (12134): Parameter "c_cnt_prst6" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst6" = "0"
+    Info (12134): Parameter "c_cnt_in_src6" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en6" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en6" = "false"
+    Info (12134): Parameter "c_cnt_hi_div7" = "1"
+    Info (12134): Parameter "c_cnt_lo_div7" = "1"
+    Info (12134): Parameter "c_cnt_prst7" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst7" = "0"
+    Info (12134): Parameter "c_cnt_in_src7" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en7" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en7" = "false"
+    Info (12134): Parameter "c_cnt_hi_div8" = "1"
+    Info (12134): Parameter "c_cnt_lo_div8" = "1"
+    Info (12134): Parameter "c_cnt_prst8" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst8" = "0"
+    Info (12134): Parameter "c_cnt_in_src8" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en8" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en8" = "false"
+    Info (12134): Parameter "c_cnt_hi_div9" = "1"
+    Info (12134): Parameter "c_cnt_lo_div9" = "1"
+    Info (12134): Parameter "c_cnt_prst9" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst9" = "0"
+    Info (12134): Parameter "c_cnt_in_src9" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en9" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en9" = "false"
+    Info (12134): Parameter "c_cnt_hi_div10" = "1"
+    Info (12134): Parameter "c_cnt_lo_div10" = "1"
+    Info (12134): Parameter "c_cnt_prst10" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst10" = "0"
+    Info (12134): Parameter "c_cnt_in_src10" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en10" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en10" = "false"
+    Info (12134): Parameter "c_cnt_hi_div11" = "1"
+    Info (12134): Parameter "c_cnt_lo_div11" = "1"
+    Info (12134): Parameter "c_cnt_prst11" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst11" = "0"
+    Info (12134): Parameter "c_cnt_in_src11" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en11" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en11" = "false"
+    Info (12134): Parameter "c_cnt_hi_div12" = "1"
+    Info (12134): Parameter "c_cnt_lo_div12" = "1"
+    Info (12134): Parameter "c_cnt_prst12" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst12" = "0"
+    Info (12134): Parameter "c_cnt_in_src12" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en12" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en12" = "false"
+    Info (12134): Parameter "c_cnt_hi_div13" = "1"
+    Info (12134): Parameter "c_cnt_lo_div13" = "1"
+    Info (12134): Parameter "c_cnt_prst13" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst13" = "0"
+    Info (12134): Parameter "c_cnt_in_src13" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en13" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en13" = "false"
+    Info (12134): Parameter "c_cnt_hi_div14" = "1"
+    Info (12134): Parameter "c_cnt_lo_div14" = "1"
+    Info (12134): Parameter "c_cnt_prst14" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst14" = "0"
+    Info (12134): Parameter "c_cnt_in_src14" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en14" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en14" = "false"
+    Info (12134): Parameter "c_cnt_hi_div15" = "1"
+    Info (12134): Parameter "c_cnt_lo_div15" = "1"
+    Info (12134): Parameter "c_cnt_prst15" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst15" = "0"
+    Info (12134): Parameter "c_cnt_in_src15" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en15" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en15" = "false"
+    Info (12134): Parameter "c_cnt_hi_div16" = "1"
+    Info (12134): Parameter "c_cnt_lo_div16" = "1"
+    Info (12134): Parameter "c_cnt_prst16" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst16" = "0"
+    Info (12134): Parameter "c_cnt_in_src16" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en16" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en16" = "false"
+    Info (12134): Parameter "c_cnt_hi_div17" = "1"
+    Info (12134): Parameter "c_cnt_lo_div17" = "1"
+    Info (12134): Parameter "c_cnt_prst17" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst17" = "0"
+    Info (12134): Parameter "c_cnt_in_src17" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en17" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en17" = "false"
+    Info (12134): Parameter "pll_vco_div" = "2"
+    Info (12134): Parameter "pll_cp_current" = "20"
+    Info (12134): Parameter "pll_bwctrl" = "4000"
+    Info (12134): Parameter "pll_output_clk_frequency" = "445.499999 MHz"
+    Info (12134): Parameter "pll_fractional_division" = "3908420153"
+    Info (12134): Parameter "mimic_fbclk_type" = "none"
+    Info (12134): Parameter "pll_fbclk_mux_1" = "glb"
+    Info (12134): Parameter "pll_fbclk_mux_2" = "m_cnt"
+    Info (12134): Parameter "pll_m_cnt_in_src" = "ph_mux_clk"
+    Info (12134): Parameter "pll_slf_rst" = "true"
+Info (12128): Elaborating entity "dps_extra_kick" for hierarchy "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|dps_extra_kick:dps_extra_inst" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 769
+Info (12131): Elaborated megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|dps_extra_kick:dps_extra_inst", which is child of megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 769
+Info (12128): Elaborating entity "dprio_init" for hierarchy "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|dprio_init:dprio_init_inst" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 784
+Info (12131): Elaborated megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|dprio_init:dprio_init_inst", which is child of megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 784
+Info (12128): Elaborating entity "altera_pll_dps_lcell_comb" for hierarchy "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_pll_dps_lcell_comb:lcell_cntsel_int_0" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 1961
+Info (12131): Elaborated megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_pll_dps_lcell_comb:lcell_cntsel_int_0", which is child of megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 1961
+Info (12128): Elaborating entity "altera_pll_dps_lcell_comb" for hierarchy "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_pll_dps_lcell_comb:lcell_cntsel_int_1" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 1972
+Info (12131): Elaborated megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_pll_dps_lcell_comb:lcell_cntsel_int_1", which is child of megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 1972
+Info (12128): Elaborating entity "altera_pll_dps_lcell_comb" for hierarchy "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_pll_dps_lcell_comb:lcell_cntsel_int_2" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 1983
+Info (12131): Elaborated megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_pll_dps_lcell_comb:lcell_cntsel_int_2", which is child of megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 1983
+Info (12128): Elaborating entity "altera_pll_dps_lcell_comb" for hierarchy "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_pll_dps_lcell_comb:lcell_cntsel_int_3" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 1994
+Info (12131): Elaborated megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_pll_dps_lcell_comb:lcell_cntsel_int_3", which is child of megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 1994
+Info (12128): Elaborating entity "altera_pll_dps_lcell_comb" for hierarchy "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_pll_dps_lcell_comb:lcell_cntsel_int_4" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 2005
+Info (12131): Elaborated megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_pll_dps_lcell_comb:lcell_cntsel_int_4", which is child of megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 2005
+Info (12128): Elaborating entity "altera_cyclonev_pll" for hierarchy "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 2224
+Info (12131): Elaborated megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll", which is child of megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 2224
+Info (12128): Elaborating entity "altera_cyclonev_pll_base" for hierarchy "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll|altera_cyclonev_pll_base:fpll_0" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_cyclonev_pll.v Line: 1153
+Info (12131): Elaborated megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll|altera_cyclonev_pll_base:fpll_0", which is child of megafunction instantiation "pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_cyclonev_pll.v Line: 1153
+Info (12128): Elaborating entity "pll_cfg_hdmi" for hierarchy "pll_cfg_hdmi:pll_cfg_hdmi" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1069
+Info (12128): Elaborating entity "altera_std_synchronizer" for hierarchy "pll_cfg_hdmi:pll_cfg_hdmi|altera_std_synchronizer:altera_std_synchronizer_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/pll_cfg_hdmi.v Line: 271
+Info (12130): Elaborated megafunction instantiation "pll_cfg_hdmi:pll_cfg_hdmi|altera_std_synchronizer:altera_std_synchronizer_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/pll_cfg_hdmi.v Line: 271
+Info (12133): Instantiated megafunction "pll_cfg_hdmi:pll_cfg_hdmi|altera_std_synchronizer:altera_std_synchronizer_inst" with the following parameter: File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/pll_cfg_hdmi.v Line: 271
+    Info (12134): Parameter "depth" = "3"
+Info (12128): Elaborating entity "dyn_phase_shift" for hierarchy "pll_cfg_hdmi:pll_cfg_hdmi|dyn_phase_shift:dyn_phase_shift_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/pll_cfg_hdmi.v Line: 1169
+Info (12128): Elaborating entity "generic_lcell_comb" for hierarchy "pll_cfg_hdmi:pll_cfg_hdmi|dyn_phase_shift:dyn_phase_shift_inst|generic_lcell_comb:lcell_cnt_sel_0" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2060
+Info (12128): Elaborating entity "generic_lcell_comb" for hierarchy "pll_cfg_hdmi:pll_cfg_hdmi|dyn_phase_shift:dyn_phase_shift_inst|generic_lcell_comb:lcell_cnt_sel_1" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2071
+Info (12128): Elaborating entity "generic_lcell_comb" for hierarchy "pll_cfg_hdmi:pll_cfg_hdmi|dyn_phase_shift:dyn_phase_shift_inst|generic_lcell_comb:lcell_cnt_sel_2" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2082
+Info (12128): Elaborating entity "generic_lcell_comb" for hierarchy "pll_cfg_hdmi:pll_cfg_hdmi|dyn_phase_shift:dyn_phase_shift_inst|generic_lcell_comb:lcell_cnt_sel_3" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2093
+Info (12128): Elaborating entity "generic_lcell_comb" for hierarchy "pll_cfg_hdmi:pll_cfg_hdmi|dyn_phase_shift:dyn_phase_shift_inst|generic_lcell_comb:lcell_cnt_sel_4" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2104
+Info (12128): Elaborating entity "self_reset" for hierarchy "pll_cfg_hdmi:pll_cfg_hdmi|self_reset:self_reset_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/pll_cfg_hdmi.v Line: 1173
+Info (12128): Elaborating entity "dprio_mux" for hierarchy "pll_cfg_hdmi:pll_cfg_hdmi|dprio_mux:dprio_mux_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/pll_cfg_hdmi.v Line: 1211
+Info (12128): Elaborating entity "fpll_dprio_init" for hierarchy "pll_cfg_hdmi:pll_cfg_hdmi|fpll_dprio_init:fpll_dprio_init_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/pll_cfg_hdmi.v Line: 1230
+Info (12128): Elaborating entity "shadowmask" for hierarchy "shadowmask:HDMI_shadowmask" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1163
+Info (12128): Elaborating entity "osd" for hierarchy "osd:hdmi_osd" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1186
+Info (12128): Elaborating entity "csync" for hierarchy "csync:csync_hdmi" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1189
+Info (12128): Elaborating entity "altddio_out" for hierarchy "altddio_out:hdmiclk_ddr" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1282
+Info (12130): Elaborated megafunction instantiation "altddio_out:hdmiclk_ddr" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1282
+Info (12133): Instantiated megafunction "altddio_out:hdmiclk_ddr" with the following parameter: File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1282
+    Info (12134): Parameter "extend_oe_disable" = "OFF"
+    Info (12134): Parameter "intended_device_family" = "Cyclone V"
+    Info (12134): Parameter "invert_output" = "OFF"
+    Info (12134): Parameter "lpm_hint" = "UNUSED"
+    Info (12134): Parameter "lpm_type" = "altddio_out"
+    Info (12134): Parameter "oe_reg" = "UNREGISTERED"
+    Info (12134): Parameter "power_up_high" = "OFF"
+    Info (12134): Parameter "width" = "1"
+Info (12021): Found 1 design units, including 1 entities, in source file db/ddio_out_b2j.tdf
+    Info (12023): Found entity 1: ddio_out_b2j File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/ddio_out_b2j.tdf Line: 28
+Info (12128): Elaborating entity "ddio_out_b2j" for hierarchy "altddio_out:hdmiclk_ddr|ddio_out_b2j:auto_generated" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altddio_out.tdf Line: 101
+Info (12128): Elaborating entity "altddio_out" for hierarchy "altddio_out:vgaclk_ddr" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1363
+Info (12130): Elaborated megafunction instantiation "altddio_out:vgaclk_ddr" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1363
+Info (12133): Instantiated megafunction "altddio_out:vgaclk_ddr" with the following parameter: File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1363
+    Info (12134): Parameter "extend_oe_disable" = "OFF"
+    Info (12134): Parameter "intended_device_family" = "Cyclone V"
+    Info (12134): Parameter "invert_output" = "OFF"
+    Info (12134): Parameter "lpm_hint" = "UNUSED"
+    Info (12134): Parameter "lpm_type" = "altddio_out"
+    Info (12134): Parameter "oe_reg" = "UNREGISTERED"
+    Info (12134): Parameter "power_up_high" = "OFF"
+    Info (12134): Parameter "width" = "1"
+Info (12021): Found 1 design units, including 1 entities, in source file db/ddio_out_1oj.tdf
+    Info (12023): Found entity 1: ddio_out_1oj File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/ddio_out_1oj.tdf Line: 30
+Info (12128): Elaborating entity "ddio_out_1oj" for hierarchy "altddio_out:vgaclk_ddr|ddio_out_1oj:auto_generated" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altddio_out.tdf Line: 101
+Info (12128): Elaborating entity "scanlines" for hierarchy "scanlines:VGA_scanlines" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1384
+Info (12128): Elaborating entity "yc_out" for hierarchy "yc_out:yc_out" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1437
+Info (12128): Elaborating entity "vga_out" for hierarchy "vga_out:vga_scaler_out" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1472
+Info (12128): Elaborating entity "pll_audio" for hierarchy "pll_audio:pll_audio" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1562
+Info (12128): Elaborating entity "pll_audio_0002" for hierarchy "pll_audio:pll_audio|pll_audio_0002:pll_audio_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_audio.v Line: 19
+Info (12128): Elaborating entity "altera_pll" for hierarchy "pll_audio:pll_audio|pll_audio_0002:pll_audio_inst|altera_pll:altera_pll_i" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_audio/pll_audio_0002.v Line: 85
+Info (10008): Verilog HDL or VHDL information: EDA Netlist Writer cannot regroup multidimensional array "wire_to_nowhere_64" into its bus
+Info (12130): Elaborated megafunction instantiation "pll_audio:pll_audio|pll_audio_0002:pll_audio_inst|altera_pll:altera_pll_i" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_audio/pll_audio_0002.v Line: 85
+Info (12133): Instantiated megafunction "pll_audio:pll_audio|pll_audio_0002:pll_audio_inst|altera_pll:altera_pll_i" with the following parameter: File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_audio/pll_audio_0002.v Line: 85
+    Info (12134): Parameter "fractional_vco_multiplier" = "true"
+    Info (12134): Parameter "reference_clock_frequency" = "50.0 MHz"
+    Info (12134): Parameter "operation_mode" = "direct"
+    Info (12134): Parameter "number_of_clocks" = "1"
+    Info (12134): Parameter "output_clock_frequency0" = "24.576000 MHz"
+    Info (12134): Parameter "phase_shift0" = "0 ps"
+    Info (12134): Parameter "duty_cycle0" = "50"
+    Info (12134): Parameter "output_clock_frequency1" = "0 MHz"
+    Info (12134): Parameter "phase_shift1" = "0 ps"
+    Info (12134): Parameter "duty_cycle1" = "50"
+    Info (12134): Parameter "output_clock_frequency2" = "0 MHz"
+    Info (12134): Parameter "phase_shift2" = "0 ps"
+    Info (12134): Parameter "duty_cycle2" = "50"
+    Info (12134): Parameter "output_clock_frequency3" = "0 MHz"
+    Info (12134): Parameter "phase_shift3" = "0 ps"
+    Info (12134): Parameter "duty_cycle3" = "50"
+    Info (12134): Parameter "output_clock_frequency4" = "0 MHz"
+    Info (12134): Parameter "phase_shift4" = "0 ps"
+    Info (12134): Parameter "duty_cycle4" = "50"
+    Info (12134): Parameter "output_clock_frequency5" = "0 MHz"
+    Info (12134): Parameter "phase_shift5" = "0 ps"
+    Info (12134): Parameter "duty_cycle5" = "50"
+    Info (12134): Parameter "output_clock_frequency6" = "0 MHz"
+    Info (12134): Parameter "phase_shift6" = "0 ps"
+    Info (12134): Parameter "duty_cycle6" = "50"
+    Info (12134): Parameter "output_clock_frequency7" = "0 MHz"
+    Info (12134): Parameter "phase_shift7" = "0 ps"
+    Info (12134): Parameter "duty_cycle7" = "50"
+    Info (12134): Parameter "output_clock_frequency8" = "0 MHz"
+    Info (12134): Parameter "phase_shift8" = "0 ps"
+    Info (12134): Parameter "duty_cycle8" = "50"
+    Info (12134): Parameter "output_clock_frequency9" = "0 MHz"
+    Info (12134): Parameter "phase_shift9" = "0 ps"
+    Info (12134): Parameter "duty_cycle9" = "50"
+    Info (12134): Parameter "output_clock_frequency10" = "0 MHz"
+    Info (12134): Parameter "phase_shift10" = "0 ps"
+    Info (12134): Parameter "duty_cycle10" = "50"
+    Info (12134): Parameter "output_clock_frequency11" = "0 MHz"
+    Info (12134): Parameter "phase_shift11" = "0 ps"
+    Info (12134): Parameter "duty_cycle11" = "50"
+    Info (12134): Parameter "output_clock_frequency12" = "0 MHz"
+    Info (12134): Parameter "phase_shift12" = "0 ps"
+    Info (12134): Parameter "duty_cycle12" = "50"
+    Info (12134): Parameter "output_clock_frequency13" = "0 MHz"
+    Info (12134): Parameter "phase_shift13" = "0 ps"
+    Info (12134): Parameter "duty_cycle13" = "50"
+    Info (12134): Parameter "output_clock_frequency14" = "0 MHz"
+    Info (12134): Parameter "phase_shift14" = "0 ps"
+    Info (12134): Parameter "duty_cycle14" = "50"
+    Info (12134): Parameter "output_clock_frequency15" = "0 MHz"
+    Info (12134): Parameter "phase_shift15" = "0 ps"
+    Info (12134): Parameter "duty_cycle15" = "50"
+    Info (12134): Parameter "output_clock_frequency16" = "0 MHz"
+    Info (12134): Parameter "phase_shift16" = "0 ps"
+    Info (12134): Parameter "duty_cycle16" = "50"
+    Info (12134): Parameter "output_clock_frequency17" = "0 MHz"
+    Info (12134): Parameter "phase_shift17" = "0 ps"
+    Info (12134): Parameter "duty_cycle17" = "50"
+    Info (12134): Parameter "pll_type" = "General"
+    Info (12134): Parameter "pll_subtype" = "General"
+Info (12128): Elaborating entity "audio_out" for hierarchy "audio_out:audio_out" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1600
+Info (12128): Elaborating entity "i2s" for hierarchy "audio_out:audio_out|i2s:i2s" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/audio_out.v Line: 88
+Info (12128): Elaborating entity "spdif" for hierarchy "audio_out:audio_out|spdif:toslink" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/audio_out.v Line: 99
+Info (12128): Elaborating entity "sigma_delta_dac" for hierarchy "audio_out:audio_out|sigma_delta_dac:sd_l" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/audio_out.v Line: 107
+Info (12128): Elaborating entity "IIR_filter" for hierarchy "audio_out:audio_out|IIR_filter:IIR_filter" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/audio_out.v Line: 200
+Info (12128): Elaborating entity "iir_filter_tap" for hierarchy "audio_out:audio_out|IIR_filter:IIR_filter|iir_filter_tap:iir_tap_0" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/iir_filter.v Line: 82
+Info (12128): Elaborating entity "DC_blocker" for hierarchy "audio_out:audio_out|DC_blocker:dcb_l" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/audio_out.v Line: 211
+Info (12128): Elaborating entity "aud_mix_top" for hierarchy "audio_out:audio_out|aud_mix_top:audmix_l" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/audio_out.v Line: 238
+Info (12128): Elaborating entity "alsa" for hierarchy "alsa:alsa" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1640
+Info (12128): Elaborating entity "sync_fix" for hierarchy "sync_fix:sync_v" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1691
+Info (12128): Elaborating entity "emu" for hierarchy "emu:emu" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 1864
+Info (12128): Elaborating entity "pll" for hierarchy "emu:emu|pll:pll" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 320
+Info (12128): Elaborating entity "pll_0002" for hierarchy "emu:emu|pll:pll|pll_0002:pll_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/pll.v Line: 28
+Info (12128): Elaborating entity "altera_pll" for hierarchy "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/pll/pll_0002.v Line: 245
+Info (10008): Verilog HDL or VHDL information: EDA Netlist Writer cannot regroup multidimensional array "wire_to_nowhere_64" into its bus
+Info (12130): Elaborated megafunction instantiation "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/pll/pll_0002.v Line: 245
+Info (12133): Instantiated megafunction "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i" with the following parameter: File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/pll/pll_0002.v Line: 245
+    Info (12134): Parameter "fractional_vco_multiplier" = "true"
+    Info (12134): Parameter "reference_clock_frequency" = "50.0 MHz"
+    Info (12134): Parameter "pll_fractional_cout" = "32"
+    Info (12134): Parameter "pll_dsm_out_sel" = "1st_order"
+    Info (12134): Parameter "operation_mode" = "direct"
+    Info (12134): Parameter "number_of_clocks" = "3"
+    Info (12134): Parameter "output_clock_frequency0" = "47.291931 MHz"
+    Info (12134): Parameter "phase_shift0" = "0 ps"
+    Info (12134): Parameter "duty_cycle0" = "50"
+    Info (12134): Parameter "output_clock_frequency1" = "63.055908 MHz"
+    Info (12134): Parameter "phase_shift1" = "0 ps"
+    Info (12134): Parameter "duty_cycle1" = "50"
+    Info (12134): Parameter "output_clock_frequency2" = "31.527954 MHz"
+    Info (12134): Parameter "phase_shift2" = "0 ps"
+    Info (12134): Parameter "duty_cycle2" = "50"
+    Info (12134): Parameter "output_clock_frequency3" = "0 MHz"
+    Info (12134): Parameter "phase_shift3" = "0 ps"
+    Info (12134): Parameter "duty_cycle3" = "50"
+    Info (12134): Parameter "output_clock_frequency4" = "0 MHz"
+    Info (12134): Parameter "phase_shift4" = "0 ps"
+    Info (12134): Parameter "duty_cycle4" = "50"
+    Info (12134): Parameter "output_clock_frequency5" = "0 MHz"
+    Info (12134): Parameter "phase_shift5" = "0 ps"
+    Info (12134): Parameter "duty_cycle5" = "50"
+    Info (12134): Parameter "output_clock_frequency6" = "0 MHz"
+    Info (12134): Parameter "phase_shift6" = "0 ps"
+    Info (12134): Parameter "duty_cycle6" = "50"
+    Info (12134): Parameter "output_clock_frequency7" = "0 MHz"
+    Info (12134): Parameter "phase_shift7" = "0 ps"
+    Info (12134): Parameter "duty_cycle7" = "50"
+    Info (12134): Parameter "output_clock_frequency8" = "0 MHz"
+    Info (12134): Parameter "phase_shift8" = "0 ps"
+    Info (12134): Parameter "duty_cycle8" = "50"
+    Info (12134): Parameter "output_clock_frequency9" = "0 MHz"
+    Info (12134): Parameter "phase_shift9" = "0 ps"
+    Info (12134): Parameter "duty_cycle9" = "50"
+    Info (12134): Parameter "output_clock_frequency10" = "0 MHz"
+    Info (12134): Parameter "phase_shift10" = "0 ps"
+    Info (12134): Parameter "duty_cycle10" = "50"
+    Info (12134): Parameter "output_clock_frequency11" = "0 MHz"
+    Info (12134): Parameter "phase_shift11" = "0 ps"
+    Info (12134): Parameter "duty_cycle11" = "50"
+    Info (12134): Parameter "output_clock_frequency12" = "0 MHz"
+    Info (12134): Parameter "phase_shift12" = "0 ps"
+    Info (12134): Parameter "duty_cycle12" = "50"
+    Info (12134): Parameter "output_clock_frequency13" = "0 MHz"
+    Info (12134): Parameter "phase_shift13" = "0 ps"
+    Info (12134): Parameter "duty_cycle13" = "50"
+    Info (12134): Parameter "output_clock_frequency14" = "0 MHz"
+    Info (12134): Parameter "phase_shift14" = "0 ps"
+    Info (12134): Parameter "duty_cycle14" = "50"
+    Info (12134): Parameter "output_clock_frequency15" = "0 MHz"
+    Info (12134): Parameter "phase_shift15" = "0 ps"
+    Info (12134): Parameter "duty_cycle15" = "50"
+    Info (12134): Parameter "output_clock_frequency16" = "0 MHz"
+    Info (12134): Parameter "phase_shift16" = "0 ps"
+    Info (12134): Parameter "duty_cycle16" = "50"
+    Info (12134): Parameter "output_clock_frequency17" = "0 MHz"
+    Info (12134): Parameter "phase_shift17" = "0 ps"
+    Info (12134): Parameter "duty_cycle17" = "50"
+    Info (12134): Parameter "pll_type" = "Cyclone V"
+    Info (12134): Parameter "pll_subtype" = "Reconfigurable"
+    Info (12134): Parameter "m_cnt_hi_div" = "6"
+    Info (12134): Parameter "m_cnt_lo_div" = "5"
+    Info (12134): Parameter "n_cnt_hi_div" = "256"
+    Info (12134): Parameter "n_cnt_lo_div" = "256"
+    Info (12134): Parameter "m_cnt_bypass_en" = "false"
+    Info (12134): Parameter "n_cnt_bypass_en" = "true"
+    Info (12134): Parameter "m_cnt_odd_div_duty_en" = "true"
+    Info (12134): Parameter "n_cnt_odd_div_duty_en" = "false"
+    Info (12134): Parameter "c_cnt_hi_div0" = "6"
+    Info (12134): Parameter "c_cnt_lo_div0" = "6"
+    Info (12134): Parameter "c_cnt_prst0" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst0" = "0"
+    Info (12134): Parameter "c_cnt_in_src0" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en0" = "false"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en0" = "false"
+    Info (12134): Parameter "c_cnt_hi_div1" = "5"
+    Info (12134): Parameter "c_cnt_lo_div1" = "4"
+    Info (12134): Parameter "c_cnt_prst1" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst1" = "0"
+    Info (12134): Parameter "c_cnt_in_src1" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en1" = "false"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en1" = "true"
+    Info (12134): Parameter "c_cnt_hi_div2" = "9"
+    Info (12134): Parameter "c_cnt_lo_div2" = "9"
+    Info (12134): Parameter "c_cnt_prst2" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst2" = "0"
+    Info (12134): Parameter "c_cnt_in_src2" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en2" = "false"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en2" = "false"
+    Info (12134): Parameter "c_cnt_hi_div3" = "1"
+    Info (12134): Parameter "c_cnt_lo_div3" = "1"
+    Info (12134): Parameter "c_cnt_prst3" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst3" = "0"
+    Info (12134): Parameter "c_cnt_in_src3" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en3" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en3" = "false"
+    Info (12134): Parameter "c_cnt_hi_div4" = "1"
+    Info (12134): Parameter "c_cnt_lo_div4" = "1"
+    Info (12134): Parameter "c_cnt_prst4" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst4" = "0"
+    Info (12134): Parameter "c_cnt_in_src4" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en4" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en4" = "false"
+    Info (12134): Parameter "c_cnt_hi_div5" = "1"
+    Info (12134): Parameter "c_cnt_lo_div5" = "1"
+    Info (12134): Parameter "c_cnt_prst5" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst5" = "0"
+    Info (12134): Parameter "c_cnt_in_src5" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en5" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en5" = "false"
+    Info (12134): Parameter "c_cnt_hi_div6" = "1"
+    Info (12134): Parameter "c_cnt_lo_div6" = "1"
+    Info (12134): Parameter "c_cnt_prst6" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst6" = "0"
+    Info (12134): Parameter "c_cnt_in_src6" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en6" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en6" = "false"
+    Info (12134): Parameter "c_cnt_hi_div7" = "1"
+    Info (12134): Parameter "c_cnt_lo_div7" = "1"
+    Info (12134): Parameter "c_cnt_prst7" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst7" = "0"
+    Info (12134): Parameter "c_cnt_in_src7" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en7" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en7" = "false"
+    Info (12134): Parameter "c_cnt_hi_div8" = "1"
+    Info (12134): Parameter "c_cnt_lo_div8" = "1"
+    Info (12134): Parameter "c_cnt_prst8" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst8" = "0"
+    Info (12134): Parameter "c_cnt_in_src8" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en8" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en8" = "false"
+    Info (12134): Parameter "c_cnt_hi_div9" = "1"
+    Info (12134): Parameter "c_cnt_lo_div9" = "1"
+    Info (12134): Parameter "c_cnt_prst9" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst9" = "0"
+    Info (12134): Parameter "c_cnt_in_src9" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en9" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en9" = "false"
+    Info (12134): Parameter "c_cnt_hi_div10" = "1"
+    Info (12134): Parameter "c_cnt_lo_div10" = "1"
+    Info (12134): Parameter "c_cnt_prst10" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst10" = "0"
+    Info (12134): Parameter "c_cnt_in_src10" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en10" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en10" = "false"
+    Info (12134): Parameter "c_cnt_hi_div11" = "1"
+    Info (12134): Parameter "c_cnt_lo_div11" = "1"
+    Info (12134): Parameter "c_cnt_prst11" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst11" = "0"
+    Info (12134): Parameter "c_cnt_in_src11" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en11" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en11" = "false"
+    Info (12134): Parameter "c_cnt_hi_div12" = "1"
+    Info (12134): Parameter "c_cnt_lo_div12" = "1"
+    Info (12134): Parameter "c_cnt_prst12" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst12" = "0"
+    Info (12134): Parameter "c_cnt_in_src12" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en12" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en12" = "false"
+    Info (12134): Parameter "c_cnt_hi_div13" = "1"
+    Info (12134): Parameter "c_cnt_lo_div13" = "1"
+    Info (12134): Parameter "c_cnt_prst13" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst13" = "0"
+    Info (12134): Parameter "c_cnt_in_src13" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en13" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en13" = "false"
+    Info (12134): Parameter "c_cnt_hi_div14" = "1"
+    Info (12134): Parameter "c_cnt_lo_div14" = "1"
+    Info (12134): Parameter "c_cnt_prst14" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst14" = "0"
+    Info (12134): Parameter "c_cnt_in_src14" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en14" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en14" = "false"
+    Info (12134): Parameter "c_cnt_hi_div15" = "1"
+    Info (12134): Parameter "c_cnt_lo_div15" = "1"
+    Info (12134): Parameter "c_cnt_prst15" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst15" = "0"
+    Info (12134): Parameter "c_cnt_in_src15" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en15" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en15" = "false"
+    Info (12134): Parameter "c_cnt_hi_div16" = "1"
+    Info (12134): Parameter "c_cnt_lo_div16" = "1"
+    Info (12134): Parameter "c_cnt_prst16" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst16" = "0"
+    Info (12134): Parameter "c_cnt_in_src16" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en16" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en16" = "false"
+    Info (12134): Parameter "c_cnt_hi_div17" = "1"
+    Info (12134): Parameter "c_cnt_lo_div17" = "1"
+    Info (12134): Parameter "c_cnt_prst17" = "1"
+    Info (12134): Parameter "c_cnt_ph_mux_prst17" = "0"
+    Info (12134): Parameter "c_cnt_in_src17" = "ph_mux_clk"
+    Info (12134): Parameter "c_cnt_bypass_en17" = "true"
+    Info (12134): Parameter "c_cnt_odd_div_duty_en17" = "false"
+    Info (12134): Parameter "pll_vco_div" = "2"
+    Info (12134): Parameter "pll_cp_current" = "30"
+    Info (12134): Parameter "pll_bwctrl" = "2000"
+    Info (12134): Parameter "pll_output_clk_frequency" = "567.503171 MHz"
+    Info (12134): Parameter "pll_fractional_division" = "1503512573"
+    Info (12134): Parameter "mimic_fbclk_type" = "none"
+    Info (12134): Parameter "pll_fbclk_mux_1" = "glb"
+    Info (12134): Parameter "pll_fbclk_mux_2" = "m_cnt"
+    Info (12134): Parameter "pll_m_cnt_in_src" = "ph_mux_clk"
+    Info (12134): Parameter "pll_slf_rst" = "true"
+Info (12128): Elaborating entity "altera_cyclonev_pll" for hierarchy "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 2224
+Info (12131): Elaborated megafunction instantiation "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll", which is child of megafunction instantiation "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_pll.v Line: 2224
+Info (12128): Elaborating entity "altera_cyclonev_pll_base" for hierarchy "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll|altera_cyclonev_pll_base:fpll_0" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_cyclonev_pll.v Line: 1153
+Info (12131): Elaborated megafunction instantiation "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll|altera_cyclonev_pll_base:fpll_0", which is child of megafunction instantiation "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/altera_cyclonev_pll.v Line: 1153
+Info (12128): Elaborating entity "pll_cfg" for hierarchy "emu:emu|pll_cfg:pll_cfg" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 341
+Info (12128): Elaborating entity "altera_pll_reconfig_top" for hierarchy "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/pll_cfg.v Line: 50
+Info (12128): Elaborating entity "altera_pll_reconfig_core" for hierarchy "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/altera_pll_reconfig_top.v Line: 420
+Info (12128): Elaborating entity "hps_io" for hierarchy "emu:emu|hps_io:hps_io" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 511
+Info (10264): Verilog HDL Case Statement information at hps_io.sv(419): all case item expressions in this case statement are onehot File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hps_io.sv Line: 419
+Info (10264): Verilog HDL Case Statement information at hps_io.sv(448): all case item expressions in this case statement are onehot File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hps_io.sv Line: 448
+Info (12128): Elaborating entity "video_calc" for hierarchy "emu:emu|hps_io:hps_io|video_calc:video_calc" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hps_io.sv Line: 231
+Info (12128): Elaborating entity "cartridge" for hierarchy "emu:emu|cartridge:cartridge" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 579
+Info (12128): Elaborating entity "ez_rom" for hierarchy "emu:emu|cartridge:cartridge|ez_rom:ez_rom" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/cartridge.v Line: 792
+Info (12128): Elaborating entity "am29f040" for hierarchy "emu:emu|cartridge:cartridge|ez_rom:ez_rom|am29f040:rom0" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/am29f040.sv Line: 295
+Info (10264): Verilog HDL Case Statement information at am29f040.sv(113): all case item expressions in this case statement are onehot File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/am29f040.sv Line: 113
+Info (10264): Verilog HDL Case Statement information at am29f040.sv(165): all case item expressions in this case statement are onehot File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/am29f040.sv Line: 165
+Info (12128): Elaborating entity "reu" for hierarchy "emu:emu|reu:reu" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 645
+Info (12128): Elaborating entity "sdram" for hierarchy "emu:emu|sdram:sdram" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1002
+Info (12128): Elaborating entity "fpga64_sid_iec" for hierarchy "emu:emu|fpga64_sid_iec:fpga64" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1184
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(262): object "vpa_816" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 262
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(263): object "vda_816" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 263
+Info (12128): Elaborating entity "spram" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|spram:colorram" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 492
+Info (12128): Elaborating entity "fpga64_buslogic" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 508
+Info (12128): Elaborating entity "dprom" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:chargen" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 151
+Info (12128): Elaborating entity "dprom" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:chargen_j" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 162
+Info (12128): Elaborating entity "dprom" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:kernel_c64gs" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 173
+Info (12128): Elaborating entity "dprom" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:kernel_c64" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 184
+Info (12128): Elaborating entity "dprom" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:kernel_c64std" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 199
+Info (12128): Elaborating entity "dprom" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:kernel_c64jap" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 210
+Info (12128): Elaborating entity "dprom" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:scpu_rom" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 221
+Info (12128): Elaborating entity "video_vicii_656x" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|video_vicii_656x:vic" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 623
+Info (12128): Elaborating entity "fpga64_rgbcolor" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_rgbcolor:c64colors" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 670
+Info (12128): Elaborating entity "sid_top" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 740
+Info (12128): Elaborating entity "sid_voice" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_voice:chip[0].v1" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_top.sv Line: 111
+Info (10264): Verilog HDL Case Statement information at sid_voice.sv(139): all case item expressions in this case statement are onehot File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_voice.sv Line: 139
+Info (12128): Elaborating entity "sid_envelope" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_voice:chip[0].v1|sid_envelope:adsr" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_voice.sv Line: 61
+Info (12128): Elaborating entity "sid_dac" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_voice:chip[0].v1|sid_dac:waveform_dac" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_voice.sv Line: 161
+Info (12128): Elaborating entity "sid_dac" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_voice:chip[0].v1|sid_dac:envelope_dac" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_voice.sv Line: 171
+Info (12128): Elaborating entity "sid_tables" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_tables:sid_tables" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_top.sv Line: 247
+Info (12128): Elaborating entity "sid_dac" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_tables:sid_tables|sid_dac:fc_dac" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_tables.sv Line: 765
+Info (12128): Elaborating entity "sid_filter" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_filter:sid_filter" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_top.sv Line: 301
+Info (12128): Elaborating entity "mos6526" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|mos6526:cia1" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 778
+Info (12128): Elaborating entity "cpu_6510" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_6510:cpu_6510_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 893
+Info (12128): Elaborating entity "T65" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_6510:cpu_6510_inst|T65:cpu" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/cpu_6510.vhd Line: 58
+Info (12128): Elaborating entity "T65_MCode" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_6510:cpu_6510_inst|T65:cpu|T65_MCode:mcode" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/t65/T65.vhd Line: 277
+Info (12128): Elaborating entity "T65_ALU" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_6510:cpu_6510_inst|T65:cpu|T65_ALU:alu" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/t65/T65.vhd Line: 314
+Info (12128): Elaborating entity "cpu_65c816" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_816_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 915
+Info (12128): Elaborating entity "P65C816" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_816_inst|P65C816:cpu" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/cpu_65c816.vhd Line: 72
+Info (12128): Elaborating entity "MCode" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_816_inst|P65C816:cpu|MCode:MCode" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/P65C816.vhd Line: 176
+Info (12128): Elaborating entity "AddrGen" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_816_inst|P65C816:cpu|AddrGen:AddrGen" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/P65C816.vhd Line: 186
+Info (12128): Elaborating entity "ALU" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_816_inst|P65C816:cpu|ALU:ALU" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/P65C816.vhd Line: 241
+Info (12128): Elaborating entity "AddSubBCD" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_816_inst|P65C816:cpu|ALU:ALU|AddSubBCD:AddSub" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/ALU.vhd Line: 87
+Info (12128): Elaborating entity "BCDAdder" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_816_inst|P65C816:cpu|ALU:ALU|AddSubBCD:AddSub|BCDAdder:add0" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/AddSubBCD.vhd Line: 28
+Info (12128): Elaborating entity "adder4" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_816_inst|P65C816:cpu|ALU:ALU|AddSubBCD:AddSub|BCDAdder:add0|adder4:bin_adder" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/BCDAdder.vhd Line: 108
+Info (12128): Elaborating entity "bit_adder" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_816_inst|P65C816:cpu|ALU:ALU|AddSubBCD:AddSub|BCDAdder:add0|adder4:bin_adder|bit_adder:b_add0" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/BCDAdder.vhd Line: 67
+Info (12128): Elaborating entity "fpga64_keyboard" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_keyboard:Keyboard" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1091
+Info (12128): Elaborating entity "c1351" for hierarchy "emu:emu|c1351:mouse" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1200
+Info (12128): Elaborating entity "iec_drive" for hierarchy "emu:emu|iec_drive:iec_drive" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1280
+Info (12128): Elaborating entity "c1541_multi" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/iec_drive.sv Line: 135
+Info (12128): Elaborating entity "iecdrv_sync" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|iecdrv_sync:atn_sync" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_multi.sv Line: 65
+Info (12128): Elaborating entity "iecdrv_sync" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|iecdrv_sync:rst_sync" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_multi.sv Line: 70
+Info (12128): Elaborating entity "iecdrv_mem" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|iecdrv_mem:rom" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_multi.sv Line: 117
+Info (12128): Elaborating entity "iecdrv_mem" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|iecdrv_mem:romstd" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_multi.sv Line: 148
+Info (12128): Elaborating entity "c1541_drv" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_multi.sv Line: 238
+Info (12128): Elaborating entity "c1541_logic" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_logic:c1541_logic" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_drv.sv Line: 141
+Info (12128): Elaborating entity "T65" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_logic:c1541_logic|T65:cpu" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_logic.sv Line: 90
+Info (12128): Elaborating entity "iecdrv_mem" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_logic:c1541_logic|iecdrv_mem:extram" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_logic.sv Line: 105
+Info (12128): Elaborating entity "iecdrv_mem" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_logic:c1541_logic|iecdrv_mem:ram" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_logic.sv Line: 118
+Info (12128): Elaborating entity "iecdrv_via6522" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_logic:c1541_logic|iecdrv_via6522:uc1" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_logic.sv Line: 176
+Warning (10036): Verilog HDL or VHDL warning at iecdrv_via6522.vhd(75): object "last_data" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/iecdrv_via6522.vhd Line: 75
+Info (12128): Elaborating entity "c1541_gcr" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_gcr:c1541_gcr" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_drv.sv Line: 176
+Info (12128): Elaborating entity "c1541_direct_gcr" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_direct_gcr:c1541_direct_gcr" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_drv.sv Line: 207
+Warning (10030): Net "rec.data_a" at c1541_direct_gcr.sv(124) has no driver or initial value, using a default initial value '0' File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_direct_gcr.sv Line: 124
+Warning (10030): Net "rec.waddr_a" at c1541_direct_gcr.sv(124) has no driver or initial value, using a default initial value '0' File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_direct_gcr.sv Line: 124
+Warning (10030): Net "rec.we_a" at c1541_direct_gcr.sv(124) has no driver or initial value, using a default initial value '0' File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_direct_gcr.sv Line: 124
+Info (12128): Elaborating entity "iecdrv_bitmem" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|iecdrv_bitmem:buffer" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_direct_gcr.sv Line: 68
+Info (12128): Elaborating entity "random" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|random:lfsr" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_direct_gcr.sv Line: 79
+Info (12128): Elaborating entity "c1541_track" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_track:c1541_track" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_drv.sv Line: 228
+Info (12128): Elaborating entity "iecdrv_sync" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_track:c1541_track|iecdrv_sync:track_sync" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_track.sv Line: 46
+Info (12128): Elaborating entity "c1581_multi" for hierarchy "emu:emu|iec_drive:iec_drive|c1581_multi:c1581" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/iec_drive.sv Line: 185
+Info (12128): Elaborating entity "iecdrv_mem" for hierarchy "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|iecdrv_mem:rom" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1581_multi.sv Line: 107
+Info (12128): Elaborating entity "c1581_drv" for hierarchy "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1581_multi.sv Line: 210
+Info (12128): Elaborating entity "iecdrv_mos8520" for hierarchy "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|iecdrv_mos8520:cia" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1581_drv.sv Line: 165
+Info (12128): Elaborating entity "fdc1772" for hierarchy "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1581_drv.sv Line: 264
+Info (10264): Verilog HDL Case Statement information at fdc1772.v(572): all case item expressions in this case statement are onehot File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 572
+Info (10264): Verilog HDL Case Statement information at fdc1772.v(610): all case item expressions in this case statement are onehot File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 610
+Info (12128): Elaborating entity "floppy" for hierarchy "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc|floppy:fdd[0].floppy" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 289
+Info (12128): Elaborating entity "fdc1772_dpram" for hierarchy "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc|fdc1772_dpram:fifo" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 742
+Info (12128): Elaborating entity "video_sync" for hierarchy "emu:emu|video_sync:sync" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1349
+Info (12128): Elaborating entity "video_freak" for hierarchy "emu:emu|video_freak:video_freak" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1411
+Info (12128): Elaborating entity "video_scale_int" for hierarchy "emu:emu|video_freak:video_freak|video_scale_int:scale" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_freak.sv Line: 136
+Info (12128): Elaborating entity "debug_overlay" for hierarchy "emu:emu|debug_overlay:debug_ovl" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1453
+Warning (10036): Verilog HDL or VHDL warning at debug_overlay.sv(81): object "lat_data" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug_overlay.sv Line: 81
+Warning (10036): Verilog HDL or VHDL warning at debug_overlay.sv(82): object "lat_we" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug_overlay.sv Line: 82
+Info (12128): Elaborating entity "video_mixer" for hierarchy "emu:emu|video_mixer:video_mixer" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1486
+Info (12128): Elaborating entity "video_freezer" for hierarchy "emu:emu|video_mixer:video_mixer|video_freezer:freezer" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_mixer.sv Line: 81
+Info (12128): Elaborating entity "sync_lock" for hierarchy "emu:emu|video_mixer:video_mixer|video_freezer:freezer|sync_lock:vs_lock" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_freezer.sv Line: 47
+Info (12128): Elaborating entity "sync_lock" for hierarchy "emu:emu|video_mixer:video_mixer|video_freezer:freezer|sync_lock:hs_lock" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_freezer.sv Line: 59
+Info (12128): Elaborating entity "gamma_corr" for hierarchy "emu:emu|video_mixer:video_mixer|gamma_corr:gamma" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_mixer.sv Line: 131
+Info (12128): Elaborating entity "scandoubler" for hierarchy "emu:emu|video_mixer:video_mixer|scandoubler:sd" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_mixer.sv Line: 166
+Info (12128): Elaborating entity "Hq2x" for hierarchy "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/scandoubler.v Line: 117
+Info (12128): Elaborating entity "DiffCheck" for hierarchy "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|DiffCheck:diffcheck0" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hq2x.sv Line: 69
+Info (12128): Elaborating entity "Blend" for hierarchy "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|Blend:blender" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hq2x.sv Line: 76
+Info (12128): Elaborating entity "hq2x_in" for hierarchy "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_in:hq2x_in" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hq2x.sv Line: 115
+Info (12128): Elaborating entity "hq2x_buf" for hierarchy "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_in:hq2x_in|hq2x_buf:buf0" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hq2x.sv Line: 245
+Info (12128): Elaborating entity "hq2x_buf" for hierarchy "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_buf:hq2x_out" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hq2x.sv Line: 136
+Info (12128): Elaborating entity "opl3" for hierarchy "emu:emu|opl3:opl_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1503
+Info (12128): Elaborating entity "timer" for hierarchy "emu:emu|opl3:opl_inst|timer:timer1" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3.sv Line: 83
+Info (12128): Elaborating entity "opl3sw" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3.sv Line: 146
+Info (12128): Elaborating entity "opl3_mem" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_mem:ram" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3fm.sv Line: 81
+Info (12128): Elaborating entity "opl3_fifo" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3fm.sv Line: 99
+Info (12128): Elaborating entity "dcfifo" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3fm.sv Line: 253
+Info (12130): Elaborated megafunction instantiation "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3fm.sv Line: 253
+Info (12133): Instantiated megafunction "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component" with the following parameter: File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3fm.sv Line: 253
+    Info (12134): Parameter "intended_device_family" = "Cyclone V"
+    Info (12134): Parameter "lpm_numwords" = "1024"
+    Info (12134): Parameter "lpm_showahead" = "ON"
+    Info (12134): Parameter "lpm_type" = "dcfifo"
+    Info (12134): Parameter "lpm_width" = "10"
+    Info (12134): Parameter "lpm_widthu" = "10"
+    Info (12134): Parameter "overflow_checking" = "ON"
+    Info (12134): Parameter "rdsync_delaypipe" = "5"
+    Info (12134): Parameter "read_aclr_synch" = "ON"
+    Info (12134): Parameter "underflow_checking" = "ON"
+    Info (12134): Parameter "use_eab" = "ON"
+    Info (12134): Parameter "write_aclr_synch" = "ON"
+    Info (12134): Parameter "wrsync_delaypipe" = "5"
+Info (12021): Found 1 design units, including 1 entities, in source file db/dcfifo_pbp1.tdf
+    Info (12023): Found entity 1: dcfifo_pbp1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/dcfifo_pbp1.tdf Line: 43
+Info (12128): Elaborating entity "dcfifo_pbp1" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component|dcfifo_pbp1:auto_generated" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/dcfifo.tdf Line: 191
+Info (12021): Found 1 design units, including 1 entities, in source file db/a_graycounter_ov6.tdf
+    Info (12023): Found entity 1: a_graycounter_ov6 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/a_graycounter_ov6.tdf Line: 25
+Info (12128): Elaborating entity "a_graycounter_ov6" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component|dcfifo_pbp1:auto_generated|a_graycounter_ov6:rdptr_g1p" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/dcfifo_pbp1.tdf Line: 55
+Info (12021): Found 1 design units, including 1 entities, in source file db/a_graycounter_kdc.tdf
+    Info (12023): Found entity 1: a_graycounter_kdc File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/a_graycounter_kdc.tdf Line: 25
+Info (12128): Elaborating entity "a_graycounter_kdc" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component|dcfifo_pbp1:auto_generated|a_graycounter_kdc:wrptr_g1p" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/dcfifo_pbp1.tdf Line: 56
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_31b1.tdf
+    Info (12023): Found entity 1: altsyncram_31b1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_31b1.tdf Line: 28
+Info (12128): Elaborating entity "altsyncram_31b1" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component|dcfifo_pbp1:auto_generated|altsyncram_31b1:fifo_ram" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/dcfifo_pbp1.tdf Line: 57
+Info (12021): Found 1 design units, including 1 entities, in source file db/dffpipe_3dc.tdf
+    Info (12023): Found entity 1: dffpipe_3dc File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/dffpipe_3dc.tdf Line: 25
+Info (12128): Elaborating entity "dffpipe_3dc" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component|dcfifo_pbp1:auto_generated|dffpipe_3dc:rdaclr" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/dcfifo_pbp1.tdf Line: 76
+Info (12021): Found 1 design units, including 1 entities, in source file db/alt_synch_pipe_9pl.tdf
+    Info (12023): Found entity 1: alt_synch_pipe_9pl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/alt_synch_pipe_9pl.tdf Line: 27
+Info (12128): Elaborating entity "alt_synch_pipe_9pl" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component|dcfifo_pbp1:auto_generated|alt_synch_pipe_9pl:rs_dgwp" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/dcfifo_pbp1.tdf Line: 77
+Info (12021): Found 1 design units, including 1 entities, in source file db/dffpipe_qe9.tdf
+    Info (12023): Found entity 1: dffpipe_qe9 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/dffpipe_qe9.tdf Line: 25
+Info (12128): Elaborating entity "dffpipe_qe9" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component|dcfifo_pbp1:auto_generated|alt_synch_pipe_9pl:rs_dgwp|dffpipe_qe9:dffpipe14" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/alt_synch_pipe_9pl.tdf Line: 35
+Info (12021): Found 1 design units, including 1 entities, in source file db/alt_synch_pipe_apl.tdf
+    Info (12023): Found entity 1: alt_synch_pipe_apl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/alt_synch_pipe_apl.tdf Line: 27
+Info (12128): Elaborating entity "alt_synch_pipe_apl" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component|dcfifo_pbp1:auto_generated|alt_synch_pipe_apl:ws_dgrp" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/dcfifo_pbp1.tdf Line: 79
+Info (12021): Found 1 design units, including 1 entities, in source file db/dffpipe_re9.tdf
+    Info (12023): Found entity 1: dffpipe_re9 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/dffpipe_re9.tdf Line: 25
+Info (12128): Elaborating entity "dffpipe_re9" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component|dcfifo_pbp1:auto_generated|alt_synch_pipe_apl:ws_dgrp|dffpipe_re9:dffpipe17" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/alt_synch_pipe_apl.tdf Line: 35
+Info (12021): Found 1 design units, including 1 entities, in source file db/cmpr_uu5.tdf
+    Info (12023): Found entity 1: cmpr_uu5 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cmpr_uu5.tdf Line: 23
+Info (12128): Elaborating entity "cmpr_uu5" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component|dcfifo_pbp1:auto_generated|cmpr_uu5:rdempty_eq_comp1_lsb" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/dcfifo_pbp1.tdf Line: 80
+Info (12021): Found 1 design units, including 1 entities, in source file db/cmpr_tu5.tdf
+    Info (12023): Found entity 1: cmpr_tu5 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cmpr_tu5.tdf Line: 23
+Info (12128): Elaborating entity "cmpr_tu5" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component|dcfifo_pbp1:auto_generated|cmpr_tu5:rdempty_eq_comp1_msb" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/dcfifo_pbp1.tdf Line: 81
+Info (12021): Found 1 design units, including 1 entities, in source file db/mux_5r7.tdf
+    Info (12023): Found entity 1: mux_5r7 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/mux_5r7.tdf Line: 23
+Info (12128): Elaborating entity "mux_5r7" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component|dcfifo_pbp1:auto_generated|mux_5r7:rdemp_eq_comp_lsb_mux" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/dcfifo_pbp1.tdf Line: 88
+Info (12128): Elaborating entity "opl3seq" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3seq:opl3seq" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3fm.sv Line: 143
+Info (12128): Elaborating entity "sampler" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3seq:opl3seq|sampler:sampler_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3seq.sv Line: 169
+Info (12128): Elaborating entity "NextZ80" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|NextZ80:Z80" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3fm.sv Line: 182
+Info (12128): Elaborating entity "Z80Reg" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|NextZ80:Z80|Z80Reg:CPU_REGS" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/NextZ80CPU.v Line: 147
+Info (12128): Elaborating entity "RegSelect" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|NextZ80:Z80|Z80Reg:CPU_REGS|RegSelect:WSelectW" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/NextZ80Reg.v Line: 141
+Info (12128): Elaborating entity "ALU8" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|NextZ80:Z80|ALU8:CPU_ALU8" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/NextZ80CPU.v Line: 159
+Info (12128): Elaborating entity "daa" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|NextZ80:Z80|ALU8:CPU_ALU8|daa:daa_adjust" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/NextZ80ALU.v Line: 100
+Info (12128): Elaborating entity "ALU16" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|NextZ80:Z80|ALU16:CPU_ALU16" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/NextZ80CPU.v Line: 166
+Info (12128): Elaborating entity "c1530" for hierarchy "emu:emu|c1530:c1530" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1663
+Info (12128): Elaborating entity "tap_fifo" for hierarchy "emu:emu|c1530:c1530|tap_fifo:tap_fifo_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/c1530.vhd Line: 76
+Info (12128): Elaborating entity "scfifo" for hierarchy "emu:emu|c1530:c1530|tap_fifo:tap_fifo_inst|scfifo:scfifo_component" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/c1530.vhd Line: 321
+Info (12130): Elaborated megafunction instantiation "emu:emu|c1530:c1530|tap_fifo:tap_fifo_inst|scfifo:scfifo_component" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/c1530.vhd Line: 321
+Info (12133): Instantiated megafunction "emu:emu|c1530:c1530|tap_fifo:tap_fifo_inst|scfifo:scfifo_component" with the following parameter: File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/c1530.vhd Line: 321
+    Info (12134): Parameter "add_ram_output_register" = "OFF"
+    Info (12134): Parameter "intended_device_family" = "Cyclone III"
+    Info (12134): Parameter "lpm_numwords" = "64"
+    Info (12134): Parameter "lpm_showahead" = "OFF"
+    Info (12134): Parameter "lpm_type" = "scfifo"
+    Info (12134): Parameter "lpm_width" = "8"
+    Info (12134): Parameter "lpm_widthu" = "6"
+    Info (12134): Parameter "overflow_checking" = "ON"
+    Info (12134): Parameter "underflow_checking" = "ON"
+    Info (12134): Parameter "use_eab" = "ON"
+Info (12021): Found 1 design units, including 1 entities, in source file db/scfifo_pl91.tdf
+    Info (12023): Found entity 1: scfifo_pl91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/scfifo_pl91.tdf Line: 25
+Info (12128): Elaborating entity "scfifo_pl91" for hierarchy "emu:emu|c1530:c1530|tap_fifo:tap_fifo_inst|scfifo:scfifo_component|scfifo_pl91:auto_generated" File: /home/caldor/intelFPGA_lite/22.1std.1/quartus/libraries/megafunctions/scfifo.tdf Line: 300
+Info (12021): Found 1 design units, including 1 entities, in source file db/a_dpfifo_0s91.tdf
+    Info (12023): Found entity 1: a_dpfifo_0s91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/a_dpfifo_0s91.tdf Line: 29
+Info (12128): Elaborating entity "a_dpfifo_0s91" for hierarchy "emu:emu|c1530:c1530|tap_fifo:tap_fifo_inst|scfifo:scfifo_component|scfifo_pl91:auto_generated|a_dpfifo_0s91:dpfifo" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/scfifo_pl91.tdf Line: 37
+Info (12021): Found 1 design units, including 1 entities, in source file db/a_fefifo_c6e.tdf
+    Info (12023): Found entity 1: a_fefifo_c6e File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/a_fefifo_c6e.tdf Line: 25
+Info (12128): Elaborating entity "a_fefifo_c6e" for hierarchy "emu:emu|c1530:c1530|tap_fifo:tap_fifo_inst|scfifo:scfifo_component|scfifo_pl91:auto_generated|a_dpfifo_0s91:dpfifo|a_fefifo_c6e:fifo_state" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/a_dpfifo_0s91.tdf Line: 42
+Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_vg7.tdf
+    Info (12023): Found entity 1: cntr_vg7 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cntr_vg7.tdf Line: 26
+Info (12128): Elaborating entity "cntr_vg7" for hierarchy "emu:emu|c1530:c1530|tap_fifo:tap_fifo_inst|scfifo:scfifo_component|scfifo_pl91:auto_generated|a_dpfifo_0s91:dpfifo|a_fefifo_c6e:fifo_state|cntr_vg7:count_usedw" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/a_fefifo_c6e.tdf Line: 38
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_2os1.tdf
+    Info (12023): Found entity 1: altsyncram_2os1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_2os1.tdf Line: 28
+Info (12128): Elaborating entity "altsyncram_2os1" for hierarchy "emu:emu|c1530:c1530|tap_fifo:tap_fifo_inst|scfifo:scfifo_component|scfifo_pl91:auto_generated|a_dpfifo_0s91:dpfifo|altsyncram_2os1:FIFOram" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/a_dpfifo_0s91.tdf Line: 43
+Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_jgb.tdf
+    Info (12023): Found entity 1: cntr_jgb File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cntr_jgb.tdf Line: 26
+Info (12128): Elaborating entity "cntr_jgb" for hierarchy "emu:emu|c1530:c1530|tap_fifo:tap_fifo_inst|scfifo:scfifo_component|scfifo_pl91:auto_generated|a_dpfifo_0s91:dpfifo|cntr_jgb:rd_ptr_count" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/a_dpfifo_0s91.tdf Line: 44
+Info (12128): Elaborating entity "ltc2308_tape" for hierarchy "emu:emu|ltc2308_tape:ltc2308_tape" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1689
+Info (12128): Elaborating entity "ltc2308" for hierarchy "emu:emu|ltc2308_tape:ltc2308_tape|ltc2308:adc" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/ltc2308.sv Line: 125
+Info (12128): Elaborating entity "rtcF83" for hierarchy "emu:emu|rtcF83:rtcF83" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1769
+Warning (12241): 46 hierarchies have connectivity warnings - see the Connectivity Checks report folder
+Info (144001): Generated suppressed messages file /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/output_files/C64.map.smsg
+Info: Quartus Prime Analysis & Elaboration was successful. 0 errors, 9 warnings
+    Info: Peak virtual memory: 1747 megabytes
+    Info: Processing ended: Fri Feb 27 07:31:28 2026
+    Info: Elapsed time: 00:00:36
+    Info: Total CPU time (on all processors): 00:00:29
+Info (23030): Evaluation of Tcl script /home/caldor/intelFPGA_lite/22.1std.1/quartus/common/tcl/internal/qsh_flow.tcl was successful
+Info: Quartus Prime Shell was successful. 0 errors, 9 warnings
+    Info: Peak virtual memory: 506 megabytes
+    Info: Processing ended: Fri Feb 27 07:31:29 2026
+    Info: Elapsed time: 00:00:39
+    Info: Total CPU time (on all processors): 00:00:30
+
+
+=== Syntax check PASSED ===
+  Elapsed: 00:39

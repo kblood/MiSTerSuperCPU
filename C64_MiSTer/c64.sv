@@ -1054,10 +1054,16 @@ wire [15:0] dbg_scr_wr_pc;
 wire  [7:0] dbg_scr_wr_data;
 wire  [7:0] dbg_scr_wr_ir;
 wire        dbg_scr_zero_hit;
+wire  [7:0] dbg_scr_wr_bank;
+wire        dbg_scr_arm;
 wire        dbg_vic_zero_hit;
 wire [15:0] dbg_vic_zero_addr;
 wire [15:0] dbg_vic_zero_cpu;
 wire [15:0] dbg_vic_zero_sysaddr;
+wire        dbg_vic_wr_match;
+wire [15:0] dbg_vic_wr_pc;
+wire  [7:0] dbg_vic_prearm_cnt;
+wire  [7:0] dbg_vic_hit_cnt;
 
 fpga64_sid_iec fpga64
 (
@@ -1088,10 +1094,16 @@ fpga64_sid_iec fpga64
 	.dbg_scr_wr_data(dbg_scr_wr_data),
 	.dbg_scr_wr_ir(dbg_scr_wr_ir),
 	.dbg_scr_zero_hit(dbg_scr_zero_hit),
+	.dbg_scr_wr_bank(dbg_scr_wr_bank),
+	.dbg_scr_arm(dbg_scr_arm),
 	.dbg_vic_zero_hit(dbg_vic_zero_hit),
 	.dbg_vic_zero_addr(dbg_vic_zero_addr),
 	.dbg_vic_zero_cpu(dbg_vic_zero_cpu),
 	.dbg_vic_zero_sysaddr(dbg_vic_zero_sysaddr),
+	.dbg_vic_wr_match(dbg_vic_wr_match),
+	.dbg_vic_wr_pc(dbg_vic_wr_pc),
+	.dbg_vic_prearm_cnt(dbg_vic_prearm_cnt),
+	.dbg_vic_hit_cnt(dbg_vic_hit_cnt),
 
 	.ps2_key(key),
 	.kbd_reset((~reset_n & ~status[1]) | reset_keys),
@@ -1460,10 +1472,16 @@ debug_overlay debug_ovl
 	.scr_wr_data(dbg_scr_wr_data),
 	.scr_wr_ir(dbg_scr_wr_ir),
 	.scr_zero_hit(dbg_scr_zero_hit),
+	.scr_wr_bank(dbg_scr_wr_bank),
+	.scr_arm(dbg_scr_arm),
 	.vic_zero_hit(dbg_vic_zero_hit),
 	.vic_zero_addr(dbg_vic_zero_addr),
 	.vic_zero_cpu(dbg_vic_zero_cpu),
 	.vic_zero_sysaddr(dbg_vic_zero_sysaddr),
+	.vic_wr_match(dbg_vic_wr_match),
+	.vic_wr_pc(dbg_vic_wr_pc),
+	.vic_prearm_cnt(dbg_vic_prearm_cnt),
+	.vic_hit_cnt(dbg_vic_hit_cnt),
 	.overlay_active(ovl_active),
 	.overlay_r(ovl_r),
 	.overlay_g(ovl_g),

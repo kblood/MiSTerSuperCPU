@@ -91,11 +91,17 @@ port(
 	dbg_scr_wr_data : out unsigned(7 downto 0);
 	dbg_scr_wr_ir   : out unsigned(7 downto 0);
 	dbg_scr_zero_hit: out std_logic;
+	dbg_scr_wr_bank : out unsigned(7 downto 0);
+	dbg_scr_arm     : out std_logic;
 	-- VIC read-side capture
 	dbg_vic_zero_hit : out std_logic;
 	dbg_vic_zero_addr: out unsigned(15 downto 0);
 	dbg_vic_zero_cpu : out unsigned(15 downto 0);
 	dbg_vic_zero_sysaddr : out unsigned(15 downto 0);
+	dbg_vic_wr_match : out std_logic;
+	dbg_vic_wr_pc    : out unsigned(15 downto 0);
+	dbg_vic_prearm_cnt : out unsigned(7 downto 0);
+	dbg_vic_hit_cnt    : out unsigned(7 downto 0);
 
 	-- VGA/SCART interface
 	vic_variant : in  std_logic_vector(1 downto 0);
@@ -316,6 +322,7 @@ signal dbg_scr_wr_addr_r : unsigned(15 downto 0) := (others => '0');
 signal dbg_scr_wr_pc_r   : unsigned(15 downto 0) := (others => '0');
 signal dbg_scr_wr_data_r : unsigned(7 downto 0) := (others => '0');
 signal dbg_scr_wr_ir_r   : unsigned(7 downto 0) := (others => '0');
+signal dbg_scr_wr_bank_r : unsigned(7 downto 0) := (others => '0');
 signal dbg_scr_wr_arm_r  : std_logic := '0';
 signal dbg_scr_wr_arm_ctr: unsigned(24 downto 0) := (others => '0');
 signal dbg_scr_zero_hit_r: std_logic := '0'; -- sticky: '1' once a $00 write to screen RAM is detected
@@ -326,11 +333,18 @@ signal dbg_vic_zero_hit_r : std_logic := '0'; -- sticky: '1' once VIC reads $00 
 signal dbg_vic_zero_addr_r: unsigned(15 downto 0) := (others => '0'); -- vicAddr at CPUC (c-access addr)
 signal dbg_vic_zero_cpu_r : unsigned(15 downto 0) := (others => '0'); -- packed diagnostic data
 signal dbg_vic_zero_sysaddr_r : unsigned(15 downto 0) := (others => '0'); -- full systemAddr at CPUC
+signal dbg_vic_wr_match_r : std_logic := '0'; -- '1' if last captured CPU screen write addr matched VIC-hit addr
+signal dbg_vic_wr_pc_r    : unsigned(15 downto 0) := (others => '0'); -- PC of matching last CPU write
+signal dbg_vic_prearm_cnt_r : unsigned(7 downto 0) := (others => '0'); -- VIC $00 hits before arm
+signal dbg_vic_hit_cnt_r    : unsigned(7 downto 0) := (others => '0'); -- VIC $00 hits after arm
 signal vic_ca_addr_lat    : unsigned(15 downto 0) := (others => '0'); -- latch vicAddr at CPUC
 signal vic_ca_sysaddr16_lat : unsigned(15 downto 0) := (others => '0'); -- latch full systemAddr at CPUC
 signal vic_ca_sysaddr_lat : unsigned(7 downto 0) := (others => '0'); -- latch systemAddr[7:0] at CPUC
 signal vic_ca_has_bus_lat  : std_logic := '0'; -- latch cpuHasBus at CPUC
 signal vic_ca_pending      : std_logic := '0'; -- '1' = CPUC latch valid, waiting for VIC2
+signal vic_ca_data_lat     : unsigned(7 downto 0) := (others => '0'); -- c-access data captured at CPUF
+signal vic_ca_data_valid   : std_logic := '0'; -- '1' = vic_ca_data_lat is valid for next VIC2 consume
+signal vicDi_hold_or_live  : unsigned(7 downto 0);
 
 signal todclk       : std_logic;
 
@@ -641,7 +655,15 @@ end process;
 -- In the first three cycles after BA went low, the VIC reads
 -- $ff as character pointers and
 -- as color information the lower 4 bits of the opcode after the access to $d011.
-vicDiAec <= vicBus when aec = '0' else vicDi;
+-- For badline c-access, consume from a held register at VIC2 so the value
+-- survives any SDRAM traffic between CPUC read completion and VIC consume.
+vicDi_hold_or_live <= vic_ca_data_lat when sysCycle = CYCLE_VIC2 and
+                                      vic_ca_pending = '1' and
+                                      vic_ca_data_valid = '1' and
+                                      vic_ca_has_bus_lat = '0' and
+                                      vic_ca_addr_lat(15 downto 10) = "000001"
+                  else vicDi;
+vicDiAec <= vicBus when aec = '0' else vicDi_hold_or_live;
 colorDataAec <= cpuDi(3 downto 0) when aec = '0' else colorData;
 
 vic: entity work.video_vicii_656x
@@ -1021,10 +1043,12 @@ begin
 			dbg_scr_wr_pc_r   <= (others => '0');
 			dbg_scr_wr_data_r <= (others => '0');
 			dbg_scr_wr_ir_r   <= (others => '0');
+			dbg_scr_wr_bank_r <= (others => '0');
 			dbg_scr_wr_arm_r  <= '0';
 			dbg_scr_wr_arm_ctr <= (others => '0');
 			dbg_scr_zero_hit_r <= '0';
 		elsif supercpu_en = '0' then
+			dbg_scr_wr_bank_r <= (others => '0');
 			dbg_scr_wr_arm_r  <= '0';
 			dbg_scr_wr_arm_ctr <= (others => '0');
 			dbg_scr_zero_hit_r <= '0';
@@ -1043,6 +1067,7 @@ begin
 				dbg_scr_wr_pc_r   <= dbg_pc_816;
 				dbg_scr_wr_data_r <= cpuDo;
 				dbg_scr_wr_ir_r   <= dbg_ir_816;
+				dbg_scr_wr_bank_r <= addr_hi_816;
 				dbg_scr_zero_hit_r <= '1';
 			elsif dbg_scr_zero_hit_r = '0' then
 				-- Rolling capture: filter ALL cursor-blink writes (PC=$EA20, any address).
@@ -1052,6 +1077,7 @@ begin
 					dbg_scr_wr_pc_r   <= dbg_pc_816;
 					dbg_scr_wr_data_r <= cpuDo;
 					dbg_scr_wr_ir_r   <= dbg_ir_816;
+					dbg_scr_wr_bank_r <= addr_hi_816;
 				end if;
 			end if;
 		end if;
@@ -1062,6 +1088,8 @@ dbg_scr_wr_pc   <= dbg_scr_wr_pc_r;
 dbg_scr_wr_data <= dbg_scr_wr_data_r;
 dbg_scr_wr_ir   <= dbg_scr_wr_ir_r;
 dbg_scr_zero_hit <= dbg_scr_zero_hit_r;
+dbg_scr_wr_bank <= dbg_scr_wr_bank_r;
+dbg_scr_arm <= dbg_scr_wr_arm_r;
 
 -- VIC c-access capture: detect when VIC receives $00 screen code during badline.
 --
@@ -1087,14 +1115,25 @@ begin
 			dbg_vic_zero_addr_r <= (others => '0');
 			dbg_vic_zero_cpu_r  <= (others => '0');
 			dbg_vic_zero_sysaddr_r <= (others => '0');
+			dbg_vic_wr_match_r  <= '0';
+			dbg_vic_wr_pc_r     <= (others => '0');
+			dbg_vic_prearm_cnt_r <= (others => '0');
+			dbg_vic_hit_cnt_r    <= (others => '0');
 			vic_ca_addr_lat     <= (others => '0');
 			vic_ca_sysaddr16_lat <= (others => '0');
 			vic_ca_sysaddr_lat  <= (others => '0');
 			vic_ca_has_bus_lat  <= '0';
 			vic_ca_pending      <= '0';
+			vic_ca_data_lat     <= (others => '0');
+			vic_ca_data_valid   <= '0';
 		elsif supercpu_en = '0' then
 			dbg_vic_zero_hit_r  <= '0';
+			dbg_vic_wr_match_r  <= '0';
+			dbg_vic_wr_pc_r     <= (others => '0');
+			dbg_vic_prearm_cnt_r <= (others => '0');
+			dbg_vic_hit_cnt_r    <= (others => '0');
 			vic_ca_pending      <= '0';
+			vic_ca_data_valid   <= '0';
 		else
 			-- Step 1: At CPUC, latch vicAddr (c-access address) and systemAddr.
 			-- During badline (cpuHasBus=0), phi='1', so vicAddr = VM & colCounter.
@@ -1105,26 +1144,51 @@ begin
 				vic_ca_sysaddr_lat <= systemAddr(7 downto 0);
 				vic_ca_has_bus_lat <= cpuHasBus;
 				vic_ca_pending     <= '1';
+				vic_ca_data_valid  <= '0';
+			end if;
+
+			-- Capture c-access data once it has returned from the CPUC read.
+			-- SDRAM data is valid by CPUF after the CPUC CE (q=5 in controller),
+			-- before EXT/DMA phases of the next C64 cycle can clobber shared dout.
+			if sysCycle = CYCLE_CPUF and vic_ca_pending = '1'
+			   and vic_ca_has_bus_lat = '0'
+			   and vic_ca_addr_lat(15 downto 10) = "000001" then
+				vic_ca_data_lat   <= vicDi;
+				vic_ca_data_valid <= '1';
 			end if;
 
 			-- Step 2: At VIC2 (next enaData pulse after CPUC), check the data.
-			-- dout_r holds the CPUC read result (arrived at CPUE.5, still valid).
-			-- vicDi = SDRAM data = c-access screen code.
-			-- Trigger on first $00 during a real badline steal (cpuHasBus was 0).
-			if sysCycle = CYCLE_VIC2 and vic_ca_pending = '1'
-			   and dbg_vic_zero_hit_r = '0'
-			   and dbg_scr_wr_arm_r = '1'
-			   and vic_ca_has_bus_lat = '0'
-			   and vic_ca_addr_lat(15 downto 10) = "000001"
-			   and vicDi = x"00" then
-				dbg_vic_zero_hit_r  <= '1';
-				dbg_vic_zero_addr_r <= vic_ca_addr_lat;
-				dbg_vic_zero_sysaddr_r <= vic_ca_sysaddr16_lat;
-				dbg_vic_zero_cpu_r  <= vic_ca_has_bus_lat & aec
-				                     & vicDi(5 downto 0) & vic_ca_sysaddr_lat;
-				vic_ca_pending      <= '0';
-			elsif sysCycle = CYCLE_VIC2 then
+			-- Use held c-access data when available; fallback to live vicDi.
+			-- Count all VIC-side $00 hits, split by arm state.
+			-- Trigger sticky detail capture on the first post-arm hit.
+			if sysCycle = CYCLE_VIC2 and vic_ca_pending = '1' then
+				if vic_ca_has_bus_lat = '0'
+				   and vic_ca_addr_lat(15 downto 10) = "000001"
+				   and vicDi_hold_or_live = x"00" then
+					if dbg_scr_wr_arm_r = '0' then
+						dbg_vic_prearm_cnt_r <= dbg_vic_prearm_cnt_r + 1;
+					else
+						dbg_vic_hit_cnt_r <= dbg_vic_hit_cnt_r + 1;
+					end if;
+
+					if dbg_vic_zero_hit_r = '0' and dbg_scr_wr_arm_r = '1' then
+						dbg_vic_zero_hit_r  <= '1';
+						dbg_vic_zero_addr_r <= vic_ca_addr_lat;
+						dbg_vic_zero_sysaddr_r <= vic_ca_sysaddr16_lat;
+						dbg_vic_zero_cpu_r  <= vic_ca_has_bus_lat & aec
+						                     & vicDi_hold_or_live(5 downto 0) & vic_ca_sysaddr_lat;
+						if dbg_scr_wr_addr_r = vic_ca_addr_lat then
+							dbg_vic_wr_match_r <= '1';
+							dbg_vic_wr_pc_r    <= dbg_scr_wr_pc_r;
+						else
+							dbg_vic_wr_match_r <= '0';
+							dbg_vic_wr_pc_r    <= (others => '0');
+						end if;
+					end if;
+				end if;
+
 				vic_ca_pending <= '0';
+				vic_ca_data_valid <= '0';
 			end if;
 		end if;
 	end if;
@@ -1133,6 +1197,10 @@ dbg_vic_zero_hit  <= dbg_vic_zero_hit_r;
 dbg_vic_zero_addr <= dbg_vic_zero_addr_r;
 dbg_vic_zero_cpu  <= dbg_vic_zero_cpu_r;
 dbg_vic_zero_sysaddr <= dbg_vic_zero_sysaddr_r;
+dbg_vic_wr_match <= dbg_vic_wr_match_r;
+dbg_vic_wr_pc    <= dbg_vic_wr_pc_r;
+dbg_vic_prearm_cnt <= dbg_vic_prearm_cnt_r;
+dbg_vic_hit_cnt    <= dbg_vic_hit_cnt_r;
 
 -- $D07E ROM-visibility switch.
 -- Kickstart writes $00 to $D07E at $80F7 to expose C64 KERNAL at $E000-$FFFF.

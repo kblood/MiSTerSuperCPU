@@ -655,7 +655,7 @@ wb(0xFFEE, lo(RTI_ADDR), hi(RTI_ADDR))      # IRQ native
 wb(0xFFE4, lo(RTI_ADDR), hi(RTI_ADDR))      # COP native
 wb(0xFFE6, lo(RTI_ADDR), hi(RTI_ADDR))      # BRK native
 
-# Generate MIF + raw 64KB kick ROM binary
+# Generate MIF text in memory
 lines = ['WIDTH=8;', 'DEPTH=65536;', '', 'ADDRESS_RADIX=HEX;',
          'DATA_RADIX=HEX;', '', 'CONTENT BEGIN']
 for i, b in enumerate(rom):
@@ -663,17 +663,23 @@ for i, b in enumerate(rom):
 lines.append('END;')
 lines.append('')
 
-mif_path = 'C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/roms/scpu64.mif'
-with open(mif_path, 'w') as f:
-    f.write('\n'.join(lines))
-
 parser = argparse.ArgumentParser(description="Generate V22 SuperCPU diag ROM artifacts.")
 parser.add_argument(
     "--update-debug-kernal",
     action="store_true",
     help="Also copy V22 kernal into rom_inputs/debug_kernal.bin (default: off).",
 )
+parser.add_argument(
+    "--update-scpu-mif",
+    action="store_true",
+    help="Also overwrite C64_MiSTer/rtl/roms/scpu64.mif (default: off).",
+)
 args = parser.parse_args()
+
+mif_path = 'C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/roms/scpu64.mif'
+if args.update_scpu_mif:
+    with open(mif_path, 'w') as f:
+        f.write('\n'.join(lines))
 
 bin_path = 'C:/LLM/C64/MiSTerSuperCPU/tools/rom_builder/rom_inputs/scpu_kick.bin'
 with open(bin_path, 'wb') as f:
@@ -685,7 +691,10 @@ kernal_v22_path = 'C:/LLM/C64/MiSTerSuperCPU/tools/rom_builder/rom_inputs/debug_
 with open(kernal_v22_path, 'wb') as f:
     f.write(rom[0xE000:0x10000])
 
-print(f"Written: {mif_path}")
+if args.update_scpu_mif:
+    print(f"Written: {mif_path}")
+else:
+    print("Left C64_MiSTer/rtl/roms/scpu64.mif unchanged.")
 print(f"Written: {bin_path} ({len(rom)} bytes)")
 print(f"Written: {kernal_v22_path} (8192 bytes)")
 if args.update_debug_kernal:

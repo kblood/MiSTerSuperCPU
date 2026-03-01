@@ -1,5 +1,85 @@
 # Session Handoff — VIC C-Access Pipeline Investigation
 
+## Update — March 1, 2026 (Latest)
+
+### Confirmed behavior from hardware overlay
+- With **SuperCPU ROM ON**:
+  - `C:0400 M:1 D:00 P:81CB`
+  - Interpretation: VIC consumed `$00` at `$0400`, and the last CPU screen write matched that address (`M:1`) from PC `$81CB`.
+- With **SuperCPU ROM OFF**:
+  - `C:0400 M:0 D:00 P:0000`
+  - Interpretation: VIC still consumed `$00` at `$0400`, but no matching last CPU write was captured for that hit.
+
+### New debug instrumentation added
+- Overlay expanded to **4 rows**.
+- New row 4 format:
+  - `A:x P:xx C:xx B:xx`
+  - `A` = write-capture arm state
+  - `P` = VIC `$00` hit count before arm
+  - `C` = VIC `$00` hit count after arm
+  - `B` = bank of last captured screen write
+- New exported debug signals:
+  - `dbg_scr_wr_bank`, `dbg_scr_arm`
+  - `dbg_vic_wr_match`, `dbg_vic_wr_pc`
+  - `dbg_vic_prearm_cnt`, `dbg_vic_hit_cnt`
+
+### SignalTap status
+- USB-Blaster connectivity verified:
+  - `DE-SoC [USB-1]` with `5CSEBA6` visible via `jtagconfig`.
+- Active SignalTap profile file:
+  - `C64_MiSTer/supercpu_debug.stp` (focused on VIC-hit + write provenance path)
+- Project assignments now intended to use:
+  - `USE_SIGNALTAP_FILE supercpu_debug.stp`
+  - `SIGNALTAP_FILE supercpu_debug.stp`
+
+### Build/toolchain notes
+- Project build flow remains **Quartus 22.1 Lite** via `build_c64.ps1`.
+- Quartus 17 is usable for **SignalTap/JTAG tools** (`quartus_stpw`, `quartus_pgm`, `jtagconfig`) but not reliable for compiling this qsf as-is.
+- A previous transient Quartus internal fitter error was observed once; subsequent full compile on 22.1 succeeded.
+
+### Helper scripts now present
+- `launch_signaltap.ps1`
+  - points to `C:\intelFPGA_lite\17.0\quartus\bin64`
+  - opens `C64_MiSTer\supercpu_debug.stp`
+- `program_sof_jtag.ps1`
+  - programs `C64_MiSTer\output_files\C64.sof` to device `@2` on cable `DE-SoC [USB-1]`
+
+### Immediate next debugging focus
+1. Capture 2-3 SignalTap runs for ROM ON/OFF with same trigger (`dbg_vic_zero_hit_r==1`).
+2. Verify whether ROM OFF path is truly non-CPU write or a missed early write (check `P` pre-arm counter growth).
+3. Map PC `$81CB` path in kickstart flow to isolate why `$0400` receives `$00`.
+
+## Latest Context Reset (Current Ground Truth)
+
+- Two commits established the current ROM workflow split:
+  - `0cf7109` — separate V22 loadable ROM workflow
+  - `77c329e` — restored SuperCPU kickstart ROM for menu option
+- SuperCPU kickstart in core (`C64_MiSTer/rtl/roms/scpu64.mif`) is restored to the
+  real kickstart image (vectors `RST=$FC90 IRQ=$FC94 NMI=$FC8C`), not V22 diag.
+- V22 now exists as a separate loadable C64 ROM path:
+  - `tools/rom_builder/rom_inputs/debug_kernal_v22.bin` (8KB KERNAL slice)
+  - `tools/rom_builder/out/debug_system_v22.rom` (loadable system ROM)
+- Main debug ROM path remains independent:
+  - `tools/rom_builder/rom_inputs/debug_kernal.bin` (from `gen_diag_kernal_mvp.py`)
+  - `tools/rom_builder/out/debug_system.rom`
+- Key observation update:
+  - The new frame-synced MVP debug ROM no longer shows scrolling lines.
+  - `C64_Original_MiSTer.ROM` still shows lines with SuperCPU.
+  - This strongly indicates workload/timing sensitivity and supports a core-side
+    data-lifetime issue, not a simple "wrong ROM image" issue.
+
+## Current Practical ROM Commands
+
+```powershell
+# Main debug ROM (MVP/page-based)
+python .\tools\diagrom\gen_diag_kernal_mvp.py
+.\tools\rom_builder\build_and_deploy_debug.ps1 -CopyCore $false
+
+# Separate V22 loadable ROM (does NOT replace debug_kernal.bin)
+python .\gen_diag_rom.py
+.\tools\rom_builder\build_roms.ps1 -Mode manifest -Manifest .\tools\rom_builder\profiles\debug_v22.json
+```
+
 ## Read These Files First
 - `C:\LLM\C64\MiSTerSuperCPU\RootCause.md`
 - `C:\LLM\C64\MiSTerSuperCPU\C64_MiSTer\rtl\fpga64_sid_iec.vhd`

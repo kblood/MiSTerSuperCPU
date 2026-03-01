@@ -6,6 +6,31 @@ SignalTap II is Intel Quartus Prime's on-chip logic analyser.
 It embeds capture logic into the FPGA bitstream so you can observe internal
 signals in real time over USB-Blaster without modifying any I/O pins.
 
+## Current Project Status (March 1, 2026)
+
+- Active project SignalTap file is intended to be:
+  - `C64_MiSTer/supercpu_debug.stp`
+- Current focused trigger in that profile:
+  - `dbg_vic_zero_hit_r == 1` (first VIC-side screen-code `$00` hit capture path)
+- Verified cable visibility:
+  - `jtagconfig` shows `DE-SoC [USB-1]` and device `5CSEBA6`
+- Compile flow for this repo:
+  - Build with Quartus 22.1 Lite via `build_c64.ps1`
+  - Use Quartus 17 tools for JTAG/SignalTap runtime if preferred
+
+Quick commands:
+
+```powershell
+# 1) Compile core with embedded SignalTap
+.\build_c64.ps1
+
+# 2) Program .sof over JTAG (USB-Blaster)
+.\program_sof_jtag.ps1
+
+# 3) Open SignalTap GUI (Quartus 17 path)
+.\launch_signaltap.ps1
+```
+
 ---
 
 ## Constraints

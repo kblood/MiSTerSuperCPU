@@ -3,10 +3,11 @@
 // Renders CPU debug state as hex text in the top border area of the
 // VIC-II video output. Self-contained with embedded 4x6 hex font.
 //
-// Display layout (rendered in top border, 3 rows):
+// Display layout (rendered in top border, 4 rows):
 //   Row 1: A:xxxx B:xx K:xx R:xx   (B=current bank, K=max bank seen, R=addr at max bank)
 //   Row 2: S:xxxx P:xx I:xx E:x
 //   Row 3: W:xxxx D:xx P:xxxx oo   (rolling write) or C:vvvv HA D:DD S:SSSS (c-access $00 hit)
+//   Row 4: A:x P:xx C:xx B:xx       (arm, pre-arm count, post-arm count, last write bank)
 //
 // All position tracking uses registered counters (no division/modulo).
 
@@ -35,11 +36,17 @@ module debug_overlay (
 	input   [7:0] scr_wr_data,
 	input   [7:0] scr_wr_ir,
 	input         scr_zero_hit, // sticky flag: '1' when a $00 write was captured
+	input   [7:0] scr_wr_bank,  // bank of last captured screen write
+	input         scr_arm,      // write-capture arm state
 	// VIC read-side capture
 	input         vic_zero_hit,  // sticky flag: '1' when VIC read $00 from screen RAM
 	input  [15:0] vic_zero_addr, // VIC address where $00 was read
 	input  [15:0] vic_zero_cpu,  // CPU address at that moment
 	input  [15:0] vic_zero_sysaddr, // full systemAddr latched at CPUC
+	input         vic_wr_match,  // '1' if last CPU screen write matched vic_zero_addr
+	input  [15:0] vic_wr_pc,     // PC of matching last CPU write
+	input   [7:0] vic_prearm_cnt, // VIC $00 hits before write capture armed
+	input   [7:0] vic_hit_cnt,    // VIC $00 hits after write capture armed
 
 	// Video overlay output
 	output reg    overlay_active,
@@ -99,10 +106,16 @@ reg [15:0] lat_scr_wr_pc;
 reg  [7:0] lat_scr_wr_data;
 reg  [7:0] lat_scr_wr_ir;
 reg        lat_scr_zero_hit;
+reg  [7:0] lat_scr_wr_bank;
+reg        lat_scr_arm;
 reg        lat_vic_zero_hit;
 reg [15:0] lat_vic_zero_addr;
 reg [15:0] lat_vic_zero_cpu;
 reg [15:0] lat_vic_zero_sysaddr;
+reg        lat_vic_wr_match;
+reg [15:0] lat_vic_wr_pc;
+reg  [7:0] lat_vic_prearm_cnt;
+reg  [7:0] lat_vic_hit_cnt;
 
 always @(posedge clk) begin
 	if (vblank_r && !vblank) begin
@@ -121,10 +134,16 @@ always @(posedge clk) begin
 		lat_scr_wr_data <= scr_wr_data;
 		lat_scr_wr_ir   <= scr_wr_ir;
 		lat_scr_zero_hit <= scr_zero_hit;
+		lat_scr_wr_bank <= scr_wr_bank;
+		lat_scr_arm <= scr_arm;
 		lat_vic_zero_hit  <= vic_zero_hit;
 		lat_vic_zero_addr <= vic_zero_addr;
 		lat_vic_zero_cpu  <= vic_zero_cpu;
 		lat_vic_zero_sysaddr <= vic_zero_sysaddr;
+		lat_vic_wr_match <= vic_wr_match;
+		lat_vic_wr_pc <= vic_wr_pc;
+		lat_vic_prearm_cnt <= vic_prearm_cnt;
+		lat_vic_hit_cnt <= vic_hit_cnt;
 	end
 end
 
@@ -132,16 +151,18 @@ end
 // Character position counters
 // -----------------------------------------------------------------------
 
-// Overlay placed in top border area. Constants chosen so 3×6px rows + 2 gap lines
-// = 20 lines fit in the top border (ends around line_cnt ~37 for PAL).
+// Overlay placed in top border area. Constants chosen so 4x6px rows + 3 gap lines
+// = 27 lines fit in the top border.
 // NOTE: in_overlay_y is registered (1 line late), so we trigger at Y_START-1.
 localparam OVERLAY_X_START = 10'd4;
-localparam OVERLAY_Y_START = 9'd8;    // first line of row 1 (border area, with monitor margin)
-localparam ROW1_Y_END      = 9'd14;   // gap line between row 1 and row 2
-localparam ROW2_Y_START    = 9'd15;   // first line of row 2
-localparam ROW2_Y_END      = 9'd21;   // gap line between row 2 and row 3
-localparam ROW3_Y_START    = 9'd22;   // first line of row 3 (write detector)
-localparam OVERLAY_Y_END   = 9'd28;   // last line + 1 (exclusive)
+localparam OVERLAY_Y_START = 9'd6;    // first line of row 1 (border area, with monitor margin)
+localparam ROW1_Y_END      = 9'd12;   // gap line between row 1 and row 2
+localparam ROW2_Y_START    = 9'd13;   // first line of row 2
+localparam ROW2_Y_END      = 9'd19;   // gap line between row 2 and row 3
+localparam ROW3_Y_START    = 9'd20;   // first line of row 3
+localparam ROW3_Y_END      = 9'd26;   // gap line between row 3 and row 4
+localparam ROW4_Y_START    = 9'd27;   // first line of row 4
+localparam OVERLAY_Y_END   = 9'd33;   // last line + 1 (exclusive)
 localparam NUM_CHARS       = 5'd22;   // max chars per row
 
 reg [4:0] char_idx;    // which character position (0-21)
@@ -184,15 +205,17 @@ always @(posedge clk) begin
 	end
 end
 
-// Row selection: 0=row1, 1=row2, 2=row3
-wire [1:0] char_row = (line_cnt >= ROW3_Y_START) ? 2'd2 :
+// Row selection: 0=row1, 1=row2, 2=row3, 3=row4
+wire [1:0] char_row = (line_cnt >= ROW4_Y_START) ? 2'd3 :
+                      (line_cnt >= ROW3_Y_START) ? 2'd2 :
                       (line_cnt >= ROW2_Y_START)  ? 2'd1 : 2'd0;
 // Gap lines between rows: no text rendered
-wire       in_gap = (line_cnt == ROW1_Y_END) || (line_cnt == ROW2_Y_END);
-// Font row within current character row (0-5, using 3-bit subtraction)
-wire [2:0] font_row = char_row[1] ? (line_cnt[2:0] - ROW3_Y_START[2:0]) :
-                      char_row[0] ? (line_cnt[2:0] - ROW2_Y_START[2:0]) :
-                                    (line_cnt[2:0] - OVERLAY_Y_START[2:0]);
+wire       in_gap = (line_cnt == ROW1_Y_END) || (line_cnt == ROW2_Y_END) || (line_cnt == ROW3_Y_END);
+// Font row within current character row (0-5)
+wire [2:0] font_row = (char_row == 2'd3) ? (line_cnt[2:0] - ROW4_Y_START[2:0]) :
+                      (char_row == 2'd2) ? (line_cnt[2:0] - ROW3_Y_START[2:0]) :
+                      (char_row == 2'd1) ? (line_cnt[2:0] - ROW2_Y_START[2:0]) :
+                                           (line_cnt[2:0] - OVERLAY_Y_START[2:0]);
 
 // -----------------------------------------------------------------------
 // 4x6 hex font ROM
@@ -229,6 +252,7 @@ always @(*) begin
 		5'h16:   font_data = 24'h000000; // space (code 22)
 		5'h17:   font_data = 24'hE9ECA9; // R (code 23)
 		5'h18:   font_data = 24'h699996; // O (code 24) - oval like 0
+		5'h19:   font_data = 24'h9F9999; // M (code 25)
 		default: font_data = 24'h000000;
 	endcase
 end
@@ -300,19 +324,18 @@ always @(*) begin
 			default: char_code = 5'h16;
 		endcase
 	end
-	default: begin
+	2'd2: begin
 		// Row 3 - three priority levels:
-		//   VIC hit:   C:vvvv HA D:DD S:SSSS (v=vicAddr@CPUC, H=cpuHasBus, A=aec, D=vicDi@VIC2, S=systemAddr@CPUC)
+		//   VIC hit:   C:vvvv M:x D:DD P:PPPP (M=last CPU write addr match to VIC-hit addr)
 		//   Write hit: 0:xxxx D:00 P:xxxx   (write-side $00 frozen)
 		//   Rolling:   W:xxxx D:xx P:xxxx oo (normal rolling capture)
 		if (lat_vic_zero_hit) begin
-			// Badline c-access $00 detected at VIC2 (pipeline-correct)
-			// Format: C:vvvv HA D:DD S:SSSS
+			// Badline c-access $00 detected at VIC2.
+			// Format: C:vvvv M:x D:DD P:PPPP
 			//   vvvv = vicAddr at CPUC (c-access address, VM & colCounter)
-			//   H = cpuHasBus at CPUC (bit 15, should be 0 during badline)
-			//   A = aec at VIC2 (bit 14, should be 1)
-			//   DD = vicDi[5:0] at VIC2 (bits 13:8, c-access data from SDRAM)
-			//   SSSS = full systemAddr[15:0] at CPUC
+			//   x    = 1 if last captured CPU screen write address matched vvvv
+			//   DD   = vicDi[5:0] at VIC2 (from dbg_vic_zero_cpu[13:8])
+			//   PPPP = PC from that matching write (0 if no match)
 			case (char_idx)
 				5'd0:  char_code = 5'hC;                             // 'C'
 				5'd1:  char_code = 5'h15;                            // ':'
@@ -321,21 +344,21 @@ always @(*) begin
 				5'd4:  char_code = {1'b0, lat_vic_zero_addr[7:4]};
 				5'd5:  char_code = {1'b0, lat_vic_zero_addr[3:0]};
 				5'd6:  char_code = 5'h16;                            // ' '
-				5'd7:  char_code = {1'b0, 3'b0, lat_vic_zero_cpu[15]}; // cpuHasBus@CPUC
-				5'd8:  char_code = {1'b0, 3'b0, lat_vic_zero_cpu[14]}; // aec@VIC2
-				5'd9:  char_code = 5'h16;                            // ' '
-				5'd10: char_code = 5'hD;                             // 'D'
-				5'd11: char_code = 5'h15;                            // ':'
-				5'd12: char_code = {1'b0, 2'b0, lat_vic_zero_cpu[13:12]}; // vicDi[5:4]@VIC2
-				5'd13: char_code = {1'b0, lat_vic_zero_cpu[11:8]};   // vicDi[3:0]@VIC2
-				5'd14: char_code = 5'h16;                            // ' '
-				5'd15: char_code = 5'h10;                            // 'S'
-				5'd16: char_code = 5'h15;                            // ':'
-				5'd17: char_code = {1'b0, lat_vic_zero_sysaddr[15:12]};
-				5'd18: char_code = {1'b0, lat_vic_zero_sysaddr[11:8]};
-				5'd19: char_code = {1'b0, lat_vic_zero_sysaddr[7:4]};
-				5'd20: char_code = {1'b0, lat_vic_zero_sysaddr[3:0]};
-				5'd21: char_code = 5'h16;
+				5'd7:  char_code = 5'h19;                            // 'M'
+				5'd8:  char_code = 5'h15;                            // ':'
+				5'd9:  char_code = {4'b0, lat_vic_wr_match};
+				5'd10: char_code = 5'h16;                            // ' '
+				5'd11: char_code = 5'hD;                             // 'D'
+				5'd12: char_code = 5'h15;                            // ':'
+				5'd13: char_code = {1'b0, 2'b0, lat_vic_zero_cpu[13:12]}; // vicDi[5:4]@VIC2
+				5'd14: char_code = {1'b0, lat_vic_zero_cpu[11:8]};   // vicDi[3:0]@VIC2
+				5'd15: char_code = 5'h16;                            // ' '
+				5'd16: char_code = 5'h11;                            // 'P'
+				5'd17: char_code = 5'h15;                            // ':'
+				5'd18: char_code = {1'b0, lat_vic_wr_pc[15:12]};
+				5'd19: char_code = {1'b0, lat_vic_wr_pc[11:8]};
+				5'd20: char_code = {1'b0, lat_vic_wr_pc[7:4]};
+				5'd21: char_code = {1'b0, lat_vic_wr_pc[3:0]};
 				default: char_code = 5'h16;
 			endcase
 		end
@@ -367,6 +390,38 @@ always @(*) begin
 				default: char_code = 5'h16;
 			endcase
 		end
+	end
+	default: begin
+		// Row 4: A:x P:xx C:xx B:xx
+		//   A = write-capture arm state
+		//   P = VIC $00 hit count before arm
+		//   C = VIC $00 hit count after arm
+		//   B = bank of last captured screen write
+		case (char_idx)
+			5'd0:  char_code = 5'hA;                   // 'A'
+			5'd1:  char_code = 5'h15;                  // ':'
+			5'd2:  char_code = {4'b0, lat_scr_arm};
+			5'd3:  char_code = 5'h16;
+			5'd4:  char_code = 5'h11;                  // 'P'
+			5'd5:  char_code = 5'h15;                  // ':'
+			5'd6:  char_code = {1'b0, lat_vic_prearm_cnt[7:4]};
+			5'd7:  char_code = {1'b0, lat_vic_prearm_cnt[3:0]};
+			5'd8:  char_code = 5'h16;
+			5'd9:  char_code = 5'hC;                   // 'C'
+			5'd10: char_code = 5'h15;                  // ':'
+			5'd11: char_code = {1'b0, lat_vic_hit_cnt[7:4]};
+			5'd12: char_code = {1'b0, lat_vic_hit_cnt[3:0]};
+			5'd13: char_code = 5'h16;
+			5'd14: char_code = 5'hB;                   // 'B'
+			5'd15: char_code = 5'h15;                  // ':'
+			5'd16: char_code = {1'b0, lat_scr_wr_bank[7:4]};
+			5'd17: char_code = {1'b0, lat_scr_wr_bank[3:0]};
+			5'd18: char_code = 5'h16;
+			5'd19: char_code = 5'h16;
+			5'd20: char_code = 5'h16;
+			5'd21: char_code = 5'h16;
+			default: char_code = 5'h16;
+		endcase
 	end
 	endcase
 end
