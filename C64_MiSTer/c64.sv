@@ -1064,6 +1064,11 @@ wire        dbg_vic_wr_match;
 wire [15:0] dbg_vic_wr_pc;
 wire  [7:0] dbg_vic_prearm_cnt;
 wire  [7:0] dbg_vic_hit_cnt;
+wire  [7:0] dbg_vic_mode;
+wire  [7:0] dbg_vic_cpuf_zero_cnt;
+wire  [7:0] dbg_vic_cpue_live_zero_cnt;
+wire  [7:0] dbg_vic_cpue_hold_zero_cnt;
+wire  [7:0] dbg_vic_cpue_mismatch_cnt;
 
 fpga64_sid_iec fpga64
 (
@@ -1104,6 +1109,11 @@ fpga64_sid_iec fpga64
 	.dbg_vic_wr_pc(dbg_vic_wr_pc),
 	.dbg_vic_prearm_cnt(dbg_vic_prearm_cnt),
 	.dbg_vic_hit_cnt(dbg_vic_hit_cnt),
+	.dbg_vic_mode(dbg_vic_mode),
+	.dbg_vic_cpuf_zero_cnt(dbg_vic_cpuf_zero_cnt),
+	.dbg_vic_cpue_live_zero_cnt(dbg_vic_cpue_live_zero_cnt),
+	.dbg_vic_cpue_hold_zero_cnt(dbg_vic_cpue_hold_zero_cnt),
+	.dbg_vic_cpue_mismatch_cnt(dbg_vic_cpue_mismatch_cnt),
 
 	.ps2_key(key),
 	.kbd_reset((~reset_n & ~status[1]) | reset_keys),
@@ -1482,6 +1492,11 @@ debug_overlay debug_ovl
 	.vic_wr_pc(dbg_vic_wr_pc),
 	.vic_prearm_cnt(dbg_vic_prearm_cnt),
 	.vic_hit_cnt(dbg_vic_hit_cnt),
+	.vic_mode(dbg_vic_mode),
+	.vic_cpuf_zero_cnt(dbg_vic_cpuf_zero_cnt),
+	.vic_cpue_live_zero_cnt(dbg_vic_cpue_live_zero_cnt),
+	.vic_cpue_hold_zero_cnt(dbg_vic_cpue_hold_zero_cnt),
+	.vic_cpue_mismatch_cnt(dbg_vic_cpue_mismatch_cnt),
 	.overlay_active(ovl_active),
 	.overlay_r(ovl_r),
 	.overlay_g(ovl_g),

@@ -102,6 +102,11 @@ port(
 	dbg_vic_wr_pc    : out unsigned(15 downto 0);
 	dbg_vic_prearm_cnt : out unsigned(7 downto 0);
 	dbg_vic_hit_cnt    : out unsigned(7 downto 0);
+	dbg_vic_mode       : out unsigned(7 downto 0);
+	dbg_vic_cpuf_zero_cnt : out unsigned(7 downto 0);
+	dbg_vic_cpue_live_zero_cnt : out unsigned(7 downto 0);
+	dbg_vic_cpue_hold_zero_cnt : out unsigned(7 downto 0);
+	dbg_vic_cpue_mismatch_cnt  : out unsigned(7 downto 0);
 
 	-- VGA/SCART interface
 	vic_variant : in  std_logic_vector(1 downto 0);
@@ -337,6 +342,11 @@ signal dbg_vic_wr_match_r : std_logic := '0'; -- '1' if last captured CPU screen
 signal dbg_vic_wr_pc_r    : unsigned(15 downto 0) := (others => '0'); -- PC of matching last CPU write
 signal dbg_vic_prearm_cnt_r : unsigned(7 downto 0) := (others => '0'); -- VIC $00 hits before arm
 signal dbg_vic_hit_cnt_r    : unsigned(7 downto 0) := (others => '0'); -- VIC $00 hits after arm
+signal dbg_vic_mode_r       : unsigned(7 downto 0) := (others => '0'); -- runtime VIC test mode ($D07B bits 1:0)
+signal dbg_vic_cpuf_zero_cnt_r : unsigned(7 downto 0) := (others => '0'); -- CPUF live vicDi == 00
+signal dbg_vic_cpue_live_zero_cnt_r : unsigned(7 downto 0) := (others => '0'); -- CPUE live vicDi == 00
+signal dbg_vic_cpue_hold_zero_cnt_r : unsigned(7 downto 0) := (others => '0'); -- CPUE held data == 00
+signal dbg_vic_cpue_mismatch_cnt_r  : unsigned(7 downto 0) := (others => '0'); -- CPUE live /= held
 signal vic_ca_addr_lat    : unsigned(15 downto 0) := (others => '0'); -- latch vicAddr at CPUC
 signal vic_ca_sysaddr16_lat : unsigned(15 downto 0) := (others => '0'); -- latch full systemAddr at CPUC
 signal vic_ca_sysaddr_lat : unsigned(7 downto 0) := (others => '0'); -- latch systemAddr[7:0] at CPUC
@@ -345,6 +355,7 @@ signal vic_ca_pending      : std_logic := '0'; -- '1' = CPUC latch valid, waitin
 signal vic_ca_data_lat     : unsigned(7 downto 0) := (others => '0'); -- c-access data captured at CPUF
 signal vic_ca_data_valid   : std_logic := '0'; -- '1' = vic_ca_data_lat is valid for next VIC2 consume
 signal vicDi_hold_or_live  : unsigned(7 downto 0);
+signal vic_hold_gate       : std_logic;
 
 signal todclk       : std_logic;
 
@@ -622,6 +633,7 @@ cpuDi <= x"C9" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' 
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B2") else
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
          (scpu_speed_slow & "0000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07A") else
+         (to_unsigned(0, 6) & dbg_vic_mode_r(1 downto 0)) when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07B") else
          cpuDi_raw;
 
 process(clk32)
@@ -655,13 +667,23 @@ end process;
 -- In the first three cycles after BA went low, the VIC reads
 -- $ff as character pointers and
 -- as color information the lower 4 bits of the opcode after the access to $d011.
--- For badline c-access, consume from a held register at VIC2 so the value
--- survives any SDRAM traffic between CPUC read completion and VIC consume.
-vicDi_hold_or_live <= vic_ca_data_lat when sysCycle = CYCLE_VIC2 and
-                                      vic_ca_pending = '1' and
-                                      vic_ca_data_valid = '1' and
-                                      vic_ca_has_bus_lat = '0' and
-                                      vic_ca_addr_lat(15 downto 10) = "000001"
+-- Runtime test mode ($D07B bits 1:0):
+--   00: baseline live vicDi only
+--   01: inject held CPUF data at CPUE
+--   10: inject held CPUF data at VIC2 (legacy experiment)
+--   11: inject held CPUF data at both CPUE and VIC2
+vic_hold_gate <= '1' when vic_ca_pending = '1' and
+                          vic_ca_data_valid = '1' and
+                          vic_ca_has_bus_lat = '0' and
+                          vic_ca_addr_lat(15 downto 10) = "000001" and
+                          (
+                           (dbg_vic_mode_r(1 downto 0) = to_unsigned(1, 2) and sysCycle = CYCLE_CPUE) or
+                           (dbg_vic_mode_r(1 downto 0) = to_unsigned(2, 2) and sysCycle = CYCLE_VIC2) or
+                           (dbg_vic_mode_r(1 downto 0) = to_unsigned(3, 2) and (sysCycle = CYCLE_CPUE or sysCycle = CYCLE_VIC2))
+                          )
+               else '0';
+
+vicDi_hold_or_live <= vic_ca_data_lat when vic_hold_gate = '1'
                   else vicDi;
 vicDiAec <= vicBus when aec = '0' else vicDi_hold_or_live;
 colorDataAec <= cpuDi(3 downto 0) when aec = '0' else colorData;
@@ -1119,6 +1141,10 @@ begin
 			dbg_vic_wr_pc_r     <= (others => '0');
 			dbg_vic_prearm_cnt_r <= (others => '0');
 			dbg_vic_hit_cnt_r    <= (others => '0');
+			dbg_vic_cpuf_zero_cnt_r <= (others => '0');
+			dbg_vic_cpue_live_zero_cnt_r <= (others => '0');
+			dbg_vic_cpue_hold_zero_cnt_r <= (others => '0');
+			dbg_vic_cpue_mismatch_cnt_r  <= (others => '0');
 			vic_ca_addr_lat     <= (others => '0');
 			vic_ca_sysaddr16_lat <= (others => '0');
 			vic_ca_sysaddr_lat  <= (others => '0');
@@ -1132,6 +1158,10 @@ begin
 			dbg_vic_wr_pc_r     <= (others => '0');
 			dbg_vic_prearm_cnt_r <= (others => '0');
 			dbg_vic_hit_cnt_r    <= (others => '0');
+			dbg_vic_cpuf_zero_cnt_r <= (others => '0');
+			dbg_vic_cpue_live_zero_cnt_r <= (others => '0');
+			dbg_vic_cpue_hold_zero_cnt_r <= (others => '0');
+			dbg_vic_cpue_mismatch_cnt_r  <= (others => '0');
 			vic_ca_pending      <= '0';
 			vic_ca_data_valid   <= '0';
 		else
@@ -1155,6 +1185,26 @@ begin
 			   and vic_ca_addr_lat(15 downto 10) = "000001" then
 				vic_ca_data_lat   <= vicDi;
 				vic_ca_data_valid <= '1';
+				if vicDi = x"00" then
+					dbg_vic_cpuf_zero_cnt_r <= dbg_vic_cpuf_zero_cnt_r + 1;
+				end if;
+			end if;
+
+			-- Compare live vs held at CPUE (where VIC latches screen code).
+			if sysCycle = CYCLE_CPUE and vic_ca_pending = '1'
+			   and vic_ca_has_bus_lat = '0'
+			   and vic_ca_addr_lat(15 downto 10) = "000001" then
+				if vicDi = x"00" then
+					dbg_vic_cpue_live_zero_cnt_r <= dbg_vic_cpue_live_zero_cnt_r + 1;
+				end if;
+				if vic_ca_data_valid = '1' then
+					if vic_ca_data_lat = x"00" then
+						dbg_vic_cpue_hold_zero_cnt_r <= dbg_vic_cpue_hold_zero_cnt_r + 1;
+					end if;
+					if vicDi /= vic_ca_data_lat then
+						dbg_vic_cpue_mismatch_cnt_r <= dbg_vic_cpue_mismatch_cnt_r + 1;
+					end if;
+				end if;
 			end if;
 
 			-- Step 2: At VIC2 (next enaData pulse after CPUC), check the data.
@@ -1201,6 +1251,11 @@ dbg_vic_wr_match <= dbg_vic_wr_match_r;
 dbg_vic_wr_pc    <= dbg_vic_wr_pc_r;
 dbg_vic_prearm_cnt <= dbg_vic_prearm_cnt_r;
 dbg_vic_hit_cnt    <= dbg_vic_hit_cnt_r;
+dbg_vic_mode <= dbg_vic_mode_r;
+dbg_vic_cpuf_zero_cnt <= dbg_vic_cpuf_zero_cnt_r;
+dbg_vic_cpue_live_zero_cnt <= dbg_vic_cpue_live_zero_cnt_r;
+dbg_vic_cpue_hold_zero_cnt <= dbg_vic_cpue_hold_zero_cnt_r;
+dbg_vic_cpue_mismatch_cnt <= dbg_vic_cpue_mismatch_cnt_r;
 
 -- $D07E ROM-visibility switch.
 -- Kickstart writes $00 to $D07E at $80F7 to expose C64 KERNAL at $E000-$FFFF.
@@ -1213,11 +1268,14 @@ begin
 		if reset = '1' or (supercpu_en = '1' and supercpu_en_prev = '0') then
 			scpu_rom_vis    <= '1'; -- SuperCPU ROM visible on CPU start
 			scpu_speed_slow <= '0'; -- Default: 20MHz fast mode
+			dbg_vic_mode_r  <= (others => '0');
 		elsif supercpu_en = '1' and supercpu_rom = '1' and
 		      cpuWe = '1' and cpuAddr = x"D07E" and addr_hi_816 = x"00" then
 			scpu_rom_vis <= cpuDo(7); -- bit7=0: C64 KERNAL visible; bit7=1: SCPU ROM
 		elsif supercpu_en = '1' and cpuWe = '1' and cpuAddr = x"D07A" and addr_hi_816 = x"00" then
 			scpu_speed_slow <= cpuDo(5); -- bit5=1: 1MHz compat mode, bit5=0: 20MHz fast
+		elsif supercpu_en = '1' and cpuWe = '1' and cpuAddr = x"D07B" and addr_hi_816 = x"00" then
+			dbg_vic_mode_r(1 downto 0) <= cpuDo(1 downto 0); -- runtime test mode selector
 		end if;
 	end if;
 end process;

@@ -7,7 +7,7 @@
 //   Row 1: A:xxxx B:xx K:xx R:xx   (B=current bank, K=max bank seen, R=addr at max bank)
 //   Row 2: S:xxxx P:xx I:xx E:x
 //   Row 3: W:xxxx D:xx P:xxxx oo   (rolling write) or C:vvvv HA D:DD S:SSSS (c-access $00 hit)
-//   Row 4: A:x P:xx C:xx B:xx       (arm, pre-arm count, post-arm count, last write bank)
+//   Row 4: M:x F:xx P:xx C:xx       (test mode, CPUF $00, CPUE live $00, CPUE live!=held)
 //
 // All position tracking uses registered counters (no division/modulo).
 
@@ -47,6 +47,11 @@ module debug_overlay (
 	input  [15:0] vic_wr_pc,     // PC of matching last CPU write
 	input   [7:0] vic_prearm_cnt, // VIC $00 hits before write capture armed
 	input   [7:0] vic_hit_cnt,    // VIC $00 hits after write capture armed
+	input   [7:0] vic_mode,       // runtime test mode (D07B bits[1:0])
+	input   [7:0] vic_cpuf_zero_cnt,      // CPUF live vicDi == $00
+	input   [7:0] vic_cpue_live_zero_cnt, // CPUE live vicDi == $00
+	input   [7:0] vic_cpue_hold_zero_cnt, // CPUE held data == $00
+	input   [7:0] vic_cpue_mismatch_cnt,  // CPUE live data != held data
 
 	// Video overlay output
 	output reg    overlay_active,
@@ -116,6 +121,11 @@ reg        lat_vic_wr_match;
 reg [15:0] lat_vic_wr_pc;
 reg  [7:0] lat_vic_prearm_cnt;
 reg  [7:0] lat_vic_hit_cnt;
+reg  [7:0] lat_vic_mode;
+reg  [7:0] lat_vic_cpuf_zero_cnt;
+reg  [7:0] lat_vic_cpue_live_zero_cnt;
+reg  [7:0] lat_vic_cpue_hold_zero_cnt;
+reg  [7:0] lat_vic_cpue_mismatch_cnt;
 
 always @(posedge clk) begin
 	if (vblank_r && !vblank) begin
@@ -144,6 +154,11 @@ always @(posedge clk) begin
 		lat_vic_wr_pc <= vic_wr_pc;
 		lat_vic_prearm_cnt <= vic_prearm_cnt;
 		lat_vic_hit_cnt <= vic_hit_cnt;
+		lat_vic_mode <= vic_mode;
+		lat_vic_cpuf_zero_cnt <= vic_cpuf_zero_cnt;
+		lat_vic_cpue_live_zero_cnt <= vic_cpue_live_zero_cnt;
+		lat_vic_cpue_hold_zero_cnt <= vic_cpue_hold_zero_cnt;
+		lat_vic_cpue_mismatch_cnt <= vic_cpue_mismatch_cnt;
 	end
 end
 
@@ -392,30 +407,30 @@ always @(*) begin
 		end
 	end
 	default: begin
-		// Row 4: A:x P:xx C:xx B:xx
-		//   A = write-capture arm state
-		//   P = VIC $00 hit count before arm
-		//   C = VIC $00 hit count after arm
-		//   B = bank of last captured screen write
+		// Row 4: M:x F:xx P:xx C:xx
+		//   M = runtime test mode (D07B bits[1:0], shown as low nibble)
+		//   F = CPUF live-vicDi zero counter
+		//   P = CPUE live-vicDi zero counter
+		//   C = CPUE live-vs-held mismatch counter
 		case (char_idx)
-			5'd0:  char_code = 5'hA;                   // 'A'
+			5'd0:  char_code = 5'h19;                  // 'M'
 			5'd1:  char_code = 5'h15;                  // ':'
-			5'd2:  char_code = {4'b0, lat_scr_arm};
+			5'd2:  char_code = {1'b0, lat_vic_mode[3:0]};
 			5'd3:  char_code = 5'h16;
-			5'd4:  char_code = 5'h11;                  // 'P'
+			5'd4:  char_code = 5'hF;                   // 'F'
 			5'd5:  char_code = 5'h15;                  // ':'
-			5'd6:  char_code = {1'b0, lat_vic_prearm_cnt[7:4]};
-			5'd7:  char_code = {1'b0, lat_vic_prearm_cnt[3:0]};
+			5'd6:  char_code = {1'b0, lat_vic_cpuf_zero_cnt[7:4]};
+			5'd7:  char_code = {1'b0, lat_vic_cpuf_zero_cnt[3:0]};
 			5'd8:  char_code = 5'h16;
-			5'd9:  char_code = 5'hC;                   // 'C'
+			5'd9:  char_code = 5'h11;                  // 'P'
 			5'd10: char_code = 5'h15;                  // ':'
-			5'd11: char_code = {1'b0, lat_vic_hit_cnt[7:4]};
-			5'd12: char_code = {1'b0, lat_vic_hit_cnt[3:0]};
+			5'd11: char_code = {1'b0, lat_vic_cpue_live_zero_cnt[7:4]};
+			5'd12: char_code = {1'b0, lat_vic_cpue_live_zero_cnt[3:0]};
 			5'd13: char_code = 5'h16;
-			5'd14: char_code = 5'hB;                   // 'B'
+			5'd14: char_code = 5'hC;                   // 'C'
 			5'd15: char_code = 5'h15;                  // ':'
-			5'd16: char_code = {1'b0, lat_scr_wr_bank[7:4]};
-			5'd17: char_code = {1'b0, lat_scr_wr_bank[3:0]};
+			5'd16: char_code = {1'b0, lat_vic_cpue_mismatch_cnt[7:4]};
+			5'd17: char_code = {1'b0, lat_vic_cpue_mismatch_cnt[3:0]};
 			5'd18: char_code = 5'h16;
 			5'd19: char_code = 5'h16;
 			5'd20: char_code = 5'h16;
