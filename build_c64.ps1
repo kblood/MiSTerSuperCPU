@@ -17,10 +17,15 @@
 .PARAMETER QuartusPath
     Override the Quartus install path inside WSL.
     Default: auto-detected from ~/intelFPGA_lite/*/quartus/bin
+    Preference order: 17.x first (best MiSTer compatibility), then latest.
+
+.PARAMETER PreferLatestQuartus
+    If set and QuartusPath is not provided, auto-detection picks the latest
+    installed Quartus version instead of preferring 17.x.
 
 .PARAMETER Program
     After a successful build, program the FPGA via USB Blaster using Windows Quartus.
-    Requires Quartus installed at C:\altera_standard\25.1std (or set $env:QUARTUS_WIN_BIN).
+    Default path: C:\intelFPGA_lite\17.0\quartus\bin64 (or set $env:QUARTUS_WIN_BIN).
 
 .EXAMPLE
     .\build_c64.ps1
@@ -35,7 +40,8 @@ param(
     [switch]$Clean,
     [switch]$SyntaxOnly,
     [switch]$Program,
-    [string]$QuartusPath = ""
+    [string]$QuartusPath = "",
+    [switch]$PreferLatestQuartus
 )
 
 $ErrorActionPreference = "Stop"
@@ -82,7 +88,14 @@ Write-Host "  WSL: OK"
 # Auto-detect Quartus path if not specified
 if ($QuartusPath -eq "") {
     Write-Host "  Detecting Quartus installation in WSL..."
-    $detected = Invoke-WSL "ls -d `$HOME/intelFPGA_lite/*/quartus/bin 2>/dev/null | sort -V | tail -1"
+    if ($PreferLatestQuartus) {
+        $detected = Invoke-WSL "ls -d `$HOME/intelFPGA_lite/*/quartus/bin 2>/dev/null | sort -V | tail -1"
+    } else {
+        $detected = Invoke-WSL "ls -d `$HOME/intelFPGA_lite/*/quartus/bin 2>/dev/null | sort -V | grep -E '/17\\.' | tail -1"
+        if (($detected | Out-String).Trim() -eq "") {
+            $detected = Invoke-WSL "ls -d `$HOME/intelFPGA_lite/*/quartus/bin 2>/dev/null | sort -V | tail -1"
+        }
+    }
     $detected = ($detected | Out-String).Trim()
 
     if ($detected -eq "" -or $detected -match "No such file") {
@@ -107,6 +120,9 @@ Write-Host "  $version"
 # Extract major version number for PLL fix
 $quartusVer = if ($version -match "Version (\d+)\.") { $Matches[1] } else { "22" }
 Write-Host "  Quartus major version: $quartusVer"
+if (-not $PreferLatestQuartus -and $quartusVer -ne "17") {
+    Write-Host "  NOTE: Quartus 17.x not found; using detected version $quartusVer." -ForegroundColor Yellow
+}
 
 # --- Clone repo if needed ---
 
@@ -212,12 +228,12 @@ if ($SyntaxOnly) {
         # Auto-program via USB Blaster if -Program was specified
         if ($Program) {
             Write-Step "Programming FPGA via USB Blaster"
-            $winQBin = if ($env:QUARTUS_WIN_BIN) { $env:QUARTUS_WIN_BIN } else { "C:\altera_standard\25.1std\quartus\bin64" }
+            $winQBin = if ($env:QUARTUS_WIN_BIN) { $env:QUARTUS_WIN_BIN } else { "C:\intelFPGA_lite\17.0\quartus\bin64" }
             $pgm = Join-Path $winQBin "quartus_pgm.exe"
             $sof = Join-Path $CoreDir "output_files\C64.sof"
             if (-not (Test-Path $pgm)) {
                 Write-Host "  WARNING: quartus_pgm.exe not found at $winQBin" -ForegroundColor Yellow
-                Write-Host "  Set `$env:QUARTUS_WIN_BIN or install Quartus at C:\altera_standard\25.1std" -ForegroundColor Yellow
+                Write-Host "  Set `$env:QUARTUS_WIN_BIN to your Quartus bin64 directory." -ForegroundColor Yellow
             } elseif (-not (Test-Path $sof)) {
                 Write-Host "  WARNING: .sof not found, cannot program" -ForegroundColor Yellow
             } else {
