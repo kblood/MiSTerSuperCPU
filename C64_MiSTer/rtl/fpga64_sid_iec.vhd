@@ -279,7 +279,6 @@ signal supercpu_en_prev  : std_logic := '0';
 signal scpu_speed_slow   : std_logic := '0';
 signal vpa_816      : std_logic;
 signal vda_816      : std_logic;
-signal scpu_bus_valid : std_logic;
 signal dbg_pc_816   : unsigned(15 downto 0);
 signal dbg_sp_816   : unsigned(15 downto 0);
 signal dbg_p_816    : unsigned(7 downto 0);
@@ -1286,16 +1285,8 @@ cass_write <= cpuIO(3);
 
 ramDout <= cpuDo;
 ramAddr <= systemAddr;
-
--- Gate SDRAM access on VDA/VPA for P65C816: during internal cycles (VDA=0, VPA=0)
--- the address bus contains phantom values. Without this gate, those phantom addresses
--- generate spurious SDRAM reads that clobber dout_r (the VIC's c-access data).
--- VIC0 access is NOT gated — that is the VIC's own g-access, not the CPU's.
--- For T65 (supercpu_en='0'), always valid (T65 has no phantom cycles).
-scpu_bus_valid <= (vda_816 or vpa_816) when supercpu_en = '1' else '1';
-
-ramWE   <= systemWe when sysCycle >= CYCLE_CPU0 and scpu_bus_valid = '1' else '0';
-ramCE   <= cs_ram when sysCycle = CYCLE_VIC0 or (cpu_cyc = '1' and scpu_bus_valid = '1') else '0';
+ramWE   <= systemWe when sysCycle >= CYCLE_CPU0 else '0';
+ramCE   <= cs_ram when sysCycle = CYCLE_VIC0 or cpu_cyc = '1' else '0';
 cpu_cyc <= '1' when 
 				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' ) or
