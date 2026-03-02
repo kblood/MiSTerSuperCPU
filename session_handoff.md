@@ -1,6 +1,31 @@
 # Session Handoff — VIC C-Access Pipeline Investigation
 
-## Update — March 2, 2026 (Runtime VIC Mode Sweep + Workload Stress)
+## Update — March 3, 2026 (Test Cartridge Framework Built)
+
+### MAJOR CHANGE: Diagnostic approach shifted from VHDL instrumentation to test cartridge
+- **Created**: `tools/test_cart/gen_scpu_test.py` — Python generator for diagnostic CRT files
+  - Builds 6502 Ultimax-mode cartridge (replaces KERNAL entirely, no dependencies)
+  - Two variants: basic Fill & Verify + Bus Stress (CIA I/O hammering)
+  - ~140 bytes of code, fills screen with $01, CPU reads back to verify
+- **Created**: `tools/test_cart/build_and_deploy_carts.ps1` — build + deploy all CRTs to MiSTer
+- **Created**: `HYPOTHESIS_TRACKER.md` — comprehensive 27-hypothesis inventory
+  - 16 ruled out, 5 superseded, 5 open, 1 confirmed mechanism
+  - Adds H27 (clk64/clk32 timing margin violation at VIC2)
+
+### Test cartridge definitively answers H23 vs H24 with ONE run
+- **All 'A' + GREEN border** → no '@' without KERNAL → bug is KERNAL-workload-specific (H25)
+- **'@' + GREEN border** → H23/H27 CONFIRMED (VIC reads $00, CPU reads $01)
+- **'@' + RED border** → write-side corruption (different root cause)
+
+### Next step: Deploy & test
+```powershell
+.\tools\test_cart\build_and_deploy_carts.ps1
+```
+Then on MiSTer: OSD → Load Cartridge → scpu_vic_test.crt (with SuperCPU ON)
+
+---
+
+## Previous Update — March 2, 2026 (Runtime VIC Mode Sweep + Workload Stress)
 
 ### Build/deploy sanity
 - User rebuilt and deployed a fresh core image (`build_c64.ps1` + new RBF copy).
