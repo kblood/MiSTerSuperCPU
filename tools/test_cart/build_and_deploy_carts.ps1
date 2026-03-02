@@ -72,8 +72,23 @@ $deployScript = Join-Path $repoRoot "tools\rom_builder\deploy_to_mister.ps1"
 # ── Generators: add new entries here as more CRT generators are created ────
 # Each entry: @{ Script = relative path; Args = argument list }
 $generators = @(
-    @{ Script = "gen_scpu_test.py";  Args = @()           ; Label = "Basic Fill & Verify" },
-    @{ Script = "gen_scpu_test.py";  Args = @("--stress") ; Label = "Bus Stress variant"  }
+    @{ Script = "gen_scpu_charram_test.py"; Args = @()           ; Label = "CharRAM VIC Test (Ultimax-safe)" },
+    @{ Script = "gen_scpu_bitmap_test.py" ; Args = @()           ; Label = "Bitmap VIC Test (no char ROM)" },
+    @{ Script = "gen_scpu_test.py";        Args = @()           ; Label = "Basic Fill & Verify" },
+    @{ Script = "gen_scpu_test.py";        Args = @("--stress") ; Label = "Bus Stress variant"  },
+    @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","0"); Label = "KERNAL Mimic M0: Baseline" },
+    @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","1"); Label = "KERNAL Mimic M1: CIA IRQ" },
+    @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","2"); Label = "KERNAL Mimic M2: Cursor blink" },
+    @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","3"); Label = "KERNAL Mimic M3: Screen scroll" },
+    @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","4"); Label = "KERNAL Mimic M4: Keyboard scan" },
+    @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","5"); Label = "KERNAL Mimic M5: All combined" },
+    @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","6"); Label = "KERNAL Mimic M6: Main-loop refill (no IRQ)" },
+    @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","7"); Label = "KERNAL Mimic M7: Main-loop scroll (no IRQ)" },
+    @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","8"); Label = "KERNAL Mimic M8: Indirect read-only (no writes)" },
+    @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","9"); Label = "KERNAL Mimic M9: Absolute read+write" },
+    @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","10"); Label = "KERNAL Mimic M10: Dense absolute reads" },
+    @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","11"); Label = "KERNAL Mimic M11: Alt ZP+screen absolute" },
+    @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","12"); Label = "KERNAL Mimic M12: Indirect from char RAM" }
 )
 
 # ── Step 1: Build ─────────────────────────────────────────────────────────

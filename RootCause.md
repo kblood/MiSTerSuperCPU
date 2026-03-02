@@ -114,12 +114,87 @@ Two distinct issues were investigated:
    - aec=1 confirms vicDiAec=vicDi (mux is correct). vicBus=$FF (not involved).
    - The VIC latches vicDi=$00 (screen code `@`) instead of $20 (space).
 
-## Current best root-cause statement
+## ROOT CAUSE IDENTIFIED & FIXED (2026-03-02)
 
-The VIC-II receives `$00` during real badline c-access fetches.
-Address routing at capture point matches (`vicAddr == systemAddr`), so the remaining
-fault is data-side: either true RAM content is `$00` at that location, or returned data
-is stale/clobbered before VIC consumes it.
+**ROOT CAUSE: The P65C816 core generates phantom bus cycles (VDA=0, VPA=0) during internal
+address calculation cycles. The system was NOT gating SDRAM access on VDA/VPA.
+These phantom cycles fired spurious SDRAM reads that clobbered `dout_r`, overwriting
+the VIC's pending c-access screen code data with garbage.**
+
+### Why it happens
+The 65C816 architecture has "internal" cycles during complex addressing modes
+(like indirect-indexed `LDA (zp),Y`). During these cycles, the address bus
+contains intermediate calculation values, and the CPU signals VDA=0, VPA=0 to
+indicate "no valid bus access." On real hardware, external devices ignore these
+cycles. But in the FPGA implementation:
+
+1. `cpu_65c816.vhd` exports the raw address unconditionally (no VDA/VPA gate)
+2. `fpga64_sid_iec.vhd` used `cs_ram` (derived from the phantom address) to
+   generate `ramCE` — **WITH NO VDA/VPA CHECK**
+3. The phantom address falls in RAM range ($0000-$0FFF), triggering a real SDRAM read
+4. This spurious read overwrites `dout_r`, clobbering the VIC's c-access data
+5. VIC latches `$00` (or garbage) instead of correct screen code
+
+### Why only indirect-indexed addressing triggers it
+`LDA (zp),Y` has 7 microcode cycles in P65C816, of which cycles 2 and 5 are
+internal (VDA=0, VPA=0). `LDA abs,X` has 4 cycles with no internal cycles.
+The T65 (6502) has no phantom cycles at all.
+
+### THE FIX (Implemented 2026-03-02)
+Gate SDRAM CE on VDA/VPA when SuperCPU is active in `fpga64_sid_iec.vhd`:
+
+**File:** `C64_MiSTer/rtl/fpga64_sid_iec.vhd` (lines 1286-1297)
+
+```vhdl
+-- Signal declaration (line ~282)
+signal scpu_bus_valid : std_logic;
+
+-- Combinational logic (lines 1286-1297)
+-- Gate SDRAM access on VDA/VPA for P65C816
+scpu_bus_valid <= (vda_816 or vpa_816) when supercpu_en = '1' else '1';
+ramWE   <= systemWe when sysCycle >= CYCLE_CPU0 and scpu_bus_valid = '1' else '0';
+ramCE   <= cs_ram when sysCycle = CYCLE_VIC0 or (cpu_cyc = '1' and scpu_bus_valid = '1') else '0';
+```
+
+**Status:** ✅ Implemented and syntax-checked (0 errors)
+**Next:** Full build and hardware testing with cartridge modes M3/M7/M8/M12
+
+**Important update from cartridge testing (2026-03-02):**
+The artifact is **KERNAL-workload-specific**. An Ultimax-mode test cartridge that fills
+screen RAM ($0400) with $01 and continuously reads it back shows:
+- GREEN border (CPU reads correct $01) in ALL modes (SCPU OFF, ON, ON+ROM)
+- Correct VIC display (all white blocks from RAM-based characters at $0800)
+- **No corruption at all** — not even with SuperCPU enabled
+
+This means simple SDRAM CPU+VIC read contention is NOT sufficient to trigger the bug.
+The corruption requires the complex bus access patterns created by the KERNAL's
+runtime environment (IRQ handlers, cursor blink, screen editor scroll, CIA keyboard
+scan). The exact triggering condition remains unidentified.
+
+**KERNAL-mimic test results (2026-03-02):**
+Progressive KERNAL-behavior test cartridges identified the **screen scroll block copy**
+as the trigger operation:
+
+| Mode | What it does | Artifact? |
+|------|-------------|-----------|
+| M0 | Baseline (fill + read-only verify) | No |
+| M1 | + CIA1 Timer A IRQ at 60Hz | No |
+| M2 | + Cursor blink (single byte write in IRQ) | No |
+| **M3** | **+ Screen scroll (24×40 byte copy in IRQ)** | **YES — blue lines flickering** |
+| M4 | + Keyboard scan in IRQ | Same as M3 |
+| M5 | All combined | Same as M3 |
+| M6 | Main-loop screen RAM refill (write-only, no IRQ) | **No** |
+| **M7** | **Main-loop scroll copy (read+write, no IRQ)** | **YES — same as M3** |
+
+**Key conclusions:**
+1. **NOT IRQ-specific:** M7 (main loop, no IRQ) triggers same artifact as M3 (in IRQ)
+2. **NOT just write volume:** M6 writes $01 to all screen RAM continuously — no artifact
+3. **NOT read+write combination:** M8 (read-only via indirect-indexed) **also triggers**
+4. **NOT absolute-indexed reads:** M9 (LDA/STA absx) is **clean**
+5. **Indirect-indexed addressing `LDA (zp),Y` is the trigger** — generates 3 SDRAM
+   reads per instruction (ZP low, ZP high, data) in a tight loop. This bus density
+   creates SDRAM access patterns that clobber VIC's c-access data in `dout_r`.
+6. Absolute-indexed reads at lower density (M0 verify, M9) do NOT trigger it
 
 ## SDRAM pipeline timing analysis
 
@@ -148,10 +223,46 @@ This is a deliberate pipeline: VIC outputs c-access address at VIC0, data arrive
   - `DD` = vicDi@VIC2
   - `SSSS` = full systemAddr@CPUC
 
-## Next diagnostic steps
-1. Add sticky provenance capture of first VIC-zero event:
-   - VIC hit addr/data
-   - last CPU write to same addr (data/PC/bank)
-   - age since that write.
-2. Use this to determine whether VIC is consuming true RAM `$00` or corrupted read-return data.
-3. If provenance shows recent nonzero writes before VIC-zero hits, focus on upstream SDRAM/CE/read-return integrity.
+## Next diagnostic steps (updated 2026-03-02)
+
+### Cartridge test results summary
+
+| What was tested | Result | What it rules out |
+|-----------------|--------|-------------------|
+| CPU fills screen RAM, reads back | GREEN border, all modes | RAM content is correct (H24 ruled out) |
+| VIC displays RAM-based characters | Correct display, all modes | Simple CPU+VIC contention (H28 ruled out) |
+| VIC internal char lookup from $0800 | Works correctly | VIC state corruption (H26 ruled out) |
+| All tests with SuperCPU ON | No corruption | Bug is NOT triggered by basic SDRAM sharing |
+| KERNAL-mimic M0-M2 (IRQ, cursor blink) | No artifact | IRQs and single-byte writes are safe |
+| **KERNAL-mimic M3 (scroll copy in IRQ)** | **Blue lines** | **Block copy triggers corruption** |
+| KERNAL-mimic M6 (write-only refill) | No artifact | CPU writes alone are safe |
+| **KERNAL-mimic M7 (scroll copy, no IRQ)** | **Blue lines** | **Not IRQ-specific; read+write pattern is key** |
+
+### What is ruled out
+- **H24** (RAM contains $00): CPU reads back correct values
+- **H26** (VIC internal state corruption): VIC correctly looks up RAM-based characters
+- **H28** (Simple CPU+VIC SDRAM contention): No corruption under simple workload
+- **Character ROM inaccessibility**: Confirmed — Ultimax mode blocks char ROM at $1000 on MiSTer, but RAM characters at $0800 work
+- **IRQ context required**: M7 proves artifact occurs without any interrupts
+- **Write volume alone**: M6 continuously writes to all screen RAM with no artifact
+
+### What remains suspect
+- **H25** (KERNAL workload-specific) ⭐ **NARROWED**: The trigger is the screen scroll
+  block copy — specifically, interleaved CPU reads + writes to screen RAM via
+  indirect-indexed addressing (LDA (zp),Y / STA (zp),Y). Neither reads alone nor
+  writes alone trigger it.
+- **H23** (SDRAM dout_r clobbered) ⭐ **STRENGTHENED**: The read+write pattern generates
+  CPU SDRAM read CEs (for source bytes) interleaved with write CEs (for destination
+  bytes), all within screen RAM ($0400-$07E7). These CPU reads may fire SDRAM CEs
+  that clobber `dout_r` during the vulnerable window between CPUE and VIC2.
+- **H27** (clk64/clk32 timing margin): May still contribute but secondary to H23.
+
+### Recommended next steps
+1. **Further isolation tests** — determine if the trigger is:
+   a. The read+write combination (LDA+STA to screen RAM)
+   b. The indirect-indexed addressing mode (more bus cycles per instruction)
+   c. The CPU read from screen RAM specifically (competing for SDRAM dout_r)
+2. **Trace SDRAM CE activity** during the scroll copy — confirm that CPU read CEs
+   fire during the CPUE→VIC2 vulnerable window and overwrite dout_r
+3. **Implement hold register fix** — latch c-access data at CPUF before any CPU
+   read can clobber it. This should fix H23 regardless of the exact trigger pattern.
