@@ -1,5 +1,52 @@
 # Session Handoff — VIC C-Access Pipeline Investigation
 
+## Update — March 2, 2026 (Runtime VIC Mode Sweep + Workload Stress)
+
+### Build/deploy sanity
+- User rebuilt and deployed a fresh core image (`build_c64.ps1` + new RBF copy).
+- New overlay row-4 format (`M/F/P/C`) confirmed active.
+
+### ROM/mode matrix observations (latest)
+- **SCPU OFF**:
+  - No visual artifact.
+  - Overlay rows 3/4 essentially idle/zero.
+- **SCPU ON + Standard ROM**:
+  - Reproducible artifact.
+  - Example row 3: `C:0606 M:1 D:00 P:EA0E`
+  - Row 4 counters active (`F`/`P` increase quickly), `C` observed at `00`.
+- **SCPU ON + SCPU kick ROM**:
+  - Artifact also reproducible.
+  - Similar behavior: repeated VIC `$00` hits, row 4 `C` remains `00`.
+- **SCPU ON + SCPU kick ROM + Diag ROM**:
+  - No visual artifact observed.
+  - Row 3 may still show write-side capture, but row 4 post-arm VIC-hit activity remains low/zero.
+
+### Runtime hold-mode sweep result (`$D07B`, modes 0..3)
+- Mode toggling works (`M` reflects selected mode).
+- Visual artifact severity appears unchanged across modes.
+- `C` (CPUE live-vs-held mismatch counter) stayed at `00`.
+- Conclusion: CPUE/VIC2 hold-injection path did **not** change behavior in this workload.
+
+### Workload sensitivity result
+- Cursor movement increases artifact speed/irregularity.
+- Tight screen-write BASIC loop substantially increases artifacts and character churn.
+- `F`/`P` counters move rapidly; `C` remains `00`.
+- `F` value after reset varies run-to-run (timing-sensitive rate variation), expected.
+
+### Current narrowed conclusion
+- Strongly supports **workload-sensitive read-side issue** rather than:
+  - simple write-side `$00` provenance, or
+  - a CPUE-vs-VIC2 hold-mux selection bug.
+- With `C=00` across sweeps, data observed at compare point is coherent between live and held samples.
+
+### Next recommended instrumentation (not yet implemented)
+1. Sticky provenance capture at first VIC-zero event:
+   - VIC read address/data
+   - last CPU write to same address (data/PC/bank)
+   - age since last write (small cycle counter)
+2. Correlate whether VIC-zero occurs despite recent nonzero write to same cell.
+3. If confirmed, focus next on upstream SDRAM/CE scheduling/read-return integrity under SCPU workloads.
+
 ## Update — March 1, 2026 (SignalTap Reset Attempt, Unstable)
 
 ### What changed in this attempt

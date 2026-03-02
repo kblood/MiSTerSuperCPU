@@ -23,6 +23,27 @@ Two distinct issues were investigated:
 - This means the artifact is specific to the standard KERNAL ROM execution environment,
   not a general CPU correctness issue.
 
+## Latest runtime test-suite result (March 2, 2026)
+- Runtime mode control via `$D07B` (modes 0..3) is active and visible in overlay row 4 (`M`).
+- Across artifact-reproducing workloads, switching modes did not materially change artifacts.
+- New counters:
+  - `F` (CPUF live-zero count) increases quickly.
+  - `P` (CPUE live-zero count) increases quickly.
+  - `C` (CPUE live-vs-held mismatch) remains `00`.
+- Interpretation:
+  - CPUE and held samples are not diverging at compare point.
+  - CPUE/VIC2 hold-mux experiment is not the dominant cause in current workloads.
+  - Evidence remains consistent with upstream read-side/workload-sensitive behavior.
+
+### Additional user observations from same run
+- SCPU OFF: no artifact.
+- SCPU ON + Standard ROM: artifact present, repeated row-3 `C:... D:00 ...` captures.
+- SCPU ON + SCPU kick ROM: artifact present with similar counter behavior.
+- SCPU ON + SCPU kick + Diag ROM: no artifact.
+- Cursor movement increases artifact speed/irregularity.
+- Tight screen-write loop amplifies artifacts significantly.
+- `F` varies run-to-run after reset (timing-sensitive event-rate variation).
+
 ## Latest status update (v6 + diag MVP)
 - v6 instrumentation changes were implemented:
   - Row-3 label fixed to `C`.
@@ -128,8 +149,9 @@ This is a deliberate pipeline: VIC outputs c-access address at VIC0, data arrive
   - `SSSS` = full systemAddr@CPUC
 
 ## Next diagnostic steps
-1. Add capture of last CPU write to the exact VIC-hit address (addr/data/PC) to separate:
-   - true `$00` content vs read-path corruption.
-2. If write history does not explain `$00`, test explicit VIC data-hold register path
-   (decouple VIC consume point from shared SDRAM `dout_r` lifetime).
-3. If needed, add debug exposure of raw `$D0B2` in diag ROM UI to validate SuperCPU detect path.
+1. Add sticky provenance capture of first VIC-zero event:
+   - VIC hit addr/data
+   - last CPU write to same addr (data/PC/bank)
+   - age since that write.
+2. Use this to determine whether VIC is consuming true RAM `$00` or corrupted read-return data.
+3. If provenance shows recent nonzero writes before VIC-zero hits, focus on upstream SDRAM/CE/read-return integrity.
