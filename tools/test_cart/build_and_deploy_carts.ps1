@@ -55,7 +55,7 @@ param(
     [string]$MisterHost  = "192.168.50.130",
     [string]$User        = "root",
     [int]   $Port        = 22,
-    [string]$RemotePath  = "/media/fat/",
+    [string]$RemotePath  = "/media/usb0/Games/C64/C64 Kernals/CRT/",
     [switch]$BuildOnly,
     [switch]$DeployOnly
 )
