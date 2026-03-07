@@ -356,6 +356,11 @@ signal vic_ca_data_lat     : unsigned(7 downto 0) := (others => '0'); -- c-acces
 signal vic_ca_data_valid   : std_logic := '0'; -- '1' = vic_ca_data_lat is valid for next VIC2 consume
 signal vicDi_hold_or_live  : unsigned(7 downto 0);
 signal vic_hold_gate       : std_logic;
+signal vic_early_ce        : std_logic;
+signal dbg_hold_fire_cnt_r     : unsigned(7 downto 0) := (others => '0'); -- $D07C: hold gate activations
+signal dbg_hold_mismatch_cnt_r : unsigned(7 downto 0) := (others => '0'); -- $D07D: held /= live at CPUF
+signal dbg_hold_held_zero_cnt_r : unsigned(7 downto 0) := (others => '0'); -- $D07F: held data = $00 at CPUF
+signal dbg_hold_live_zero_cnt_r : unsigned(7 downto 0) := (others => '0'); -- $D080: live vicDi = $00 at CPUF
 
 signal todclk       : std_logic;
 
@@ -634,6 +639,10 @@ cpuDi <= x"C9" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' 
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
          (scpu_speed_slow & "0000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07A") else
          (to_unsigned(0, 6) & dbg_vic_mode_r(1 downto 0)) when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07B") else
+         dbg_hold_fire_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07C") else
+         dbg_hold_mismatch_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07D") else
+         dbg_hold_held_zero_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07F") else
+         dbg_hold_live_zero_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"080") else
          cpuDi_raw;
 
 process(clk32)
@@ -667,24 +676,12 @@ end process;
 -- In the first three cycles after BA went low, the VIC reads
 -- $ff as character pointers and
 -- as color information the lower 4 bits of the opcode after the access to $d011.
--- Runtime test mode ($D07B bits 1:0):
---   00: baseline live vicDi only
---   01: inject held CPUF data at CPUE
---   10: inject held CPUF data at VIC2 (legacy experiment)
---   11: inject held CPUF data at both CPUE and VIC2
-vic_hold_gate <= '1' when vic_ca_pending = '1' and
-                          vic_ca_data_valid = '1' and
-                          vic_ca_has_bus_lat = '0' and
-                          vic_ca_addr_lat(15 downto 10) = "000001" and
-                          (
-                           (dbg_vic_mode_r(1 downto 0) = to_unsigned(1, 2) and sysCycle = CYCLE_CPUE) or
-                           (dbg_vic_mode_r(1 downto 0) = to_unsigned(2, 2) and sysCycle = CYCLE_VIC2) or
-                           (dbg_vic_mode_r(1 downto 0) = to_unsigned(3, 2) and (sysCycle = CYCLE_CPUE or sysCycle = CYCLE_VIC2))
-                          )
-               else '0';
+-- Hold register DISABLED: early CE at CPU8 reads ZP data ($00/$04) not screen data.
+-- Confirmed by diag counters: HZRO=FF (held=$00 always), LZRO=00 (live correct).
+-- The hold register was injecting wrong data into VIC, making the artifact worse.
+vic_hold_gate <= '0'; -- disabled
 
-vicDi_hold_or_live <= vic_ca_data_lat when vic_hold_gate = '1'
-                  else vicDi;
+vicDi_hold_or_live <= vicDi; -- always use live data
 vicDiAec <= vicBus when aec = '0' else vicDi_hold_or_live;
 colorDataAec <= cpuDi(3 downto 0) when aec = '0' else colorData;
 
@@ -1014,7 +1011,13 @@ port map (
 -- -----------------------------------------------------------------------
 cpuAddr_pre <= cpuAddr_816  when supercpu_en = '1' else cpuAddr_6510;
 cpuDo_pre   <= cpuDo_816    when supercpu_en = '1' else cpuDo_6510;
-cpuWe_pre   <= cpuWe_816    when supercpu_en = '1' else cpuWe_6510;
+-- FIX: Gate P65C816 WE with baLoc to prevent frozen write-enable during
+-- badline halts.  T65 completes writes via really_rdy, then halts on a
+-- read (cpuWe='0').  P65C816 halts immediately — its WE can freeze at '1'
+-- (write), which tricks cpuHasBus into granting the bus during badlines,
+-- causing systemAddr = cpuAddr instead of vicAddr → VIC reads wrong data.
+-- Gating with baLoc: when BA is low the CPU is halted, so suppress WE.
+cpuWe_pre   <= (cpuWe_816 and baLoc) when supercpu_en = '1' else cpuWe_6510;
 cpuIO       <= cpuIO_816    when supercpu_en = '1' else cpuIO_6510;
 nmi_ack     <= nmi_ack_816  when supercpu_en = '1' else nmi_ack_6510;
 
@@ -1162,48 +1165,55 @@ begin
 			dbg_vic_cpue_live_zero_cnt_r <= (others => '0');
 			dbg_vic_cpue_hold_zero_cnt_r <= (others => '0');
 			dbg_vic_cpue_mismatch_cnt_r  <= (others => '0');
+			dbg_hold_fire_cnt_r      <= (others => '0');
+			dbg_hold_mismatch_cnt_r  <= (others => '0');
+			dbg_hold_held_zero_cnt_r <= (others => '0');
+			dbg_hold_live_zero_cnt_r <= (others => '0');
 			vic_ca_pending      <= '0';
 			vic_ca_data_valid   <= '0';
 		else
-			-- Step 1: At CPUC, latch vicAddr (c-access address) and systemAddr.
-			-- During badline (cpuHasBus=0), phi='1', so vicAddr = VM & colCounter.
-			-- The SDRAM CE also fires at CPUC with this address.
+			-- At CPUC: latch vicAddr and capture c-access data from CPU8's early
+			-- SDRAM read. Data has had 1.5 clk32 (~47ns) to propagate through
+			-- the combinational path (dout_r → sdram.dout → cartridge → buslogic
+			-- → vicDi). Hold register presents this to VIC at CPUF with 3 clk32
+			-- (~94ns) margin.
 			if sysCycle = CYCLE_CPUC then
 				vic_ca_addr_lat    <= vicAddr;
 				vic_ca_sysaddr16_lat <= systemAddr;
 				vic_ca_sysaddr_lat <= systemAddr(7 downto 0);
 				vic_ca_has_bus_lat <= cpuHasBus;
 				vic_ca_pending     <= '1';
-				vic_ca_data_valid  <= '0';
-			end if;
 
-			-- Capture c-access data once it has returned from the CPUC read.
-			-- SDRAM data is valid by CPUF after the CPUC CE (q=5 in controller),
-			-- before EXT/DMA phases of the next C64 cycle can clobber shared dout.
-			if sysCycle = CYCLE_CPUF and vic_ca_pending = '1'
-			   and vic_ca_has_bus_lat = '0'
-			   and vic_ca_addr_lat(15 downto 10) = "000001" then
-				vic_ca_data_lat   <= vicDi;
-				vic_ca_data_valid <= '1';
-				if vicDi = x"00" then
-					dbg_vic_cpuf_zero_cnt_r <= dbg_vic_cpuf_zero_cnt_r + 1;
+				-- Capture for hold register: only during SuperCPU badlines
+				if cpuHasBus = '0' and supercpu_en = '1' then
+					vic_ca_data_lat   <= vicDi;
+					vic_ca_data_valid <= '1';
+				else
+					vic_ca_data_valid <= '0';
 				end if;
 			end if;
 
-			-- Compare live vs held at CPUE (where VIC latches screen code).
-			if sysCycle = CYCLE_CPUE and vic_ca_pending = '1'
-			   and vic_ca_has_bus_lat = '0'
-			   and vic_ca_addr_lat(15 downto 10) = "000001" then
-				if vicDi = x"00" then
-					dbg_vic_cpue_live_zero_cnt_r <= dbg_vic_cpue_live_zero_cnt_r + 1;
+			-- Diagnostic: count hold gate activations and mismatches.
+			-- vic_hold_gate is combinational ('1' only at CPUF when conditions met).
+			-- At this edge, vicDi is the "live" SDRAM data from the CPUC CE read
+			-- (which had only 0.5 clk32 to settle). vic_ca_data_lat is the "held"
+			-- data captured at CPUC from the earlier CPU8 CE read.
+			-- Write any value to $D07C to clear all four diagnostic counters.
+			if supercpu_en = '1' and cpuWe = '1' and cpuAddr = x"D07C" and addr_hi_816 = x"00" then
+				dbg_hold_fire_cnt_r      <= (others => '0');
+				dbg_hold_mismatch_cnt_r  <= (others => '0');
+				dbg_hold_held_zero_cnt_r <= (others => '0');
+				dbg_hold_live_zero_cnt_r <= (others => '0');
+			elsif vic_hold_gate = '1' then
+				dbg_hold_fire_cnt_r <= dbg_hold_fire_cnt_r + 1;
+				if vic_ca_data_lat /= vicDi then
+					dbg_hold_mismatch_cnt_r <= dbg_hold_mismatch_cnt_r + 1;
 				end if;
-				if vic_ca_data_valid = '1' then
-					if vic_ca_data_lat = x"00" then
-						dbg_vic_cpue_hold_zero_cnt_r <= dbg_vic_cpue_hold_zero_cnt_r + 1;
-					end if;
-					if vicDi /= vic_ca_data_lat then
-						dbg_vic_cpue_mismatch_cnt_r <= dbg_vic_cpue_mismatch_cnt_r + 1;
-					end if;
+				if vic_ca_data_lat = x"00" then
+					dbg_hold_held_zero_cnt_r <= dbg_hold_held_zero_cnt_r + 1;
+				end if;
+				if vicDi = x"00" then
+					dbg_hold_live_zero_cnt_r <= dbg_hold_live_zero_cnt_r + 1;
 				end if;
 			end if;
 
@@ -1286,11 +1296,19 @@ cass_write <= cpuIO(3);
 ramDout <= cpuDo;
 ramAddr <= systemAddr;
 ramWE   <= systemWe when sysCycle >= CYCLE_CPU0 else '0';
+
+-- Early CE DISABLED: CPU8 reads returned ZP data, not screen data.
+-- The extra SDRAM read was clobbering dout_r with wrong values.
+vic_early_ce <= '0'; -- disabled
 ramCE   <= cs_ram when sysCycle = CYCLE_VIC0 or cpu_cyc = '1' else '0';
-cpu_cyc <= '1' when 
-				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' ) or
-				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' ) or
-				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' ) or
+-- Gate turbo slots (CPU0/CPU4/CPU8) on cpuHasBus: during badlines the CPU is
+-- halted so turbo is wasted, and the extra SDRAM reads create back-to-back
+-- accesses that may interfere with VIC c-access data at CPUF.
+-- T65 mode only fires CPUC and is clean — match that behavior during badlines.
+cpu_cyc <= '1' when
+				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and cpuHasBus = '1') or
+				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and cpuHasBus = '1') or
+				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and cpuHasBus = '1') or
 				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1')) else '0';
 				
 process(clk32)
