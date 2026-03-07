@@ -54,5 +54,7 @@ dmesg | tail -50
 ## Core-Specific Skills
 
 - C64-specific workflows (ROM builder, paths, deploy wrappers, debug process):
-  see [Skill_MiSTer_C64.md](/C:/LLM/C64/MiSTerSuperCPU/Skill_MiSTer_C64.md)
+  see [Skill_MiSTer_C64.md](Skill_MiSTer_C64.md)
+- Remote debugging, UART debug stream, screenshots, automation:
+  see [Skill_MiSTer_Debug.md](Skill_MiSTer_Debug.md)
 

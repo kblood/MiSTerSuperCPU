@@ -7,7 +7,7 @@
 //   Row 1: A:xxxx B:xx K:xx R:xx   (B=current bank, K=max bank seen, R=addr at max bank)
 //   Row 2: S:xxxx P:xx I:xx E:x
 //   Row 3: W:xxxx D:xx P:xxxx oo   (rolling write) or C:vvvv HA D:DD S:SSSS (c-access $00 hit)
-//   Row 4: M:x F:xx P:xx C:xx       (test mode, CPUF $00, CPUE live $00, CPUE live!=held)
+//   Row 4: M:x F:xx P:xx C:xx N:xx (test mode, CPUF $00, CPUE live $00, CPUE mismatch, frame#)
 //
 // All position tracking uses registered counters (no division/modulo).
 
@@ -96,6 +96,8 @@ end
 // Latch debug data once per frame (at vblank) for stable display
 // -----------------------------------------------------------------------
 
+reg [15:0] ovl_frame_cnt;  // frame counter for freeze detection
+
 reg [15:0] lat_addr;
 reg  [7:0] lat_data;
 reg        lat_we;
@@ -126,9 +128,12 @@ reg  [7:0] lat_vic_cpuf_zero_cnt;
 reg  [7:0] lat_vic_cpue_live_zero_cnt;
 reg  [7:0] lat_vic_cpue_hold_zero_cnt;
 reg  [7:0] lat_vic_cpue_mismatch_cnt;
+reg  [7:0] lat_frame_lo;  // low byte of frame counter
 
 always @(posedge clk) begin
 	if (vblank_r && !vblank) begin
+		ovl_frame_cnt   <= ovl_frame_cnt + 1'b1;
+		lat_frame_lo    <= ovl_frame_cnt[7:0];
 		lat_addr        <= cpu_addr;
 		lat_data        <= cpu_data;
 		lat_we          <= cpu_we;
@@ -431,10 +436,10 @@ always @(*) begin
 			5'd15: char_code = 5'h15;                  // ':'
 			5'd16: char_code = {1'b0, lat_vic_cpue_mismatch_cnt[7:4]};
 			5'd17: char_code = {1'b0, lat_vic_cpue_mismatch_cnt[3:0]};
-			5'd18: char_code = 5'h16;
-			5'd19: char_code = 5'h16;
-			5'd20: char_code = 5'h16;
-			5'd21: char_code = 5'h16;
+			5'd18: char_code = 5'h16;                  // ' '
+			5'd19: char_code = 5'hF;                   // 'F' (frame counter)
+			5'd20: char_code = {1'b0, lat_frame_lo[7:4]};
+			5'd21: char_code = {1'b0, lat_frame_lo[3:0]};
 			default: char_code = 5'h16;
 		endcase
 	end
@@ -455,13 +460,14 @@ wire       in_region = enable && in_overlay_x && in_overlay_y && !hblank && !vbl
 always @(posedge clk) begin
 	overlay_active <= in_region;
 	if (in_region && pixel_on) begin
-		overlay_r <= 8'h00;
+		// Bright white text for maximum AI/OCR readability
+		overlay_r <= 8'hFF;
 		overlay_g <= 8'hFF;
-		overlay_b <= 8'h00;
+		overlay_b <= 8'hFF;
 	end else if (in_region) begin
-		// Dark background behind text for readability
+		// Solid black background for maximum contrast
 		overlay_r <= 8'h00;
-		overlay_g <= 8'h18;
+		overlay_g <= 8'h00;
 		overlay_b <= 8'h00;
 	end else begin
 		overlay_r <= 8'h00;

@@ -294,6 +294,7 @@ localparam CONF_STR = {
 	"O[86],SCPU Kickstart ROM,Off,On;",
 	"O[83],Debug Overlay,Off,On;",
 	"O[85:84],LED Debug,Off,Emulation,CPU Active,CPU Write;",
+	"O[87],Debug UART,Off,On;",
 	"-;",
 	"R[0],Reset;",
 	"R[17],Reset & Detach Cartridge;",
@@ -1040,6 +1041,7 @@ wire [24:0] scpu_sdram_addr = (supercpu_enable && supercpu_cycle && (supercpu_ba
 // Debug infrastructure
 wire        dbg_overlay_en = status[83];
 wire  [1:0] dbg_led_mode   = status[85:84]; // 0=Off, 1=Emulation, 2=CPU Active, 3=CPU Write
+wire        dbg_uart_en    = status[87];     // Debug UART output on UART_TXD
 wire [15:0] dbg_cpu_addr;
 wire  [7:0] dbg_cpu_data;
 wire        dbg_cpu_we;
@@ -1507,6 +1509,41 @@ wire [7:0] r_ovl = ovl_active ? ovl_r : r;
 wire [7:0] g_ovl = ovl_active ? ovl_g : g;
 wire [7:0] b_ovl = ovl_active ? ovl_b : b;
 
+// Debug UART: streams CPU state as ASCII hex lines at each vblank
+wire       dbg_uart_tx;
+wire       dbg_uart_busy;
+wire [7:0] dbg_uart_data;
+wire       dbg_uart_send;
+
+debug_uart_fmt debug_fmt
+(
+	.clk(clk_sys),
+	.reset(~reset_n),
+	.enable(dbg_uart_en),
+	.vblank(vblank),
+	.cpu_addr(dbg_cpu_addr),
+	.cpu_data(dbg_cpu_data),
+	.cpu_bank(supercpu_bank),
+	.cpu_sp(dbg_cpu_sp),
+	.cpu_p(dbg_cpu_p),
+	.cpu_ir(dbg_cpu_ir),
+	.cpu_emul(supercpu_emul),
+	.tx_data(dbg_uart_data),
+	.tx_send(dbg_uart_send),
+	.tx_busy(dbg_uart_busy)
+);
+
+debug_uart_tx #(.CLK_FREQ(32000000), .BAUD(115200)) debug_tx
+(
+	.clk(clk_sys),
+	.reset(~reset_n),
+	.enable(dbg_uart_en),
+	.data(dbg_uart_data),
+	.send(dbg_uart_send),
+	.tx(dbg_uart_tx),
+	.busy(dbg_uart_busy)
+);
+
 video_mixer #(.GAMMA(1)) video_mixer
 (
 	.CLK_VIDEO(CLK_VIDEO),
@@ -1793,6 +1830,11 @@ always_comb begin
 	end
 	else begin
 		pb_i[5:0] = {!joyD_c64[6:4], !joyC_c64[6:4], pb_o[7] ? ~joyC_c64[3:0] : ~joyD_c64[3:0]};
+	end
+
+	// Debug UART override: when enabled, takes over UART_TXD for debug output
+	if (dbg_uart_en) begin
+		UART_TXD = dbg_uart_tx;
 	end
 end
 

@@ -75,6 +75,14 @@ Then rebuild/upload via wrapper:
 .\tools\rom_builder\build_and_deploy_debug.ps1 -CopyCore $false
 ```
 
+## Remote Debug & Automation
+
+See [Skill_MiSTer_Debug.md](Skill_MiSTer_Debug.md) for:
+- Build-deploy-test automation (mister_debug.py)
+- Debug UART streaming (CPU state at 115200 baud on /dev/ttyS1)
+- Screenshot capture and AI-assisted visual analysis
+- OSD controls: status[83]=overlay, status[87]=debug UART
+
 ## SuperCPU Feature Status
 
 See [SUPERCPU_GUIDE.md](SUPERCPU_GUIDE.md) for current feature status and usage instructions.
