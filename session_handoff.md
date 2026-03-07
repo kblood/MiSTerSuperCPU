@@ -4,7 +4,7 @@
 
 ## Read These Files First (in order)
 1. `CLAUDE.md` — Project overview, build commands, architecture
-2. `HYPOTHESIS_TRACKER.md` — 31 hypotheses, root cause found and fixed
+2. `docs/archive/HYPOTHESIS_TRACKER.md` — 31 hypotheses, root cause found and fixed
 3. `docs/sdram_vic_datapath.md` — Complete SDRAM-to-VIC data path analysis
 4. `memory/p65c816_findings.md` — P65C816 core fixes applied/deferred
 

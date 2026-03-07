@@ -128,24 +128,6 @@ When **SCPU Kickstart ROM** is enabled:
 
 ## Known Issues
 
-### Scrolling Character Lines on Screen
-
-When SuperCPU mode is enabled with turbo speed, rows of identical characters
-(`@`, `E`, or other symbols) may scroll across the screen.
-
-**Observed behaviour:**
-- Lines appear at 1MHz (slowly) and speed up with turbo setting
-- Lines temporarily pause/disappear during disk load (JiffyDOS)
-- Lines are from KERNAL/BASIC initialisation writes that are replayed
-
-**Current status:** Under investigation. Likely related to the interaction
-between the 65C816 emulation-mode execution path and C64 KERNAL startup
-routines (specifically routines near $F6AF containing opcode $1A = INA,
-which is a NOP on NMOS 6502 but INC A on 65C816).
-
-**Workaround:** Disable turbo (Turbo mode: Off) to slow the artifacts. They
-do not affect program execution.
-
 ### Disk Insertion Detection
 
 Multi-disk software installers (e.g. SuperCPU Kicks! installer) may not

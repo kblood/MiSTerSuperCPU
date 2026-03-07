@@ -75,9 +75,7 @@ Then rebuild/upload via wrapper:
 .\tools\rom_builder\build_and_deploy_debug.ps1 -CopyCore $false
 ```
 
-## Current SuperCPU Artifact Context
+## SuperCPU Feature Status
 
-- Read-side VIC capture has been validated in RTL instrumentation.
-- Debug ROM variants can still exhibit scrolling-line behavior while earlier V22 diagnostic ROM did not.
-- Keep test ROM identity explicit (visible marker/banner) during comparisons.
+See [SUPERCPU_GUIDE.md](SUPERCPU_GUIDE.md) for current feature status and usage instructions.
 
