@@ -32,3 +32,15 @@ tools/test_cart/out/
 # Local scratch/debug tooling artifacts
 .abacusai/tmp/
 C64_MiSTer/signalprobe_qsf.tcl
+
+# Claude Code session data
+.claude/
+
+# Reference repos (not part of this project)
+SNES_MiSTer/
+
+# Old manually-placed CRT artifacts (use tools/test_cart/ generators instead)
+crt/
+
+# Screenshots / temp files
+mister_screen.png

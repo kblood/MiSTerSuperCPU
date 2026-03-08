@@ -1,0 +1,24 @@
+#!/bin/bash
+# kick-mister-deploy - Quick deploy and load C64 core to MiSTer
+# Usage: ./tools/kick-mister-deploy [rbf_path]
+
+HOST="${MISTER_HOST:-192.168.50.130}"
+USER="${MISTER_USER:-root}"
+DEST="${MISTER_DEST:-/media/fat/_Test/C64.rbf}"
+RBF="${1:-C64_MiSTer/output_files/C64.rbf}"
+
+if [ ! -f "$RBF" ]; then
+    echo "Error: $RBF not found"
+    exit 1
+fi
+
+SIZE=$(stat -c%s "$RBF" 2>/dev/null || stat -f%z "$RBF" 2>/dev/null)
+echo "Deploying $RBF (${SIZE} bytes) -> ${HOST}:${DEST}"
+
+scp -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$RBF" "${USER}@${HOST}:${DEST}" || {
+    echo "Error: SCP failed"; exit 1
+}
+
+echo "Loading core..."
+ssh -o ConnectTimeout=5 "${USER}@${HOST}" "echo 'load_core ${DEST}' > /dev/MiSTer_cmd"
+echo "Done. Core loading on MiSTer."

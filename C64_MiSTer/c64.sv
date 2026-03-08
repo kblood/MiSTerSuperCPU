@@ -288,7 +288,7 @@ localparam CONF_STR = {
 	"O[3],Swap Joysticks,No,Yes;",
 	"-;",
 	"O[47:46],Turbo mode,Off,C128,Smart;",
-	"d6O[49:48],Turbo speed,2x,3x,4x;",
+	"d6O[49:48],Turbo speed,2x,3x,4x,1x (C64);",
 	"-;",
 	"O[82],SuperCPU (65C816),Off,On;",
 	"O[86],SCPU Kickstart ROM,Off,On;",

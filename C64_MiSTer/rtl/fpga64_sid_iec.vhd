@@ -275,8 +275,12 @@ signal emu_mode_816 : std_logic;
 -- instead of $FC90, and the RTL trick boots the C64 KERNAL successfully.
 signal scpu_rom_vis      : std_logic := '1';
 signal supercpu_en_prev  : std_logic := '0';
--- $D07A speed register: bit5=1 → 1MHz slow, bit5=0 → 20MHz fast (default fast)
-signal scpu_speed_slow   : std_logic := '0';
+-- SuperCPU speed control (real hardware: $D07A write = 1MHz, $D07B write = 20MHz)
+signal scpu_speed_1mhz   : std_logic := '0';  -- '1' = software-forced 1MHz
+-- SuperCPU register visibility ($D07E = enable, $D07F = disable)
+signal scpu_regs_enabled : std_logic := '1';
+-- Optimization mode (real hardware: $D074-$D077 select mirror range; no-op here)
+signal scpu_optim_mode   : unsigned(1 downto 0) := "11"; -- 11=no optimization (default)
 signal vpa_816      : std_logic;
 signal vda_816      : std_logic;
 signal dbg_pc_816   : unsigned(15 downto 0);
@@ -625,20 +629,21 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 -- SuperCPU register overlay: intercept reads from $D07x and $D0Bx when SuperCPU enabled,
 -- but only in bank $00 (VIC-II mirror space). High-bank ($F0-$FF) accesses serve ROM data
 -- from the buslogic and must not be intercepted here.
--- $D0BC = SuperCPU identification ($C9 = "SuperCPU present")
--- $D0B0 = mode detect: $40 = SuperCPU v2 in C64 mode (bits 7:6 = 01)
--- $D07E = hardware register enable (firmware present, v1.x)
--- $D0B2 = ROM control mirror: SIMM detect reads this then writes to $D07E.
---         Must return $00 (bit7=0 = KERNAL visible) so the STA $D07E in SIMM detect
---         ($F8:814E) does NOT re-enable the SCPU ROM that was just hidden at $80F7.
---         On real SuperCPU, $D0B2 and $D07E share the same physical register or $D0B2
---         returns the last value written to $D07E ($00 after kickstart init).
+-- Real SuperCPU register behavior (c64-wiki.com/wiki/SuperCPU):
+--   $D07A/$D07B = write-only speed triggers (no read value)
+--   $D074-$D077 = write-only optimization mode triggers
+--   $D07E/$D07F = write-only register enable/disable
+--   $D0B0 = mode detect: $40 = SuperCPU v2 in C64 mode
+--   $D0B2 = ROM control mirror: must return $00 for SIMM detect
+--   $D0B4 = optimization mode flags (read-only)
+--   $D0B8 = speed status: bit6 = 1 if 1MHz, 0 if turbo
+--   $D0BC = SuperCPU ID: $C9
 cpuDi <= x"C9" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC") else
          x"40" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B0") else
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B2") else
+         ("0" & scpu_speed_1mhz & "000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B8") else
+         ("000000" & scpu_optim_mode) when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B4") else
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
-         (scpu_speed_slow & "0000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07A") else
-         (to_unsigned(0, 6) & dbg_vic_mode_r(1 downto 0)) when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07B") else
          dbg_hold_fire_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07C") else
          dbg_hold_mismatch_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07D") else
          dbg_hold_held_zero_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07F") else
@@ -1276,16 +1281,35 @@ begin
 	if rising_edge(clk32) then
 		supercpu_en_prev <= supercpu_en;
 		if reset = '1' or (supercpu_en = '1' and supercpu_en_prev = '0') then
-			scpu_rom_vis    <= '1'; -- SuperCPU ROM visible on CPU start
-			scpu_speed_slow <= '0'; -- Default: 20MHz fast mode
-			dbg_vic_mode_r  <= (others => '0');
-		elsif supercpu_en = '1' and supercpu_rom = '1' and
-		      cpuWe = '1' and cpuAddr = x"D07E" and addr_hi_816 = x"00" then
-			scpu_rom_vis <= cpuDo(7); -- bit7=0: C64 KERNAL visible; bit7=1: SCPU ROM
-		elsif supercpu_en = '1' and cpuWe = '1' and cpuAddr = x"D07A" and addr_hi_816 = x"00" then
-			scpu_speed_slow <= cpuDo(5); -- bit5=1: 1MHz compat mode, bit5=0: 20MHz fast
-		elsif supercpu_en = '1' and cpuWe = '1' and cpuAddr = x"D07B" and addr_hi_816 = x"00" then
-			dbg_vic_mode_r(1 downto 0) <= cpuDo(1 downto 0); -- runtime test mode selector
+			scpu_rom_vis      <= '1'; -- SuperCPU ROM visible on CPU start
+			scpu_speed_1mhz   <= '0'; -- Default: 20MHz fast mode
+			scpu_regs_enabled <= '1'; -- Registers visible after reset
+			scpu_optim_mode   <= "11"; -- No optimization (mirror all)
+			dbg_vic_mode_r    <= (others => '0');
+		elsif supercpu_en = '1' and cpuWe = '1' and addr_hi_816 = x"00" then
+			-- SuperCPU register writes (active in bank $00 only)
+			if cpuAddr = x"D07E" and supercpu_rom = '1' then
+				scpu_rom_vis <= cpuDo(7);      -- bit7=0: KERNAL visible; bit7=1: SCPU ROM
+				scpu_regs_enabled <= '1';      -- $D07E also enables hardware registers
+			elsif cpuAddr = x"D07F" then
+				scpu_regs_enabled <= '0';      -- $D07F disables hardware registers
+			elsif cpuAddr = x"D07A" then
+				scpu_speed_1mhz <= '1';        -- Any write to $D07A = force 1MHz
+			elsif cpuAddr = x"D07B" then
+				scpu_speed_1mhz <= '0';        -- Any write to $D07B = enable 20MHz
+			elsif cpuAddr = x"D074" then
+				scpu_optim_mode <= "00";       -- VIC bank 2 optimization ($8000-$BFFF)
+			elsif cpuAddr = x"D075" then
+				scpu_optim_mode <= "01";       -- VIC bank 1 optimization ($4000-$7FFF)
+			elsif cpuAddr = x"D076" then
+				scpu_optim_mode <= "10";       -- BASIC optimization ($0400-$07FF)
+			elsif cpuAddr = x"D077" then
+				scpu_optim_mode <= "11";       -- No optimization (mirror all, default)
+			end if;
+			-- Debug registers (always writable, independent of scpu_regs_enabled)
+			if cpuAddr = x"D07C" then
+				dbg_vic_mode_r(1 downto 0) <= cpuDo(1 downto 0); -- runtime test mode
+			end if;
 		end if;
 	end if;
 end process;
@@ -1327,21 +1351,33 @@ begin
 			dma_active <= dma_req;
 			turbo_en <= turbo_mode(0);
 			turbo_m <= "000";
-			-- SuperCPU fast mode uses the existing turbo controls.
-			-- Turbo OFF => 1MHz even with SuperCPU enabled.
-			-- $D07A bit5=1 forces 1MHz (compat mode) when turbo is ON.
-			if cs_io = '0' and dma_req = '0' and (
-			   (supercpu_en = '1' and (turbo_state = '1') and (turbo_mode(0) = '1' or turbo_mode(1) = '1')) or
-			   (supercpu_en = '0' and ((turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1'))
-			) then
-				if supercpu_en = '1' and scpu_speed_slow = '1' then
-					turbo_m <= "000";
-				else
+			-- SuperCPU: auto-engage turbo (default max speed), OSD speed setting
+			-- overrides when turbo_mode != Off. Software $D07A/$D07B always wins.
+			-- T65 mode: turbo controlled by OSD setting as before.
+			if cs_io = '0' and dma_req = '0' then
+				if supercpu_en = '1' and scpu_speed_1mhz = '0' then
+					-- SuperCPU turbo active
+					if turbo_mode = "00" then
+						-- Turbo Off (default): max speed for SuperCPU
+						turbo_m <= "111";
+					else
+						-- Turbo C128/Smart: use OSD speed setting
+						case turbo_speed is
+							when "00" => turbo_m <= "010"; -- 2x
+							when "01" => turbo_m <= "110"; -- 3x
+							when "10" => turbo_m <= "111"; -- 4x
+							when "11" => turbo_m <= "000"; -- 1x (C64 speed)
+						end case;
+					end if;
+					turbo_en <= '1'; -- always engage turbo for SuperCPU
+					-- scpu_speed_1mhz='1': turbo_m stays "000" (1MHz from $D07A)
+				elsif (turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1' then
+					-- T65 mode: OSD-controlled turbo (unchanged)
 					case turbo_speed is
-						when "00" => turbo_m <= "010";
-						when "01" => turbo_m <= "110";
-						when "10" => turbo_m <= "111";
-						when "11" => turbo_m <= "111"; -- unused
+						when "00" => turbo_m <= "010"; -- 2x
+						when "01" => turbo_m <= "110"; -- 3x
+						when "10" => turbo_m <= "111"; -- 4x
+						when "11" => turbo_m <= "000"; -- 1x (C64 speed)
 					end case;
 				end if;
 			end if;
