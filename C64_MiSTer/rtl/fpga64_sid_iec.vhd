@@ -661,7 +661,7 @@ cpuDi <= x"C9" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' 
          dbg_hold_mismatch_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07D") else
          dbg_hold_held_zero_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07F") else
          dbg_hold_live_zero_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"080") else
-         cache_di_d1 when (cache_hit_d1 = '1' and supercpu_en = '1') else
+         cache_di_d1 when (cache_hit_d1 = '1') else  -- Phase 3: serves both CPUs
          cpuDi_raw;
 
 process(clk32)
@@ -968,7 +968,9 @@ end process;
 -- CPU enable gating: only active CPU receives clock enable pulses
 -- This prevents bus contention when switching between 6510 and 65C816
 -- -----------------------------------------------------------------------
-enableCpu_6510 <= (enableCpu and not dma_active) when supercpu_en = '0' else '0';
+-- T65 gets cache acceleration when OSD turbo is active (Phase 3)
+enableCpu_6510 <= ((cache_hit_d1 and turbo_en) or (enableCpu and not dma_active))
+                  when supercpu_en = '0' else '0';
 -- Cache fast path: enable 65C816 every clk32 cycle on cache hit,
 -- OR via normal SDRAM slot path on miss / I/O access.
 enableCpu_816  <= (cache_hit_d1 or (enableCpu and not dma_active))
@@ -1053,7 +1055,7 @@ cache_inst: entity work.cpu_cache
 port map (
 	clk       => clk32,
 	reset     => reset,
-	enable    => supercpu_en,
+	enable    => supercpu_en or turbo_en,  -- Phase 3: cache active for T65 turbo too
 	cpu_addr  => cpuAddr_pre,
 	cpu_bank  => addr_hi_816,
 	cpu_we    => cpuWe_pre,
