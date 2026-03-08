@@ -313,6 +313,12 @@ signal cache_di      : unsigned(7 downto 0);
 signal cache_hit_d1  : std_logic := '0';
 signal cache_di_d1   : unsigned(7 downto 0) := (others => '0');
 signal cache_flush   : std_logic;
+-- Write buffer drain signals
+signal wb_pending    : std_logic;
+signal wb_addr       : unsigned(15 downto 0);
+signal wb_data       : unsigned(7 downto 0);
+signal wb_ack        : std_logic;
+signal wb_drain_active : std_logic;
 
 signal reset        : std_logic := '1';
 
@@ -1038,8 +1044,9 @@ cpuIO       <= cpuIO_816    when supercpu_en = '1' else cpuIO_6510;
 nmi_ack     <= nmi_ack_816  when supercpu_en = '1' else nmi_ack_6510;
 
 -- -----------------------------------------------------------------------
--- BRAM CPU cache: 8KB direct-mapped, read-only (Phase 1)
--- Accelerates RAM reads to up to 32MHz by serving from BRAM instead of SDRAM.
+-- BRAM CPU cache: 8KB direct-mapped with write-through (Phase 2)
+-- Accelerates RAM reads and writes to up to 32MHz by serving from BRAM.
+-- Writes update cache immediately and queue to SDRAM via write buffer.
 -- I/O accesses ($D000-$DFFF) always bypass cache and use the CPUC slot at 1MHz.
 -- -----------------------------------------------------------------------
 cache_inst: entity work.cpu_cache
@@ -1050,12 +1057,17 @@ port map (
 	cpu_addr  => cpuAddr_pre,
 	cpu_bank  => addr_hi_816,
 	cpu_we    => cpuWe_pre,
+	cpu_do    => cpuDo_pre,
 	cache_di  => cache_di,
 	cache_hit => cache_hit,
 	fill_data => ramDin,
 	fill_we   => enableCpu,
 	fill_addr => cpuAddr_pre,
 	fill_bank => addr_hi_816,
+	wb_pending => wb_pending,
+	wb_addr    => wb_addr,
+	wb_data    => wb_data,
+	wb_ack     => wb_ack,
 	flush     => cache_flush,
 	cs_io     => cs_io,
 	cs_ram    => cs_ram
@@ -1366,9 +1378,18 @@ end process;
 cass_motor <= cpuIO(5);
 cass_write <= cpuIO(3);
 
-ramDout <= cpuDo;
-ramAddr <= systemAddr;
-ramWE   <= systemWe when sysCycle >= CYCLE_CPU0 else '0';
+-- Write buffer drain: when CPU runs from cache (cache_hit_d1='1'), the
+-- current CPU SDRAM slot is unused. If the write buffer has pending entries,
+-- redirect the SDRAM access to drain one write buffer entry.
+wb_drain_active <= '1' when cpu_cyc = '1' and wb_pending = '1'
+                        and cache_hit_d1 = '1' else '0';
+wb_ack <= wb_drain_active;
+
+ramDout <= wb_data      when wb_drain_active = '1' else cpuDo;
+ramAddr <= wb_addr      when wb_drain_active = '1' else systemAddr;
+ramWE   <= '1'          when wb_drain_active = '1' and sysCycle >= CYCLE_CPU0
+      else systemWe     when sysCycle >= CYCLE_CPU0
+      else '0';
 
 -- Early CE DISABLED: CPU8 reads returned ZP data, not screen data.
 -- The extra SDRAM read was clobbering dout_r with wrong values.
