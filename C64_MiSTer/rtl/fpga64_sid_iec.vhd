@@ -313,6 +313,7 @@ signal cache_di      : unsigned(7 downto 0);
 signal cache_hit_d1  : std_logic := '0';
 signal cache_di_d1   : unsigned(7 downto 0) := (others => '0');
 signal cache_flush   : std_logic;
+signal cache_flush_sw : std_logic := '0';  -- software-triggered flush via $D078
 -- Write buffer drain signals
 signal wb_pending    : std_logic;
 signal wb_addr       : unsigned(15 downto 0);
@@ -1075,7 +1076,7 @@ port map (
 	cs_ram    => cs_ram
 );
 
-cache_flush <= reset or dma_active;
+cache_flush <= reset or dma_active or cache_flush_sw;
 
 -- Pipeline: cache_hit is combinational (MLAB async read). Delay 1 cycle
 -- to align with M10K data BRAM output (registered read, 1-cycle latency).
@@ -1343,6 +1344,7 @@ process(clk32)
 begin
 	if rising_edge(clk32) then
 		supercpu_en_prev <= supercpu_en;
+		cache_flush_sw <= '0';  -- auto-clear: flush is a 1-cycle pulse
 		if reset = '1' or (supercpu_en = '1' and supercpu_en_prev = '0') then
 			scpu_rom_vis      <= '1'; -- SuperCPU ROM visible on CPU start
 			scpu_speed_1mhz   <= '0'; -- Default: 20MHz (cache handles I/O at 1MHz)
@@ -1356,6 +1358,8 @@ begin
 				scpu_regs_enabled <= '1';      -- $D07E also enables hardware registers
 			elsif cpuAddr = x"D07F" then
 				scpu_regs_enabled <= '0';      -- $D07F disables hardware registers
+			elsif cpuAddr = x"D078" then
+				cache_flush_sw <= '1';         -- Any write to $D078 = flush cache
 			elsif cpuAddr = x"D07A" then
 				scpu_speed_1mhz <= '1';        -- Any write to $D07A = force 1MHz
 			elsif cpuAddr = x"D07B" then
