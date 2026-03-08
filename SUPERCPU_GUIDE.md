@@ -37,20 +37,22 @@ Access the OSD with **F12** (keyboard) or the **Menu** button on the MiSTer.
 | `Debug Overlay: On` | status[83] = 1 | Shows CPU state in top-left corner of screen. |
 | `LED Debug` | status[85:84] | Controls DE10-Nano LED behaviour for debugging. |
 
-### Speed Settings (affects SuperCPU and 6510)
+### Speed Settings
 
-| OSD Option | Effect |
-|---|---|
-| `Turbo mode: Off` | CPU runs at 1MHz (normal C64 speed). Recommended for most software. |
-| `Turbo mode: C128` | CPU runs at higher speed during VIC-safe periods. |
-| `Turbo mode: Smart` | CPU accelerates when not accessing I/O; auto-reverts during DMA. |
-| `Turbo speed: 2x` | ~2MHz |
-| `Turbo speed: 3x` | ~3MHz |
-| `Turbo speed: 4x` | ~4MHz |
+| OSD Option | 6510 (T65) Mode | SuperCPU (65C816) Mode |
+|---|---|---|
+| `Turbo mode: Off` | 1MHz (normal C64 speed) | **4× max speed (default)** |
+| `Turbo mode: C128` | Higher speed during VIC-safe periods | Uses Turbo speed setting |
+| `Turbo mode: Smart` | Accelerates when not accessing I/O | Uses Turbo speed setting |
+| `Turbo speed: 1x (C64)` | 1MHz (when turbo enabled) | 1MHz (original C64 speed) |
+| `Turbo speed: 2x` | ~2MHz | ~2MHz |
+| `Turbo speed: 3x` | ~3MHz | ~3MHz |
+| `Turbo speed: 4x` | ~4MHz (max) | ~4MHz (max) |
 
 > **Note:** The real CMD SuperCPU runs at 20MHz. The MiSTer core is currently limited to
 > ~4× because the 32-cycle bus period only provides a limited number of extra CPU slots.
-> For maximum compatibility, use **Turbo Off** (1MHz) with the SuperCPU enabled.
+> With SuperCPU enabled and Turbo mode Off (default), the CPU runs at maximum speed.
+> Set Turbo mode to C128 or Smart, then select a Turbo speed to manually control speed.
 
 ---
 
@@ -173,14 +175,68 @@ After a successful kickstart boot:
 
 ---
 
-## Turbo Mode and Speed Register ($D07A)
+## Speed Control
 
-The 65C816 reads/writes $D07A to control speed:
-- **Write bit 5 = 1** → `scpu_speed_slow = 1` → forces 1MHz even if Turbo is On
-- **Write bit 5 = 0** → releases speed control to the OSD Turbo setting
+When SuperCPU is enabled with **Turbo mode Off** (the default), the CPU
+automatically runs at maximum turbo speed (~4MHz, limited by 32-cycle bus
+architecture).
 
-This mirrors real SuperCPU behaviour where software can lock to 1MHz for
-timing-sensitive routines (IEC serial, raster effects, etc.).
+To manually control SuperCPU speed, set **Turbo mode** to C128 or Smart in the
+OSD, then select the desired **Turbo speed** (1x/2x/3x/4x). The **1x (C64)**
+option runs at original C64 speed (1MHz).
+
+Software controls speed via trigger registers (matching real SuperCPU hardware):
+- **`STA $D07A`** — any write forces 1MHz mode (overrides OSD setting)
+- **`STA $D07B`** — any write re-enables turbo (restores OSD speed)
+- **`LDA $D0B8`** — bit 6: 1 = currently 1MHz, 0 = currently turbo
+
+I/O accesses ($D000-$DFFF) automatically drop to 1MHz for CIA/SID/VIC
+compatibility, regardless of the speed setting.
+
+---
+
+## Test Cartridges
+
+The `tools/test_cart/` directory contains Python-generated Ultimax-mode CRT
+cartridges for hardware verification. Build all with:
+
+```powershell
+.\tools\test_cart\build_and_deploy_carts.ps1                # build + deploy
+.\tools\test_cart\build_and_deploy_carts.ps1 -BuildOnly     # build only
+```
+
+Or from bash:
+```bash
+bash tools/kick-crt-deploy              # build + deploy
+bash tools/kick-crt-deploy --build-only # build only
+```
+
+CRTs deploy to `/media/usb0/Games/C64/C64 Kernals/CRT/` on the MiSTer.
+
+### Speed Test (`scpu_speedtest.crt`)
+
+Measures actual CPU MHz using CIA1 Timer A as a fixed ~1MHz wall-clock reference.
+Counts loop iterations (17 cycles each) during a $FFFF (65535 tick) countdown.
+
+| Display | Meaning |
+|---|---|
+| `SLOW  xxxx  xx.x MHZ` | Hex count + MHz after writing $D07A (1MHz request) |
+| `FAST  xxxx  xx.x MHZ` | Hex count + MHz after writing $D07B (turbo request) |
+| `D0B8  xx` | Speed status register readback |
+| `PASS  xxxx` | Measurement cycle counter |
+
+Calibration: 3855 iterations = 1.0 MHz (65535 / 17 = 3855 exactly).
+Border flashes red during SLOW measurement, green during FAST.
+
+### Other Test Cartridges
+
+| CRT | Purpose |
+|---|---|
+| `scpu_dead_test.crt` | Basic execution check (cycling border colors) |
+| `scpu_diag_counters.crt` | Reads hold-register diagnostic counters |
+| `scpu_charram_test.crt` | VIC read corruption test (text mode) |
+| `scpu_bitmap_test.crt` | VIC read corruption test (bitmap mode) |
+| `scpu_kernal_mimic_mN.crt` | Progressive KERNAL-like behavior isolation (N=0..12) |
 
 ---
 
@@ -190,11 +246,19 @@ timing-sensitive routines (IEC serial, raster effects, etc.).
 
 | Address | R/W | Value | Description |
 |---|---|---|---|
-| $D07A | R/W | bit5 = slow flag | Speed control |
-| $D07E | W | — | ROM visibility (bit7: 1=kickstart, 0=KERNAL) |
+| $D074 | W | trigger | VIC bank 2 optimization (mirror $8000-$BFFF) |
+| $D075 | W | trigger | VIC bank 1 optimization (mirror $4000-$7FFF) |
+| $D076 | W | trigger | BASIC optimization (mirror $0400-$07FF) |
+| $D077 | W | trigger | No optimization — mirror all (default) |
+| $D07A | W | trigger | Force 1MHz mode (any write activates) |
+| $D07B | W | trigger | Enable 20MHz turbo (any write activates) |
+| $D07E | W | — | Enable hardware registers + ROM visibility (bit7) |
 | $D07E | R | $00 | Always reads $00 |
+| $D07F | W | trigger | Disable hardware registers |
 | $D0B0 | R | $40 | Mode detect: SuperCPU v2 in C64 mode |
 | $D0B2 | R | $00 | ROM visibility mirror (critical for SIMM detect) |
+| $D0B4 | R | bits1:0 | Optimization mode flags (00/01/10/11) |
+| $D0B8 | R | bit6 = 1MHz flag | Speed status: bit6=1 if 1MHz, 0 if turbo |
 | $D0BC | R | $C9 | SuperCPU ID ($C9 = 201 = "SuperCPU present") |
 | $D200–$D3FF | R/W | RAM | 512-byte SYSRAM (kickstart working variables) |
 

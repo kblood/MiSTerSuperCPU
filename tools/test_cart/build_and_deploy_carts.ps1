@@ -88,7 +88,11 @@ $generators = @(
     @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","9"); Label = "KERNAL Mimic M9: Absolute read+write" },
     @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","10"); Label = "KERNAL Mimic M10: Dense absolute reads" },
     @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","11"); Label = "KERNAL Mimic M11: Alt ZP+screen absolute" },
-    @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","12"); Label = "KERNAL Mimic M12: Indirect from char RAM" }
+    @{ Script = "gen_scpu_kernal_mimic.py"; Args = @("--mode","12"); Label = "KERNAL Mimic M12: Indirect from char RAM" },
+    @{ Script = "gen_scpu_speedtest.py";   Args = @()           ; Label = "SuperCPU Speed Test (CIA timer)" },
+    @{ Script = "gen_scpu_diag_counters.py"; Args = @()         ; Label = "SCPU Diagnostic Counters" },
+    @{ Script = "gen_dead_test.py";        Args = @()           ; Label = "Dead Test (basic execution check)" },
+    @{ Script = "gen_cart_smoke_test.py";   Args = @()           ; Label = "Cart Smoke Test (proof of life)" }
 )
 
 # ── Step 1: Build ─────────────────────────────────────────────────────────

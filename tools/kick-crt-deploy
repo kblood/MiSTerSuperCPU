@@ -1,0 +1,127 @@
+#!/bin/bash
+# kick-crt-deploy - Build all test CRTs and deploy to MiSTer
+# Usage: ./tools/kick-crt-deploy [--build-only] [--deploy-only] [pattern]
+#
+# Options:
+#   --build-only   Build CRTs but don't deploy
+#   --deploy-only  Deploy existing CRTs without rebuilding
+#   pattern        Only process generators matching pattern (e.g. "speed" "dead")
+#
+# Environment:
+#   MISTER_HOST  MiSTer IP (default: 192.168.50.130)
+#   MISTER_USER  SSH user (default: root)
+#   MISTER_CRT   Remote CRT folder (default: /media/usb0/Games/C64/C64 Kernals/CRT)
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CART_DIR="$SCRIPT_DIR/test_cart"
+OUT_DIR="$CART_DIR/out"
+HOST="${MISTER_HOST:-192.168.50.130}"
+USER="${MISTER_USER:-root}"
+CRT_DEST="${MISTER_CRT:-/media/usb0/Games/C64/C64 Kernals/CRT}"
+
+BUILD=1
+DEPLOY=1
+PATTERN=""
+
+for arg in "$@"; do
+    case "$arg" in
+        --build-only)  DEPLOY=0 ;;
+        --deploy-only) BUILD=0 ;;
+        *)             PATTERN="$arg" ;;
+    esac
+done
+
+# ── Build phase ──────────────────────────────────────────
+if [ "$BUILD" -eq 1 ]; then
+    echo "=== Building test CRTs ==="
+    mkdir -p "$OUT_DIR"
+
+    GENERATORS=$(find "$CART_DIR" -maxdepth 1 -name 'gen_*.py' | sort)
+    BUILT=0
+    FAILED=0
+
+    for gen in $GENERATORS; do
+        name=$(basename "$gen" .py)
+        # Apply pattern filter if specified
+        if [ -n "$PATTERN" ] && ! echo "$name" | grep -qi "$PATTERN"; then
+            continue
+        fi
+
+        # Special case: kernal_mimic needs --mode N for each mode
+        if echo "$name" | grep -q "kernal_mimic"; then
+            for mode in $(seq 0 12); do
+                printf "  %-40s " "${name} --mode ${mode}"
+                if python "$gen" --mode "$mode" > /dev/null 2>&1; then
+                    echo "OK"
+                    BUILT=$((BUILT + 1))
+                else
+                    echo "FAIL"
+                    python "$gen" --mode "$mode" 2>&1 | tail -3 | sed 's/^/    /'
+                    FAILED=$((FAILED + 1))
+                fi
+            done
+            continue
+        fi
+
+        printf "  %-40s " "$name"
+        if python "$gen" > /dev/null 2>&1; then
+            echo "OK"
+            BUILT=$((BUILT + 1))
+        else
+            echo "FAIL"
+            # Show error on failure
+            python "$gen" 2>&1 | tail -3 | sed 's/^/    /'
+            FAILED=$((FAILED + 1))
+        fi
+    done
+
+    echo ""
+    echo "Built: $BUILT  Failed: $FAILED"
+
+    # List generated CRTs
+    CRT_COUNT=$(find "$OUT_DIR" -name '*.crt' | wc -l)
+    echo "CRTs in $OUT_DIR: $CRT_COUNT"
+    echo ""
+fi
+
+# ── Deploy phase ─────────────────────────────────────────
+if [ "$DEPLOY" -eq 1 ]; then
+    echo "=== Deploying CRTs to $HOST:$CRT_DEST ==="
+
+    # Collect CRTs to deploy
+    if [ -n "$PATTERN" ]; then
+        CRTS=$(find "$OUT_DIR" -name '*.crt' | grep -i "$PATTERN" || true)
+    else
+        CRTS=$(find "$OUT_DIR" -name '*.crt')
+    fi
+
+    if [ -z "$CRTS" ]; then
+        echo "No CRT files to deploy."
+        exit 0
+    fi
+
+    # Create remote directory
+    ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no \
+        "${USER}@${HOST}" "mkdir -p '$CRT_DEST'" 2>/dev/null || {
+        echo "Error: Cannot connect to MiSTer at $HOST"
+        exit 1
+    }
+
+    DEPLOYED=0
+    for crt in $CRTS; do
+        name=$(basename "$crt")
+        printf "  %-40s " "$name"
+        if scp -o ConnectTimeout=5 -o StrictHostKeyChecking=no \
+               "$crt" "${USER}@${HOST}:${CRT_DEST}/" > /dev/null 2>&1; then
+            echo "OK"
+            DEPLOYED=$((DEPLOYED + 1))
+        else
+            echo "FAIL"
+        fi
+    done
+
+    echo ""
+    echo "Deployed: $DEPLOYED CRTs to $CRT_DEST"
+fi
