@@ -307,6 +307,13 @@ signal cpu_cyc      : std_logic;
 signal cpu_cyc_s    : std_logic_vector(1 downto 0);
 signal turbo_m      : std_logic_vector(2 downto 0);
 
+-- BRAM CPU cache signals
+signal cache_hit     : std_logic;
+signal cache_di      : unsigned(7 downto 0);
+signal cache_hit_d1  : std_logic := '0';
+signal cache_di_d1   : unsigned(7 downto 0) := (others => '0');
+signal cache_flush   : std_logic;
+
 signal reset        : std_logic := '1';
 
 -- CIA signals
@@ -648,6 +655,7 @@ cpuDi <= x"C9" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' 
          dbg_hold_mismatch_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07D") else
          dbg_hold_held_zero_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07F") else
          dbg_hold_live_zero_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"080") else
+         cache_di_d1 when (cache_hit_d1 = '1' and supercpu_en = '1') else
          cpuDi_raw;
 
 process(clk32)
@@ -955,7 +963,10 @@ end process;
 -- This prevents bus contention when switching between 6510 and 65C816
 -- -----------------------------------------------------------------------
 enableCpu_6510 <= (enableCpu and not dma_active) when supercpu_en = '0' else '0';
-enableCpu_816  <= (enableCpu and not dma_active) when supercpu_en = '1' else '0';
+-- Cache fast path: enable 65C816 every clk32 cycle on cache hit,
+-- OR via normal SDRAM slot path on miss / I/O access.
+enableCpu_816  <= (cache_hit_d1 or (enableCpu and not dma_active))
+                  when supercpu_en = '1' else '0';
 
 -- -----------------------------------------------------------------------
 -- 6510 CPU (active when supercpu_en = '0')
@@ -1025,6 +1036,44 @@ cpuDo_pre   <= cpuDo_816    when supercpu_en = '1' else cpuDo_6510;
 cpuWe_pre   <= (cpuWe_816 and baLoc) when supercpu_en = '1' else cpuWe_6510;
 cpuIO       <= cpuIO_816    when supercpu_en = '1' else cpuIO_6510;
 nmi_ack     <= nmi_ack_816  when supercpu_en = '1' else nmi_ack_6510;
+
+-- -----------------------------------------------------------------------
+-- BRAM CPU cache: 8KB direct-mapped, read-only (Phase 1)
+-- Accelerates RAM reads to up to 32MHz by serving from BRAM instead of SDRAM.
+-- I/O accesses ($D000-$DFFF) always bypass cache and use the CPUC slot at 1MHz.
+-- -----------------------------------------------------------------------
+cache_inst: entity work.cpu_cache
+port map (
+	clk       => clk32,
+	reset     => reset,
+	enable    => supercpu_en,
+	cpu_addr  => cpuAddr_pre,
+	cpu_bank  => addr_hi_816,
+	cpu_we    => cpuWe_pre,
+	cache_di  => cache_di,
+	cache_hit => cache_hit,
+	fill_data => ramDin,
+	fill_we   => enableCpu,
+	fill_addr => cpuAddr_pre,
+	fill_bank => addr_hi_816,
+	flush     => cache_flush,
+	cs_io     => cs_io,
+	cs_ram    => cs_ram
+);
+
+cache_flush <= reset or dma_active;
+
+-- Pipeline: cache_hit is combinational (MLAB async read). Delay 1 cycle
+-- to align with M10K data BRAM output (registered read, 1-cycle latency).
+-- Also gate on baLoc (badline halt) and scpu_speed_1mhz ($D07A = 1MHz).
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		cache_hit_d1 <= cache_hit and not dma_active and baLoc
+		                and not scpu_speed_1mhz;
+		cache_di_d1  <= cache_di;
+	end if;
+end process;
 
 -- Route 65C816-specific status signals to ports
 supercpu_emul <= emu_mode_816;
@@ -1282,7 +1331,7 @@ begin
 		supercpu_en_prev <= supercpu_en;
 		if reset = '1' or (supercpu_en = '1' and supercpu_en_prev = '0') then
 			scpu_rom_vis      <= '1'; -- SuperCPU ROM visible on CPU start
-			scpu_speed_1mhz   <= '0'; -- Default: 20MHz fast mode
+			scpu_speed_1mhz   <= '0'; -- Default: 20MHz (cache handles I/O at 1MHz)
 			scpu_regs_enabled <= '1'; -- Registers visible after reset
 			scpu_optim_mode   <= "11"; -- No optimization (mirror all)
 			dbg_vic_mode_r    <= (others => '0');
@@ -1343,6 +1392,16 @@ begin
 		io_enable <= io_enable and not enableCpu;
 
 		if sysCycle = CYCLE_EXT0 then
+			io_enable <= '1';
+		end if;
+		-- Re-arm io_enable before the normal I/O slot (CPUC).  Turbo slots
+		-- (CPU0/CPU4/CPU8) only fire for RAM, but their enableCpu pulses clear
+		-- io_enable via the "and not enableCpu" line above.  Without this
+		-- re-arm, a RAM access at a turbo slot would prevent the subsequent
+		-- I/O access at CPUC from firing, skipping CIA2 writes and breaking
+		-- the IEC serial bus.  The last turbo enableCpu fires at CPUA (from
+		-- CPU8), so CPUB is the safe re-arm point.
+		if sysCycle = CYCLE_CPUB then
 			io_enable <= '1';
 		end if;
 
