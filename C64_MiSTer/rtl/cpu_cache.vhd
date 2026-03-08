@@ -107,6 +107,7 @@ architecture rtl of cpu_cache is
 	signal expected_tag  : unsigned(10 downto 0);
 
 	signal data_addr     : unsigned(12 downto 0);
+	signal cacheable_addr : std_logic; -- address is in cacheable space
 	signal cacheable_rd  : std_logic;  -- read cacheability
 	signal cacheable_wr  : std_logic;  -- write cacheability
 	signal tag_match     : std_logic;
@@ -141,20 +142,25 @@ begin
 	wb_data    <= wb_fifo(to_integer(wb_tail)).data;
 
 	-- ── Cacheability (combinational) ────────────────────────────────
-	-- Read: bank $00, RAM space, not I/O, not flushing
+	-- Phase 4: bank $00 (RAM, not I/O) + banks $01-$EF (SuperRAM).
+	-- Banks $F0-$FF are SuperCPU ROM served from BRAM — no caching needed.
+	cacheable_addr <= '1' when (cpu_bank = x"00" and cs_ram = '1' and cs_io = '0')
+	                       or  (cpu_bank > x"00" and cpu_bank < x"F0")
+	                  else '0';
+
+	-- Read: cacheable address, not writing, not flushing
 	cacheable_rd <= '1' when enable = '1'
-	                    and cpu_bank = x"00"
-	                    and cs_ram = '1'
-	                    and cs_io = '0'
+	                    and cacheable_addr = '1'
 	                    and cpu_we = '0'
 	                    and flush_active = '0'
 	               else '0';
 
-	-- Write: same conditions but cpu_we='1', and write buffer not full
+	-- Write: cacheable address, writing, write buffer not full, not flushing.
+	-- Write buffer drain is bank $00 only (drain path uses ramAddr directly).
+	-- Non-bank-$00 writes update cache but use the normal SDRAM write path.
 	cacheable_wr <= '1' when enable = '1'
+	                    and cacheable_addr = '1'
 	                    and cpu_bank = x"00"
-	                    and cs_ram = '1'
-	                    and cs_io = '0'
 	                    and cpu_we = '1'
 	                    and flush_active = '0'
 	                    and wb_full_i = '0'
