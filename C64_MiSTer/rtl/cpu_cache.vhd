@@ -61,8 +61,11 @@ port (
 
 	-- Control
 	flush     : in  std_logic;             -- invalidate entire cache
-	cs_io     : in  std_logic;             -- '1' when address is I/O space
-	cs_ram    : in  std_logic              -- '1' when address is RAM
+	cpu_en    : in  std_logic;             -- CPU clock enable (1-cycle pulse when CPU steps)
+
+	-- Debug
+	dbg_flush_active : out std_logic;      -- cache is flushing (2048-cycle sweep)
+	dbg_tag_match    : out std_logic       -- tag matches current address
 );
 end cpu_cache;
 
@@ -110,6 +113,7 @@ architecture rtl of cpu_cache is
 	signal cacheable_addr : std_logic; -- address is in cacheable space
 	signal cacheable_rd  : std_logic;  -- read cacheability
 	signal cacheable_wr  : std_logic;  -- write cacheability
+	signal invalidate_wr : std_logic;  -- non-bank-$00 write: invalidate cached line
 	signal tag_match     : std_logic;
 	signal byte_valid    : std_logic;
 
@@ -127,6 +131,10 @@ architecture rtl of cpu_cache is
 
 begin
 
+	-- ── Debug output ───────────────────────────────────────────────
+	dbg_flush_active <= flush_active;
+	dbg_tag_match    <= tag_match;
+
 	-- ── Address decomposition ───────────────────────────────────────
 	line_index   <= cpu_addr(12 downto 3);
 	byte_offset  <= cpu_addr(2 downto 0);
@@ -142,10 +150,21 @@ begin
 	wb_data    <= wb_fifo(to_integer(wb_tail)).data;
 
 	-- ── Cacheability (combinational) ────────────────────────────────
-	-- Phase 4: bank $00 (RAM, not I/O) + banks $01-$EF (SuperRAM).
-	-- Banks $F0-$FF are SuperCPU ROM served from BRAM — no caching needed.
-	cacheable_addr <= '1' when (cpu_bank = x"00" and cs_ram = '1' and cs_io = '0')
-	                       or  (cpu_bank > x"00" and cpu_bank < x"F0")
+	-- Address-based check, independent of buslogic cs_io/cs_ram signals.
+	-- buslogic outputs reflect VIC's address during non-CPU slots (cpuHasBus='0'),
+	-- which would make I/O accesses appear cacheable when the cache fires
+	-- during EXT/DMA/VIC slots.  Use pure address decode instead.
+	--
+	--   Bank $00: all addresses except I/O space ($D000-$DFFF).
+	--     Cache fills from dataToCpu (buslogic output), so the cache stores
+	--     whatever the CPU actually reads — RAM, ROM, or cartridge data.
+	--     Bank-switch flush (cpuIO(2:0) changes) ensures coherency on
+	--     ROM/RAM visibility transitions.
+	--   Banks $01-$EF: SuperRAM — all addresses are plain RAM.
+	--   Banks $F0-$FF: SuperCPU ROM served from BRAM — no caching needed.
+	cacheable_addr <= '1' when (cpu_bank = x"00"
+	                            and cpu_addr(15 downto 12) /= x"D")                 -- all except $D000-$DFFF
+	                       or  (cpu_bank > x"00" and cpu_bank < x"F0")               -- SuperRAM
 	                  else '0';
 
 	-- Read: cacheable address, not writing, not flushing
@@ -155,16 +174,22 @@ begin
 	                    and flush_active = '0'
 	               else '0';
 
-	-- Write: cacheable address, writing, write buffer not full, not flushing.
-	-- Write buffer drain is bank $00 only (drain path uses ramAddr directly).
-	-- Non-bank-$00 writes update cache but use the normal SDRAM write path.
-	cacheable_wr <= '1' when enable = '1'
-	                    and cacheable_addr = '1'
-	                    and cpu_bank = x"00"
-	                    and cpu_we = '1'
-	                    and flush_active = '0'
-	                    and wb_full_i = '0'
-	               else '0';
+	-- Write hits DISABLED: write buffer drain is not implemented, so absorbed
+	-- writes never reach SDRAM. VIC-II reads SDRAM and misses screen writes.
+	-- All writes go through the normal SDRAM path; invalidate_wr handles
+	-- cache coherency by clearing the valid bit on write.
+	cacheable_wr <= '0';
+
+	-- Write invalidation: when CPU writes to ANY cacheable address, invalidate
+	-- the cached byte if the tag matches. This covers both bank-$00 writes
+	-- (where ROM/RAM aliasing could cause stale cache data) and SuperRAM
+	-- writes (banks $01-$EF). Writes go to SDRAM via the normal path.
+	invalidate_wr <= '1' when enable = '1'
+	                      and cacheable_addr = '1'
+	                      and cpu_we = '1'
+	                      and cpu_en = '1'
+	                      and flush_active = '0'
+	                 else '0';
 
 	-- ── Tag check (combinational — MLAB async read) ─────────────────
 	-- Compare stored tag with expected, check per-byte valid bit
@@ -261,6 +286,14 @@ begin
 					wb_fifo(to_integer(wb_head)).addr <= cpu_addr;
 					wb_fifo(to_integer(wb_head)).data <= cpu_do;
 					wb_head <= wb_head + 1;
+
+				elsif invalidate_wr = '1' and tag_match = '1' then
+					-- ── Write invalidation ──
+					-- Invalidate cached byte when a write targets a
+					-- matching line. Prevents stale reads after writes.
+					new_valid := valid_mem(to_integer(line_index));
+					new_valid(to_integer(byte_offset)) := '0';
+					valid_mem(to_integer(line_index)) <= new_valid;
 
 				elsif fill_we = '1' then
 					-- ── Fill logic: write SDRAM data into cache ──────

@@ -1071,6 +1071,10 @@ wire  [7:0] dbg_vic_cpuf_zero_cnt;
 wire  [7:0] dbg_vic_cpue_live_zero_cnt;
 wire  [7:0] dbg_vic_cpue_hold_zero_cnt;
 wire  [7:0] dbg_vic_cpue_mismatch_cnt;
+wire        dbg_turbo_en;
+wire        dbg_cache_hit_d1;
+wire        dbg_enable_cpu_t65;
+wire        dbg_cpu_cyc;
 
 fpga64_sid_iec fpga64
 (
@@ -1080,7 +1084,9 @@ fpga64_sid_iec fpga64
 	.pause_out(c64_pause),
 	.bios(status[15:14]),
 	
-	.turbo_mode({status[47] & ~disk_access, status[46]}),
+	// disk_access gate removed: iec_slow_mode inside fpga64_sid_iec.vhd
+	// provides CIA2-based 32ms slowdown during actual IEC operations.
+	.turbo_mode(status[47:46]),
 	.turbo_speed(status[49:48]),
 	.supercpu_en(supercpu_enable),
 	.supercpu_rom(scpu_rom_opt),
@@ -1116,6 +1122,10 @@ fpga64_sid_iec fpga64
 	.dbg_vic_cpue_live_zero_cnt(dbg_vic_cpue_live_zero_cnt),
 	.dbg_vic_cpue_hold_zero_cnt(dbg_vic_cpue_hold_zero_cnt),
 	.dbg_vic_cpue_mismatch_cnt(dbg_vic_cpue_mismatch_cnt),
+	.dbg_turbo_en(dbg_turbo_en),
+	.dbg_cache_hit_d1(dbg_cache_hit_d1),
+	.dbg_enable_cpu_t65(dbg_enable_cpu_t65),
+	.dbg_cpu_cyc(dbg_cpu_cyc),
 
 	.ps2_key(key),
 	.kbd_reset((~reset_n & ~status[1]) | reset_keys),
@@ -1499,6 +1509,9 @@ debug_overlay debug_ovl
 	.vic_cpue_live_zero_cnt(dbg_vic_cpue_live_zero_cnt),
 	.vic_cpue_hold_zero_cnt(dbg_vic_cpue_hold_zero_cnt),
 	.vic_cpue_mismatch_cnt(dbg_vic_cpue_mismatch_cnt),
+	.turbo_en(dbg_turbo_en),
+	.cache_hit_pulse(dbg_cache_hit_d1),
+	.enable_cpu_pulse(dbg_enable_cpu_t65),
 	.overlay_active(ovl_active),
 	.overlay_r(ovl_r),
 	.overlay_g(ovl_g),
@@ -1528,6 +1541,10 @@ debug_uart_fmt debug_fmt
 	.cpu_p(dbg_cpu_p),
 	.cpu_ir(dbg_cpu_ir),
 	.cpu_emul(supercpu_emul),
+	.turbo_en(dbg_turbo_en),
+	.cache_hit_pulse(dbg_cache_hit_d1),
+	.enable_cpu_pulse(dbg_enable_cpu_t65),
+	.cpu_cyc_pulse(dbg_cpu_cyc),
 	.tx_data(dbg_uart_data),
 	.tx_send(dbg_uart_send),
 	.tx_busy(dbg_uart_busy)

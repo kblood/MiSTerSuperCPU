@@ -107,6 +107,11 @@ port(
 	dbg_vic_cpue_live_zero_cnt : out unsigned(7 downto 0);
 	dbg_vic_cpue_hold_zero_cnt : out unsigned(7 downto 0);
 	dbg_vic_cpue_mismatch_cnt  : out unsigned(7 downto 0);
+	-- Turbo/cache diagnostic outputs
+	dbg_turbo_en       : out std_logic;
+	dbg_cache_hit_d1   : out std_logic;
+	dbg_enable_cpu_t65 : out std_logic;
+	dbg_cpu_cyc        : out std_logic;
 
 	-- VGA/SCART interface
 	vic_variant : in  std_logic_vector(1 downto 0);
@@ -311,15 +316,24 @@ signal turbo_m      : std_logic_vector(2 downto 0);
 signal cache_hit     : std_logic;
 signal cache_di      : unsigned(7 downto 0);
 signal cache_hit_d1  : std_logic := '0';
-signal cache_di_d1   : unsigned(7 downto 0) := (others => '0');
 signal cache_flush   : std_logic;
 signal cache_flush_sw : std_logic := '0';  -- software-triggered flush via $D078
+signal cache_flush_bank : std_logic := '0'; -- flush on C64 bank register change
+signal cache_flush_active : std_logic; -- debug: cache is flushing
+signal cache_tag_match    : std_logic; -- debug: tag matches current address
 -- Write buffer drain signals
 signal wb_pending    : std_logic;
 signal wb_addr       : unsigned(15 downto 0);
 signal wb_data       : unsigned(7 downto 0);
 signal wb_ack        : std_logic;
 signal wb_drain_active : std_logic;
+signal cache_fill_we   : std_logic;
+-- IEC auto-slowdown: force 1MHz during CIA2 accesses (IEC serial bus)
+signal iec_slow_mode : std_logic := '0';
+signal iec_slow_ctr  : unsigned(19 downto 0) := (others => '0');
+signal scpu_rom_overlay : std_logic;  -- SCPU ROM BRAM active (data differs from SDRAM)
+signal cache_cpu_bank   : unsigned(7 downto 0);  -- bank for cache: $00 for T65, addr_hi_816 for SuperCPU
+signal cache_cpu_en     : std_logic;             -- enable for cache: from active CPU
 
 signal reset        : std_logic := '1';
 
@@ -652,7 +666,12 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 --   $D0B4 = optimization mode flags (read-only)
 --   $D0B8 = speed status: bit6 = 1 if 1MHz, 0 if turbo
 --   $D0BC = SuperCPU ID: $C9
-cpuDi <= x"C9" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC") else
+-- Cache data MUST be first: during non-CPU slots, cs_vic reflects VIC's address
+-- (not CPU's). If VIC reads $D000-$D3FF, cs_vic='1' could falsely match a
+-- SuperCPU register condition, injecting register values into CPU data stream.
+-- Cache data takes absolute priority when cache_hit_d1 drives the CPU enable.
+cpuDi <= cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
+         x"C9" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC") else
          x"40" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B0") else
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B2") else
          ("0" & scpu_speed_1mhz & "000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B8") else
@@ -662,7 +681,6 @@ cpuDi <= x"C9" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' 
          dbg_hold_mismatch_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07D") else
          dbg_hold_held_zero_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07F") else
          dbg_hold_live_zero_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"080") else
-         cache_di_d1 when (cache_hit_d1 = '1') else  -- Phase 3: serves both CPUs
          cpuDi_raw;
 
 process(clk32)
@@ -970,11 +988,14 @@ end process;
 -- This prevents bus contention when switching between 6510 and 65C816
 -- -----------------------------------------------------------------------
 -- T65 gets cache acceleration when OSD turbo is active (Phase 3)
+-- Cache enables (cache_hit_d1) + SDRAM enables (enableCpu) are OR'd.
+-- cache_hit_d1 guards (not cpu_cyc_s, not enableCpu) prevent cache from
+-- advancing CPU during the SDRAM pipeline. Both paths contribute independently.
 enableCpu_6510 <= ((cache_hit_d1 and turbo_en) or (enableCpu and not dma_active))
                   when supercpu_en = '0' else '0';
--- Cache fast path: enable 65C816 every clk32 cycle on cache hit,
--- OR via normal SDRAM slot path on miss / I/O access.
-enableCpu_816  <= (cache_hit_d1 or (enableCpu and not dma_active))
+-- SuperCPU: SDRAM slot path only (safe mode). No cache fast path for P65C816
+-- until VDA/VPA timing and phantom cycle handling are fully debugged.
+enableCpu_816  <= (enableCpu and not dma_active)
                   when supercpu_en = '1' else '0';
 
 -- -----------------------------------------------------------------------
@@ -1052,41 +1073,98 @@ nmi_ack     <= nmi_ack_816  when supercpu_en = '1' else nmi_ack_6510;
 -- Writes update cache immediately and queue to SDRAM via write buffer.
 -- I/O accesses ($D000-$DFFF) always bypass cache and use the CPUC slot at 1MHz.
 -- -----------------------------------------------------------------------
+-- Route correct bank and enable to cache based on active CPU mode
+cache_cpu_bank <= addr_hi_816 when supercpu_en = '1' else x"00";  -- T65 always bank $00
+cache_cpu_en   <= enableCpu_816 when supercpu_en = '1' else enableCpu_6510;
+
 cache_inst: entity work.cpu_cache
 port map (
 	clk       => clk32,
 	reset     => reset,
 	enable    => supercpu_en or turbo_en,  -- Phase 3: cache active for T65 turbo too
 	cpu_addr  => cpuAddr_pre,
-	cpu_bank  => addr_hi_816,
+	cpu_bank  => cache_cpu_bank,
 	cpu_we    => cpuWe_pre,
 	cpu_do    => cpuDo_pre,
 	cache_di  => cache_di,
 	cache_hit => cache_hit,
-	fill_data => ramDin,
-	fill_we   => enableCpu,
+	fill_data => cpuDi_raw,  -- fill from buslogic output (correct for RAM, ROM, cartridge)
+	fill_we   => cache_fill_we,
 	fill_addr => cpuAddr_pre,
-	fill_bank => addr_hi_816,
+	fill_bank => cache_cpu_bank,
 	wb_pending => wb_pending,
 	wb_addr    => wb_addr,
 	wb_data    => wb_data,
 	wb_ack     => wb_ack,
 	flush     => cache_flush,
-	cs_io     => cs_io,
-	cs_ram    => cs_ram
+	cpu_en    => cache_cpu_en,
+	dbg_flush_active => cache_flush_active,
+	dbg_tag_match    => cache_tag_match
 );
 
-cache_flush <= reset or dma_active or cache_flush_sw;
+-- Flush cache on C64 memory map changes: bank register ($0001), EXROM, or GAME
+-- changes invalidate cached data that may now be wrong (ROM/RAM/cartridge aliasing).
+process(clk32)
+	variable map_key     : std_logic_vector(4 downto 0);
+	variable map_key_prev : std_logic_vector(4 downto 0) := "11111";
+begin
+	if rising_edge(clk32) then
+		cache_flush_bank <= '0';
+		map_key := std_logic_vector(cpuIO(2 downto 0)) & game & exrom;
+		if map_key /= map_key_prev then
+			cache_flush_bank <= '1';
+		end if;
+		map_key_prev := map_key;
+	end if;
+end process;
 
--- Pipeline: cache_hit is combinational (MLAB async read). Delay 1 cycle
--- to align with M10K data BRAM output (registered read, 1-cycle latency).
--- Also gate on baLoc (badline halt) and scpu_speed_1mhz ($D07A = 1MHz).
+cache_flush <= reset or dma_active or cache_flush_sw or cache_flush_bank;
+
+-- SCPU ROM overlay: when active, BRAM serves different data than SDRAM.
+-- Cache fills from SDRAM, so cached data would be WRONG (C64 KERNAL/BASIC
+-- instead of SCPU ROM). Suppress cache hits AND fills during overlay.
+-- Gate by supercpu_en: ROM overlay only applies in SuperCPU mode.
+-- In T65 mode, scpu_rom_vis is never cleared (no $D07E write), so without
+-- the supercpu_en gate, having the ROM OSD option enabled would completely
+-- block cache fills, cache_hit_d1, and the cpuDi cache_di mux.
+scpu_rom_overlay <= supercpu_rom and scpu_rom_vis and supercpu_en;
+
+-- Gate fill_we: don't fill cache during write buffer drain or SCPU ROM overlay.
+-- Don't fill during CPU writes (SDRAM is being written, ramDin is stale).
+-- Gate fill on baLoc: during badlines (baLoc='0'), cpuHasBus='0' so buslogic
+-- outputs VIC data (not CPU data) on cpuDi_raw. Filling the cache with VIC
+-- garbage corrupts cached bytes, causing wrong data on subsequent reads.
+cache_fill_we <= enableCpu and not wb_drain_active and not cpuWe_pre
+                 and not scpu_rom_overlay
+                 and baLoc;
+
+-- Cache hit pipeline: allow hits during non-CPU slots + idle CPU slots.
+-- The 1-cycle suppress after each hit accounts for M10K BRAM read latency.
+--
+-- SDRAM pipeline guard: cpu_cyc_s is the 2-stage pipeline that delivers
+-- enableCpu. When cpu_cyc fires, the SDRAM reads the CPU's current address.
+-- If cache_hit_d1 fires before enableCpu delivers that data, the CPU advances
+-- and the SDRAM data becomes stale. Block cache_hit_d1 while either pipeline
+-- stage is non-zero so the CPU waits for the SDRAM path.
 process(clk32)
 begin
 	if rising_edge(clk32) then
-		cache_hit_d1 <= cache_hit and not dma_active and baLoc
-		                and not scpu_speed_1mhz;
-		cache_di_d1  <= cache_di;
+		if cache_hit_d1 = '1' then
+			-- Suppress for 1 cycle (BRAM read latency for new address)
+			cache_hit_d1 <= '0';
+		elsif (sysCycle < CYCLE_CPU0)
+		   or (cpu_cyc = '0' and sysCycle >= CYCLE_CPU0)
+		   or (wb_drain_active = '1' and sysCycle >= CYCLE_CPU0) then
+			cache_hit_d1 <= cache_hit and not dma_active and baLoc
+			                and not scpu_speed_1mhz
+			                and not scpu_rom_overlay
+			                and not iec_slow_mode
+			                and not cpu_cyc_s(0)
+			                and not cpu_cyc_s(1)
+			                and not enableCpu;
+		else
+			cache_hit_d1 <= '0';
+		end if;
 	end if;
 end process;
 
@@ -1101,6 +1179,11 @@ dbg_cpu_addr <= cpuAddr_pre;
 dbg_cpu_data <= cpuDo_pre;
 dbg_cpu_we   <= cpuWe_pre;
 dbg_cpu_en   <= enableCpu_816 when supercpu_en = '1' else enableCpu_6510;
+-- Turbo/cache diagnostics (active signals for per-frame counting in overlay)
+dbg_turbo_en       <= turbo_en;
+dbg_cache_hit_d1   <= cache_hit_d1;
+dbg_enable_cpu_t65 <= enableCpu_6510;
+dbg_cpu_cyc        <= cpu_cyc; -- count cpu_cyc pulses per frame
 dbg_cpu_sp   <= dbg_sp_816 when supercpu_en = '1' else x"0000";
 dbg_cpu_p    <= dbg_p_816  when supercpu_en = '1' else x"00";
 dbg_cpu_ir   <= dbg_ir_816 when supercpu_en = '1' else x"00";
@@ -1384,11 +1467,48 @@ end process;
 cass_motor <= cpuIO(5);
 cass_write <= cpuIO(3);
 
--- Write buffer drain: when CPU runs from cache (cache_hit_d1='1'), the
--- current CPU SDRAM slot is unused. If the write buffer has pending entries,
--- redirect the SDRAM access to drain one write buffer entry.
-wb_drain_active <= '1' when cpu_cyc = '1' and wb_pending = '1'
-                        and cache_hit_d1 = '1' else '0';
+-- IEC auto-slowdown: detect CIA2 IEC port WRITES and force 1MHz for ~32ms.
+-- The IEC serial bus timing is sensitive to CPU speed — IEC routines bit-bang the
+-- port at $DD00 and expect 1MHz-rate timing. Suppress cache-driven turbo enables
+-- and SDRAM turbo slots while the timeout is active.
+-- Only trigger on WRITES to $DD00-$DD03 (port A/B data + DDR) — these are the
+-- registers that control the IEC serial bus lines (ATN, CLK, DATA).
+-- Do NOT trigger on reads (e.g., $DD0D interrupt acknowledge during IRQ handler)
+-- as those don't affect IEC bus timing but fire every 60Hz, which would keep
+-- iec_slow_mode permanently active (32ms timeout > 16.7ms IRQ period).
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if reset = '1' then
+			iec_slow_mode <= '0';
+			iec_slow_ctr  <= (others => '0');
+		else
+			-- Countdown FIRST (lower priority — detection overrides below)
+			if iec_slow_ctr /= 0 then
+				iec_slow_ctr <= iec_slow_ctr - 1;
+			else
+				iec_slow_mode <= '0';
+			end if;
+
+			-- Detect CIA2 IEC port WRITES ($DD00-$DD03) — LAST assignment wins in VHDL
+			if cpuAddr(15 downto 4) = x"DD0" and cpuAddr(3 downto 2) = "00"
+			   and cs_cia2 = '1' and cpuWe = '1' and enableCpu = '1' then
+				iec_slow_mode <= '1';
+				iec_slow_ctr  <= (others => '1');  -- ~32ms timeout at 32MHz
+			end if;
+		end if;
+	end if;
+end process;
+
+-- Write buffer drain: steal CPU SDRAM slots when the CPU can run from cache.
+-- Condition: buffer has entries AND current CPU read is a cache hit (so SDRAM
+-- slot is redundant) AND we're in a CPU SDRAM slot AND not during DMA.
+-- During drain: ramAddr/ramDout carry wb_addr/wb_data, ramWE='1' for the write.
+-- enableCpu is suppressed (SDRAM doing write, not read — no valid CPU data).
+-- The CPU still advances via cache_hit_d1 during this and adjacent slots.
+wb_drain_active <= '1' when wb_pending = '1' and cache_hit = '1'
+                            and cpu_cyc = '1' and dma_active = '0'
+                  else '0';
 wb_ack <= wb_drain_active;
 
 ramDout <= wb_data      when wb_drain_active = '1' else cpuDo;
@@ -1401,20 +1521,25 @@ ramWE   <= '1'          when wb_drain_active = '1' and sysCycle >= CYCLE_CPU0
 -- The extra SDRAM read was clobbering dout_r with wrong values.
 vic_early_ce <= '0'; -- disabled
 ramCE   <= cs_ram when sysCycle = CYCLE_VIC0 or cpu_cyc = '1' else '0';
--- Gate turbo slots (CPU0/CPU4/CPU8) on cpuHasBus: during badlines the CPU is
--- halted so turbo is wasted, and the extra SDRAM reads create back-to-back
--- accesses that may interfere with VIC c-access data at CPUF.
--- T65 mode only fires CPUC and is clean — match that behavior during badlines.
+-- Gate turbo slots (CPU0/CPU4/CPU8) on cpuHasBus AND baLoc: during badlines
+-- (baLoc='0'), cpuWe='1' can grant cpuHasBus for write completion at CPUC.
+-- But turbo SDRAM reads at CPU0/CPU4/CPU8 would use systemAddr=cpuAddr,
+-- overwriting ramData with CPU data.  VIC c-access at CPUE then reads wrong
+-- data.  baLoc gate ensures turbo slots only fire during non-badline periods.
 cpu_cyc <= '1' when
-				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and cpuHasBus = '1') or
-				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and cpuHasBus = '1') or
-				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and cpuHasBus = '1') or
+				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1') or
+				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1') or
+				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1') or
 				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1')) else '0';
 				
 process(clk32)
 begin
 	if rising_edge(clk32) then
-		cpu_cyc_s <= cpu_cyc_s(0) & cpu_cyc;
+		-- SDRAM pipeline: 2-stage shift register from cpu_cyc to enableCpu.
+		-- cache_hit_d1 guards (not cpu_cyc_s(0/1), not enableCpu) prevent cache
+		-- from advancing CPU during pipeline, ensuring enableCpu delivers correct data.
+		cpu_cyc_s <= cpu_cyc_s(0) & (cpu_cyc and not wb_drain_active);
+
 		enableCpu <= cpu_cyc_s(1);
 		io_enable <= io_enable and not enableCpu;
 
@@ -1440,8 +1565,13 @@ begin
 			-- SuperCPU: auto-engage turbo (default max speed), OSD speed setting
 			-- overrides when turbo_mode != Off. Software $D07A/$D07B always wins.
 			-- T65 mode: turbo controlled by OSD setting as before.
-			if cs_io = '0' and dma_req = '0' then
-				if supercpu_en = '1' and scpu_speed_1mhz = '0' then
+			-- iec_slow_mode suppresses turbo during IEC serial bus access.
+			-- NOTE: cs_io removed from gate — at EXT1/EXT5, cpuHasBus='0' so
+			-- cs_io reflects VIC's address decode, not CPU's. This caused turbo
+			-- to intermittently disable when VIC addressed $D000-$DFFF.
+			-- I/O protection is already handled by cpu_cyc gating on cs_ram.
+			if dma_req = '0' then
+				if supercpu_en = '1' and scpu_speed_1mhz = '0' and iec_slow_mode = '0' then
 					-- SuperCPU turbo active
 					if turbo_mode = "00" then
 						-- Turbo Off (default): max speed for SuperCPU
@@ -1457,8 +1587,10 @@ begin
 					end if;
 					turbo_en <= '1'; -- always engage turbo for SuperCPU
 					-- scpu_speed_1mhz='1': turbo_m stays "000" (1MHz from $D07A)
-				elsif (turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1' then
-					-- T65 mode: OSD-controlled turbo (unchanged)
+				elsif iec_slow_mode = '0'
+			      and ((turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1') then
+					-- T65 mode: OSD-controlled turbo (IEC-gated)
+					turbo_en <= '1';  -- enable cache + fast path for T65 turbo
 					case turbo_speed is
 						when "00" => turbo_m <= "010"; -- 2x
 						when "01" => turbo_m <= "110"; -- 3x

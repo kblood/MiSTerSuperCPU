@@ -1,7 +1,7 @@
 // debug_uart_fmt.sv - Formats CPU debug state as ASCII hex lines over UART
 //
 // Sends one line per frame (at vblank) containing CPU state:
-//   A:xxxx D:xx B:xx S:xxxx P:xx I:xx E:x F:xxxx\n
+//   A:xxxx D:xx B:xx S:xxxx P:xx I:xx E:x F:xxxx T:x C:xxxx N:xxxx\n
 //
 // Fields:
 //   A = CPU address (16-bit)
@@ -12,8 +12,11 @@
 //   I = Instruction register / opcode (8-bit)
 //   E = Emulation mode (1-bit)
 //   F = Frame counter (16-bit, for freeze detection)
+//   T = Turbo enabled (1-bit)
+//   C = Cache hit count per frame (16-bit)
+//   N = enableCpu count per frame (16-bit)
 //
-// At 115200 baud, each line is ~48 chars = ~4.2ms. One line per frame
+// At 115200 baud, each line is ~63 chars = ~5.5ms. One line per frame
 // (50Hz PAL / 60Hz NTSC) = well within bandwidth.
 
 module debug_uart_fmt (
@@ -30,6 +33,12 @@ module debug_uart_fmt (
 	input   [7:0] cpu_p,
 	input   [7:0] cpu_ir,
 	input         cpu_emul,
+
+	// Turbo/cache diagnostics (active signals, counted per frame)
+	input         turbo_en,
+	input         cache_hit_pulse,
+	input         enable_cpu_pulse,
+	input         cpu_cyc_pulse,
 
 	// UART TX interface
 	output reg [7:0] tx_data,
@@ -49,6 +58,16 @@ reg  [7:0] lat_p;
 reg  [7:0] lat_ir;
 reg        lat_emul;
 reg [15:0] lat_frame;
+reg        lat_turbo;
+reg [19:0] lat_ch_cnt;
+reg [19:0] lat_en_cnt;
+
+// Per-frame counters (running, latched at vblank)
+// 20-bit to avoid 16-bit wrapping (max ~628k cycles/frame)
+reg [19:0] ch_cnt;
+reg [19:0] en_cnt;
+reg [19:0] cy_cnt;
+reg [19:0] lat_cy_cnt;
 
 // State machine
 reg        vblank_r;
@@ -56,8 +75,8 @@ reg        sending;       // currently sending a line
 reg [5:0]  char_idx;      // character position within the line
 reg        char_pending;  // a character is ready to send
 
-// Line format: "A:xxxx D:xx B:xx S:xxxx P:xx I:xx E:x F:xxxx\n"
-// Total: 47 characters + \n = 48 characters
+// Line format: "A:xxxx D:xx B:xx S:xxxx P:xx I:xx E:x F:xxxx T:x C:xxxx N:xxxx\n"
+// Total: 62 characters + \n = 63 characters
 // Character positions (0-indexed):
 //  0  A
 //  1  :
@@ -90,8 +109,20 @@ reg        char_pending;  // a character is ready to send
 // 38  F
 // 39  :
 // 40-43 frame hex
-// 44  \n
-localparam LINE_LEN = 6'd45;
+// 44  space
+// 45  T
+// 46  :
+// 47  turbo hex
+// 48  space
+// 49  C
+// 50  :
+// 51-54 cache hit count hex
+// 55  space
+// 56  N
+// 57  :
+// 58-61 enable count hex
+// 62  \n
+localparam LINE_LEN = 6'd63;
 
 // Hex nibble to ASCII
 function [7:0] hex_char;
@@ -121,12 +152,12 @@ always @(*) begin
 		6'd14: line_char = hex_char(lat_bank[7:4]);
 		6'd15: line_char = hex_char(lat_bank[3:0]);
 		6'd16: line_char = " ";
-		6'd17: line_char = "S";
+		6'd17: line_char = "R";  // R = Raw cpu_cyc count per frame
 		6'd18: line_char = ":";
-		6'd19: line_char = hex_char(lat_sp[15:12]);
-		6'd20: line_char = hex_char(lat_sp[11:8]);
-		6'd21: line_char = hex_char(lat_sp[7:4]);
-		6'd22: line_char = hex_char(lat_sp[3:0]);
+		6'd19: line_char = hex_char(lat_cy_cnt[19:16]);
+		6'd20: line_char = hex_char(lat_cy_cnt[15:12]);
+		6'd21: line_char = hex_char(lat_cy_cnt[11:8]);
+		6'd22: line_char = hex_char(lat_cy_cnt[7:4]);
 		6'd23: line_char = " ";
 		6'd24: line_char = "P";
 		6'd25: line_char = ":";
@@ -148,7 +179,25 @@ always @(*) begin
 		6'd41: line_char = hex_char(lat_frame[11:8]);
 		6'd42: line_char = hex_char(lat_frame[7:4]);
 		6'd43: line_char = hex_char(lat_frame[3:0]);
-		6'd44: line_char = 8'h0A;  // newline
+		6'd44: line_char = " ";
+		6'd45: line_char = "T";
+		6'd46: line_char = ":";
+		6'd47: line_char = hex_char({3'b0, lat_turbo});
+		6'd48: line_char = " ";
+		6'd49: line_char = "C";
+		6'd50: line_char = ":";
+		6'd51: line_char = hex_char(lat_ch_cnt[19:16]);
+		6'd52: line_char = hex_char(lat_ch_cnt[15:12]);
+		6'd53: line_char = hex_char(lat_ch_cnt[11:8]);
+		6'd54: line_char = hex_char(lat_ch_cnt[7:4]);
+		6'd55: line_char = " ";
+		6'd56: line_char = "N";
+		6'd57: line_char = ":";
+		6'd58: line_char = hex_char(lat_en_cnt[19:16]);
+		6'd59: line_char = hex_char(lat_en_cnt[15:12]);
+		6'd60: line_char = hex_char(lat_en_cnt[11:8]);
+		6'd61: line_char = hex_char(lat_en_cnt[7:4]);
+		6'd62: line_char = 8'h0A;  // newline
 		default: line_char = " ";
 	endcase
 end
@@ -161,22 +210,40 @@ always @(posedge clk) begin
 		char_pending <= 0;
 		frame_cnt   <= 0;
 		vblank_r    <= 0;
+		ch_cnt      <= 0;
+		en_cnt      <= 0;
+		cy_cnt      <= 0;
 	end
 	else begin
 		vblank_r <= vblank;
 		tx_send  <= 0;
 
+		// Per-frame pulse counters
+		if (cache_hit_pulse)
+			ch_cnt <= ch_cnt + 1'b1;
+		if (enable_cpu_pulse)
+			en_cnt <= en_cnt + 1'b1;
+		if (cpu_cyc_pulse)
+			cy_cnt <= cy_cnt + 1'b1;
+
 		// Detect vblank rising edge → latch data and start sending
 		if (vblank && !vblank_r && enable && !sending) begin
-			lat_addr  <= cpu_addr;
-			lat_data  <= cpu_data;
-			lat_bank  <= cpu_bank;
-			lat_sp    <= cpu_sp;
-			lat_p     <= cpu_p;
-			lat_ir    <= cpu_ir;
-			lat_emul  <= cpu_emul;
-			lat_frame <= frame_cnt;
-			frame_cnt <= frame_cnt + 1'b1;
+			lat_addr   <= cpu_addr;
+			lat_data   <= cpu_data;
+			lat_bank   <= cpu_bank;
+			lat_sp     <= cpu_sp;
+			lat_p      <= cpu_p;
+			lat_ir     <= cpu_ir;
+			lat_emul   <= cpu_emul;
+			lat_frame  <= frame_cnt;
+			lat_turbo  <= turbo_en;
+			lat_ch_cnt <= ch_cnt;
+			lat_en_cnt <= en_cnt;
+			lat_cy_cnt <= cy_cnt;
+			frame_cnt  <= frame_cnt + 1'b1;
+			ch_cnt     <= 0;
+			en_cnt     <= 0;
+			cy_cnt     <= 0;
 
 			sending      <= 1;
 			char_idx     <= 0;
