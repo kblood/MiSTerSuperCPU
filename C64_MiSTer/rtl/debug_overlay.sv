@@ -134,11 +134,13 @@ reg  [7:0] lat_vic_cpue_live_zero_cnt;
 reg  [7:0] lat_vic_cpue_hold_zero_cnt;
 reg  [7:0] lat_vic_cpue_mismatch_cnt;
 reg  [7:0] lat_frame_lo;  // low byte of frame counter
-// Turbo/cache per-frame counters
-reg [15:0] ch_cnt;       // cache_hit_d1 pulse counter (running)
-reg [15:0] en_cnt;       // enableCpu_6510 pulse counter (running)
-reg [15:0] lat_ch_cnt;   // latched at vblank
-reg [15:0] lat_en_cnt;   // latched at vblank
+// Turbo/cache per-frame counters (20-bit to avoid overflow at high enable rates)
+// Displayed value = count / 16 (to fit in 16-bit overlay fields).
+// To get real count: multiply displayed value by 16.
+reg [19:0] ch_cnt;       // cache/BRAM hit pulse counter (running)
+reg [19:0] en_cnt;       // enableCpu pulse counter (running)
+reg [15:0] lat_ch_cnt;   // latched at vblank (count / 16)
+reg [15:0] lat_en_cnt;   // latched at vblank (count / 16)
 reg        lat_turbo_en; // latched at vblank
 
 // Per-frame counter logic: count pulses between vblanks
@@ -158,8 +160,8 @@ always @(posedge clk) begin
 		ovl_frame_cnt   <= ovl_frame_cnt + 1'b1;
 		lat_frame_lo    <= ovl_frame_cnt[7:0];
 		lat_turbo_en    <= turbo_en;
-		lat_ch_cnt      <= ch_cnt;
-		lat_en_cnt      <= en_cnt;
+		lat_ch_cnt      <= ch_cnt[19:4];  // displayed = count/16
+		lat_en_cnt      <= en_cnt[19:4];  // displayed = count/16
 		lat_addr        <= cpu_addr;
 		lat_data        <= cpu_data;
 		lat_we          <= cpu_we;
@@ -442,8 +444,8 @@ always @(*) begin
 	default: begin
 		// Row 4: T:x C:xxxx E:xxxx N:xx
 		//   T = turbo_en (0/1)
-		//   C = cache_hit_d1 count per frame (16-bit hex)
-		//   E = enableCpu_6510 count per frame (16-bit hex)
+		//   C = (cache OR bram) hit count / 16 per frame
+		//   E = enableCpu count / 16 per frame (multiply by 16 for real count)
 		//   N = frame counter (8-bit, for freeze detection)
 		case (char_idx)
 			5'd0:  char_code = 5'h1A;                  // 'T'

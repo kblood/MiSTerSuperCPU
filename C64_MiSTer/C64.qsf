@@ -275,6 +275,7 @@ source files.qip
 set_global_assignment -name QIP_FILE rtl/65C816/65C816.qip
 set_global_assignment -name VHDL_FILE rtl/cpu_65c816.vhd
 set_global_assignment -name VHDL_FILE rtl/cpu_cache.vhd
+set_global_assignment -name VHDL_FILE rtl/c64_ram64k.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug_overlay.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug_uart_tx.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug_uart_fmt.sv

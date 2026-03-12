@@ -872,6 +872,7 @@ always @(posedge clk_sys) begin
 
 	old_meminit <= inj_meminit;
 	start_strk  <= old_meminit & ~inj_meminit;
+	bram_inval_pulse <= old_meminit & ~inj_meminit;  // invalidate BRAM when meminit ends
 	
 	old_st0 <= status[17];
 	if (~old_st0 & status[17]) cart_attached <= 0;
@@ -895,6 +896,7 @@ always @(posedge clk_sys) begin
 end
 
 reg        start_strk = 0;
+reg        bram_inval_pulse = 0;
 reg        reset_keys = 0;
 reg [10:0] key = 0;
 always @(posedge clk_sys) begin
@@ -1090,6 +1092,7 @@ fpga64_sid_iec fpga64
 	.turbo_speed(status[49:48]),
 	.supercpu_en(supercpu_enable),
 	.supercpu_rom(scpu_rom_opt),
+	.bram_invalidate(bram_inval_pulse),
 	.supercpu_emul(supercpu_emul),
 	.supercpu_cycle(supercpu_cycle),
 	.supercpu_bank(supercpu_bank),

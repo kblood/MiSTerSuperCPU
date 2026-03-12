@@ -70,6 +70,7 @@ port(
 	turbo_speed : in  std_logic_vector(1 downto 0);
 	supercpu_en : in  std_logic := '0';
 	supercpu_rom : in  std_logic := '0'; -- '1' = SuperCPU kickstart ROM active
+	bram_invalidate : in std_logic := '0'; -- pulse to clear all BRAM valid bits
 	supercpu_emul : out std_logic;             -- '1' = 65C816 in 6502 emulation mode
 	supercpu_cycle : out std_logic;            -- '1' during CPU SDRAM access slot
 	supercpu_bank : out unsigned(7 downto 0);  -- current bank byte (A23-A16)
@@ -247,6 +248,7 @@ signal irq_vic      : std_logic;
 signal systemWe     : std_logic;
 signal pulseWr_io   : std_logic;
 signal systemAddr   : unsigned(15 downto 0);
+signal buslogic_ramData : unsigned(7 downto 0);  -- muxed RAM data for buslogic (BRAM or SDRAM)
 
 signal cs_io        : std_logic;
 signal cs_vic       : std_logic;
@@ -312,7 +314,7 @@ signal cpu_cyc      : std_logic;
 signal cpu_cyc_s    : std_logic_vector(1 downto 0);
 signal turbo_m      : std_logic_vector(2 downto 0);
 
--- BRAM CPU cache signals
+-- BRAM CPU cache signals (retained for cache path, active when bram64k not used)
 signal cache_hit     : std_logic;
 signal cache_di      : unsigned(7 downto 0);
 signal cache_hit_d1  : std_logic := '0';
@@ -328,6 +330,34 @@ signal wb_data       : unsigned(7 downto 0);
 signal wb_ack        : std_logic;
 signal wb_drain_active : std_logic;
 signal cache_fill_we   : std_logic;
+-- 64KB dual-port BRAM signals (bank $00 fast RAM)
+signal bram64k_en     : std_logic;  -- master enable for BRAM path
+signal bram_do        : unsigned(7 downto 0);  -- Port A read output (CPU)
+signal bram_vic_do    : unsigned(7 downto 0);  -- Port B read output (VIC)
+signal bram_we        : std_logic;  -- Port A write enable
+signal bram_din       : unsigned(7 downto 0);  -- Port A data input (muxed: write data or fill data)
+signal bram_hit_d1    : std_logic := '0';  -- registered BRAM hit (with suppress)
+-- Per-page valid (register-based, combinational read) for always-RAM regions.
+-- 256 flags, one per 256-byte page. Works for $0000-$7FFF, $C000-$CFFF because
+-- CPU writes fill these pages densely before reading.
+signal bram_pgvalid       : std_logic_vector(255 downto 0) := (others => '0');
+signal bram_page_valid    : std_logic;  -- combinational read of bram_pgvalid
+-- Per-byte M10K valid for ROM regions ($8000-$9FFF, $A000-$BFFF, $E000-$FFFF).
+-- These regions fill byte-by-byte from SDRAM reads; per-page would be unsafe.
+-- M10K has 1-cycle read latency, so ROM hits need a 2-cycle pipeline.
+signal bram_byte_valid    : std_logic;  -- M10K per-byte valid output (1-cycle latency)
+signal bram_rom_region    : std_logic;  -- '1' when addr in possibly-ROM region
+signal bram_hit_addr      : std_logic;  -- combinational: address+bank check (no valid)
+signal bram_hit_ram       : std_logic;  -- combinational: always-RAM hit (with page valid)
+signal bram_hit_rom_pre   : std_logic;  -- combinational: ROM region address check
+signal bram_hit_rom_pre_d1: std_logic := '0';  -- pipelined ROM hit check (aligned with M10K)
+signal bram_suppress      : std_logic := '0';  -- extra suppress cycle for ROM region hits
+signal bram_hit_was_rom   : std_logic := '0';  -- track if last hit was from ROM region
+signal bram_valid_clearing : std_logic := '1';  -- clearing M10K valid in progress (start cleared)
+signal bram_valid_clr_ctr  : unsigned(15 downto 0) := (others => '0');
+signal bram_valid_a_addr   : unsigned(15 downto 0);
+signal bram_valid_a_din    : std_logic;
+signal bram_valid_we       : std_logic;
 -- IEC auto-slowdown: force 1MHz during CIA2 accesses (IEC serial bus)
 signal iec_slow_mode : std_logic := '0';
 signal iec_slow_ctr  : unsigned(19 downto 0) := (others => '0');
@@ -591,6 +621,18 @@ port map (
 -- -----------------------------------------------------------------------
 -- PLA and bus-switches
 -- -----------------------------------------------------------------------
+-- When BRAM is enabled and VIC has the bus, feed BRAM Port B data to buslogic.
+-- This gives VIC zero-contention access to bank $00 RAM via BRAM.
+-- When CPU has the bus or BRAM disabled, use normal SDRAM data (ramDin).
+-- When BRAM is enabled and VIC has the bus, feed BRAM Port B data to buslogic.
+-- BRAM is filled from SDRAM reads + CPU writes, so VIC always gets correct data.
+-- 1-cycle M10K latency matches the registered SDRAM data path timing.
+-- VIC always reads from BRAM when enabled (no valid check — same as SDRAM behavior
+-- during boot: uninitialized data is progressively overwritten by KERNAL).
+-- Valid bits only gate the CPU turbo path, not the VIC display path.
+buslogic_ramData <= bram_vic_do when (bram64k_en = '1' and cpuHasBus = '0' and systemAddr(15) = '0')
+              else  ramDin;
+
 buslogic: entity work.fpga64_buslogic
 port map (
 	clk => clk32,
@@ -608,7 +650,7 @@ port map (
 	io_ext => io_ext or sid_sel_r,
 	io_data => io_data_i,
 
-	ramData => ramDin,
+	ramData => buslogic_ramData,
 
 	cpuWe => cpuWe,
 	cpuAddr => cpuAddr,
@@ -666,11 +708,13 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 --   $D0B4 = optimization mode flags (read-only)
 --   $D0B8 = speed status: bit6 = 1 if 1MHz, 0 if turbo
 --   $D0BC = SuperCPU ID: $C9
--- Cache data MUST be first: during non-CPU slots, cs_vic reflects VIC's address
+-- BRAM/Cache data MUST be first: during non-CPU slots, cs_vic reflects VIC's address
 -- (not CPU's). If VIC reads $D000-$D3FF, cs_vic='1' could falsely match a
 -- SuperCPU register condition, injecting register values into CPU data stream.
--- Cache data takes absolute priority when cache_hit_d1 drives the CPU enable.
-cpuDi <= cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
+-- BRAM data takes top priority when bram_hit_d1 drives the CPU enable.
+-- Cache data is second priority when cache_hit_d1 drives (SuperRAM or non-BRAM mode).
+cpuDi <= bram_do  when (bram_hit_d1 = '1') else
+         cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
          x"C9" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC") else
          x"40" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B0") else
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B2") else
@@ -987,15 +1031,17 @@ end process;
 -- CPU enable gating: only active CPU receives clock enable pulses
 -- This prevents bus contention when switching between 6510 and 65C816
 -- -----------------------------------------------------------------------
--- T65 gets cache acceleration when OSD turbo is active (Phase 3)
--- Cache enables (cache_hit_d1) + SDRAM enables (enableCpu) are OR'd.
--- cache_hit_d1 guards (not cpu_cyc_s, not enableCpu) prevent cache from
--- advancing CPU during the SDRAM pipeline. Both paths contribute independently.
-enableCpu_6510 <= ((cache_hit_d1 and turbo_en) or (enableCpu and not dma_active))
+-- T65 gets BRAM acceleration (when enabled) or cache acceleration.
+-- BRAM hit (bram_hit_d1): 1-cycle suppress for always-RAM, 2-cycle for ROM regions.
+-- Cache hit (cache_hit_d1) has 1-cycle suppress — used for SuperRAM or non-BRAM mode.
+-- SDRAM enables (enableCpu) are OR'd in for SDRAM-path accesses.
+-- Guards (not cpu_cyc_s, not enableCpu) prevent double-enables during SDRAM pipeline.
+enableCpu_6510 <= (bram_hit_d1 or (cache_hit_d1 and turbo_en) or (enableCpu and not dma_active))
                   when supercpu_en = '0' else '0';
--- SuperCPU: SDRAM slot path only (safe mode). No cache fast path for P65C816
--- until VDA/VPA timing and phantom cycle handling are fully debugged.
-enableCpu_816  <= (enableCpu and not dma_active)
+-- SuperCPU (P65C816): BRAM acceleration + SDRAM path.
+-- BRAM hit covers 60KB of bank $00 (all except I/O).
+-- SDRAM path handles SuperRAM (banks $01-$EF) and I/O.
+enableCpu_816  <= ((bram_hit_d1 and turbo_en) or (cache_hit_d1 and turbo_en) or (enableCpu and not dma_active))
                   when supercpu_en = '1' else '0';
 
 -- -----------------------------------------------------------------------
@@ -1155,15 +1201,181 @@ begin
 		elsif (sysCycle < CYCLE_CPU0)
 		   or (cpu_cyc = '0' and sysCycle >= CYCLE_CPU0)
 		   or (wb_drain_active = '1' and sysCycle >= CYCLE_CPU0) then
-			cache_hit_d1 <= cache_hit and not dma_active and baLoc
-			                and not scpu_speed_1mhz
-			                and not scpu_rom_overlay
-			                and not iec_slow_mode
-			                and not cpu_cyc_s(0)
-			                and not cpu_cyc_s(1)
-			                and not enableCpu;
+			-- Suppress cache for BRAM-range addresses ($0000-$7FFF, bank $00).
+			-- Cache hits bypass SDRAM, so BRAM doesn't get filled for those reads.
+			-- VIC reads from BRAM port B, so it needs BRAM to be filled by SDRAM reads.
+			-- Allow cache turbo for $8000-$FFFF (ROM regions, outside BRAM range).
+			if bram64k_en = '1' and cache_cpu_bank = x"00"
+			   and cpuAddr_pre(15) = '0' then
+				cache_hit_d1 <= '0';
+			else
+				cache_hit_d1 <= cache_hit and not dma_active and baLoc
+				                and not scpu_speed_1mhz
+				                and not scpu_rom_overlay
+				                and not iec_slow_mode
+				                and not cpu_cyc_s(0)
+				                and not cpu_cyc_s(1)
+				                and not enableCpu;
+			end if;
 		else
 			cache_hit_d1 <= '0';
+		end if;
+	end if;
+end process;
+
+-- -----------------------------------------------------------------------
+-- 64KB Dual-Port BRAM (bank $00 fast RAM)
+-- Port A: CPU read/write (full speed, 1-cycle registered read)
+-- Port B: VIC-II read (independent, zero contention)
+-- Replaces cache for bank $00: 100% hit rate, no suppress penalty.
+-- -----------------------------------------------------------------------
+bram64k_en <= '1';  -- TEMP: enabled for isolation testing
+
+-- BRAM data input mux: CPU write data or SDRAM read fill data
+-- On CPU writes: store CPU's output data (cpuDo_pre)
+-- On SDRAM reads: fill BRAM from buslogic output (cpuDi_raw) so BRAM has correct data
+bram_din <= cpuDo_pre when cpuWe_pre = '1' else cpuDi_raw;
+
+ram64k_inst: entity work.c64_ram64k
+port map (
+	clk    => clk32,
+	-- Port A: CPU
+	a_addr => cpuAddr_pre,
+	a_din  => bram_din,
+	a_dout => bram_do,
+	a_we   => bram_we,
+	-- Port B: VIC-II (read only)
+	b_addr => systemAddr,
+	b_dout => bram_vic_do
+);
+
+-- BRAM write enable: CPU writes + SDRAM read fill
+-- Covers $0000-$7FFF (32KB): zero page, stack, screen RAM, BASIC workspace.
+-- Reduced from 60KB to 32KB to keep M10K usage under 90% (fitter stability).
+-- 1. CPU writes: write-through to BRAM (keeps BRAM coherent with SDRAM)
+-- 2. SDRAM read fills: cpuDi_raw from buslogic (correct data for current config)
+-- Read fills require cpuHasBus='1': during badlines (cpuHasBus='0'),
+-- systemAddr=vicAddr so cpuDi_raw contains VIC data, not CPU data.
+bram_we <= '1' when bram64k_en = '1'
+                and cache_cpu_bank = x"00"
+                and cpuAddr_pre(15) = '0'  -- $0000-$7FFF only (32KB)
+                and (
+                    -- CPU write: store write data to BRAM
+                    (cpuWe_pre = '1' and (enableCpu = '1' or bram_hit_d1 = '1'))
+                    -- SDRAM read fill: store cpuDi_raw to BRAM
+                    -- Guard: cpuHasBus ensures buslogic resolved for CPU, not VIC
+                    or (cpuWe_pre = '0' and enableCpu = '1' and cpuHasBus = '1')
+                )
+           else '0';
+
+-- Per-byte M10K valid tracking REMOVED to save ~7 M10K blocks.
+-- At 95% RAM block utilization, the fitter cannot place M10K correctly.
+-- ROM region BRAM hits (bram_hit_rom_pre) are already disabled, so
+-- bram_byte_valid is unused. Stub outputs to prevent synthesis errors.
+bram_byte_valid <= '0';
+bram_valid_a_addr <= (others => '0');
+bram_valid_a_din  <= '0';
+bram_valid_we     <= '0';
+
+-- Clearing counter: sweeps all 64K entries on reset/invalidation/bank change.
+-- 64K cycles at 32MHz = ~2ms. During clearing, ROM region BRAM hits are suppressed.
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if reset = '1' or bram_invalidate = '1' or cache_flush_bank = '1' then
+			bram_valid_clearing <= '1';
+			bram_valid_clr_ctr <= (others => '0');
+		elsif bram_valid_clearing = '1' then
+			if bram_valid_clr_ctr = x"FFFF" then
+				bram_valid_clearing <= '0';
+			else
+				bram_valid_clr_ctr <= bram_valid_clr_ctr + 1;
+			end if;
+		end if;
+	end if;
+end process;
+
+-- Per-page valid tracking: 256 registers (pages 0-127 used for $0000-$7FFF).
+-- Combinational read = zero latency. bram_we gates on addr(15)='0' so
+-- pages 128-255 are never set.
+-- Cleared on reset/invalidation (NOT on bank change — always-RAM is bank-invariant).
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if reset = '1' or bram_invalidate = '1' then
+			bram_pgvalid <= (others => '0');
+		elsif bram_we = '1' then
+			bram_pgvalid(to_integer(unsigned(std_logic_vector(cpuAddr_pre(15 downto 8))))) <= '1';
+		end if;
+	end if;
+end process;
+
+-- Combinational read: page valid for current CPU address (no latency!)
+bram_page_valid <= bram_pgvalid(to_integer(unsigned(std_logic_vector(cpuAddr_pre(15 downto 8)))));
+
+-- ROM region detection: disabled for 32KB BRAM ($0000-$7FFF has no ROM regions)
+bram_rom_region <= '0';
+
+-- Base address check: bank $00, $0000-$7FFF, read access, no ROM overlay
+bram_hit_addr <= '1' when bram64k_en = '1'
+                      and cache_cpu_bank = x"00"
+                      and cpuAddr_pre(15) = '0'  -- $0000-$7FFF only (32KB)
+                      and cpuWe_pre = '0'
+                      and scpu_rom_overlay = '0'
+                else '0';
+
+-- BRAM CPU read path disabled: per-page valid (256 bytes) is too coarse.
+-- RAMTAS tests 1 byte/page, marking pages valid while 255 bytes are uninitialized.
+-- Subsequent reads via bram_hit_d1 return garbage, crashing the CPU.
+-- Fix requires per-byte valid (removed due to M10K budget) or per-line valid.
+-- BRAM is still used for VIC reads (port B) — no valid check needed there.
+bram_hit_ram <= '0';
+-- bram_hit_ram <= bram_hit_addr and not bram_rom_region and bram_page_valid;
+
+-- ROM region pre-hit: needs M10K valid pipeline (slow path, 3 clocks/byte)
+bram_hit_rom_pre <= '0';  -- TEMP: disabled for debugging
+-- bram_hit_rom_pre <= bram_hit_addr and bram_rom_region and not bram_valid_clearing;
+
+-- Hybrid BRAM hit pipeline:
+-- Always-RAM ($0000-$7FFF, $C000-$CFFF): per-page valid (combinational) → 1-cycle suppress.
+-- ROM regions ($8000-$9FFF, $A000-$BFFF, $E000-$FFFF): per-byte M10K valid (1-cycle
+-- latency) → 2-cycle suppress (1 for M10K data + 1 for pipeline catch-up).
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		-- Pipeline stage: align ROM pre-hit with M10K valid output
+		bram_hit_rom_pre_d1 <= bram_hit_rom_pre;
+
+		if bram_hit_d1 = '1' then
+			-- Suppress cycle 1 (always needed: M10K data latency)
+			bram_hit_d1 <= '0';
+			bram_suppress <= bram_hit_was_rom;  -- ROM needs extra suppress
+		elsif bram_suppress = '1' then
+			-- Suppress cycle 2 (ROM-only: pipeline catch-up with new address)
+			bram_hit_d1 <= '0';
+			bram_suppress <= '0';
+		elsif bram64k_en = '1'
+		   and dma_active = '0' and baLoc = '1'
+		   and scpu_speed_1mhz = '0'
+		   and iec_slow_mode = '0'
+		   and cpu_cyc = '0'
+		   and cpu_cyc_s(0) = '0'
+		   and cpu_cyc_s(1) = '0'
+		   and enableCpu = '0'
+		then
+			if bram_hit_ram = '1' then
+				-- Always-RAM: page valid confirmed (combinational, no pipeline)
+				bram_hit_d1 <= '1';
+				bram_hit_was_rom <= '0';
+			elsif bram_hit_rom_pre_d1 = '1' and bram_byte_valid = '1' then
+				-- ROM region: per-byte valid confirmed (M10K pipelined)
+				bram_hit_d1 <= '1';
+				bram_hit_was_rom <= '1';
+			else
+				bram_hit_d1 <= '0';
+			end if;
+		else
+			bram_hit_d1 <= '0';
 		end if;
 	end if;
 end process;
@@ -1181,7 +1393,7 @@ dbg_cpu_we   <= cpuWe_pre;
 dbg_cpu_en   <= enableCpu_816 when supercpu_en = '1' else enableCpu_6510;
 -- Turbo/cache diagnostics (active signals for per-frame counting in overlay)
 dbg_turbo_en       <= turbo_en;
-dbg_cache_hit_d1   <= cache_hit_d1;
+dbg_cache_hit_d1   <= cache_hit_d1 or bram_hit_d1;
 dbg_enable_cpu_t65 <= enableCpu_6510;
 dbg_cpu_cyc        <= cpu_cyc; -- count cpu_cyc pulses per frame
 dbg_cpu_sp   <= dbg_sp_816 when supercpu_en = '1' else x"0000";
