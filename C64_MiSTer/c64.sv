@@ -1077,6 +1077,7 @@ wire        dbg_turbo_en;
 wire        dbg_cache_hit_d1;
 wire        dbg_enable_cpu_t65;
 wire        dbg_cpu_cyc;
+wire  [7:0] dbg_diag;
 
 fpga64_sid_iec fpga64
 (
@@ -1129,6 +1130,7 @@ fpga64_sid_iec fpga64
 	.dbg_cache_hit_d1(dbg_cache_hit_d1),
 	.dbg_enable_cpu_t65(dbg_enable_cpu_t65),
 	.dbg_cpu_cyc(dbg_cpu_cyc),
+	.dbg_diag(dbg_diag),
 
 	.ps2_key(key),
 	.kbd_reset((~reset_n & ~status[1]) | reset_keys),
@@ -1545,6 +1547,7 @@ debug_uart_fmt debug_fmt
 	.cpu_ir(dbg_cpu_ir),
 	.cpu_emul(supercpu_emul),
 	.turbo_en(dbg_turbo_en),
+	.diag(dbg_diag),
 	.cache_hit_pulse(dbg_cache_hit_d1),
 	.enable_cpu_pulse(dbg_enable_cpu_t65),
 	.cpu_cyc_pulse(dbg_cpu_cyc),

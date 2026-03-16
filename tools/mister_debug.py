@@ -4,6 +4,7 @@ mister_debug.py - MiSTer FPGA remote debug automation tool
 
 Provides commands for the build-deploy-test loop:
   deploy   - SCP the .rbf to MiSTer and load the core
+  load_prg - Upload and run a PRG file on the test C64 core
   screen   - Take and retrieve a screenshot
   uart     - Read debug UART output from /dev/ttyS1
   keys     - Send keyboard input
@@ -12,6 +13,7 @@ Provides commands for the build-deploy-test loop:
 
 Usage:
   python tools/mister_debug.py deploy [rbf_path]
+  python tools/mister_debug.py load_prg <prg_file>
   python tools/mister_debug.py screen [output_path]
   python tools/mister_debug.py uart [seconds]
   python tools/mister_debug.py keys <key_sequence>
@@ -87,6 +89,52 @@ def cmd_deploy(args):
 
     time.sleep(5)
     print("Core should be running now.")
+    return 0
+
+def cmd_load_prg(args):
+    """Upload a PRG file to MiSTer and load it in the test C64 core.
+
+    Uses mbc load_all_as to generate an MGL that loads the test core
+    (/media/fat/_Test/C64.rbf) and injects the PRG via ioctl index 1.
+    The C64 core resets and auto-runs the PRG (if "Reset & Run PRG" is enabled).
+    """
+    if not args:
+        print("Usage: load_prg <prg_file>")
+        print("  Uploads the PRG to MiSTer and loads it in the test C64 core.")
+        print("  Example: python tools/mister_debug.py load_prg speedtest.prg")
+        return 1
+
+    prg_local = args[0]
+    if not os.path.exists(prg_local):
+        print(f"Error: {prg_local} not found")
+        return 1
+
+    prg_name = os.path.basename(prg_local)
+    prg_remote = f"/media/fat/games/C64/{prg_name}"
+
+    size = os.path.getsize(prg_local)
+    print(f"Uploading {prg_local} ({size:,} bytes) to {HOST}:{prg_remote}")
+
+    if not scp_to(prg_local, prg_remote):
+        print("Error: SCP failed")
+        return 1
+    print("Upload complete.")
+
+    # Use mbc to load the test core with the PRG via MGL
+    print(f"Loading {prg_name} into test C64 core...")
+    mbc_cmd = (f'/media/fat/linux/mbc load_all_as C64.PRG '
+               f'{DEST} {prg_remote}')
+    out, err, rc = ssh(mbc_cmd, timeout=15)
+    if rc != 0:
+        print(f"Warning: mbc returned {rc}: {err}")
+        # Fallback: try load_core with the core directly
+        print("Falling back to load_core...")
+        ssh(f'echo "load_core {DEST}" > /dev/MiSTer_cmd')
+    else:
+        print("PRG load command sent.")
+
+    time.sleep(5)
+    print(f"Core should be running with {prg_name} now.")
     return 0
 
 def cmd_screen(args):
@@ -172,12 +220,13 @@ def cmd_status(args):
 
 def main():
     commands = {
-        "deploy": cmd_deploy,
-        "screen": cmd_screen,
-        "uart":   cmd_uart,
-        "keys":   cmd_keys,
-        "reboot": cmd_reboot,
-        "status": cmd_status,
+        "deploy":   cmd_deploy,
+        "load_prg": cmd_load_prg,
+        "screen":   cmd_screen,
+        "uart":     cmd_uart,
+        "keys":     cmd_keys,
+        "reboot":   cmd_reboot,
+        "status":   cmd_status,
     }
 
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):

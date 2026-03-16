@@ -59,3 +59,33 @@ alongside the existing 6510 emulation mode.
   plus framework. Monitor ALM/register usage after adding 65C816.
 - Do NOT break existing 6510 compatibility - this must remain the default mode
 - The 65C816 should be selectable via OSD menu option
+
+## Specialized Agents
+
+### Debug Agent
+Use when diagnosing issues on live MiSTer hardware. Reads UART output, checks
+diagnostic bytes, deploys builds, and interprets debug overlay/UART fields.
+- Reference: `docs/debug_agent.md` (connection details, UART format, diagnostic patterns)
+- MiSTer IP: 192.168.50.130, SSH root/1, Core: /media/fat/_Test/C64.rbf
+- UART: 115200 8N1 on /dev/ttyS1 — `ssh root@192.168.50.130 "cat /dev/ttyS1"`
+- Deploy: `scp C64.rbf root@192.168.50.130:/media/fat/_Test/C64.rbf`
+- T:xx diagnostic byte: b0=turbo, b1=rom_vis, b2=1mhz, b3=iec, b4=overlay, b5=cache, b6=enCpu
+
+### Ultimate 64 Agent
+Use for testing and comparing against real Ultimate 64 hardware via its REST API.
+Can deploy CRTs/PRGs, reset the machine, read screen RAM, and control settings remotely.
+- Reference: `docs/ultimate64_agent.md` (full API reference, deploy workflow)
+- Ultimate 64 IP: 192.168.50.94
+- API base: `http://192.168.50.94/v1`
+- Deploy+run CRT: `curl -X POST --data-binary @test.crt http://192.168.50.94/v1/runners:run_crt`
+- Reset: `curl -X PUT http://192.168.50.94/v1/machine:reset`
+- Read screen RAM: `curl "http://192.168.50.94/v1/machine:readmem?address=0400&length=03E8"`
+- Note: scpu_speedtest.crt shows 0.9-1.1MHz on U64 because $D07A/$D07B are SuperCPU-specific
+
+### Software Architect Agent
+Use for planning, creating/updating architecture diagrams, and comparing implementations.
+Maintains Mermaid diagrams of core architectures and identifies next steps.
+- Reference: `docs/architecture_diagrams.md` (Mermaid diagrams of all core variants)
+- Compares: Original MiSTer C64, Current SuperCPU, Ultimate 64, Planned target
+- Updates diagrams when architecture changes
+- Plans implementation phases and identifies issues to fix

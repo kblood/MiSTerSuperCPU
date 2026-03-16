@@ -243,12 +243,15 @@ begin
 	charData <= charData_jap when c64jap_ena = '1' else charData_std;
 
 	-- SuperCPU ROM bank mapping:
-	-- Banks $F0-$FF: full 64KB accessible as ROM (the JML at reset jumps to bank $F8).
+	-- Bank $F8 only: the 64KB dprom holds the kickstart ROM image at bank $F8.
+	-- Other banks ($F0-$F7, $F9-$FF) are SuperRAM, NOT ROM.  The kickstart SIMM
+	-- detection reads bank $F6 expecting RAM; mapping all $F0+ to ROM made reads
+	-- return ROM data, failing SIMM detection and aborting boot (brown squares).
 	-- Bank $00, $8000-$9FFF: kickstart ROM replaces BASIC during initial boot ONLY.
 	-- Once the kickstart hides itself (supercpu_rom_vis='0'), BASIC ROM must be visible
 	-- again so the KERNAL/BASIC can run normally.
 	scpu_rom_en <= '1' when supercpu_en = '1' and supercpu_rom = '1' and cpuWe = '0' and
-	                        (unsigned(supercpu_bank) >= x"F0" or
+	                        (supercpu_bank = x"F8" or
 	                         (supercpu_bank = x"00" and cpuAddr(15 downto 13) = "100"
 	                          and supercpu_rom_vis = '1'))
 	               else '0';
@@ -319,13 +322,13 @@ begin
 		-- It will contain the last data read by the VIC. (if a C64 is shielded correctly)
 		dataToCpu <= lastVicData;
 		if scpu_rom_en = '1' then
-			-- 65C816 bank $F0-$FF or bank-0 $8000-$9FFF: ALWAYS serve SuperCPU ROM.
+			-- 65C816 bank $F8 or bank-0 $8000-$9FFF: serve SuperCPU ROM from dprom.
 			-- Use scpuRomData directly, NOT romData, so that the $D07E ROM-visibility
 			-- switch (supercpu_rom_vis) cannot hide the kickstart code at bank $F8.
 			dataToCpu <= unsigned(scpuRomData);
 		elsif supercpu_en = '1' and supercpu_bank /= x"00" then
-			-- SuperCPU non-bank-$00: all reads return SDRAM data (SuperRAM / ROM shadow).
-			-- scpu_rom_en has already handled ROM banks above; remaining banks $01-$EF
+			-- SuperCPU non-bank-$00: all reads return SDRAM data (SuperRAM).
+			-- scpu_rom_en has already handled ROM bank $F8; remaining banks $01-$EF, $F0-$F7, $F9-$FF
 			-- are SuperRAM where every address is plain RAM, no C64 I/O/ROM decode.
 			dataToCpu <= ramData;
 		elsif scpu_sysram_cs = '1' then

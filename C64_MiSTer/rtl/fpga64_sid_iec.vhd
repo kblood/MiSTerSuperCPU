@@ -113,6 +113,7 @@ port(
 	dbg_cache_hit_d1   : out std_logic;
 	dbg_enable_cpu_t65 : out std_logic;
 	dbg_cpu_cyc        : out std_logic;
+	dbg_diag           : out unsigned(7 downto 0);
 
 	-- VGA/SCART interface
 	vic_variant : in  std_logic_vector(1 downto 0);
@@ -335,6 +336,7 @@ signal bram64k_en     : std_logic;  -- master enable for BRAM path
 signal bram_do        : unsigned(7 downto 0);  -- Port A read output (CPU)
 signal bram_vic_do    : unsigned(7 downto 0);  -- Port B read output (VIC)
 signal bram_we        : std_logic;  -- Port A write enable
+signal bram_valid_cycle : std_logic; -- '1' when bus cycle is valid (not phantom)
 signal bram_din       : unsigned(7 downto 0);  -- Port A data input (muxed: write data or fill data)
 signal bram_hit_d1    : std_logic := '0';  -- registered BRAM hit (with suppress)
 -- Per-page valid (register-based, combinational read) for always-RAM regions.
@@ -1144,6 +1146,7 @@ port map (
 	wb_ack     => wb_ack,
 	flush     => cache_flush,
 	cpu_en    => cache_cpu_en,
+	--cache_same_line  => open,  -- TODO: wide cache lines
 	dbg_flush_active => cache_flush_active,
 	dbg_tag_match    => cache_tag_match
 );
@@ -1181,6 +1184,7 @@ scpu_rom_overlay <= supercpu_rom and scpu_rom_vis and supercpu_en;
 -- outputs VIC data (not CPU data) on cpuDi_raw. Filling the cache with VIC
 -- garbage corrupts cached bytes, causing wrong data on subsequent reads.
 cache_fill_we <= enableCpu and not wb_drain_active and not cpuWe_pre
+                 and bram_valid_cycle
                  and not scpu_rom_overlay
                  and baLoc;
 
@@ -1196,27 +1200,24 @@ process(clk32)
 begin
 	if rising_edge(clk32) then
 		if cache_hit_d1 = '1' then
-			-- Suppress for 1 cycle (BRAM read latency for new address)
+			-- Suppress for 1 cycle (M10K read latency for new address)
 			cache_hit_d1 <= '0';
 		elsif (sysCycle < CYCLE_CPU0)
 		   or (cpu_cyc = '0' and sysCycle >= CYCLE_CPU0)
 		   or (wb_drain_active = '1' and sysCycle >= CYCLE_CPU0) then
-			-- Suppress cache for BRAM-range addresses ($0000-$7FFF, bank $00).
-			-- Cache hits bypass SDRAM, so BRAM doesn't get filled for those reads.
-			-- VIC reads from BRAM port B, so it needs BRAM to be filled by SDRAM reads.
-			-- Allow cache turbo for $8000-$FFFF (ROM regions, outside BRAM range).
-			if bram64k_en = '1' and cache_cpu_bank = x"00"
-			   and cpuAddr_pre(15) = '0' then
-				cache_hit_d1 <= '0';
-			else
-				cache_hit_d1 <= cache_hit and not dma_active and baLoc
-				                and not scpu_speed_1mhz
-				                and not scpu_rom_overlay
-				                and not iec_slow_mode
-				                and not cpu_cyc_s(0)
-				                and not cpu_cyc_s(1)
-				                and not enableCpu;
-			end if;
+			-- Suppress for writes: writes MUST go through SDRAM (enableCpu) so
+			-- that both SDRAM and BRAM receive the data. Without this, writes
+			-- via cache_hit_d1 go nowhere (no cpu_cyc, no bram_we), causing
+			-- lost writes and brown-screen corruption after reset.
+			cache_hit_d1 <= cache_hit and not dma_active and baLoc
+			                and bram_valid_cycle
+			                and not cpuWe_pre
+			                and not scpu_speed_1mhz
+			                and not scpu_rom_overlay
+			                and not iec_slow_mode
+			                and not cpu_cyc_s(0)
+			                and not cpu_cyc_s(1)
+			                and not enableCpu;
 		else
 			cache_hit_d1 <= '0';
 		end if;
@@ -1231,10 +1232,13 @@ end process;
 -- -----------------------------------------------------------------------
 bram64k_en <= '1';  -- TEMP: enabled for isolation testing
 
--- BRAM data input mux: CPU write data or SDRAM read fill data
--- On CPU writes: store CPU's output data (cpuDo_pre)
--- On SDRAM reads: fill BRAM from buslogic output (cpuDi_raw) so BRAM has correct data
-bram_din <= cpuDo_pre when cpuWe_pre = '1' else cpuDi_raw;
+-- BRAM data input mux: CPU write data, cache fill, or SDRAM read fill
+-- Priority: 1. CPU writes (cpuDo_pre), 2. Cache hits (cache_di), 3. SDRAM fills (cpuDi_raw)
+-- Cache fill: when cache_hit_d1='1', cache_di has the correct data for cpuAddr_pre.
+-- Writing it to BRAM keeps BRAM coherent with cache, so VIC sees correct data.
+bram_din <= cpuDo_pre when cpuWe_pre = '1'
+       else cache_di  when cache_hit_d1 = '1'
+       else cpuDi_raw;
 
 ram64k_inst: entity work.c64_ram64k
 port map (
@@ -1249,22 +1253,33 @@ port map (
 	b_dout => bram_vic_do
 );
 
--- BRAM write enable: CPU writes + SDRAM read fill
+-- BRAM write enable: CPU writes + SDRAM read fill + cache hit fill
 -- Covers $0000-$7FFF (32KB): zero page, stack, screen RAM, BASIC workspace.
 -- Reduced from 60KB to 32KB to keep M10K usage under 90% (fitter stability).
 -- 1. CPU writes: write-through to BRAM (keeps BRAM coherent with SDRAM)
 -- 2. SDRAM read fills: cpuDi_raw from buslogic (correct data for current config)
+-- 3. Cache hit fills: cache_di from 8KB cache (keeps BRAM coherent when cache
+--    serves data instead of SDRAM, so VIC sees correct data on Port B)
 -- Read fills require cpuHasBus='1': during badlines (cpuHasBus='0'),
 -- systemAddr=vicAddr so cpuDi_raw contains VIC data, not CPU data.
+-- Valid bus cycle: P65C816 phantom cycles (VDA=0, VPA=0) have invalid
+-- address/data/WE on the bus. Without this guard, phantom writes corrupt
+-- random BRAM locations causing brown-screen garbage after reset.
+-- T65 has no phantom cycles, so the gate is always '1' in T65 mode.
+bram_valid_cycle <= (vda_816 or vpa_816) when supercpu_en = '1' else '1';
+
 bram_we <= '1' when bram64k_en = '1'
                 and cache_cpu_bank = x"00"
                 and cpuAddr_pre(15) = '0'  -- $0000-$7FFF only (32KB)
+                and bram_valid_cycle = '1'
                 and (
                     -- CPU write: store write data to BRAM
                     (cpuWe_pre = '1' and (enableCpu = '1' or bram_hit_d1 = '1'))
                     -- SDRAM read fill: store cpuDi_raw to BRAM
                     -- Guard: cpuHasBus ensures buslogic resolved for CPU, not VIC
                     or (cpuWe_pre = '0' and enableCpu = '1' and cpuHasBus = '1')
+                    -- Cache hit fill: write cache_di to BRAM so VIC Port B is coherent
+                    or (cpuWe_pre = '0' and cache_hit_d1 = '1')
                 )
            else '0';
 
@@ -1302,7 +1317,9 @@ end process;
 process(clk32)
 begin
 	if rising_edge(clk32) then
-		if reset = '1' or bram_invalidate = '1' then
+		if reset = '1' or bram_invalidate = '1' or dma_active = '1' then
+			-- DMA writes bypass BRAM, so invalidate all pages when DMA is active
+			-- to prevent bram_hit_d1 from serving stale data after DMA completes.
 			bram_pgvalid <= (others => '0');
 		elsif bram_we = '1' then
 			bram_pgvalid(to_integer(unsigned(std_logic_vector(cpuAddr_pre(15 downto 8))))) <= '1';
@@ -1324,13 +1341,13 @@ bram_hit_addr <= '1' when bram64k_en = '1'
                       and scpu_rom_overlay = '0'
                 else '0';
 
--- BRAM CPU read path disabled: per-page valid (256 bytes) is too coarse.
--- RAMTAS tests 1 byte/page, marking pages valid while 255 bytes are uninitialized.
--- Subsequent reads via bram_hit_d1 return garbage, crashing the CPU.
--- Fix requires per-byte valid (removed due to M10K budget) or per-line valid.
--- BRAM is still used for VIC reads (port B) — no valid check needed there.
-bram_hit_ram <= '0';
--- bram_hit_ram <= bram_hit_addr and not bram_rom_region and bram_page_valid;
+-- BRAM CPU read path: per-page valid gated by DMA coherency.
+-- DMA invalidates all pages (bram_pgvalid cleared when dma_active='1'),
+-- so stale data from DMA writes is never served. RAMTAS coarseness is
+-- benign: M10K initializes to 0, matching SDRAM init for untouched bytes.
+-- After KERNAL boot, all actively-used pages are naturally filled via
+-- SDRAM reads (bram_we) and marked valid.
+bram_hit_ram <= bram_hit_addr and not bram_rom_region and bram_page_valid;
 
 -- ROM region pre-hit: needs M10K valid pipeline (slow path, 3 clocks/byte)
 bram_hit_rom_pre <= '0';  -- TEMP: disabled for debugging
@@ -1396,6 +1413,10 @@ dbg_turbo_en       <= turbo_en;
 dbg_cache_hit_d1   <= cache_hit_d1 or bram_hit_d1;
 dbg_enable_cpu_t65 <= enableCpu_6510;
 dbg_cpu_cyc        <= cpu_cyc; -- count cpu_cyc pulses per frame
+-- Diagnostic byte: bit0=turbo_en, bit1=scpu_rom_vis, bit2=scpu_speed_1mhz,
+-- bit3=iec_slow_mode, bit4=scpu_rom_overlay, bit5=cache_hit, bit6=enableCpu
+dbg_diag <= '0' & enableCpu & cache_hit & scpu_rom_overlay & iec_slow_mode
+            & scpu_speed_1mhz & scpu_rom_vis & turbo_en;
 dbg_cpu_sp   <= dbg_sp_816 when supercpu_en = '1' else x"0000";
 dbg_cpu_p    <= dbg_p_816  when supercpu_en = '1' else x"00";
 dbg_cpu_ir   <= dbg_ir_816 when supercpu_en = '1' else x"00";
@@ -1738,6 +1759,10 @@ ramCE   <= cs_ram when sysCycle = CYCLE_VIC0 or cpu_cyc = '1' else '0';
 -- But turbo SDRAM reads at CPU0/CPU4/CPU8 would use systemAddr=cpuAddr,
 -- overwriting ramData with CPU data.  VIC c-access at CPUE then reads wrong
 -- data.  baLoc gate ensures turbo slots only fire during non-badline periods.
+-- SDRAM pipeline skip REVERTED: suppressing cpu_cyc on cache/BRAM hits
+-- broke SuperCPU (black screen). The 65C816 needs SDRAM reads even when
+-- cache reports a hit, due to phantom cycles and bank addressing.
+-- TODO: gate SDRAM skip to T65-only mode after verifying 816 safety.
 cpu_cyc <= '1' when
 				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1') or
 				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1') or
@@ -1748,11 +1773,18 @@ process(clk32)
 begin
 	if rising_edge(clk32) then
 		-- SDRAM pipeline: 2-stage shift register from cpu_cyc to enableCpu.
-		-- cache_hit_d1 guards (not cpu_cyc_s(0/1), not enableCpu) prevent cache
-		-- from advancing CPU during pipeline, ensuring enableCpu delivers correct data.
-		cpu_cyc_s <= cpu_cyc_s(0) & (cpu_cyc and not wb_drain_active);
-
-		enableCpu <= cpu_cyc_s(1);
+		-- When cache/BRAM hits advance the CPU, the pending SDRAM read becomes
+		-- stale (wrong address). Cancel the pipeline to prevent delivering
+		-- stale data via enableCpu. This allows cache/BRAM to fire freely
+		-- without being blocked by the SDRAM pipeline guards.
+		if (cache_hit_d1 = '1' or bram_hit_d1 = '1') and turbo_en = '1' then
+			-- Cache/BRAM hit advanced the CPU: cancel pending SDRAM pipeline
+			cpu_cyc_s <= "00";
+			enableCpu <= '0';
+		else
+			cpu_cyc_s <= cpu_cyc_s(0) & (cpu_cyc and not wb_drain_active);
+			enableCpu <= cpu_cyc_s(1);
+		end if;
 		io_enable <= io_enable and not enableCpu;
 
 		if sysCycle = CYCLE_EXT0 then
