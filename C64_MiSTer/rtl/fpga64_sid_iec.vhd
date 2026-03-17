@@ -421,10 +421,10 @@ signal vic_ca_data_valid   : std_logic := '0'; -- '1' = vic_ca_data_lat is valid
 signal vicDi_hold_or_live  : unsigned(7 downto 0);
 signal vic_hold_gate       : std_logic;
 signal vic_early_ce        : std_logic;
-signal dbg_hold_fire_cnt_r     : unsigned(7 downto 0) := (others => '0'); -- $D07C: hold gate activations
-signal dbg_hold_mismatch_cnt_r : unsigned(7 downto 0) := (others => '0'); -- $D07D: held /= live at CPUF
-signal dbg_hold_held_zero_cnt_r : unsigned(7 downto 0) := (others => '0'); -- $D07F: held data = $00 at CPUF
-signal dbg_hold_live_zero_cnt_r : unsigned(7 downto 0) := (others => '0'); -- $D080: live vicDi = $00 at CPUF
+signal dbg_hold_fire_cnt_r     : unsigned(7 downto 0) := (others => '0'); -- $D070: hold gate activations
+signal dbg_hold_mismatch_cnt_r : unsigned(7 downto 0) := (others => '0'); -- $D071: held /= live at CPUF
+signal dbg_hold_held_zero_cnt_r : unsigned(7 downto 0) := (others => '0'); -- $D072: held data = $00 at CPUF
+signal dbg_hold_live_zero_cnt_r : unsigned(7 downto 0) := (others => '0'); -- $D073: live vicDi = $00 at CPUF
 
 signal todclk       : std_logic;
 
@@ -704,12 +704,16 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 -- Real SuperCPU register behavior (c64-wiki.com/wiki/SuperCPU):
 --   $D07A/$D07B = write-only speed triggers (no read value)
 --   $D074-$D077 = write-only optimization mode triggers
---   $D07E/$D07F = write-only register enable/disable
---   $D0B0 = mode detect: $40 = SuperCPU v2 in C64 mode
---   $D0B2 = ROM control mirror: must return $00 for SIMM detect
---   $D0B4 = optimization mode flags (read-only)
---   $D0B8 = speed status: bit6 = 1 if 1MHz, 0 if turbo
---   $D0BC = SuperCPU ID: $C9
+--   $D07E = ROM visibility (read: bit7=scpu_rom_vis; write: enable regs + set ROM vis)
+--   $D07F = write-only register disable
+--   $D0B0 = mode detect: $40 = SuperCPU v2 in C64 mode (gated by scpu_regs_enabled)
+--   $D0B2 = hardware status: $00 (SIMM present) (gated by scpu_regs_enabled)
+--   $D0B4 = optimization mode flags (gated by scpu_regs_enabled)
+--   $D0B5 = JiffyDOS/speed switch: bit7=jiffy(0), bit6=speed_1mhz (gated)
+--   $D0B6 = emulation mode: bit7=emu_mode (1=6502, 0=native 65816) (gated)
+--   $D0B8 = speed status: bit7=sw_1mhz, bit6=combined_1mhz (gated)
+--   $D0BC = SuperCPU ID: $C9 (gated by scpu_regs_enabled)
+--   $D070-$D073 = debug counters (read-only, always accessible)
 -- BRAM/Cache data MUST be first: during non-CPU slots, cs_vic reflects VIC's address
 -- (not CPU's). If VIC reads $D000-$D3FF, cs_vic='1' could falsely match a
 -- SuperCPU register condition, injecting register values into CPU data stream.
@@ -717,16 +721,24 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 -- Cache data is second priority when cache_hit_d1 drives (SuperRAM or non-BRAM mode).
 cpuDi <= bram_do  when (bram_hit_d1 = '1') else
          cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
-         x"C9" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC") else
-         x"40" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B0") else
-         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B2") else
-         ("0" & scpu_speed_1mhz & "000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B8") else
-         ("000000" & scpu_optim_mode) when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B4") else
-         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
-         dbg_hold_fire_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07C") else
-         dbg_hold_mismatch_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07D") else
-         dbg_hold_held_zero_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07F") else
-         dbg_hold_live_zero_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"080") else
+         -- SuperCPU $D0Bx registers: gated by scpu_regs_enabled (write $D07F to disable)
+         x"C9" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC" and scpu_regs_enabled = '1') else
+         x"40" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B0" and scpu_regs_enabled = '1') else
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B2" and scpu_regs_enabled = '1') else
+         -- $D0B8: bit7=software 1MHz, bit6=combined 1MHz (VICE-verified)
+         (scpu_speed_1mhz & scpu_speed_1mhz & "000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B8" and scpu_regs_enabled = '1') else
+         ("000000" & scpu_optim_mode) when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B4" and scpu_regs_enabled = '1') else
+         -- $D0B5: bit7=JiffyDOS(0), bit6=speed switch (VICE-verified)
+         ("0" & scpu_speed_1mhz & "000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B5" and scpu_regs_enabled = '1') else
+         -- $D0B6: bit7=emulation mode (1=6502 emu, 0=native 65816)
+         (emu_mode_816 & "0000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B6" and scpu_regs_enabled = '1') else
+         -- $D07E: bit7=ROM visibility (not gated by scpu_regs_enabled)
+         (scpu_rom_vis & "0000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
+         -- Debug registers relocated to $D070-$D073 (away from $D07F/$D080 SuperCPU space)
+         dbg_hold_fire_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"070") else
+         dbg_hold_mismatch_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"071") else
+         dbg_hold_held_zero_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"072") else
+         dbg_hold_live_zero_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"073") else
          cpuDi_raw;
 
 process(clk32)
@@ -1411,7 +1423,7 @@ dbg_cpu_en   <= enableCpu_816 when supercpu_en = '1' else enableCpu_6510;
 -- Turbo/cache diagnostics (active signals for per-frame counting in overlay)
 dbg_turbo_en       <= turbo_en;
 dbg_cache_hit_d1   <= cache_hit_d1 or bram_hit_d1;
-dbg_enable_cpu_t65 <= enableCpu_6510;
+dbg_enable_cpu_t65 <= enableCpu_816 when supercpu_en = '1' else enableCpu_6510;
 dbg_cpu_cyc        <= cpu_cyc; -- count cpu_cyc pulses per frame
 -- Diagnostic byte: bit0=turbo_en, bit1=scpu_rom_vis, bit2=scpu_speed_1mhz,
 -- bit3=iec_slow_mode, bit4=scpu_rom_overlay, bit5=cache_hit, bit6=enableCpu
@@ -1672,14 +1684,14 @@ begin
 			if cpuAddr = x"D07E" and supercpu_rom = '1' then
 				scpu_rom_vis <= cpuDo(7);      -- bit7=0: KERNAL visible; bit7=1: SCPU ROM
 				scpu_regs_enabled <= '1';      -- $D07E also enables hardware registers
-			elsif cpuAddr = x"D07F" then
-				scpu_regs_enabled <= '0';      -- $D07F disables hardware registers
+			elsif cpuAddr = x"D07F" or cpuAddr = x"D07D" then
+				scpu_regs_enabled <= '0';      -- $D07F/$D07D disables hardware registers
 			elsif cpuAddr = x"D078" then
 				cache_flush_sw <= '1';         -- Any write to $D078 = flush cache
 			elsif cpuAddr = x"D07A" then
 				scpu_speed_1mhz <= '1';        -- Any write to $D07A = force 1MHz
-			elsif cpuAddr = x"D07B" then
-				scpu_speed_1mhz <= '0';        -- Any write to $D07B = enable 20MHz
+			elsif cpuAddr = x"D07B" or cpuAddr = x"D079" then
+				scpu_speed_1mhz <= '0';        -- Any write to $D07B/$D079 = enable 20MHz
 			elsif cpuAddr = x"D074" then
 				scpu_optim_mode <= "00";       -- VIC bank 2 optimization ($8000-$BFFF)
 			elsif cpuAddr = x"D075" then
@@ -1704,11 +1716,12 @@ cass_write <= cpuIO(3);
 -- The IEC serial bus timing is sensitive to CPU speed — IEC routines bit-bang the
 -- port at $DD00 and expect 1MHz-rate timing. Suppress cache-driven turbo enables
 -- and SDRAM turbo slots while the timeout is active.
--- Only trigger on WRITES to $DD00-$DD03 (port A/B data + DDR) — these are the
--- registers that control the IEC serial bus lines (ATN, CLK, DATA).
--- Do NOT trigger on reads (e.g., $DD0D interrupt acknowledge during IRQ handler)
--- as those don't affect IEC bus timing but fire every 60Hz, which would keep
--- iec_slow_mode permanently active (32ms timeout > 16.7ms IRQ period).
+-- Trigger on WRITES to $DD00-$DD03 (port A/B data + DDR) — these control the
+-- IEC serial bus lines (ATN, CLK, DATA).
+-- Also trigger on READS of $DD00 (port A) — custom fastloaders poll CLK_IN/DATA_IN
+-- (bits 6-7) for handshake and need 1MHz timing for protocol synchronization.
+-- Do NOT trigger on reads of $DD04-$DD0F (timers, IRQ flags) — $DD0D IRQ
+-- acknowledge fires every 60Hz and would keep iec_slow_mode permanently active.
 process(clk32)
 begin
 	if rising_edge(clk32) then
@@ -1723,9 +1736,11 @@ begin
 				iec_slow_mode <= '0';
 			end if;
 
-			-- Detect CIA2 IEC port WRITES ($DD00-$DD03) — LAST assignment wins in VHDL
-			if cpuAddr(15 downto 4) = x"DD0" and cpuAddr(3 downto 2) = "00"
-			   and cs_cia2 = '1' and cpuWe = '1' and enableCpu = '1' then
+			-- Detect CIA2 IEC port access — LAST assignment wins in VHDL
+			-- WRITES to $DD00-$DD03, or READS of $DD00 (IEC bus status polling)
+			if cpuAddr(15 downto 4) = x"DD0" and cs_cia2 = '1' and enableCpu = '1'
+			   and ((cpuAddr(3 downto 2) = "00" and cpuWe = '1')
+			     or (cpuAddr(3 downto 0) = x"0" and cpuWe = '0')) then
 				iec_slow_mode <= '1';
 				iec_slow_ctr  <= (others => '1');  -- ~32ms timeout at 32MHz
 			end if;

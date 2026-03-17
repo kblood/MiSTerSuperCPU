@@ -1588,8 +1588,11 @@ writeRegisters: process(clk)
 					end case;
 				end if;
 
-				if (myWr_phi1 = '1' and (enaPixel = '1' or variant = "10")) then
+				if (myWr_phi1 = '1' and (enaPixel = '1' or variant = "10")
+					and (turbo_en = '0' or rasterX(2 downto 0) = "111")) then
 					-- assumption: color registers are latched during the whole PHI high cycle
+					-- In turbo mode, only latch at rasterX=111 (CPUF enaPixel) to eliminate
+					-- jitter from variable io_enable/cs_vic timing caused by cache hits.
 					case aRegisters is
 					when "100000" => EC <= diRegisters(3 downto 0);
 					when "100001" => B0C <= diRegisters(3 downto 0);
