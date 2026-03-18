@@ -94,9 +94,13 @@ def cmd_deploy(args):
 def cmd_load_prg(args):
     """Upload a PRG file to MiSTer and load it in the test C64 core.
 
-    Uses mbc load_all_as to generate an MGL that loads the test core
+    Creates an MGL file with absolute paths that loads the test core
     (/media/fat/_Test/C64.rbf) and injects the PRG via ioctl index 1.
     The C64 core resets and auto-runs the PRG (if "Reset & Run PRG" is enabled).
+
+    Note: MGL file paths MUST be absolute (/media/fat/...) for reliable
+    PRG injection. Relative paths (games/C64/...) cause the MiSTer framework
+    to fail silently — the core loads but the PRG data is never sent via ioctl.
     """
     if not args:
         print("Usage: load_prg <prg_file>")
@@ -120,20 +124,31 @@ def cmd_load_prg(args):
         return 1
     print("Upload complete.")
 
-    # Use mbc to load the test core with the PRG via MGL
+    # Generate MGL and load via MiSTer_cmd.
+    # Key MGL format requirements discovered through testing:
+    #   - rbf: relative to /media/fat/, WITHOUT .rbf extension (e.g. "_Test/C64")
+    #   - file path: MUST be absolute (/media/fat/games/C64/file.prg)
+    #     Relative paths cause silent failure: core loads but PRG never injected.
+    #   - MGL file must be in /media/fat/ directory
+    mgl_remote = "/media/fat/_prg_load.mgl"
+    # Convert DEST (/media/fat/_Test/C64.rbf) to relative rbf path (_Test/C64)
+    rbf_rel = DEST.replace("/media/fat/", "").replace(".rbf", "")
+    mgl_xml = (
+        '<mistergamedescription>\n'
+        f'  <rbf>{rbf_rel}</rbf>\n'
+        f'  <file delay="2" type="f" index="1" path="{prg_remote}"/>\n'
+        '</mistergamedescription>\n'
+    )
     print(f"Loading {prg_name} into test C64 core...")
-    mbc_cmd = (f'/media/fat/linux/mbc load_all_as C64.PRG '
-               f'{DEST} {prg_remote}')
-    out, err, rc = ssh(mbc_cmd, timeout=15)
+    # Write MGL using heredoc to preserve newlines
+    ssh(f"cat > {mgl_remote} << 'MGLEOF'\n{mgl_xml}MGLEOF")
+    out, err, rc = ssh(f'echo "load_core {mgl_remote}" > /dev/MiSTer_cmd')
     if rc != 0:
-        print(f"Warning: mbc returned {rc}: {err}")
-        # Fallback: try load_core with the core directly
-        print("Falling back to load_core...")
-        ssh(f'echo "load_core {DEST}" > /dev/MiSTer_cmd')
+        print(f"Warning: load_core returned {rc}: {err}")
     else:
-        print("PRG load command sent.")
+        print("PRG load command sent via MGL.")
 
-    time.sleep(5)
+    time.sleep(8)
     print(f"Core should be running with {prg_name} now.")
     return 0
 
