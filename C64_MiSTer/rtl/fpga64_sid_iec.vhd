@@ -283,8 +283,9 @@ signal emu_mode_816 : std_logic;
 -- instead of $FC90, and the RTL trick boots the C64 KERNAL successfully.
 signal scpu_rom_vis      : std_logic := '1';
 signal supercpu_en_prev  : std_logic := '0';
--- SuperCPU speed control (real hardware: $D07A write = 1MHz, $D07B write = 20MHz)
-signal scpu_speed_1mhz   : std_logic := '0';  -- '1' = software-forced 1MHz
+-- SuperCPU speed control (real hardware: $D07A/$D07B = software, $D072/$D073 = system)
+signal scpu_speed_1mhz   : std_logic := '0';  -- '1' = software-forced 1MHz ($D07A)
+signal scpu_sys_1mhz     : std_logic := '0';  -- '1' = system-forced 1MHz ($D072)
 -- SuperCPU register visibility ($D07E = enable, $D07F = disable)
 signal scpu_regs_enabled : std_logic := '1';
 -- Optimization mode (real hardware: $D074-$D077 select mirror range; no-op here)
@@ -712,8 +713,9 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 --   $D0B5 = JiffyDOS/speed switch: bit7=jiffy(0), bit6=speed_1mhz (gated)
 --   $D0B6 = emulation mode: bit7=emu_mode (1=6502, 0=native 65816) (gated)
 --   $D0B8 = speed status: bit7=sw_1mhz, bit6=combined_1mhz (gated)
---   $D0BC = SuperCPU ID: $C9 (gated by scpu_regs_enabled)
---   $D070-$D073 = debug counters (read-only, always accessible)
+--   $D0B2 = hardware status: bit7=hwenable, bit6=sys_1mhz
+--   $D0BC = computed: bit7=dosext(0), bit6=ramlink(0), bits2:0=optim_low(111)
+--   $D070-$D07F reads pass through to normal C64 I/O (not intercepted by SCPU)
 -- BRAM/Cache data MUST be first: during non-CPU slots, cs_vic reflects VIC's address
 -- (not CPU's). If VIC reads $D000-$D3FF, cs_vic='1' could falsely match a
 -- SuperCPU register condition, injecting register values into CPU data stream.
@@ -722,11 +724,13 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 cpuDi <= bram_do  when (bram_hit_d1 = '1') else
          cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
          -- SuperCPU $D0Bx registers: gated by scpu_regs_enabled (write $D07F to disable)
-         x"C9" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC" and scpu_regs_enabled = '1') else
+         -- $D0BC: computed from dosext(0), ramlink(0), optim low bits
+         ("00000" & scpu_optim_mode & '1') when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC" and scpu_regs_enabled = '1') else
          x"40" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B0" and scpu_regs_enabled = '1') else
-         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B2" and scpu_regs_enabled = '1') else
-         -- $D0B8: bit7=software 1MHz, bit6=combined 1MHz (VICE-verified)
-         (scpu_speed_1mhz & scpu_speed_1mhz & "000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B8" and scpu_regs_enabled = '1') else
+         -- $D0B2: bit7=hwenable, bit6=sys_1mhz (VICE-verified)
+         (scpu_regs_enabled & scpu_sys_1mhz & "000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B2" and scpu_regs_enabled = '1') else
+         -- $D0B8: bit7=software 1MHz, bit6=combined 1MHz (sw OR sys)
+         (scpu_speed_1mhz & (scpu_speed_1mhz or scpu_sys_1mhz) & "000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B8" and scpu_regs_enabled = '1') else
          ("000000" & scpu_optim_mode) when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B4" and scpu_regs_enabled = '1') else
          -- $D0B5: bit7=JiffyDOS(0), bit6=speed switch (VICE-verified)
          ("0" & scpu_speed_1mhz & "000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B5" and scpu_regs_enabled = '1') else
@@ -734,11 +738,6 @@ cpuDi <= bram_do  when (bram_hit_d1 = '1') else
          (emu_mode_816 & "0000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B6" and scpu_regs_enabled = '1') else
          -- $D07E: bit7=ROM visibility (not gated by scpu_regs_enabled)
          (scpu_rom_vis & "0000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
-         -- Debug registers relocated to $D070-$D073 (away from $D07F/$D080 SuperCPU space)
-         dbg_hold_fire_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"070") else
-         dbg_hold_mismatch_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"071") else
-         dbg_hold_held_zero_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"072") else
-         dbg_hold_live_zero_cnt_r when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"073") else
          cpuDi_raw;
 
 process(clk32)
@@ -1225,6 +1224,7 @@ begin
 			                and bram_valid_cycle
 			                and not cpuWe_pre
 			                and not scpu_speed_1mhz
+			                and not scpu_sys_1mhz
 			                and not scpu_rom_overlay
 			                and not iec_slow_mode
 			                and not cpu_cyc_s(0)
@@ -1386,6 +1386,7 @@ begin
 		elsif bram64k_en = '1'
 		   and dma_active = '0' and baLoc = '1'
 		   and scpu_speed_1mhz = '0'
+		   and scpu_sys_1mhz = '0'
 		   and iec_slow_mode = '0'
 		   and cpu_cyc = '0'
 		   and cpu_cyc_s(0) = '0'
@@ -1676,22 +1677,28 @@ begin
 		if reset = '1' or (supercpu_en = '1' and supercpu_en_prev = '0') then
 			scpu_rom_vis      <= '1'; -- SuperCPU ROM visible on CPU start
 			scpu_speed_1mhz   <= '0'; -- Default: 20MHz (cache handles I/O at 1MHz)
+			scpu_sys_1mhz     <= '0'; -- Default: system turbo
 			scpu_regs_enabled <= '1'; -- Registers visible after reset
 			scpu_optim_mode   <= "11"; -- No optimization (mirror all)
 			dbg_vic_mode_r    <= (others => '0');
 		elsif supercpu_en = '1' and cpuWe = '1' and addr_hi_816 = x"00" then
 			-- SuperCPU register writes (active in bank $00 only)
-			if cpuAddr = x"D07E" and supercpu_rom = '1' then
+			-- $D072/$D073: system 1MHz (unconditional, works even with regs disabled)
+			if cpuAddr = x"D072" then
+				scpu_sys_1mhz <= '1';          -- Any write to $D072 = system 1MHz enable
+			elsif cpuAddr = x"D073" then
+				scpu_sys_1mhz <= '0';          -- Any write to $D073 = system 1MHz disable
+			elsif cpuAddr = x"D07E" and supercpu_rom = '1' then
 				scpu_rom_vis <= cpuDo(7);      -- bit7=0: KERNAL visible; bit7=1: SCPU ROM
 				scpu_regs_enabled <= '1';      -- $D07E also enables hardware registers
 			elsif cpuAddr = x"D07F" or cpuAddr = x"D07D" then
 				scpu_regs_enabled <= '0';      -- $D07F/$D07D disables hardware registers
 			elsif cpuAddr = x"D078" then
-				cache_flush_sw <= '1';         -- Any write to $D078 = flush cache
+				cache_flush_sw <= '1';         -- SIMM config on real HW; we use as cache flush
 			elsif cpuAddr = x"D07A" then
-				scpu_speed_1mhz <= '1';        -- Any write to $D07A = force 1MHz
+				scpu_speed_1mhz <= '1';        -- Any write to $D07A = software 1MHz
 			elsif cpuAddr = x"D07B" or cpuAddr = x"D079" then
-				scpu_speed_1mhz <= '0';        -- Any write to $D07B/$D079 = enable 20MHz
+				scpu_speed_1mhz <= '0';        -- Any write to $D07B/$D079 = software turbo
 			elsif cpuAddr = x"D074" then
 				scpu_optim_mode <= "00";       -- VIC bank 2 optimization ($8000-$BFFF)
 			elsif cpuAddr = x"D075" then
@@ -1830,7 +1837,7 @@ begin
 			-- to intermittently disable when VIC addressed $D000-$DFFF.
 			-- I/O protection is already handled by cpu_cyc gating on cs_ram.
 			if dma_req = '0' then
-				if supercpu_en = '1' and scpu_speed_1mhz = '0' and iec_slow_mode = '0' then
+				if supercpu_en = '1' and scpu_speed_1mhz = '0' and scpu_sys_1mhz = '0' and iec_slow_mode = '0' then
 					-- SuperCPU turbo active
 					if turbo_mode = "00" then
 						-- Turbo Off (default): max speed for SuperCPU

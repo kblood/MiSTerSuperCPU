@@ -67,9 +67,19 @@ Use when diagnosing issues on live MiSTer hardware. Reads UART output, checks
 diagnostic bytes, deploys builds, and interprets debug overlay/UART fields.
 - Reference: `docs/debug_agent.md` (connection details, UART format, diagnostic patterns)
 - MiSTer IP: 192.168.50.130, SSH root/1, Core: /media/fat/_Test/C64.rbf
-- UART: 115200 8N1 on /dev/ttyS1 — `ssh root@192.168.50.130 "cat /dev/ttyS1"`
-- Deploy: `scp C64.rbf root@192.168.50.130:/media/fat/_Test/C64.rbf`
 - T:xx diagnostic byte: b0=turbo, b1=rom_vis, b2=1mhz, b3=iec, b4=overlay, b5=cache, b6=enCpu
+- **Primary tool: `tools/mister_debug.py`** — use this for all MiSTer operations:
+  - Deploy: `python tools/mister_debug.py deploy [rbf_path]`
+  - Screenshot: `python tools/mister_debug.py screen [output.png]`
+  - UART: `python tools/mister_debug.py uart [seconds]`
+  - Keyboard: `python tools/mister_debug.py keys <sequence>`
+  - PRG load: `python tools/mister_debug.py load_prg <file.prg>`
+  - Status: `python tools/mister_debug.py status`
+- UART baud rate must be set first: `ssh root@192.168.50.130 "stty -F /dev/ttyS1 115200 raw -echo"`
+- Keyboard via mtype.py: `ssh root@192.168.50.130 "python3 /tmp/mtype.py <keys>"`
+  Upload first: `scp tools/mtype.py root@192.168.50.130:/tmp/mtype.py`
+- WSL SSH is broken to MiSTer — always use Windows native ssh/scp
+- Disk images: mount via MGL (use `mistergamedescription` tag, `type="s" index="0"`)
 
 ### Ultimate 64 Agent
 Use for testing and comparing against real Ultimate 64 hardware via its REST API.
