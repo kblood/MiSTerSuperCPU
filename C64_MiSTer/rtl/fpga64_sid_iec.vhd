@@ -1212,7 +1212,10 @@ process(clk32)
 begin
 	if rising_edge(clk32) then
 		if cache_hit_d1 = '1' then
-			-- Suppress for 1 cycle (M10K read latency for new address)
+			-- Suppress for 1 cycle after cache hit (M10K read latency).
+			-- TODO: same-line optimization (cache_same_line) to skip suppress
+			-- when consecutive accesses target the same 8-byte cache line.
+			-- Disabled pending investigation of boot failure.
 			cache_hit_d1 <= '0';
 		elsif (sysCycle < CYCLE_CPU0)
 		   or (cpu_cyc = '0' and sysCycle >= CYCLE_CPU0)
