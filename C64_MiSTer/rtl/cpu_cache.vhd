@@ -63,6 +63,9 @@ port (
 	flush     : in  std_logic;             -- invalidate entire cache
 	cpu_en    : in  std_logic;             -- CPU clock enable (1-cycle pulse when CPU steps)
 
+	-- Same-line detection (wide cache line optimization)
+	same_line : out std_logic;             -- current access is same cache line as previous hit
+
 	-- Debug
 	dbg_flush_active : out std_logic;      -- cache is flushing (2048-cycle sweep)
 	dbg_tag_match    : out std_logic       -- tag matches current address
@@ -85,10 +88,19 @@ architecture rtl of cpu_cache is
 	signal valid_mem : valid_array_t;
 	attribute ramstyle of valid_mem : signal is "MLAB, no_rw_check";
 
-	-- ── Data storage (M10K — registered read) ───────────────────────
-	-- 8192 bytes addressed by {line_index[9:0], byte_offset[2:0]} = 13 bits
-	type data_array_t is array(0 to 8191) of unsigned(7 downto 0);
-	shared variable data_ram : data_array_t;
+	-- ── Data storage (M10K — 8 parallel 1024x8 banks) ──────────────
+	-- 8 separate 1024x8 RAMs, one per byte lane. All read simultaneously
+	-- to produce a 64-bit cache line word. Writes target only the specific
+	-- byte lane. This ensures clean M10K inference (no read-modify-write).
+	type bank_array_t is array(0 to 1023) of unsigned(7 downto 0);
+	shared variable data_bank0 : bank_array_t;
+	shared variable data_bank1 : bank_array_t;
+	shared variable data_bank2 : bank_array_t;
+	shared variable data_bank3 : bank_array_t;
+	shared variable data_bank4 : bank_array_t;
+	shared variable data_bank5 : bank_array_t;
+	shared variable data_bank6 : bank_array_t;
+	shared variable data_bank7 : bank_array_t;
 
 	-- ── Write buffer (register-based FIFO) ──────────────────────────
 	-- 16 entries × (16-bit addr + 8-bit data) = 384 registers
@@ -109,8 +121,13 @@ architecture rtl of cpu_cache is
 	signal byte_offset   : unsigned(2 downto 0);
 	signal expected_tag  : unsigned(10 downto 0);
 
-	signal data_addr     : unsigned(12 downto 0);
 	signal cacheable_addr : std_logic; -- address is in cacheable space
+
+	-- ── Wide cache line signals ─────────────────────────────────────
+	signal line_word     : std_logic_vector(63 downto 0);  -- M10K output (registered)
+	signal prev_line     : unsigned(9 downto 0) := (others => '1'); -- previous read line
+	signal prev_tag      : unsigned(10 downto 0) := (others => '1'); -- previous read tag
+	signal same_line_i   : std_logic;  -- internal same-line flag
 	signal cacheable_rd  : std_logic;  -- read cacheability
 	signal cacheable_wr  : std_logic;  -- write cacheability
 	signal invalidate_wr : std_logic;  -- non-bank-$00 write: invalidate cached line
@@ -140,7 +157,12 @@ begin
 	byte_offset  <= cpu_addr(2 downto 0);
 	expected_tag <= cpu_bank(7 downto 0) & cpu_addr(15 downto 13);
 
-	data_addr    <= line_index & byte_offset;
+	-- ── Same-line detection (wide cache line optimization) ──────────
+	-- When the current access targets the same cache line as the previous
+	-- hit, the 64-bit word is already in line_word — no M10K read needed.
+	same_line_i <= '1' when line_index = prev_line and expected_tag = prev_tag
+	               else '0';
+	same_line   <= same_line_i;
 
 	-- ── Write buffer status ─────────────────────────────────────────
 	wb_full_i  <= '1' when wb_count = 16 else '0';
@@ -202,26 +224,77 @@ begin
 	-- Write hit: write buffer can absorb (CPU doesn't wait for SDRAM)
 	cache_hit  <= (cacheable_rd and tag_match and byte_valid) or cacheable_wr;
 
-	-- ── Data BRAM (M10K — dual-port: read + write) ──────────────────
-	-- Port A: registered read (CPU side, 1-cycle latency)
+	-- ── Data BRAM (8 parallel M10K banks — read + write) ────────────
+	-- Read port: all 8 banks read simultaneously, producing 64-bit line word.
+	-- Track previous line for same-line detection.
 	process(clk)
 	begin
 		if rising_edge(clk) then
-			cache_di <= data_ram(to_integer(data_addr));
+			line_word( 7 downto  0) <= std_logic_vector(data_bank0(to_integer(line_index)));
+			line_word(15 downto  8) <= std_logic_vector(data_bank1(to_integer(line_index)));
+			line_word(23 downto 16) <= std_logic_vector(data_bank2(to_integer(line_index)));
+			line_word(31 downto 24) <= std_logic_vector(data_bank3(to_integer(line_index)));
+			line_word(39 downto 32) <= std_logic_vector(data_bank4(to_integer(line_index)));
+			line_word(47 downto 40) <= std_logic_vector(data_bank5(to_integer(line_index)));
+			line_word(55 downto 48) <= std_logic_vector(data_bank6(to_integer(line_index)));
+			line_word(63 downto 56) <= std_logic_vector(data_bank7(to_integer(line_index)));
+			-- Track which line we just read for same-line detection
+			prev_line <= line_index;
+			prev_tag  <= expected_tag;
 		end if;
 	end process;
 
-	-- Port B: write (fill from SDRAM or CPU write-through)
+	-- Byte-select MUX: pick the requested byte from the 64-bit line word.
+	-- For same-line accesses, line_word already holds the correct data.
+	process(line_word, byte_offset)
+	begin
+		case byte_offset is
+			when "000" => cache_di <= unsigned(line_word( 7 downto  0));
+			when "001" => cache_di <= unsigned(line_word(15 downto  8));
+			when "010" => cache_di <= unsigned(line_word(23 downto 16));
+			when "011" => cache_di <= unsigned(line_word(31 downto 24));
+			when "100" => cache_di <= unsigned(line_word(39 downto 32));
+			when "101" => cache_di <= unsigned(line_word(47 downto 40));
+			when "110" => cache_di <= unsigned(line_word(55 downto 48));
+			when "111" => cache_di <= unsigned(line_word(63 downto 56));
+			when others => cache_di <= (others => '0');
+		end case;
+	end process;
+
+	-- Write port: write to the specific byte bank only (no read-modify-write).
 	-- CPU write takes priority over fill when both active.
 	process(clk)
+	variable wr_line : unsigned(9 downto 0);
+	variable wr_off  : unsigned(2 downto 0);
+	variable wr_data : unsigned(7 downto 0);
+	variable wr_en   : std_logic;
 	begin
 		if rising_edge(clk) then
+			wr_en := '0';
 			if cpu_wr_pending = '1' then
-				-- CPU write-through: update cache BRAM
-				data_ram(to_integer(cpu_wr_addr)) := cpu_wr_data;
+				wr_line := cpu_wr_line;
+				wr_off  := cpu_wr_off;
+				wr_data := cpu_wr_data;
+				wr_en   := '1';
 			elsif fill_we = '1' and flush_active = '0' then
-				-- SDRAM fill: populate cache byte
-				data_ram(to_integer(fill_addr(12 downto 3) & fill_addr(2 downto 0))) := fill_data;
+				wr_line := fill_addr(12 downto 3);
+				wr_off  := fill_addr(2 downto 0);
+				wr_data := fill_data;
+				wr_en   := '1';
+			end if;
+
+			if wr_en = '1' then
+				case wr_off is
+					when "000" => data_bank0(to_integer(wr_line)) := wr_data;
+					when "001" => data_bank1(to_integer(wr_line)) := wr_data;
+					when "010" => data_bank2(to_integer(wr_line)) := wr_data;
+					when "011" => data_bank3(to_integer(wr_line)) := wr_data;
+					when "100" => data_bank4(to_integer(wr_line)) := wr_data;
+					when "101" => data_bank5(to_integer(wr_line)) := wr_data;
+					when "110" => data_bank6(to_integer(wr_line)) := wr_data;
+					when "111" => data_bank7(to_integer(wr_line)) := wr_data;
+					when others => null;
+				end case;
 			end if;
 		end if;
 	end process;

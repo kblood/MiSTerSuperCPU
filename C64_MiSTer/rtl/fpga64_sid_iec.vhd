@@ -320,6 +320,7 @@ signal turbo_m      : std_logic_vector(2 downto 0);
 signal cache_hit     : std_logic;
 signal cache_di      : unsigned(7 downto 0);
 signal cache_hit_d1  : std_logic := '0';
+signal cache_same_line : std_logic;
 signal cache_flush   : std_logic;
 signal cache_flush_sw : std_logic := '0';  -- software-triggered flush via $D078
 signal cache_flush_bank : std_logic := '0'; -- flush on C64 bank register change
@@ -1157,7 +1158,7 @@ port map (
 	wb_ack     => wb_ack,
 	flush     => cache_flush,
 	cpu_en    => cache_cpu_en,
-	--cache_same_line  => open,  -- TODO: wide cache lines
+	same_line => cache_same_line,
 	dbg_flush_active => cache_flush_active,
 	dbg_tag_match    => cache_tag_match
 );
