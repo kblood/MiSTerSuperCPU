@@ -1032,12 +1032,17 @@ wire        supercpu_cycle;                 // '1' during CPU SDRAM access slot
 wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16)
 
 // SuperCPU 16MB SDRAM address: for non-bank-$00 accesses, prepend the bank byte.
-// Bank $00 maps to base 64KB (normal C64 RAM). Banks $01-$FF map to {bank, addr}
-// giving 16MB of SuperRAM space within the 32MB SDRAM.
-// Note: scpu_rom_en in fpga64_buslogic already handles banks $F0-$FF reads from ROM BRAM;
+// Bank $00 maps to base 64KB (normal C64 RAM). Banks $01-$FF map to SuperRAM.
+// SuperRAM lives in the REU SDRAM region (REU_ADDR = 0x1000000, bit[24]=1).
+// This allows REU images (.reu) loaded via OSD to be directly accessible through
+// 65816 24-bit addressing (e.g., LDA $014000 reads REU offset $014000).
+// The mapping: SDRAM addr = REU_ADDR + {bank-1, addr16} for banks $01-$FF.
+// Bank $01 addr $0000 = REU offset $000000 (first byte of REU image).
+// Note: scpu_rom_en in fpga64_buslogic handles banks $F0-$FF reads from ROM BRAM;
 // writes to ROM-bank addresses go to SDRAM shadow (harmless, never read back).
+wire [24:0] scpu_superram_addr = REU_ADDR + {1'b0, supercpu_bank - 8'h01, c64_addr};
 wire [24:0] scpu_sdram_addr = (supercpu_enable && supercpu_cycle && (supercpu_bank != 8'h00))
-                               ? {1'b0, supercpu_bank, c64_addr}
+                               ? scpu_superram_addr
                                : cart_addr;
 
 // Debug infrastructure
