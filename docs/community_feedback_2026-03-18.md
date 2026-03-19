@@ -64,6 +64,65 @@ Even 64KB was too much (95% → fitter failure). Options:
 3. **Reduce M10K elsewhere** — remove some ROM BRAM to free blocks
 4. **Wider cache lines** — 1024×64-bit M10K gives 8KB in fewer blocks with burst fill
 
+### 2b. Follow-up: Detailed M10K/MLAB Specifications (birdybro, wickerwaka, semplar)
+
+**birdybro** shared the Cyclone V memory block configuration table and reference:
+
+| Memory Block | Depth (bits) | Programmable Width |
+|---|---|---|
+| **MLAB** | 32 | x16, x18, or x20 |
+| | 256 (via LUT cascade) | — |
+| **M10K** | 256 | x40 or x32 |
+| | 512 | x20 or x16 |
+| | 1K | x10 or x8 |
+| | 2K | x5 or x4 |
+| | 4K | x2 |
+| | 8K | x1 |
+
+Reference: [Cyclone V Embedded Memory Blocks](https://docs.altera.com/r/docs/683694/current/cyclone-v-device-overview/embedded-memory-blocks)
+
+**Key insights from the discussion:**
+
+**birdybro**: Quartus auto-places into MLAB if there's enough space and the
+behavior is compatible. You can force placement via synthesis attributes
+(`ramstyle = "MLAB"` or `"M10K"`). If it's incompatible or resources are
+exhausted, Quartus warns and moves it elsewhere. Async reads force MLAB
+(M10K can't do async reads). MLAB consumes logic space (ALM fabric).
+
+**wickerwaka**: "Other way round, right? It'll use M10K if you access patterns
+are compatible, it'll fall back to MLAB if you are doing stuff that M10K
+can't do." — Clarifying that Quartus prefers M10K for compatible patterns
+and falls back to MLAB for async/combinational read patterns.
+
+**birdybro**: "I think MLAB is only *simple* dual port behavior. It's more
+restrictive." MLAB supports simple dual-port (1 read + 1 write port).
+M10K supports true dual-port (2 read/write ports).
+
+**semplar**: Critical technical details:
+> "Input signals to M10K are always registered. Because of this, reads from
+> M10K have to be always at the beginning of a clock cycle. But reads from
+> MLABs can happen anytime during a clock cycle (async reads), it's the
+> advantage."
+>
+> "On other hand, M10K can do 2 writes in the same clock cycle, while MLAB
+> is limited to a single write per cycle."
+>
+> "Also, there is 10x less MLAB space compared to M10K."
+
+**semplar** also noted: "Fun fact on DE25, user manual says M20K can have
+2 reads and 2 writes (4 total operations) in a single cycle" — referring
+to the larger DE25-Nano FPGA (Cyclone V E variant with M20K blocks).
+
+**Relevance to our implementation:**
+- Our cache tags use `ramstyle = "MLAB, no_rw_check"` → correct, because
+  tag_match needs combinational (async) read for same-cycle hit detection.
+- Our cache data uses M10K (inferred from shared variable) → correct,
+  because data read can tolerate 1-cycle registered latency.
+- The 8 parallel 1024x8 M10K banks (wide cache lines) match the 1K depth
+  x8 width configuration in the table above — one M10K block per bank.
+- MLAB's async read is WHY we can do combinational tag check + cache_hit
+  in the same cycle the address is presented.
+
 ### 3. kevind: 128KB Base Memory Question
 
 > "The super cpu had a base memory of 128k.... Are you ignoring that and just
