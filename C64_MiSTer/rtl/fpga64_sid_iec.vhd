@@ -1212,10 +1212,12 @@ process(clk32)
 begin
 	if rising_edge(clk32) then
 		if cache_hit_d1 = '1' then
-			-- Suppress for 1 cycle after cache hit (M10K read latency).
-			-- TODO: same-line optimization (cache_same_line) to skip suppress
-			-- when consecutive accesses target the same 8-byte cache line.
-			-- Disabled pending investigation of boot failure.
+			-- Suppress for 1 cycle after cache hit (M10K read latency for new line).
+			-- Wide cache lines (64-bit) make same-line data available immediately
+			-- via the byte-select MUX, but skipping suppress crashes the CPU.
+			-- Root cause: likely a timing race between combinational cache_di and
+			-- the CPU's registered data latch. Needs simulation or SignalTap to
+			-- diagnose. The wide line infrastructure remains for future use.
 			cache_hit_d1 <= '0';
 		elsif (sysCycle < CYCLE_CPU0)
 		   or (cpu_cyc = '0' and sysCycle >= CYCLE_CPU0)

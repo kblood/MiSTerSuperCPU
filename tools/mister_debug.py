@@ -124,6 +124,13 @@ def cmd_load_prg(args):
         return 1
     print("Upload complete.")
 
+    # Ensure OSD config has SuperCPU + UART enabled before MGL load.
+    # The MiSTer framework reads /media/fat/config/C64.cfg on core load.
+    # Byte 10 = 0xCC: bit2=SuperCPU, bit3=overlay, bit6=SCPU_ROM, bit7=UART
+    print("Setting OSD config (SuperCPU + UART enabled)...")
+    cfg_bytes = r'\x00\x00\x00\x00\x00\x80\x02\x02\x00\x00\xcc\x00\x00\x00\x00\x00'
+    ssh(f"printf '{cfg_bytes}' > /media/fat/config/C64.cfg")
+
     # Generate MGL and load via MiSTer_cmd.
     # Key MGL format requirements discovered through testing:
     #   - rbf: relative to /media/fat/, WITHOUT .rbf extension (e.g. "_Test/C64")
