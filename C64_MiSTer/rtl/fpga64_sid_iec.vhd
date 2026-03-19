@@ -1859,9 +1859,9 @@ begin
 					end if;
 					turbo_en <= '1'; -- always engage turbo for SuperCPU
 					-- scpu_speed_1mhz='1': turbo_m stays "000" (1MHz from $D07A)
-				elsif iec_slow_mode = '0'
+				elsif supercpu_en = '0' and iec_slow_mode = '0'
 			      and ((turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1') then
-					-- T65 mode: OSD-controlled turbo (IEC-gated)
+					-- T65 mode ONLY: OSD-controlled turbo (not for SuperCPU 1MHz)
 					turbo_en <= '1';  -- enable cache + fast path for T65 turbo
 					case turbo_speed is
 						when "00" => turbo_m <= "010"; -- 2x
