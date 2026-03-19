@@ -613,8 +613,12 @@ wire        reu_ram_we;
 wire  [7:0] reu_dout;
 wire        reu_irq;
 
+// When SuperCPU is enabled, force REU to 16MB — SuperRAM shares the REU
+// SDRAM region, and loader.prg uses REU DMA to copy game data.
+// Without this, MGL loading resets the OSD status bits, leaving reu_cfg=0
+// even though the .reu file data is in SDRAM.
+wire  [1:0] reu_cfg = supercpu_enable ? 2'b11 : status[54:53];
 wire        reu_oe  = IOF && reu_cfg;
-wire  [1:0] reu_cfg = status[54:53];
 
 reu reu
 (
@@ -1035,12 +1039,13 @@ wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16)
 // Bank $00 maps to base 64KB (normal C64 RAM). Banks $01-$FF map to SuperRAM.
 // SuperRAM lives in the REU SDRAM region (REU_ADDR = 0x1000000, bit[24]=1).
 // This allows REU images (.reu) loaded via OSD to be directly accessible through
-// 65816 24-bit addressing (e.g., LDA $014000 reads REU offset $014000).
-// The mapping: SDRAM addr = REU_ADDR + {bank-1, addr16} for banks $01-$FF.
-// Bank $01 addr $0000 = REU offset $000000 (first byte of REU image).
+// 65816 24-bit addressing (e.g., LDA $024000 reads REU offset $024000).
+// The mapping: SDRAM addr = REU_ADDR + {bank, addr16} — direct 1:1 with .reu file.
+// Bank $02 addr $0000 = REU offset $020000 (matching doom.reu data layout).
+// The first 128KB (banks $00-$01) of the .reu file are the SRAM shadow (usually empty).
 // Note: scpu_rom_en in fpga64_buslogic handles banks $F0-$FF reads from ROM BRAM;
 // writes to ROM-bank addresses go to SDRAM shadow (harmless, never read back).
-wire [24:0] scpu_superram_addr = REU_ADDR + {1'b0, supercpu_bank - 8'h01, c64_addr};
+wire [24:0] scpu_superram_addr = REU_ADDR + {1'b0, supercpu_bank, c64_addr};
 wire [24:0] scpu_sdram_addr = (supercpu_enable && supercpu_cycle && (supercpu_bank != 8'h00))
                                ? scpu_superram_addr
                                : cart_addr;
