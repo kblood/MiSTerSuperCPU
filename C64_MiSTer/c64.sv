@@ -289,6 +289,7 @@ localparam CONF_STR = {
 	"-;",
 	"O[47:46],Turbo mode,Off,C128,Smart;",
 	"d6O[49:48],Turbo speed,2x,3x,4x,1x (C64);",
+	"O[89:88],SCPU Speed,20MHz (Max),4x,2x,1MHz;",
 	"-;",
 	"d1O[82],SuperCPU (65C816),Off,On;",
 	"d1O[86],SCPU Kickstart ROM,Off,On;",
@@ -1103,6 +1104,7 @@ fpga64_sid_iec fpga64
 	// provides CIA2-based 32ms slowdown during actual IEC operations.
 	.turbo_mode(status[47:46]),
 	.turbo_speed(status[49:48]),
+	.scpu_speed(status[89:88]),
 	.supercpu_en(supercpu_enable),
 	.supercpu_rom(scpu_rom_opt),
 	.bram_invalidate(bram_inval_pulse),

@@ -68,6 +68,7 @@ port(
 	cia_mode    : in  std_logic;
 	turbo_mode  : in  std_logic_vector(1 downto 0);
 	turbo_speed : in  std_logic_vector(1 downto 0);
+	scpu_speed  : in  std_logic_vector(1 downto 0) := "00"; -- 00=max,01=4x,10=2x,11=1MHz
 	supercpu_en : in  std_logic := '0';
 	supercpu_rom : in  std_logic := '0'; -- '1' = SuperCPU kickstart ROM active
 	bram_invalidate : in std_logic := '0'; -- pulse to clear all BRAM valid bits
@@ -1860,20 +1861,20 @@ begin
 			-- I/O protection is already handled by cpu_cyc gating on cs_ram.
 			if dma_req = '0' then
 				if supercpu_en = '1' and scpu_speed_1mhz = '0' and scpu_sys_1mhz = '0' and iec_slow_mode = '0' then
-					-- SuperCPU turbo active
-					if turbo_mode = "00" then
-						-- Turbo Off (default): max speed for SuperCPU
-						turbo_m <= "111";
+					-- SuperCPU turbo: speed set by OSD SCPU Speed option.
+					-- scpu_speed: 00=max (20MHz), 01=4x, 10=2x, 11=1MHz
+					case scpu_speed is
+						when "00" => turbo_m <= "111"; -- max: all 3 extra SDRAM slots
+						when "01" => turbo_m <= "111"; -- 4x: all extra slots
+						when "10" => turbo_m <= "010"; -- 2x: 1 extra slot
+						when "11" => turbo_m <= "000"; -- 1MHz: no extra slots
+						when others => turbo_m <= "111";
+					end case;
+					if scpu_speed = "11" then
+						turbo_en <= '0'; -- 1MHz: disable cache/turbo
 					else
-						-- Turbo C128/Smart: use OSD speed setting
-						case turbo_speed is
-							when "00" => turbo_m <= "010"; -- 2x
-							when "01" => turbo_m <= "110"; -- 3x
-							when "10" => turbo_m <= "111"; -- 4x
-							when "11" => turbo_m <= "000"; -- 1x (C64 speed)
-						end case;
+						turbo_en <= '1'; -- turbo: enable cache + fast path
 					end if;
-					turbo_en <= '1'; -- always engage turbo for SuperCPU
 					-- scpu_speed_1mhz='1': turbo_m stays "000" (1MHz from $D07A)
 				elsif supercpu_en = '0' and iec_slow_mode = '0'
 			      and ((turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1') then
