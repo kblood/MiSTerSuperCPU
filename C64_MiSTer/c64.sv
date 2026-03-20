@@ -290,11 +290,11 @@ localparam CONF_STR = {
 	"O[47:46],Turbo mode,Off,C128,Smart;",
 	"d6O[49:48],Turbo speed,2x,3x,4x,1x (C64);",
 	"-;",
-	"O[82],SuperCPU (65C816),Off,On;",
-	"O[86],SCPU Kickstart ROM,Off,On;",
-	"O[83],Debug Overlay,Off,On;",
+	"d1O[82],SuperCPU (65C816),Off,On;",
+	"d1O[86],SCPU Kickstart ROM,Off,On;",
+	"d1O[83],Debug Overlay,Off,On;",
 	"O[85:84],LED Debug,Off,Emulation,CPU Active,CPU Write;",
-	"O[87],Debug UART,Off,On;",
+	"d1O[87],Debug UART,Off,On;",
 	"-;",
 	"R[0],Reset;",
 	"R[17],Reset & Detach Cartridge;",
@@ -1029,8 +1029,10 @@ wire [17:0] audio_l,audio_r;
 wire  [7:0] r,g,b;
 
 wire        ntsc = status[2];
-wire        supercpu_enable = status[82];   // status[82]=0 → Off (6510 default), =1 → On (65C816)
-wire        scpu_rom_opt    = status[86];   // status[86]=0 → ROM off, =1 → ROM on (kickstart active)
+// SuperCPU always enabled — OSD toggle preserved for display but OR'd with 1.
+// This ensures SuperCPU + REU work after MGL loads (which reset OSD status bits).
+wire        supercpu_enable = 1'b1;        // Always on (was: status[82])
+wire        scpu_rom_opt    = 1'b1;        // Always on (was: status[86])
 wire        supercpu_emul;                  // '1' = 65C816 in 6502 emulation mode
 wire        supercpu_cycle;                 // '1' during CPU SDRAM access slot
 wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16)
@@ -1051,9 +1053,9 @@ wire [24:0] scpu_sdram_addr = (supercpu_enable && supercpu_cycle && (supercpu_ba
                                : cart_addr;
 
 // Debug infrastructure
-wire        dbg_overlay_en = status[83];
+wire        dbg_overlay_en = 1'b1;          // Always on (was: status[83])
 wire  [1:0] dbg_led_mode   = status[85:84]; // 0=Off, 1=Emulation, 2=CPU Active, 3=CPU Write
-wire        dbg_uart_en    = status[87];     // Debug UART output on UART_TXD
+wire        dbg_uart_en    = 1'b1;           // Always on (was: status[87])
 wire [15:0] dbg_cpu_addr;
 wire  [7:0] dbg_cpu_data;
 wire        dbg_cpu_we;

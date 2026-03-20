@@ -80,6 +80,7 @@ diagnostic bytes, deploys builds, and interprets debug overlay/UART fields.
   Upload first: `scp tools/mtype.py root@192.168.50.130:/tmp/mtype.py`
 - WSL SSH is broken to MiSTer — always use Windows native ssh/scp
 - Disk images: mount via MGL (use `mistergamedescription` tag, `type="s" index="0"`)
+- **DANGER: NEVER use `busybox devmem` or direct FPGA register access** — crashes MiSTer, requires physical power cycle
 
 ### Ultimate 64 Agent
 Use for testing and comparing against real Ultimate 64 hardware via its REST API.
