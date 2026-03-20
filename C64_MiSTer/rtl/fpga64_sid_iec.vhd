@@ -1219,13 +1219,29 @@ begin
 			-- the CPU's registered data latch. Needs simulation or SignalTap to
 			-- diagnose. The wide line infrastructure remains for future use.
 			cache_hit_d1 <= '0';
-		elsif (sysCycle < CYCLE_CPU0)
-		   or (cpu_cyc = '0' and sysCycle >= CYCLE_CPU0)
-		   or (wb_drain_active = '1' and sysCycle >= CYCLE_CPU0) then
+		elsif (sysCycle >= CYCLE_DMA0 and sysCycle <= CYCLE_VIC3) then
+			-- Block cache hits during DMA/VIC slots (bus masters need SDRAM).
+			cache_hit_d1 <= '0';
+		elsif (sysCycle >= CYCLE_CPU0 and cpu_cyc = '0')
+		   or (sysCycle >= CYCLE_CPU0 and wb_drain_active = '1') then
+			-- CPU phase: evaluate cache hit (original behavior).
 			-- Suppress for writes: writes MUST go through SDRAM (enableCpu) so
-			-- that both SDRAM and BRAM receive the data. Without this, writes
-			-- via cache_hit_d1 go nowhere (no cpu_cyc, no bram_we), causing
-			-- lost writes and brown-screen corruption after reset.
+			-- that both SDRAM and BRAM receive the data.
+			cache_hit_d1 <= cache_hit and not dma_active and baLoc
+			                and bram_valid_cycle
+			                and not cpuWe_pre
+			                and not scpu_speed_1mhz
+			                and not scpu_sys_1mhz
+			                and not scpu_rom_overlay
+			                and not iec_slow_mode
+			                and not cpu_cyc_s(0)
+			                and not cpu_cyc_s(1)
+			                and not enableCpu;
+		elsif (sysCycle <= CYCLE_EXT3 or (sysCycle >= CYCLE_EXT4 and sysCycle <= CYCLE_EXT7))
+		  and turbo_en = '1' then
+			-- EXT phase: allow cache hits during EXT slots for turbo acceleration.
+			-- These 8 slots are unused by other bus masters (VIC, DMA) and give
+			-- up to 8 extra cache hit opportunities per rotation.
 			cache_hit_d1 <= cache_hit and not dma_active and baLoc
 			                and bram_valid_cycle
 			                and not cpuWe_pre
