@@ -654,15 +654,16 @@ reu reu
 	.irq(reu_irq)
 );
 
-reg ext_cycle_d;
-always @(posedge clk_sys) ext_cycle_d <= ext_cycle;
-wire reu_ram_ce = ~ext_cycle_d & ext_cycle & dma_req;
-
-// REU SDRAM CE via CPU slot: fires on ram_ce rising edge when DMA is active.
-// This routes REU SDRAM accesses through the working cart_ce path.
-reg ram_ce_d;
-always @(posedge clk_sys) ram_ce_d <= ram_ce;
-wire reu_ram_ce_cpu = ~ram_ce_d & ram_ce & dma_req;
+// REU DMA CE: synchronize ext_cycle and dma_req into clk64 domain
+// to generate a clean rising-edge pulse synchronous with the SDRAM clock.
+// This eliminates the clk_sys→clk64 domain crossing on the CE signal.
+reg ext_cycle_64, ext_cycle_64_d, dma_req_64;
+always @(posedge clk64) begin
+	ext_cycle_64   <= ext_cycle;
+	ext_cycle_64_d <= ext_cycle_64;
+	dma_req_64     <= dma_req;
+end
+wire reu_ram_ce = ~ext_cycle_64_d & ext_cycle_64 & dma_req_64;
 
 // rearrange joystick contacts for c64
 wire [6:0] joyA_int = joy[8] ? 7'd0 : {joyA[6:4], joyA[0], joyA[1], joyA[2], joyA[3]};
@@ -997,6 +998,7 @@ end
 assign SDRAM_CKE  = 1;
 
 wire [7:0] sdram_data;
+
 sdram sdram
 (
 	.sd_addr(SDRAM_A),
@@ -1012,13 +1014,10 @@ sdram sdram
 	.clk(clk64),
 	.init(~pll_locked),
 	.refresh(refresh),
-	// REU SDRAM: when dma_req is active and ram_ce fires (CPU SDRAM slot),
-	// route the REU's SDRAM address/data through the cart path instead of
-	// the broken ext_cycle path.
-	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : (reu_ram_ce_cpu ? reu_ram_addr : scpu_sdram_addr) ),
-	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : (reu_ram_ce_cpu ? 1'b1         : cart_ce       ) ),
-	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : (reu_ram_ce_cpu ? reu_ram_we   : cart_we       ) ),
-	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : (reu_ram_ce_cpu ? reu_ram_dout : cart_wrdata   ) ),
+	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : ext_cycle ? reu_ram_addr : scpu_sdram_addr ),
+	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : ext_cycle ? reu_ram_ce   : cart_ce     ),
+	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : ext_cycle ? reu_ram_we   : cart_we     ),
+	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : ext_cycle ? reu_ram_dout : cart_wrdata ),
 	.dout( sdram_data )
 );
 
