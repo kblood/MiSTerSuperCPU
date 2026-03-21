@@ -650,17 +650,9 @@ reu reu
 	.irq(reu_irq)
 );
 
-// REU DMA SDRAM chip enable: delay 2 cycles into the ext_cycle window
-// to avoid collision with io_cycle SDRAM accesses that may still be
-// in progress from the EXT3→DMA0 transition. The SDRAM needs 8 clk_sys
-// cycles per access; firing at DMA2 ensures any EXT3 access has completed.
-reg ext_cycle_d, ext_cycle_d2, ext_cycle_d3;
-always @(posedge clk_sys) begin
-	ext_cycle_d  <= ext_cycle;
-	ext_cycle_d2 <= ext_cycle_d;
-	ext_cycle_d3 <= ext_cycle_d2;
-end
-wire reu_ram_ce = ext_cycle_d2 & ~ext_cycle_d3 & dma_req;
+reg ext_cycle_d;
+always @(posedge clk_sys) ext_cycle_d <= ext_cycle;
+wire reu_ram_ce = ~ext_cycle_d & ext_cycle & dma_req;
 
 // rearrange joystick contacts for c64
 wire [6:0] joyA_int = joy[8] ? 7'd0 : {joyA[6:4], joyA[0], joyA[1], joyA[2], joyA[3]};
@@ -1038,10 +1030,9 @@ wire [17:0] audio_l,audio_r;
 wire  [7:0] r,g,b;
 
 wire        ntsc = status[2];
-// SuperCPU always enabled — OSD toggle preserved for display but OR'd with 1.
-// This ensures SuperCPU + REU work after MGL loads (which reset OSD status bits).
-wire        supercpu_enable = 1'b1;        // Always on (was: status[82])
-wire        scpu_rom_opt    = 1'b1;        // Always on (was: status[86])
+// SuperCPU always enabled.
+wire        supercpu_enable = 1'b1;
+wire        scpu_rom_opt    = 1'b1;
 wire        supercpu_emul;                  // '1' = 65C816 in 6502 emulation mode
 wire        supercpu_cycle;                 // '1' during CPU SDRAM access slot
 wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16)
