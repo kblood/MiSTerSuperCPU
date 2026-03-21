@@ -650,9 +650,17 @@ reu reu
 	.irq(reu_irq)
 );
 
-reg ext_cycle_d;
-always @(posedge clk_sys) ext_cycle_d <= ext_cycle;
-wire reu_ram_ce = ~ext_cycle_d & ext_cycle & dma_req;
+// REU DMA SDRAM chip enable: delay 2 cycles into the ext_cycle window
+// to avoid collision with io_cycle SDRAM accesses that may still be
+// in progress from the EXT3→DMA0 transition. The SDRAM needs 8 clk_sys
+// cycles per access; firing at DMA2 ensures any EXT3 access has completed.
+reg ext_cycle_d, ext_cycle_d2, ext_cycle_d3;
+always @(posedge clk_sys) begin
+	ext_cycle_d  <= ext_cycle;
+	ext_cycle_d2 <= ext_cycle_d;
+	ext_cycle_d3 <= ext_cycle_d2;
+end
+wire reu_ram_ce = ext_cycle_d2 & ~ext_cycle_d3 & dma_req;
 
 // rearrange joystick contacts for c64
 wire [6:0] joyA_int = joy[8] ? 7'd0 : {joyA[6:4], joyA[0], joyA[1], joyA[2], joyA[3]};
