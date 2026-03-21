@@ -635,11 +635,12 @@ reu reu
 	.dma_din(dma_din),
 	.dma_we(dma_we),
 
-	// Route REU SDRAM access through CPU SDRAM slot (cart_ce path) instead
-	// of ext_cycle path. The ext_cycle SDRAM path has a clk_sys/clk64
-	// timing issue that prevents data from surviving the write/read cycle.
-	// Using the CPU slot (which works for 65816 long addressing) bypasses this.
-	.ram_cycle(ram_ce & dma_req),
+	// Route REU SDRAM access through CPU phase. When dma_active is set,
+	// the CPU bus is already hijacked by DMA. We use cart_ce (which fires
+	// at CPUC and works reliably) as the SDRAM access trigger for the REU.
+	// The REU's ram_cycle must pulse during the CPU phase (not ext_cycle)
+	// so the REU state machine advances at the right time.
+	.ram_cycle(cart_ce & dma_req),
 	.ram_addr(reu_ram_addr),
 	.ram_dout(reu_ram_dout),
 	.ram_din(sdram_data),
@@ -1014,10 +1015,11 @@ sdram sdram
 	.clk(clk64),
 	.init(~pll_locked),
 	.refresh(refresh),
-	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : ext_cycle ? reu_ram_addr : scpu_sdram_addr ),
-	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : ext_cycle ? reu_ram_ce   : cart_ce     ),
-	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : ext_cycle ? reu_ram_we   : cart_we     ),
-	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : ext_cycle ? reu_ram_dout : cart_wrdata ),
+	// When REU DMA is active (reu_ram_we/addr set), route SDRAM through REU during cart_ce
+	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : (dma_req && reu_ram_we) ? reu_ram_addr : (dma_req && !reu_ram_we && ext_cycle) ? reu_ram_addr : scpu_sdram_addr ),
+	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : cart_ce     ),
+	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : (dma_req ? reu_ram_we : cart_we) ),
+	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : (dma_req ? reu_ram_dout : cart_wrdata) ),
 	.dout( sdram_data )
 );
 
