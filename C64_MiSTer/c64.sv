@@ -1053,7 +1053,15 @@ wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16)
 // Note: scpu_rom_en in fpga64_buslogic handles banks $F0-$FF reads from ROM BRAM;
 // writes to ROM-bank addresses go to SDRAM shadow (harmless, never read back).
 wire [24:0] scpu_superram_addr = REU_ADDR + {1'b0, supercpu_bank, c64_addr};
-wire [24:0] scpu_sdram_addr = (supercpu_enable && supercpu_cycle && (supercpu_bank != 8'h00))
+// Gate on supercpu_bank only (not supercpu_cycle): supercpu_cycle includes
+// cpu_cyc which is combinationally derived from cs_ram. But cart_ce already
+// requires cpu_cyc='1', so supercpu_cycle is redundant. Removing it avoids
+// potential timing issues where supercpu_cycle evaluates '0' due to the
+// combinational chain (buslogic→cs_ram→cpu_cyc→supercpu_cycle).
+// cpuHasBus gate isn't needed here: cart_ce only fires during CPU phase
+// (cpu_cyc at CPUC/turbo), and VIC phase uses cs_ram at VIC0 but
+// supercpu_bank retains bank $00 during normal VIC operation.
+wire [24:0] scpu_sdram_addr = (supercpu_enable && (supercpu_bank != 8'h00))
                                ? scpu_superram_addr
                                : cart_addr;
 
