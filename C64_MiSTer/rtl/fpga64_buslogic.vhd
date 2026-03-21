@@ -268,7 +268,10 @@ begin
 	-- so all I/O chip-selects must be suppressed when the bank byte is not $00.
 	-- Without this, kickstart block-moves to bank $01–$EF write through $D000–$DFFF
 	-- and corrupt VIC-II / SID / CIA registers.
-	scpu_io_en <= '0' when supercpu_en = '1' and supercpu_bank /= x"00" else '1';
+	-- Only gate I/O when CPU has the bus AND bank is non-$00. During phantom cycles
+	-- (VDA=VPA=0) or when cpuHasBus='0', the bank byte may be invalid — keep I/O enabled
+	-- so REU DMA registers ($DF00) and other I/O remain accessible.
+	scpu_io_en <= '0' when supercpu_en = '1' and supercpu_bank /= x"00" and cpuHasBus = '1' else '1';
 
 	process(clk)
 	begin
