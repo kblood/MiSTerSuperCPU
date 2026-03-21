@@ -75,6 +75,7 @@ port(
 	supercpu_emul : out std_logic;             -- '1' = 65C816 in 6502 emulation mode
 	supercpu_cycle : out std_logic;            -- '1' during CPU SDRAM access slot
 	supercpu_bank : out unsigned(7 downto 0);  -- current bank byte (A23-A16)
+	cpu_has_bus   : out std_logic;             -- '1' when CPU owns the bus (not VIC)
 
 	-- Debug outputs (active CPU's bus signals)
 	dbg_cpu_addr  : out unsigned(15 downto 0);
@@ -1441,6 +1442,7 @@ supercpu_emul <= emu_mode_816;
 -- Only assert banked SDRAM addressing during actual CPU RAM/ROM bus ownership.
 supercpu_cycle <= cpu_cyc and cs_ram and cpuHasBus when supercpu_en = '1' else '0';
 supercpu_bank <= addr_hi_816;
+cpu_has_bus   <= cpuHasBus;
 
 -- Debug outputs: active CPU's bus signals
 dbg_cpu_addr <= cpuAddr_pre;

@@ -1041,6 +1041,7 @@ wire        scpu_rom_opt    = 1'b1;
 wire        supercpu_emul;                  // '1' = 65C816 in 6502 emulation mode
 wire        supercpu_cycle;                 // '1' during CPU SDRAM access slot
 wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16)
+wire        cpu_has_bus;                    // '1' when CPU owns bus (not VIC)
 
 // SuperCPU 16MB SDRAM address: for non-bank-$00 accesses, prepend the bank byte.
 // Bank $00 maps to base 64KB (normal C64 RAM). Banks $01-$FF map to SuperRAM.
@@ -1053,15 +1054,12 @@ wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16)
 // Note: scpu_rom_en in fpga64_buslogic handles banks $F0-$FF reads from ROM BRAM;
 // writes to ROM-bank addresses go to SDRAM shadow (harmless, never read back).
 wire [24:0] scpu_superram_addr = REU_ADDR + {1'b0, supercpu_bank, c64_addr};
-// Gate on supercpu_bank only (not supercpu_cycle): supercpu_cycle includes
-// cpu_cyc which is combinationally derived from cs_ram. But cart_ce already
-// requires cpu_cyc='1', so supercpu_cycle is redundant. Removing it avoids
-// potential timing issues where supercpu_cycle evaluates '0' due to the
-// combinational chain (buslogic→cs_ram→cpu_cyc→supercpu_cycle).
-// cpuHasBus gate isn't needed here: cart_ce only fires during CPU phase
-// (cpu_cyc at CPUC/turbo), and VIC phase uses cs_ram at VIC0 but
-// supercpu_bank retains bank $00 during normal VIC operation.
-wire [24:0] scpu_sdram_addr = (supercpu_enable && (supercpu_bank != 8'h00))
+// Route non-bank-$00 CPU accesses to SuperRAM SDRAM region.
+// Gate on cpu_has_bus to prevent VIC reads (VIC0) from going to SuperRAM
+// when supercpu_bank retains a non-$00 value from the last CPU instruction.
+// Don't gate on supercpu_cycle (cpu_cyc+cs_ram) — the combinational chain
+// can evaluate '0' during data access cycles, breaking LDA/STA long.
+wire [24:0] scpu_sdram_addr = (supercpu_enable && cpu_has_bus && (supercpu_bank != 8'h00))
                                ? scpu_superram_addr
                                : cart_addr;
 
@@ -1123,6 +1121,7 @@ fpga64_sid_iec fpga64
 	.supercpu_emul(supercpu_emul),
 	.supercpu_cycle(supercpu_cycle),
 	.supercpu_bank(supercpu_bank),
+	.cpu_has_bus(cpu_has_bus),
 	.dbg_cpu_addr(dbg_cpu_addr),
 	.dbg_cpu_data(dbg_cpu_data),
 	.dbg_cpu_we(dbg_cpu_we),
