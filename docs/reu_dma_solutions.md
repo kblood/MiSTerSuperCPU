@@ -100,10 +100,22 @@ uses the CPU's working SDRAM mechanism. The REU module's C64 bus
 side stays the same, but SDRAM access goes through cart_ce.
 **Complexity: HIGH, Risk: MEDIUM**
 
-## Recommendation
-**Try Solution A first** (register mux outputs at clk64). It's the
-simplest change, addresses the likely root cause (mux glitch on
-ext_cycle transition), and has the lowest risk of breaking other things.
+## Actual Fix (2026-03-21)
 
-If A doesn't work, try **Solution B** (generate CE at clk64).
-If neither works, fall back to **Solution C** (steal CPU slots).
+Solutions A, B, and C were all tried and failed (see commits fe8f7e9,
+65331be). The actual root cause was different from all candidates above.
+
+**Real root cause**: The SDRAM mux used `reu_ram_we` and `ext_cycle` to
+decide when to route REU signals. This had two bugs:
+1. FETCH reads (reu_ram_we=0) fell through to `scpu_sdram_addr` at CPUC
+   (where ext_cycle=0), reading from the wrong address
+2. C64 bus writes during STATE_PROC_C64 were suppressed because `cart_we`
+   was overridden by `reu_ram_we=0`
+
+**Solution**: Added `ram_active` output to reu.v (HIGH only during
+STATE_PROC_RAM). The SDRAM mux uses it to cleanly separate SDRAM phases
+(REU addr/we/din) from bus phases (normal cart signals). This is a
+variant of Solution C but with proper state separation.
+
+Verified: BASIC STASH+FETCH round-trip returns correct data. REU DMA
+used by Doom loader to copy game data from .reu SDRAM image.
