@@ -23,6 +23,8 @@ module reu
 	input       [7:0] ram_din,
 	output reg        ram_we,
 	
+	output reg        ram_active, // '1' during STATE_PROC_RAM (SDRAM access phase)
+
 	input      [15:0] cpu_addr,
 	input       [7:0] cpu_dout,
 	output reg  [7:0] cpu_din,
@@ -92,6 +94,7 @@ always @(posedge clk) begin
 		dma_req    <= 0;
 		dma_we_r   <= 0;
 		ram_we     <= 0;
+		ram_active <= 0;
 		cpu_din    <= 'hFF;
 		state      <= STATE_IDLE;
 	end
@@ -172,7 +175,8 @@ always @(posedge clk) begin
 							ram_addr  <= {1'b1, addr_ram};
 							ram_we    <= op_act[0];
 							ram_dout  <= data[op_dat];
-							state     <= STATE_PROC_RAM;
+							ram_active <= 1;
+							state      <= STATE_PROC_RAM;
 						end
 					end
 					else begin
@@ -191,6 +195,7 @@ always @(posedge clk) begin
 					if(&cnt[1:0]) begin
 						data[op_dat] <= ram_din;
 						ram_we       <= 0;
+						ram_active   <= 0;
 						stage        <= stage + 1'd1;
 						state        <= STATE_EVAL;
 					end

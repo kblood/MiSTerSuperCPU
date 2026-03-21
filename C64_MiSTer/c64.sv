@@ -610,6 +610,7 @@ wire        ext_cycle;
 wire [24:0] reu_ram_addr;
 wire  [7:0] reu_ram_dout;
 wire        reu_ram_we;
+wire        reu_ram_active;  // '1' during STATE_PROC_RAM (REU SDRAM access phase)
 
 wire  [7:0] reu_dout;
 wire        reu_irq;
@@ -635,36 +636,24 @@ reu reu
 	.dma_din(dma_din),
 	.dma_we(dma_we),
 
-	// Route REU SDRAM access through CPU phase. When dma_active is set,
-	// the CPU bus is already hijacked by DMA. We use cart_ce (which fires
-	// at CPUC and works reliably) as the SDRAM access trigger for the REU.
-	// The REU's ram_cycle must pulse during the CPU phase (not ext_cycle)
-	// so the REU state machine advances at the right time.
+	// REU SDRAM access via CPU's cart_ce slot. ram_active distinguishes
+	// STATE_PROC_RAM (SDRAM access) from STATE_PROC_C64 (C64 bus access)
+	// so the SDRAM mux only routes REU addr/we/din during SDRAM phases.
 	.ram_cycle(cart_ce & dma_req),
 	.ram_addr(reu_ram_addr),
 	.ram_dout(reu_ram_dout),
 	.ram_din(sdram_data),
 	.ram_we(reu_ram_we),
-	
+	.ram_active(reu_ram_active),
+
 	.cpu_addr(c64_addr),
 	.cpu_dout(c64_data_out),
 	.cpu_din(reu_dout),
 	.cpu_we(ram_we),
 	.cpu_cs(IOF),
-	
+
 	.irq(reu_irq)
 );
-
-// REU DMA CE: synchronize ext_cycle and dma_req into clk64 domain
-// to generate a clean rising-edge pulse synchronous with the SDRAM clock.
-// This eliminates the clk_sys→clk64 domain crossing on the CE signal.
-reg ext_cycle_64, ext_cycle_64_d, dma_req_64;
-always @(posedge clk64) begin
-	ext_cycle_64   <= ext_cycle;
-	ext_cycle_64_d <= ext_cycle_64;
-	dma_req_64     <= dma_req;
-end
-wire reu_ram_ce = ~ext_cycle_64_d & ext_cycle_64 & dma_req_64;
 
 // rearrange joystick contacts for c64
 wire [6:0] joyA_int = joy[8] ? 7'd0 : {joyA[6:4], joyA[0], joyA[1], joyA[2], joyA[3]};
@@ -1015,11 +1004,13 @@ sdram sdram
 	.clk(clk64),
 	.init(~pll_locked),
 	.refresh(refresh),
-	// When REU DMA is active (reu_ram_we/addr set), route SDRAM through REU during cart_ce
-	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : (dma_req && reu_ram_we) ? reu_ram_addr : (dma_req && !reu_ram_we && ext_cycle) ? reu_ram_addr : scpu_sdram_addr ),
+	// REU DMA SDRAM routing: only override addr/we/din during STATE_PROC_RAM
+	// (reu_ram_active=1). During STATE_PROC_C64, cart signals pass through
+	// so DMA bus reads/writes to C64 RAM use the normal SDRAM path.
+	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : (reu_ram_active ? reu_ram_addr : scpu_sdram_addr) ),
 	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : cart_ce     ),
-	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : (dma_req ? reu_ram_we : cart_we) ),
-	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : (dma_req ? reu_ram_dout : cart_wrdata) ),
+	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : (reu_ram_active ? reu_ram_we : cart_we) ),
+	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : (reu_ram_active ? reu_ram_dout : cart_wrdata) ),
 	.dout( sdram_data )
 );
 
