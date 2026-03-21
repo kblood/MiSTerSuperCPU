@@ -550,10 +550,10 @@ begin
 		end if;
 		
 		refresh <= '0';
-		-- Refresh moved earlier (from EXT3 to EXT0) to avoid collision with
-		-- REU DMA at DMA0. The SDRAM auto-refresh takes 8 clk64 cycles;
-		-- firing at EXT0 gives 6 clk_sys cycles (12 clk64) before DMA0.
-		if preCycle = sysCycleDef'pred(CYCLE_EXT1) and rfsh_cycle = "00" then
+		-- Refresh moved to VIC2 (well before DMA0) to avoid collision with
+		-- REU DMA. SDRAM refresh takes 8 clk64 cycles (4 clk_sys). VIC2 is
+		-- 10 clk_sys before DMA0 (20 clk64), giving plenty of clearance.
+		if preCycle = sysCycleDef'pred(CYCLE_VIC3) and rfsh_cycle = "00" then
 			sysEnable <= not pause;
 			refresh <= '1';
 		end if;
