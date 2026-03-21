@@ -1818,10 +1818,17 @@ ramCE   <= cs_ram when sysCycle = CYCLE_VIC0 or cpu_cyc = '1' else '0';
 -- broke SuperCPU (black screen). The 65C816 needs SDRAM reads even when
 -- cache reports a hit, due to phantom cycles and bank addressing.
 -- TODO: gate SDRAM skip to T65-only mode after verifying 816 safety.
+-- Turbo SDRAM slots (CPU0/CPU4/CPU8): bank $00 only. For non-bank-$00
+-- (SuperRAM), VIC0 SDRAM reads clobber dout_r before enableCpu fires at
+-- the turbo slot. Bank $00 is safe because BRAM/cache hits deliver data
+-- directly (cancelling the SDRAM pipeline). SuperRAM has no BRAM/cache
+-- entries on cold access, so it relies on the SDRAM pipeline which
+-- arrives too late at turbo slots. CPUC has enough gap from VIC0 for
+-- the SDRAM read to complete before enableCpu fires at CPUE.
 cpu_cyc <= '1' when
-				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1') or
-				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1') or
-				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1') or
+				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1' and (cache_cpu_bank = x"00" or cache_cpu_bank >= x"F0")) or
+				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1' and (cache_cpu_bank = x"00" or cache_cpu_bank >= x"F0")) or
+				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1' and (cache_cpu_bank = x"00" or cache_cpu_bank >= x"F0")) or
 				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1')) else '0';
 				
 process(clk32)
