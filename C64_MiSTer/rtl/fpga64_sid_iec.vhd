@@ -1789,8 +1789,13 @@ end process;
 -- During drain: ramAddr/ramDout carry wb_addr/wb_data, ramWE='1' for the write.
 -- enableCpu is suppressed (SDRAM doing write, not read — no valid CPU data).
 -- The CPU still advances via cache_hit_d1 during this and adjacent slots.
+-- Gate drain on bank $00 only: the write-back buffer stores 16-bit addresses
+-- (no bank byte). Draining during non-bank-$00 cycles would override ramAddr
+-- with a 16-bit wb_addr, bypassing the scpu_superram_addr calculation in c64.sv
+-- and sending the write to the wrong SDRAM region (bank $00 instead of SuperRAM).
 wb_drain_active <= '1' when wb_pending = '1' and cache_hit = '1'
                             and cpu_cyc = '1' and dma_active = '0'
+                            and cache_cpu_bank = x"00"
                   else '0';
 wb_ack <= wb_drain_active;
 
