@@ -1055,20 +1055,14 @@ wire        cpu_has_bus;                    // '1' when CPU owns bus (not VIC)
 // writes to ROM-bank addresses go to SDRAM shadow (harmless, never read back).
 wire [24:0] scpu_superram_addr = REU_ADDR + {1'b0, supercpu_bank, c64_addr};
 // Route non-bank-$00 CPU accesses to SuperRAM SDRAM region.
-// REGISTERED version: the combinational path from cpu_has_bus/supercpu_bank
-// through the address mux exceeds timing on the clk64 domain (-16ns slack).
-// Registering at clk_sys (clk32) ensures the address is stable when the
-// SDRAM module detects the CE rising edge (1 clk64 cycle after clk32 edge).
-// The registered address is from the PREVIOUS clk32 cycle, which is safe
-// because the CPU address only changes on enableCpu/bram_hit edges, and
-// cpu_cyc (which fires CE) cannot coincide with those (BRAM guard blocks).
-reg [24:0] scpu_sdram_addr_r = 0;
-reg        scpu_sdram_active_r = 0;
-always @(posedge clk_sys) begin
-    scpu_sdram_active_r <= supercpu_enable && cpu_has_bus && (supercpu_bank != 8'h00);
-    scpu_sdram_addr_r   <= scpu_superram_addr;
-end
-wire [24:0] scpu_sdram_addr = scpu_sdram_active_r ? scpu_sdram_addr_r : cart_addr;
+// Gate on cpu_has_bus to prevent VIC reads (VIC0) from going to SuperRAM
+// when supercpu_bank retains a non-$00 value from the last CPU instruction.
+// COMBINATIONAL: must NOT be registered — the bank byte transitions from
+// $00 to $02 on the same cycle that cpu_cyc fires. A registered version
+// would be 1 cycle behind, causing the mux to select cart_addr (bank $00).
+wire [24:0] scpu_sdram_addr = (supercpu_enable && cpu_has_bus && (supercpu_bank != 8'h00))
+                               ? scpu_superram_addr
+                               : cart_addr;
 
 // SuperRAM SDRAM diagnostic: latch the mux conditions at cart_ce rising edge
 // when the CPU is accessing a non-bank-$00 address. This tells us whether
