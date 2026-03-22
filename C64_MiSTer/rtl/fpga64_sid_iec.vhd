@@ -318,6 +318,13 @@ signal cpu_cyc      : std_logic;
 signal cpu_cyc_s    : std_logic_vector(1 downto 0);
 signal turbo_m      : std_logic_vector(2 downto 0);
 
+-- SuperRAM 3-stage pipeline: extra delay for turbo slot SDRAM reads.
+-- VIC0 SDRAM data clobbers dout_r before 2-stage enableCpu fires.
+-- Adding 1 extra cycle gives the SDRAM read more time to complete.
+signal superram_enable_delay : std_logic := '0';
+signal superram_in_pipeline  : std_logic := '0';  -- latched when cpu_cyc fires for SuperRAM
+signal superram_data_r       : unsigned(7 downto 0);  -- latched SDRAM data for SuperRAM reads
+
 -- BRAM CPU cache signals (retained for cache path, active when bram64k not used)
 signal cache_hit     : std_logic;
 signal cache_di      : unsigned(7 downto 0);
@@ -727,8 +734,18 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 -- SuperCPU register condition, injecting register values into CPU data stream.
 -- BRAM data takes top priority when bram_hit_d1 drives the CPU enable.
 -- Cache data is second priority when cache_hit_d1 drives (SuperRAM or non-BRAM mode).
+-- SuperRAM SDRAM bypass: when enableCpu fires for a SuperRAM read, use ramDin
+-- directly instead of buslogic output. The 3-stage pipeline delivers enableCpu
+-- at CPUF, which is the same edge where cpuHasBus clears (phi0_cpu→0).
+-- Due to delta cycle ordering, the CPU sees CE=1 at EXT0 (one cycle later),
+-- when cpuHasBus=0 and buslogic routes VIC data instead of CPU data.
+-- Bypassing buslogic with ramDin (which still holds the SuperRAM SDRAM result)
+-- avoids this problem. This only applies to reads (cpuWe_pre='0') from
+-- SuperRAM banks (superram_in_pipeline='1'). Bank $00 and ROM reads are
+-- unaffected (use BRAM, cache, or normal buslogic path).
 cpuDi <= bram_do  when (bram_hit_d1 = '1') else
          cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
+         superram_data_r when (enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0') else
          -- SuperCPU $D0Bx registers: gated by scpu_regs_enabled (write $D07F to disable)
          -- $D0BC: computed from dosext(0), ramlink(0), optim low bits
          ("00000" & scpu_optim_mode & '1') when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC" and scpu_regs_enabled = '1') else
@@ -1241,6 +1258,7 @@ begin
 			                and not iec_slow_mode
 			                and not cpu_cyc_s(0)
 			                and not cpu_cyc_s(1)
+			                and not superram_enable_delay
 			                and not enableCpu;
 		elsif (sysCycle <= CYCLE_EXT3 or (sysCycle >= CYCLE_EXT4 and sysCycle <= CYCLE_EXT7))
 		  and turbo_en = '1' then
@@ -1256,6 +1274,7 @@ begin
 			                and not iec_slow_mode
 			                and not cpu_cyc_s(0)
 			                and not cpu_cyc_s(1)
+			                and not superram_enable_delay
 			                and not enableCpu;
 		else
 			cache_hit_d1 <= '0';
@@ -1336,7 +1355,7 @@ bram_valid_we     <= '0';
 process(clk32)
 begin
 	if rising_edge(clk32) then
-		if reset = '1' or bram_invalidate = '1' or cache_flush_bank = '1' then
+		if reset = '1' or bram_invalidate = '1' or cache_flush_bank = '1' or cache_flush_sw = '1' then
 			bram_valid_clearing <= '1';
 			bram_valid_clr_ctr <= (others => '0');
 		elsif bram_valid_clearing = '1' then
@@ -1356,9 +1375,11 @@ end process;
 process(clk32)
 begin
 	if rising_edge(clk32) then
-		if reset = '1' or bram_invalidate = '1' or dma_active = '1' then
+		if reset = '1' or bram_invalidate = '1' or dma_active = '1' or cache_flush_sw = '1' then
 			-- DMA writes bypass BRAM, so invalidate all pages when DMA is active
 			-- to prevent bram_hit_d1 from serving stale data after DMA completes.
+			-- cache_flush_sw ($D078 write) also clears BRAM pages so that
+			-- externally-loaded code (mbc load_rom) isn't masked by stale BRAM.
 			bram_pgvalid <= (others => '0');
 		elsif bram_we = '1' then
 			bram_pgvalid(to_integer(unsigned(std_logic_vector(cpuAddr_pre(15 downto 8))))) <= '1';
@@ -1418,6 +1439,7 @@ begin
 		   and cpu_cyc = '0'
 		   and cpu_cyc_s(0) = '0'
 		   and cpu_cyc_s(1) = '0'
+		   and superram_enable_delay = '0'  -- 3-stage pipeline guard
 		   and enableCpu = '0'
 		then
 			if bram_hit_ram = '1' then
@@ -1818,23 +1840,27 @@ ramCE   <= cs_ram when sysCycle = CYCLE_VIC0 or cpu_cyc = '1' else '0';
 -- broke SuperCPU (black screen). The 65C816 needs SDRAM reads even when
 -- cache reports a hit, due to phantom cycles and bank addressing.
 -- TODO: gate SDRAM skip to T65-only mode after verifying 816 safety.
--- Turbo SDRAM slots (CPU0/CPU4/CPU8): bank $00 only. For non-bank-$00
--- (SuperRAM), VIC0 SDRAM reads clobber dout_r before enableCpu fires at
--- the turbo slot. Bank $00 is safe because BRAM/cache hits deliver data
--- directly (cancelling the SDRAM pipeline). SuperRAM has no BRAM/cache
--- entries on cold access, so it relies on the SDRAM pipeline which
--- arrives too late at turbo slots. CPUC has enough gap from VIC0 for
--- the SDRAM read to complete before enableCpu fires at CPUE.
+-- Turbo SDRAM slots (CPU0/CPU4/CPU8): all banks allowed.
+-- SuperRAM ($01-$EF) uses a 3-stage pipeline (superram_enable_delay) to give
+-- the SDRAM one extra clk32 cycle to return data before enableCpu fires.
+-- Bank $00 uses the normal 2-stage pipeline (BRAM/cache hits deliver data
+-- directly, cancelling the SDRAM pipeline). ROM ($F0+) uses 2-stage because
+-- data comes from ROM BRAM, not SDRAM.
+-- CPUC is the I/O slot and uses the standard 2-stage pipeline for all banks.
 cpu_cyc <= '1' when
-				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1' and (cache_cpu_bank = x"00" or cache_cpu_bank >= x"F0")) or
-				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1' and (cache_cpu_bank = x"00" or cache_cpu_bank >= x"F0")) or
-				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1' and (cache_cpu_bank = x"00" or cache_cpu_bank >= x"F0")) or
+				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1') or
+				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1') or
+				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1') or
 				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1')) else '0';
 				
 process(clk32)
 begin
 	if rising_edge(clk32) then
 		-- SDRAM pipeline: 2-stage shift register from cpu_cyc to enableCpu.
+		-- SuperRAM (banks $01-$EF) uses a 3-stage pipeline: the extra cycle
+		-- ensures the SDRAM read completes before enableCpu fires, even at
+		-- turbo slots (CPU0/CPU4/CPU8) which are close to VIC0 in the rotation.
+		-- Bank $00 and ROM ($F0+) use the standard 2-stage pipeline.
 		-- When cache/BRAM hits advance the CPU, the pending SDRAM read becomes
 		-- stale (wrong address). Cancel the pipeline to prevent delivering
 		-- stale data via enableCpu. This allows cache/BRAM to fire freely
@@ -1843,9 +1869,34 @@ begin
 			-- Cache/BRAM hit advanced the CPU: cancel pending SDRAM pipeline
 			cpu_cyc_s <= "00";
 			enableCpu <= '0';
+			superram_enable_delay <= '0';
+			superram_in_pipeline <= '0';
 		else
 			cpu_cyc_s <= cpu_cyc_s(0) & (cpu_cyc and not wb_drain_active);
-			enableCpu <= cpu_cyc_s(1);
+			-- Latch whether this pipeline cycle is for SuperRAM
+			if cpu_cyc = '1' and wb_drain_active = '0' then
+				if cache_cpu_bank > x"00" and cache_cpu_bank < x"F0" then
+					superram_in_pipeline <= '1';
+				else
+					superram_in_pipeline <= '0';
+				end if;
+			end if;
+			-- 3-stage for SuperRAM, 2-stage for bank $00/ROM
+			if superram_in_pipeline = '1' then
+				superram_enable_delay <= cpu_cyc_s(1);
+				enableCpu <= superram_enable_delay;
+			else
+				superram_enable_delay <= '0';
+				enableCpu <= cpu_cyc_s(1);
+			end if;
+		end if;
+		-- Latch SDRAM data for SuperRAM reads: capture ramDin when the SDRAM
+		-- read should have completed (superram_enable_delay=1, 3 cycles after
+		-- cpu_cyc). The SDRAM takes ~5-7 clk64 = ~3 clk32 cycles from CE to
+		-- valid dout. Latching at cpu_cyc_s(1) (2 cycles) is too early.
+		-- superram_enable_delay fires at the 3rd cycle, when data is ready.
+		if superram_enable_delay = '1' and superram_in_pipeline = '1' then
+			superram_data_r <= ramDin;
 		end if;
 		io_enable <= io_enable and not enableCpu;
 
