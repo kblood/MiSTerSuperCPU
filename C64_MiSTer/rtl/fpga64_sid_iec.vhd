@@ -1841,17 +1841,16 @@ ramCE   <= cs_ram when sysCycle = CYCLE_VIC0 or cpu_cyc = '1' else '0';
 -- broke SuperCPU (black screen). The 65C816 needs SDRAM reads even when
 -- cache reports a hit, due to phantom cycles and bank addressing.
 -- TODO: gate SDRAM skip to T65-only mode after verifying 816 safety.
--- Turbo SDRAM slots (CPU0/CPU4/CPU8): all banks allowed.
--- SuperRAM ($01-$EF) uses a 3-stage pipeline (superram_enable_delay) to give
--- the SDRAM one extra clk32 cycle to return data before enableCpu fires.
--- Bank $00 uses the normal 2-stage pipeline (BRAM/cache hits deliver data
--- directly, cancelling the SDRAM pipeline). ROM ($F0+) uses 2-stage because
--- data comes from ROM BRAM, not SDRAM.
--- CPUC is the I/O slot and uses the standard 2-stage pipeline for all banks.
+-- Turbo SDRAM slots (CPU0/CPU4/CPU8): bank $00 and ROM ($F0+) only.
+-- SuperRAM ($01-$EF) uses CPUC only — the 3-stage pipeline state machine
+-- has edge cases with rapid bank switching that cause crashes (Doom regression).
+-- Bank $00 is safe because BRAM/cache hits deliver data directly.
+-- ROM ($F0+) is safe because data comes from ROM BRAM, not SDRAM.
+-- CPUC handles SuperRAM via the 3-stage pipeline + superram_data_r bypass.
 cpu_cyc <= '1' when
-				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1') or
-				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1') or
-				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1') or
+				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1' and (cache_cpu_bank = x"00" or cache_cpu_bank >= x"F0")) or
+				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1' and (cache_cpu_bank = x"00" or cache_cpu_bank >= x"F0")) or
+				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and cpuHasBus = '1' and baLoc = '1' and (cache_cpu_bank = x"00" or cache_cpu_bank >= x"F0")) or
 				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1')) else '0';
 				
 process(clk32)
