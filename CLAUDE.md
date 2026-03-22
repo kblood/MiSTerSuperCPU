@@ -55,10 +55,14 @@ alongside the existing 6510 emulation mode.
 - Check VIC-II timing is not affected (demo compatibility)
 
 ## Critical Constraints
-- FPGA resource budget: the Cyclone V is already ~70% utilized by the C64 core
-  plus framework. Monitor ALM/register usage after adding 65C816.
+- FPGA resource budget: the Cyclone V is already ~72% utilized (30,300 ALMs)
 - Do NOT break existing 6510 compatibility - this must remain the default mode
-- The 65C816 should be selectable via OSD menu option
+- The 65C816 is hardcoded ON (SuperCPU/UART/overlay always enabled)
+- SDRAM address mux (scpu_sdram_addr) MUST be combinational — registering it
+  introduces a 1-cycle latency that breaks LDA long bank transitions
+- $D078 cache flush clears BOTH 8KB cache AND 32KB BRAM page valid bits
+- SDRAM pipeline: bank $00 uses 2-stage, SuperRAM uses 3-stage (superram_enable_delay)
+- XCE instruction: use `(P(0)='1' or P(8)='1')` for SP/X/Y forcing (not just P(0))
 
 ## Specialized Agents
 
