@@ -57,6 +57,7 @@ port(
 	-- external memory
 	ramAddr     : out unsigned(15 downto 0);
 	ramDin      : in  unsigned(7 downto 0);
+	sdram_raw   : in  unsigned(7 downto 0);  -- raw SDRAM dout, bypasses cartridge module
 	ramDout     : out unsigned(7 downto 0);
 	ramCE       : out std_logic;
 	ramWE       : out std_logic;
@@ -1890,13 +1891,14 @@ begin
 				enableCpu <= cpu_cyc_s(1);
 			end if;
 		end if;
-		-- Latch SDRAM data for SuperRAM reads: capture ramDin when the SDRAM
-		-- read should have completed (superram_enable_delay=1, 3 cycles after
-		-- cpu_cyc). The SDRAM takes ~5-7 clk64 = ~3 clk32 cycles from CE to
-		-- valid dout. Latching at cpu_cyc_s(1) (2 cycles) is too early.
-		-- superram_enable_delay fires at the 3rd cycle, when data is ready.
-		if superram_enable_delay = '1' and superram_in_pipeline = '1' then
-			superram_data_r <= ramDin;
+		-- Latch raw SDRAM data for SuperRAM reads: capture sdram_raw (direct
+		-- from SDRAM dout, bypasses cartridge module) at enableCpu time
+		-- (3 clk32 after cpu_cyc). The SDRAM takes 5 clk64 = 2.5 clk32 from
+		-- CE to valid dout. Using sdram_raw avoids cartridge module timing
+		-- issues and cpuHasBus dependencies that corrupt ramDin at cycle
+		-- boundaries. The 3-stage pipeline gives 0.5 clk32 margin.
+		if enableCpu = '1' and superram_in_pipeline = '1' then
+			superram_data_r <= sdram_raw;
 		end if;
 		io_enable <= io_enable and not enableCpu;
 

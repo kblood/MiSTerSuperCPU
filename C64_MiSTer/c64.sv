@@ -1055,13 +1055,39 @@ wire        cpu_has_bus;                    // '1' when CPU owns bus (not VIC)
 // writes to ROM-bank addresses go to SDRAM shadow (harmless, never read back).
 wire [24:0] scpu_superram_addr = REU_ADDR + {1'b0, supercpu_bank, c64_addr};
 // Route non-bank-$00 CPU accesses to SuperRAM SDRAM region.
-// Gate on cpu_has_bus to prevent VIC reads (VIC0) from going to SuperRAM
-// when supercpu_bank retains a non-$00 value from the last CPU instruction.
-// Don't gate on supercpu_cycle (cpu_cyc+cs_ram) — the combinational chain
-// can evaluate '0' during data access cycles, breaking LDA/STA long.
-wire [24:0] scpu_sdram_addr = (supercpu_enable && cpu_has_bus && (supercpu_bank != 8'h00))
-                               ? scpu_superram_addr
-                               : cart_addr;
+// REGISTERED version: the combinational path from cpu_has_bus/supercpu_bank
+// through the address mux exceeds timing on the clk64 domain (-16ns slack).
+// Registering at clk_sys (clk32) ensures the address is stable when the
+// SDRAM module detects the CE rising edge (1 clk64 cycle after clk32 edge).
+// The registered address is from the PREVIOUS clk32 cycle, which is safe
+// because the CPU address only changes on enableCpu/bram_hit edges, and
+// cpu_cyc (which fires CE) cannot coincide with those (BRAM guard blocks).
+reg [24:0] scpu_sdram_addr_r = 0;
+reg        scpu_sdram_active_r = 0;
+always @(posedge clk_sys) begin
+    scpu_sdram_active_r <= supercpu_enable && cpu_has_bus && (supercpu_bank != 8'h00);
+    scpu_sdram_addr_r   <= scpu_superram_addr;
+end
+wire [24:0] scpu_sdram_addr = scpu_sdram_active_r ? scpu_sdram_addr_r : cart_addr;
+
+// SuperRAM SDRAM diagnostic: latch the mux conditions at cart_ce rising edge
+// when the CPU is accessing a non-bank-$00 address. This tells us whether
+// the address was correctly routed to SuperRAM or fell through to cart_addr.
+reg [7:0] dbg_sram_bank = 0;      // bank byte at CE time
+reg [7:0] dbg_sram_data = 0;      // SDRAM data at next enableCpu
+reg       dbg_sram_has_bus = 0;    // cpu_has_bus at CE time
+reg       dbg_sram_reu = 0;       // reu_ram_active at CE time
+reg       dbg_sram_io = 0;        // io_cycle at CE time
+reg       last_cart_ce_dbg = 0;
+always @(posedge clk_sys) begin
+	last_cart_ce_dbg <= cart_ce;
+	if (cart_ce && !last_cart_ce_dbg && supercpu_bank != 8'h00) begin
+		dbg_sram_bank <= supercpu_bank;
+		dbg_sram_has_bus <= cpu_has_bus;
+		dbg_sram_reu <= reu_ram_active;
+		dbg_sram_io <= io_cycle;
+	end
+end
 
 // Debug infrastructure
 wire        dbg_overlay_en = 1'b1;          // Always on (was: status[83])
@@ -1164,6 +1190,7 @@ fpga64_sid_iec fpga64
 	.ramAddr(c64_addr),
 	.ramDout(c64_data_out),
 	.ramDin(c64_data_in),
+	.sdram_raw(sdram_data),
 	.ramCE(ram_ce),
 	.ramWE(ram_we),
 

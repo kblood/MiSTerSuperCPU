@@ -278,7 +278,12 @@ begin
 			SP <= x"0100";
 			oldXF <= '1';
 		elsif rising_edge(CLK) then
-			if (IR = x"FB" and P(0) = '1' and MC.LOAD_P = "101") then
+			-- XCE ($FB): Force SP high=$01, X/Y high=0 when involving emulation mode.
+			-- P(0)=carry, P(8)=emulation BEFORE the swap. After XCE: new_E=old_C, new_C=old_E.
+			-- Force when: entering emulation (P(0)=1), OR leaving emulation (P(8)=1).
+			-- Only skip when both=0 (native mode with C=0, stays native).
+			-- Fix from iigs_simulation: original only checked P(0), missing native→emu case.
+			if (IR = x"FB" and (P(0) = '1' or P(8) = '1') and MC.LOAD_P = "101") then
 				X(15 downto 8) <= x"00";
 				Y(15 downto 8) <= x"00";
 				SP(15 downto 8) <= x"01";
@@ -427,7 +432,8 @@ begin
 			PBR <= (others=>'0');
 			DBR <= (others=>'0');
 		elsif rising_edge(CLK) then
-			if (IR = x"FB" and P(0) = '1' and MC.LOAD_P = "101") then
+			-- XCE: clear D register when entering/leaving emulation mode (same condition as SP/X/Y)
+			if (IR = x"FB" and (P(0) = '1' or P(8) = '1') and MC.LOAD_P = "101") then
 				D <= (others=>'0');
 			elsif EN = '1' then
 				DR <= D_IN;
