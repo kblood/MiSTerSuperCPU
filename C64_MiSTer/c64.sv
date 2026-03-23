@@ -615,16 +615,21 @@ wire        reu_ram_active;  // '1' during STATE_PROC_RAM (REU SDRAM access phas
 wire  [7:0] reu_dout;
 wire        reu_irq;
 
-// REU SDRAM chip enable: rising-edge of ext_cycle gated by dma_req.
-// Use DMA bus slots (DMA0-DMA3) for REU SDRAM access — these 4 slots
-// are dedicated and don't conflict with VIC or CPU SDRAM reads.
-// The original core used this approach; cart_ce-based CE was broken because
-// VIC reads at VIC0 overwrite sdram_data before the REU latches it.
-reg ext_cycle_d;
-always @(posedge clk_sys) ext_cycle_d <= ext_cycle;
-// Gate CE with reu_ram_active to prevent spurious SDRAM accesses during
-// STATE_PROC_C64 (when dma_req is still high but REU isn't accessing SDRAM).
-wire reu_ram_ce = ~ext_cycle_d & ext_cycle & reu_ram_active;
+// REU SDRAM mux settling: delay reu_ram_active by 1 cycle to ensure the SDRAM
+// addr/we/din mux has settled before cart_ce fires. Without this, the first
+// cart_ce after reu_ram_active goes HIGH catches the mux transitioning, causing
+// the SDRAM controller to capture old (non-REU) values at the CE rising edge.
+// The "settled" signal requires reu_ram_active to be stable for at least 1 cycle.
+reg reu_ram_active_d;
+always @(posedge clk_sys) reu_ram_active_d <= reu_ram_active;
+wire reu_ram_settled = reu_ram_active & reu_ram_active_d;
+
+// REU SDRAM data capture: continuously latch sdram_data while reu_ram_active.
+reg [7:0] reu_sdram_capture;
+always @(posedge clk_sys) begin
+	if (reu_ram_active)
+		reu_sdram_capture <= sdram_data;
+end
 
 // When SuperCPU is enabled, force REU to 16MB — SuperRAM shares the REU
 // SDRAM region, and loader.prg uses REU DMA to copy game data.
@@ -647,14 +652,15 @@ reu reu
 	.dma_din(dma_din),
 	.dma_we(dma_we),
 
-	// REU SDRAM access via DMA bus slots (ext_cycle = DMA0-DMA3).
-	// These 4 dedicated slots don't conflict with VIC or CPU SDRAM reads,
-	// ensuring sdram_data is stable when the REU latches it at cnt=3.
-	// The SDRAM mux routes REU addr/ce/we/din during ext_cycle.
-	.ram_cycle(ext_cycle),
+	// REU SDRAM access via cart_ce (fires at VIC0 and CPUC every rotation).
+	// During reu_ram_active=1, the SDRAM addr mux routes through reu_ram_addr,
+	// so all cart_ce pulses read/write from/to the REU address.
+	// ram_din uses the capture register instead of raw sdram_data to avoid
+	// timing hazards between the SDRAM output and the REU's data latch.
+	.ram_cycle(cart_ce & dma_req),
 	.ram_addr(reu_ram_addr),
 	.ram_dout(reu_ram_dout),
-	.ram_din(sdram_data),
+	.ram_din(reu_sdram_capture),
 	.ram_we(reu_ram_we),
 	.ram_active(reu_ram_active),
 
@@ -1020,16 +1026,14 @@ sdram sdram
 	.clk(clk64),
 	.init(~pll_locked),
 	.refresh(refresh),
-	// SDRAM routing: three sources with priority io_cycle > ext_cycle(REU) > CPU/VIC.
-	// REU DMA uses DMA bus slots (ext_cycle = DMA0-DMA3) for SDRAM access, but ONLY
-	// during STATE_PROC_RAM (reu_ram_active=1). During STATE_PROC_C64 (reu_ram_active=0),
-	// ext_cycle slots are unused and the normal CPU/VIC path handles bus access.
-	// reu_ram_ce fires at DMA0 only when reu_ram_active=1, preventing spurious SDRAM
-	// accesses during C64 bus phases of the DMA.
-	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : (ext_cycle & reu_ram_active) ? reu_ram_addr : scpu_sdram_addr ),
-	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : (ext_cycle & reu_ram_active) ? reu_ram_ce   : cart_ce     ),
-	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : (ext_cycle & reu_ram_active) ? reu_ram_we   : cart_we     ),
-	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : (ext_cycle & reu_ram_active) ? reu_ram_dout : cart_wrdata ),
+	// SDRAM routing: REU DMA uses reu_ram_active to route addr/we/din during
+	// STATE_PROC_RAM. During reu_ram_active=1, ALL SDRAM accesses go through
+	// reu_ram_addr, so both VIC0 and CPUC cart_ce pulses read/write REU SDRAM.
+	// ram_din uses the capture register for stable read data.
+	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : (reu_ram_active ? reu_ram_addr : scpu_sdram_addr) ),
+	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : cart_ce     ),
+	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : (reu_ram_active ? reu_ram_we : cart_we) ),
+	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : (reu_ram_active ? reu_ram_dout : cart_wrdata) ),
 	.dout( sdram_data )
 );
 
