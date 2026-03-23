@@ -622,7 +622,9 @@ wire        reu_irq;
 // VIC reads at VIC0 overwrite sdram_data before the REU latches it.
 reg ext_cycle_d;
 always @(posedge clk_sys) ext_cycle_d <= ext_cycle;
-wire reu_ram_ce = ~ext_cycle_d & ext_cycle & dma_req;
+// Gate CE with reu_ram_active to prevent spurious SDRAM accesses during
+// STATE_PROC_C64 (when dma_req is still high but REU isn't accessing SDRAM).
+wire reu_ram_ce = ~ext_cycle_d & ext_cycle & reu_ram_active;
 
 // When SuperCPU is enabled, force REU to 16MB — SuperRAM shares the REU
 // SDRAM region, and loader.prg uses REU DMA to copy game data.
@@ -645,10 +647,11 @@ reu reu
 	.dma_din(dma_din),
 	.dma_we(dma_we),
 
-	// REU SDRAM access via CPU's cart_ce slot. ram_active distinguishes
-	// STATE_PROC_RAM (SDRAM access) from STATE_PROC_C64 (C64 bus access)
-	// so the SDRAM mux only routes REU addr/we/din during SDRAM phases.
-	.ram_cycle(cart_ce & dma_req),
+	// REU SDRAM access via DMA bus slots (ext_cycle = DMA0-DMA3).
+	// These 4 dedicated slots don't conflict with VIC or CPU SDRAM reads,
+	// ensuring sdram_data is stable when the REU latches it at cnt=3.
+	// The SDRAM mux routes REU addr/ce/we/din during ext_cycle.
+	.ram_cycle(ext_cycle),
 	.ram_addr(reu_ram_addr),
 	.ram_dout(reu_ram_dout),
 	.ram_din(sdram_data),
@@ -1017,14 +1020,16 @@ sdram sdram
 	.clk(clk64),
 	.init(~pll_locked),
 	.refresh(refresh),
-	// SDRAM routing: REU DMA uses reu_ram_active to route addr/we/din during
-	// STATE_PROC_RAM. CE always uses cart_ce (fires at VIC0/CPUC).
-	// During STATE_PROC_RAM, reu_ram_active=1 routes reu_ram_addr to SDRAM,
-	// so all cart_ce pulses read/write from/to reu_ram_addr.
-	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : (reu_ram_active ? reu_ram_addr : scpu_sdram_addr) ),
-	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : cart_ce     ),
-	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : (reu_ram_active ? reu_ram_we : cart_we) ),
-	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : (reu_ram_active ? reu_ram_dout : cart_wrdata) ),
+	// SDRAM routing: three sources with priority io_cycle > ext_cycle(REU) > CPU/VIC.
+	// REU DMA uses DMA bus slots (ext_cycle = DMA0-DMA3) for SDRAM access, but ONLY
+	// during STATE_PROC_RAM (reu_ram_active=1). During STATE_PROC_C64 (reu_ram_active=0),
+	// ext_cycle slots are unused and the normal CPU/VIC path handles bus access.
+	// reu_ram_ce fires at DMA0 only when reu_ram_active=1, preventing spurious SDRAM
+	// accesses during C64 bus phases of the DMA.
+	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : (ext_cycle & reu_ram_active) ? reu_ram_addr : scpu_sdram_addr ),
+	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : (ext_cycle & reu_ram_active) ? reu_ram_ce   : cart_ce     ),
+	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : (ext_cycle & reu_ram_active) ? reu_ram_we   : cart_we     ),
+	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : (ext_cycle & reu_ram_active) ? reu_ram_dout : cart_wrdata ),
 	.dout( sdram_data )
 );
 
