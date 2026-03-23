@@ -615,6 +615,15 @@ wire        reu_ram_active;  // '1' during STATE_PROC_RAM (REU SDRAM access phas
 wire  [7:0] reu_dout;
 wire        reu_irq;
 
+// REU SDRAM chip enable: rising-edge of ext_cycle gated by dma_req.
+// Use DMA bus slots (DMA0-DMA3) for REU SDRAM access — these 4 slots
+// are dedicated and don't conflict with VIC or CPU SDRAM reads.
+// The original core used this approach; cart_ce-based CE was broken because
+// VIC reads at VIC0 overwrite sdram_data before the REU latches it.
+reg ext_cycle_d;
+always @(posedge clk_sys) ext_cycle_d <= ext_cycle;
+wire reu_ram_ce = ~ext_cycle_d & ext_cycle & dma_req;
+
 // When SuperCPU is enabled, force REU to 16MB — SuperRAM shares the REU
 // SDRAM region, and loader.prg uses REU DMA to copy game data.
 // Without this, MGL loading resets the OSD status bits, leaving reu_cfg=0
@@ -1004,9 +1013,10 @@ sdram sdram
 	.clk(clk64),
 	.init(~pll_locked),
 	.refresh(refresh),
-	// REU DMA SDRAM routing: only override addr/we/din during STATE_PROC_RAM
-	// (reu_ram_active=1). During STATE_PROC_C64, cart signals pass through
-	// so DMA bus reads/writes to C64 RAM use the normal SDRAM path.
+	// SDRAM routing: REU DMA uses reu_ram_active to route addr/we/din during
+	// STATE_PROC_RAM. CE always uses cart_ce (fires at VIC0/CPUC).
+	// During STATE_PROC_RAM, reu_ram_active=1 routes reu_ram_addr to SDRAM,
+	// so all cart_ce pulses read/write from/to reu_ram_addr.
 	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : (reu_ram_active ? reu_ram_addr : scpu_sdram_addr) ),
 	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : cart_ce     ),
 	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : (reu_ram_active ? reu_ram_we : cart_we) ),
