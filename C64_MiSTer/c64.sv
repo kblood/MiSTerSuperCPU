@@ -1099,6 +1099,12 @@ reg       dbg_sram_has_bus = 0;    // cpu_has_bus at CE time
 reg       dbg_sram_reu = 0;       // reu_ram_active at CE time
 reg       dbg_sram_io = 0;        // io_cycle at CE time
 reg       last_cart_ce_dbg = 0;
+// DMA debug: sticky capture of reu_ram_active during DMA
+// Latches reu_ram_active and reu_ram_we the first time cart_ce fires
+// while dma_req=1. Read via dbg_sram_reu. Clear on reset.
+reg       dbg_dma_ram_active_seen = 0;  // sticky: was reu_ram_active ever 1?
+reg       dbg_dma_ram_we_seen = 0;      // sticky: was reu_ram_we ever 1?
+reg [3:0] dbg_dma_ce_count = 0;        // count of cart_ce during DMA
 always @(posedge clk_sys) begin
 	last_cart_ce_dbg <= cart_ce;
 	if (cart_ce && !last_cart_ce_dbg && supercpu_bank != 8'h00) begin
@@ -1106,6 +1112,21 @@ always @(posedge clk_sys) begin
 		dbg_sram_has_bus <= cpu_has_bus;
 		dbg_sram_reu <= reu_ram_active;
 		dbg_sram_io <= io_cycle;
+	end
+	// DMA debug capture
+	if (~reset_n) begin
+		dbg_dma_ram_active_seen <= 0;
+		dbg_dma_ram_we_seen <= 0;
+		dbg_dma_ce_count <= 0;
+	end else if (dma_req) begin
+		if (cart_ce && !last_cart_ce_dbg) begin
+			dbg_dma_ce_count <= dbg_dma_ce_count + 1'd1;
+			if (reu_ram_active) dbg_dma_ram_active_seen <= 1;
+			if (reu_ram_active && reu_ram_we) dbg_dma_ram_we_seen <= 1;
+		end
+	end else if (dbg_dma_ce_count != 0) begin
+		// DMA just ended — keep sticky values for reading
+		// dbg_dma_ce_count stays non-zero as a "DMA happened" flag
 	end
 end
 
@@ -1620,7 +1641,9 @@ debug_uart_fmt debug_fmt
 	.cpu_ir(dbg_cpu_ir),
 	.cpu_emul(supercpu_emul),
 	.turbo_en(dbg_turbo_en),
-	.diag(dbg_diag),
+	// Override diag with DMA debug after ANY DMA (when ce_count > 0)
+	// bit7=dma_ram_active_seen, bit6=dma_ram_we_seen, bit5:2=dma_ce_count, bit1:0=normal
+	.diag(dbg_dma_ce_count != 0 ? {dbg_dma_ram_active_seen, dbg_dma_ram_we_seen, dbg_dma_ce_count, dbg_diag[1:0]} : dbg_diag),
 	.cache_hit_pulse(dbg_cache_hit_d1),
 	.enable_cpu_pulse(dbg_enable_cpu_t65),
 	.cpu_cyc_pulse(dbg_cpu_cyc),
