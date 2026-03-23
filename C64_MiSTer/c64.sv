@@ -631,6 +631,8 @@ always @(posedge clk_sys) begin
 		reu_sdram_capture <= sdram_data;
 end
 
+// (registered SDRAM mux removed — broke VIC timing. Using CE gating instead.)
+
 // When SuperCPU is enabled, force REU to 16MB — SuperRAM shares the REU
 // SDRAM region, and loader.prg uses REU DMA to copy game data.
 // Without this, MGL loading resets the OSD status bits, leaving reu_cfg=0
@@ -1027,11 +1029,11 @@ sdram sdram
 	.init(~pll_locked),
 	.refresh(refresh),
 	// SDRAM routing: REU DMA uses reu_ram_active to route addr/we/din during
-	// STATE_PROC_RAM. During reu_ram_active=1, ALL SDRAM accesses go through
-	// reu_ram_addr, so both VIC0 and CPUC cart_ce pulses read/write REU SDRAM.
-	// ram_din uses the capture register for stable read data.
+	// STATE_PROC_RAM. During reu_ram_active=1, ALL cart_ce pulses route through
+	// reu_ram_addr/we/dout. A separate reu_ram_active_d (1-cycle delayed) CE
+	// pulse ensures the first SDRAM access after mux transition has stable inputs.
 	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : (reu_ram_active ? reu_ram_addr : scpu_sdram_addr) ),
-	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : cart_ce     ),
+	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : (reu_ram_active ? (cart_ce & reu_ram_active_d) : cart_ce) ),
 	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : (reu_ram_active ? reu_ram_we : cart_we) ),
 	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : (reu_ram_active ? reu_ram_dout : cart_wrdata) ),
 	.dout( sdram_data )
