@@ -82,6 +82,7 @@ entity fpga64_buslogic is
 		-- To catridge port
 		cs_ioE      : out std_logic;
 		cs_ioF      : out std_logic;
+		cs_ioF_raw  : out std_logic;  -- IOF without io_enable, for REU cpu_cs
 		cs_romL     : out std_logic;
 		cs_romH     : out std_logic;
 		cs_UMAXromH : out std_logic
@@ -503,6 +504,12 @@ begin
 	cs_cia2  <= cs_cia2Loc  and io_enable and scpu_io_en;
 	cs_ioE   <= cs_ioELoc   and io_enable and scpu_io_en;
 	cs_ioF   <= cs_ioFLoc   and io_enable and scpu_io_en;
+	-- Raw IOF without io_enable gating — for REU cpu_cs.
+	-- P65C816 outputs (addr/we) lag enableCpu by 1 cycle. enableCpu
+	-- clears io_enable at cycle N, but the CPU's I/O write address appears
+	-- at cycle N+1 when io_enable is already '0'. The REU needs the raw
+	-- signal to detect $DF00-$DFFF writes from the 65C816.
+	cs_ioF_raw <= cs_ioFLoc and scpu_io_en;
 	cs_romL <= cs_romLLoc;
 	cs_romH <= cs_romHLoc;
 	cs_UMAXromH <= cs_UMAXromHLoc;

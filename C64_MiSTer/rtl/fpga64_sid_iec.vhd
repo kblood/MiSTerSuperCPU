@@ -141,6 +141,7 @@ port(
 	UMAXromH 	: out std_logic;
 	IOE			: out std_logic;
 	IOF			: out std_logic;
+	IOF_raw		: out std_logic;  -- IOF without io_enable, for REU cpu_cs
 	freeze_key  : out std_logic;
 	mod_key     : out std_logic;
 	tape_play   : out std_logic;
@@ -309,6 +310,7 @@ signal nmi_ack_6510 : std_logic;
 signal io_data_i    : unsigned(7 downto 0);
 signal ioe_i        : std_logic;
 signal iof_i        : std_logic;
+signal iof_raw_i    : std_logic;  -- IOF without io_enable gating (for REU)
 
 -- CPU enable gating: only active CPU gets clock enable pulses
 signal enableCpu_6510 : std_logic;
@@ -695,6 +697,7 @@ port map (
 	cs_ram => cs_ram,
 	cs_ioE => ioe_i,
 	cs_ioF => iof_i,
+	cs_ioF_raw => iof_raw_i,
 	cs_romL => romL,
 	cs_romH => romH,
 	cs_UMAXromH => UMAXromH,
@@ -711,6 +714,7 @@ port map (
 
 IOE <= ioe_i;
 IOF <= iof_i;
+IOF_raw <= iof_raw_i;
 cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 
 -- SuperCPU register overlay: intercept reads from $D07x and $D0Bx when SuperCPU enabled,
@@ -1478,8 +1482,9 @@ dbg_cache_hit_d1   <= cache_hit_d1 or bram_hit_d1;
 dbg_enable_cpu_t65 <= enableCpu_816 when supercpu_en = '1' else enableCpu_6510;
 dbg_cpu_cyc        <= cpu_cyc; -- count cpu_cyc pulses per frame
 -- Diagnostic byte: bit0=turbo_en, bit1=scpu_rom_vis, bit2=scpu_speed_1mhz,
--- bit3=iec_slow_mode, bit4=scpu_rom_overlay, bit5=cache_hit, bit6=enableCpu
-dbg_diag <= '0' & enableCpu & cache_hit & scpu_rom_overlay & iec_slow_mode
+-- bit3=iec_slow_mode, bit4=scpu_rom_overlay, bit5=cache_hit, bit6=enableCpu,
+-- bit7=dma_active (was 0)
+dbg_diag <= dma_active & enableCpu & cache_hit & scpu_rom_overlay & iec_slow_mode
             & scpu_speed_1mhz & scpu_rom_vis & turbo_en;
 dbg_cpu_sp   <= dbg_sp_816 when supercpu_en = '1' else x"0000";
 dbg_cpu_p    <= dbg_p_816  when supercpu_en = '1' else x"00";

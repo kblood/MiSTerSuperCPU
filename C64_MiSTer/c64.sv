@@ -659,7 +659,11 @@ reu reu
 	.cpu_dout(c64_data_out),
 	.cpu_din(reu_dout),
 	.cpu_we(ram_we),
-	.cpu_cs(IOF),
+	// Use IOF_raw (without io_enable gating) for REU register access.
+	// P65C816 outputs lag enableCpu by 1 cycle: enableCpu clears io_enable
+	// at cycle N, but the CPU's I/O write address appears at cycle N+1
+	// when io_enable (and thus IOF) is already '0'. IOF_raw bypasses this.
+	.cpu_cs(IOF_raw),
 
 	.irq(reu_irq)
 );
@@ -1037,6 +1041,7 @@ wire        mod_key;
 
 wire        IOE;
 wire        IOF;
+wire        IOF_raw;  // IOF without io_enable gating — for REU cpu_cs
 wire        romL;
 wire        romH;
 wire        UMAXromH;
@@ -1219,6 +1224,7 @@ fpga64_sid_iec fpga64
 	.romh(romH),
 	.ioe(IOE),
 	.iof(IOF),
+	.IOF_raw(IOF_raw),
 	.io_rom(io_rom),
 	.io_ext(cart_oe | reu_oe | opl_en),
 	.io_data(cart_oe ? cart_data : reu_oe ? reu_dout : opl_dout),
