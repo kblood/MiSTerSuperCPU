@@ -612,7 +612,7 @@ wire  [7:0] reu_ram_dout;
 wire        reu_ram_we;
 wire        reu_ram_active;  // '1' during STATE_PROC_RAM (REU SDRAM access phase)
 
-wire  [7:0] reu_dout /* synthesis keep */;
+wire  [7:0] reu_dout;
 wire        reu_irq;
 
 // REU SDRAM mux settling: delay reu_ram_active by 1 cycle to ensure the SDRAM
@@ -666,7 +666,7 @@ reu reu
 	.ram_we(reu_ram_we),
 	.ram_active(reu_ram_active),
 
-	.cpu_addr(c64_addr),  // system addr (original, works for writes)
+	.cpu_addr(c64_addr),
 	.cpu_dout(c64_data_out),
 	.cpu_din(reu_dout),
 	.cpu_we(ram_we),
@@ -1053,8 +1053,6 @@ wire        mod_key;
 wire        IOE;
 wire        IOF;
 wire        IOF_raw;  // IOF without io_enable gating — for REU cpu_cs
-wire        IOF_simple; // simple IOF from cpuAddr_pre (bypasses bus logic)
-wire [15:0] cpu_addr_raw; // raw CPU address for REU register select
 wire        romL;
 wire        romH;
 wire        UMAXromH;
@@ -1259,9 +1257,6 @@ fpga64_sid_iec fpga64
 	.ioe(IOE),
 	.iof(IOF),
 	.IOF_raw(IOF_raw),
-	.reu_di(reu_dout),
-	.IOF_simple(IOF_simple),
-	.cpuAddr_out(cpu_addr_raw),
 	.io_rom(io_rom),
 	.io_ext(cart_oe | reu_oe | opl_en),
 	.io_data(cart_oe ? cart_data : reu_oe ? reu_dout : opl_dout),

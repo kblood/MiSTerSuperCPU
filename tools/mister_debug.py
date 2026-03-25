@@ -79,11 +79,6 @@ def cmd_deploy(args):
         return 1
     print("Upload complete.")
 
-    # Set OSD config BEFORE loading core (framework reads config on load).
-    # SuperCPU + UART enabled, turbo mode Off (turbo_en=0 prevents BRAM racing).
-    cfg_bytes = r'\x00\x00\x00\x00\x00\x80\x02\x02\x00\x00\xcc\x00\x00\x00\x00\x00'
-    ssh(f"printf '{cfg_bytes}' > /media/fat/config/C64.cfg")
-
     # Load the core
     print("Loading core...")
     out, err, rc = ssh(f'echo "load_core {DEST}" > /dev/MiSTer_cmd')
@@ -129,8 +124,12 @@ def cmd_load_prg(args):
         return 1
     print("Upload complete.")
 
-    # OSD config is written by deploy command. Don't overwrite here —
-    # the MGL reload re-reads C64.cfg which can break UART if wrong.
+    # Ensure OSD config has SuperCPU + UART enabled before MGL load.
+    # The MiSTer framework reads /media/fat/config/C64.cfg on core load.
+    # Byte 10 = 0xCC: bit2=SuperCPU, bit3=overlay, bit6=SCPU_ROM, bit7=UART
+    print("Setting OSD config (SuperCPU + UART enabled)...")
+    cfg_bytes = r'\x00\x00\x00\x00\x00\x80\x02\x02\x00\x00\xcc\x00\x00\x00\x00\x00'
+    ssh(f"printf '{cfg_bytes}' > /media/fat/config/C64.cfg")
 
     # Generate MGL and load via MiSTer_cmd.
     # Key MGL format requirements discovered through testing:
