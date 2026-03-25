@@ -142,6 +142,9 @@ port(
 	IOE			: out std_logic;
 	IOF			: out std_logic;
 	IOF_raw		: out std_logic;  -- IOF without io_enable, for REU cpu_cs
+	reu_di      : in  unsigned(7 downto 0) := (others => '1');  -- REU data direct from cpu_din
+	IOF_simple  : out std_logic;  -- simple IOF from cpuAddr_pre (no bus logic timing)
+	cpuAddr_out : out unsigned(15 downto 0);  -- raw CPU address for REU register select
 	freeze_key  : out std_logic;
 	mod_key     : out std_logic;
 	tape_play   : out std_logic;
@@ -327,6 +330,14 @@ signal turbo_m      : std_logic_vector(2 downto 0);
 signal superram_enable_delay : std_logic := '0';
 signal superram_in_pipeline  : std_logic := '0';  -- latched when cpu_cyc fires for SuperRAM
 signal superram_data_r       : unsigned(7 downto 0);  -- latched SDRAM data for SuperRAM reads
+signal io_in_pipeline        : std_logic := '0';  -- latched when cpu_cyc fires for I/O ($Dxxx)
+signal io_data_r             : unsigned(7 downto 0) := (others => '1');  -- captured I/O data
+-- Sticky debug flags (never cleared, for UART diagnostic)
+signal dbg_io_pipe_ever      : std_logic := '0';  -- io_in_pipeline was ever '1'
+signal dbg_io_enable_ever    : std_logic := '0';  -- enableCpu AND io_in_pipeline simultaneously
+signal dbg_io_delay_ever     : std_logic := '0';  -- superram_enable_delay AND io_in_pipeline
+signal dbg_io_cpucyc_ever    : std_logic := '0';  -- cpu_cyc fired when cpuAddr was $Dxxx
+signal io_read_deliver       : std_logic := '0';  -- 1-cycle pulse: deliver io_data_r to CPU
 
 -- BRAM CPU cache signals (retained for cache path, active when bram64k not used)
 signal cache_hit     : std_logic;
@@ -715,6 +726,8 @@ port map (
 IOE <= ioe_i;
 IOF <= iof_i;
 IOF_raw <= iof_raw_i;
+IOF_simple <= '1' when cpuAddr_pre(15 downto 8) = x"DF" and addr_hi_816 = x"00" else '0';
+cpuAddr_out <= cpuAddr_pre;  -- raw CPU address for REU register select
 cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 
 -- SuperCPU register overlay: intercept reads from $D07x and $D0Bx when SuperCPU enabled,
@@ -748,7 +761,11 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 -- avoids this problem. This only applies to reads (cpuWe_pre='0') from
 -- SuperRAM banks (superram_in_pipeline='1'). Bank $00 and ROM reads are
 -- unaffected (use BRAM, cache, or normal buslogic path).
-cpuDi <= bram_do  when (bram_hit_d1 = '1') else
+-- I/O data: HIGHEST PRIORITY. Captured 1 cycle before enableCpu by the
+-- 3-stage pipeline. At enableCpu time, bram_hit_d1 fires for the NEXT
+-- instruction's fetch, overriding io_data_r if it has lower priority.
+cpuDi <= io_data_r when (io_read_deliver = '1') else
+         bram_do  when (bram_hit_d1 = '1') else
          cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
          superram_data_r when (enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0') else
          -- SuperCPU $D0Bx registers: gated by scpu_regs_enabled (write $D07F to disable)
@@ -1082,7 +1099,19 @@ enableCpu_6510 <= (bram_hit_d1 or (cache_hit_d1 and turbo_en) or (enableCpu and 
 -- SuperCPU (P65C816): BRAM acceleration + SDRAM path.
 -- BRAM hit covers 60KB of bank $00 (all except I/O).
 -- SDRAM path handles SuperRAM (banks $01-$EF) and I/O.
-enableCpu_816  <= ((bram_hit_d1 and turbo_en) or (cache_hit_d1 and turbo_en) or (enableCpu and not dma_active))
+-- When io_in_pipeline='1', suppress BRAM/cache hits from advancing the CPU.
+-- The I/O read MUST wait for the 3-stage pipeline's enableCpu — BRAM can't
+-- serve I/O data. Without suppression, BRAM hits advance the CPU past the
+-- I/O read before the pipeline delivers data.
+-- Suppress BRAM/cache hits when:
+-- 1. io_in_pipeline is set (I/O read waiting for pipeline)
+-- 2. cpu_cyc fires (SDRAM pipeline starting — BRAM shouldn't race it)
+-- Without (2), a BRAM hit from the previous instruction's fetch advances
+-- the CPU past the I/O address at the same CPUC edge where the pipeline
+-- starts, making the CPU read wrong data.
+enableCpu_816  <= ((bram_hit_d1 and turbo_en and not io_in_pipeline and not cpu_cyc) or
+                   (cache_hit_d1 and turbo_en and not io_in_pipeline and not cpu_cyc) or
+                   (enableCpu and not dma_active))
                   when supercpu_en = '1' else '0';
 
 -- -----------------------------------------------------------------------
@@ -1484,8 +1513,12 @@ dbg_cpu_cyc        <= cpu_cyc; -- count cpu_cyc pulses per frame
 -- Diagnostic byte: bit0=turbo_en, bit1=scpu_rom_vis, bit2=scpu_speed_1mhz,
 -- bit3=iec_slow_mode, bit4=scpu_rom_overlay, bit5=cache_hit, bit6=enableCpu,
 -- bit7=dma_active (was 0)
-dbg_diag <= dma_active & enableCpu & cache_hit & scpu_rom_overlay & iec_slow_mode
-            & scpu_speed_1mhz & scpu_rom_vis & turbo_en;
+-- TEMP: I/O pipeline diagnostic in diag byte
+-- bit0=turbo_en, bit1=scpu_rom_vis, bit2=scpu_speed_1mhz,
+-- bit3=STICKY cpu_cyc at $Dxxx, bit4=STICKY io_in_pipeline,
+-- bit5=STICKY delay&io, bit6=STICKY enableCpu&io, bit7=dma_active
+dbg_diag <= dma_active & dbg_io_enable_ever & dbg_io_delay_ever & dbg_io_pipe_ever
+            & dbg_io_cpucyc_ever & scpu_speed_1mhz & scpu_rom_vis & turbo_en;
 dbg_cpu_sp   <= dbg_sp_816 when supercpu_en = '1' else x"0000";
 dbg_cpu_p    <= dbg_p_816  when supercpu_en = '1' else x"00";
 dbg_cpu_ir   <= dbg_ir_816 when supercpu_en = '1' else x"00";
@@ -1876,6 +1909,7 @@ begin
 			enableCpu <= '0';
 			superram_enable_delay <= '0';
 			superram_in_pipeline <= '0';
+			-- NOTE: do NOT clear io_in_pipeline here — see below
 		else
 			cpu_cyc_s <= cpu_cyc_s(0) & (cpu_cyc and not wb_drain_active);
 			-- Latch whether this pipeline cycle is for SuperRAM
@@ -1886,8 +1920,8 @@ begin
 					superram_in_pipeline <= '0';
 				end if;
 			end if;
-			-- 3-stage for SuperRAM, 2-stage for bank $00/ROM
-			if superram_in_pipeline = '1' then
+			-- 3-stage for SuperRAM and I/O, 2-stage for bank $00 RAM/ROM
+			if superram_in_pipeline = '1' or io_in_pipeline = '1' then
 				superram_enable_delay <= cpu_cyc_s(1);
 				enableCpu <= superram_enable_delay;
 			else
@@ -1895,6 +1929,39 @@ begin
 				enableCpu <= cpu_cyc_s(1);
 			end if;
 		end if;
+		-- I/O pipeline flag: set INDEPENDENTLY from BRAM cancel.
+		-- BRAM hits can fire at CPUC simultaneously with cpu_cyc for I/O,
+		-- killing the pipeline. But io_in_pipeline must survive because
+		-- the I/O read NEEDS the SDRAM pipeline (BRAM can't serve I/O data).
+		-- Setting this after the if/else means it overrides the cancel.
+		if cpu_cyc = '1' and wb_drain_active = '0' then
+			if cpuAddr(15 downto 12) = x"D" and cpuWe_pre = '0' and addr_hi_816 = x"00" then
+				io_in_pipeline <= '1';
+				-- Also force pipeline re-entry since BRAM cancel cleared cpu_cyc_s
+				cpu_cyc_s(0) <= '1';
+			else
+				io_in_pipeline <= '0';
+			end if;
+		end if;
+		-- 1-cycle delivery pulse: fires the cycle AFTER enableCpu AND io_in_pipeline.
+		-- This ensures io_data_r is selected in cpuDi for exactly 1 cycle
+		-- (when the CPU actually latches DI), not for the entire io_in_pipeline window.
+		io_read_deliver <= enableCpu and io_in_pipeline;
+
+		-- Sticky I/O pipeline debug flags (never cleared)
+		if io_in_pipeline = '1' then
+			dbg_io_pipe_ever <= '1';
+		end if;
+		if enableCpu = '1' and io_in_pipeline = '1' then
+			dbg_io_enable_ever <= '1';
+		end if;
+		if superram_enable_delay = '1' and io_in_pipeline = '1' then
+			dbg_io_delay_ever <= '1';
+		end if;
+		if cpu_cyc = '1' and cpuAddr(15 downto 12) = x"D" and cpuWe_pre = '0' and addr_hi_816 = x"00" then
+			dbg_io_cpucyc_ever <= '1';
+		end if;
+
 		-- Latch raw SDRAM data for SuperRAM reads: capture sdram_raw (direct
 		-- from SDRAM dout, bypasses cartridge module) at enableCpu time
 		-- (3 clk32 after cpu_cyc). The SDRAM takes 5 clk64 = 2.5 clk32 from
@@ -1903,6 +1970,27 @@ begin
 		-- boundaries. The 3-stage pipeline gives 0.5 clk32 margin.
 		if enableCpu = '1' and superram_in_pipeline = '1' then
 			superram_data_r <= sdram_raw;
+		end if;
+		-- Capture I/O data 1 cycle BEFORE enableCpu (at CPUE for 3-stage).
+		-- superram_enable_delay='1' at CPUE, enableCpu fires at CPUF.
+		-- The cpuDi mux reads io_data_r at CPUF using OLD values — so
+		-- io_data_r must be captured at CPUE to be available at CPUF.
+		-- At CPUE, cpuAddr_pre is still the I/O address (stable).
+		-- Capture at 1 cycle before enableCpu (CPUE for 3-stage).
+		-- For IOF ($DFxx): use reu_di directly (bypasses io_ext timing path).
+		-- For other I/O ($D000-$DEFF): use cpuDi (VIC/SID/CIA data).
+		-- Capture I/O data 1 cycle before enableCpu (at CPUE for 3-stage).
+		-- For IOF ($DFxx): use reu_di directly (bypasses io_ext timing path).
+		-- For other I/O ($D0xx-$DExx): use cpuDi from buslogic.
+		-- Capture I/O data for the pipeline.
+		-- For IOF ($DFxx): use reu_di directly (bypasses timing-violated io_ext path).
+		-- For other I/O ($D0xx-$DExx): use cpuDi (VIC/SID/CIA data from buslogic).
+		if superram_enable_delay = '1' and io_in_pipeline = '1' then
+			if cpuAddr(15 downto 8) = x"DF" then
+				io_data_r <= reu_di;
+			else
+				io_data_r <= cpuDi;
+			end if;
 		end if;
 		io_enable <= io_enable and not enableCpu;
 
