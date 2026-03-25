@@ -612,7 +612,7 @@ wire  [7:0] reu_ram_dout;
 wire        reu_ram_we;
 wire        reu_ram_active;  // '1' during STATE_PROC_RAM (REU SDRAM access phase)
 
-wire  [7:0] reu_dout;
+wire  [7:0] reu_dout /* synthesis keep */;
 wire        reu_irq;
 
 // REU SDRAM mux settling: delay reu_ram_active by 1 cycle to ensure the SDRAM
@@ -674,7 +674,7 @@ reu reu
 	// P65C816 outputs lag enableCpu by 1 cycle: enableCpu clears io_enable
 	// at cycle N, but the CPU's I/O write address appears at cycle N+1
 	// when io_enable (and thus IOF) is already '0'. IOF_raw bypasses this.
-	.cpu_cs(IOF_simple),  // IOF_simple works for pipeline delivery
+	.cpu_cs(IOF_raw),
 
 	.irq(reu_irq)
 );

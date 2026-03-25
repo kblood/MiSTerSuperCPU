@@ -27,7 +27,7 @@ module reu
 
 	input      [15:0] cpu_addr,
 	input       [7:0] cpu_dout,
-	output reg  [7:0] cpu_din,
+	output reg  [7:0] cpu_din /* synthesis noprune */,
 	input             cpu_we,
 	input             cpu_cs,
 
@@ -80,6 +80,10 @@ always @(posedge clk) begin
 
 	old_cs <= cpu_cs;
 
+	// TEST: unconditional before if/else. If R0=$99, always block runs.
+	// If R0=$FF, Quartus optimized away the entire module or cfg/reset stuck.
+	cpu_din <= 8'h99;
+
 	if(reset || !cfg) begin
 		status     <= 0;
 		cmd        <= 'h10;
@@ -99,6 +103,9 @@ always @(posedge clk) begin
 		state      <= STATE_IDLE;
 	end
 	else begin
+		// TEST: set cpu_din based on cpu_cs behavior
+		if(cpu_cs & ~old_cs) cpu_din <= 8'h42;  // rising edge → $42
+		else if(cpu_cs)      cpu_din <= 8'h55;  // held high → $55
 		if(~dma_req & ~old_cs & cpu_cs) begin
 			if(cpu_we) begin
 				case(cpu_addr[4:0])
@@ -214,6 +221,8 @@ always @(posedge clk) begin
 				end
 		endcase
 	end
+	// ABSOLUTE LAST: override cpu_din regardless of reset/cfg/everything
+	cpu_din <= 8'h99;
 end
 
 endmodule

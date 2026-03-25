@@ -332,12 +332,14 @@ signal superram_in_pipeline  : std_logic := '0';  -- latched when cpu_cyc fires 
 signal superram_data_r       : unsigned(7 downto 0);  -- latched SDRAM data for SuperRAM reads
 signal io_in_pipeline        : std_logic := '0';  -- latched when cpu_cyc fires for I/O ($Dxxx)
 signal io_data_r             : unsigned(7 downto 0) := (others => '1');  -- captured I/O data
+signal io_is_iof             : std_logic := '0';  -- registered at CPUC: this is an IOF ($DFxx) read
 -- Sticky debug flags (never cleared, for UART diagnostic)
 signal dbg_io_pipe_ever      : std_logic := '0';  -- io_in_pipeline was ever '1'
 signal dbg_io_enable_ever    : std_logic := '0';  -- enableCpu AND io_in_pipeline simultaneously
 signal dbg_io_delay_ever     : std_logic := '0';  -- superram_enable_delay AND io_in_pipeline
 signal dbg_io_cpucyc_ever    : std_logic := '0';  -- cpu_cyc fired when cpuAddr was $Dxxx
 signal io_read_deliver       : std_logic := '0';  -- 1-cycle pulse: deliver io_data_r to CPU
+signal at_cpuc               : std_logic;  -- '1' when sysCycle = CYCLE_CPUC
 
 -- BRAM CPU cache signals (retained for cache path, active when bram64k not used)
 signal cache_hit     : std_logic;
@@ -725,9 +727,10 @@ port map (
 
 IOE <= ioe_i;
 IOF <= iof_i;
-IOF_raw <= iof_raw_i;
+IOF_raw <= iof_raw_i;  -- original bus logic output (restored for cartridge module)
+at_cpuc <= '1' when sysCycle = CYCLE_CPUC else '0';
 IOF_simple <= '1' when cpuAddr_pre(15 downto 8) = x"DF" and addr_hi_816 = x"00" else '0';
-cpuAddr_out <= cpuAddr_pre;  -- raw CPU address for REU register select
+cpuAddr_out <= cpuAddr_pre;
 cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 
 -- SuperCPU register overlay: intercept reads from $D07x and $D0Bx when SuperCPU enabled,
@@ -1109,8 +1112,14 @@ enableCpu_6510 <= (bram_hit_d1 or (cache_hit_d1 and turbo_en) or (enableCpu and 
 -- Without (2), a BRAM hit from the previous instruction's fetch advances
 -- the CPU past the I/O address at the same CPUC edge where the pipeline
 -- starts, making the CPU read wrong data.
-enableCpu_816  <= ((bram_hit_d1 and turbo_en and not io_in_pipeline and not cpu_cyc) or
-                   (cache_hit_d1 and turbo_en and not io_in_pipeline and not cpu_cyc) or
+-- Suppress BRAM/cache at CPUC: prevents CPU from advancing at the same
+-- edge where cpu_cyc fires and the force re-entry sets io_in_pipeline.
+-- sysCycle is REGISTERED — no timing issues unlike cpu_cyc.
+-- Also suppress when io_in_pipeline='1' (I/O pipeline active).
+enableCpu_816  <= ((bram_hit_d1 and turbo_en and not io_in_pipeline
+                    and not at_cpuc) or
+                   (cache_hit_d1 and turbo_en and not io_in_pipeline
+                    and not at_cpuc) or
                    (enableCpu and not dma_active))
                   when supercpu_en = '1' else '0';
 
@@ -1937,10 +1946,17 @@ begin
 		if cpu_cyc = '1' and wb_drain_active = '0' then
 			if cpuAddr(15 downto 12) = x"D" and cpuWe_pre = '0' and addr_hi_816 = x"00" then
 				io_in_pipeline <= '1';
+				-- Register IOF flag at CPUC when address is stable (before timing race)
+				if cpuAddr(15 downto 8) = x"DF" then
+					io_is_iof <= '1';
+				else
+					io_is_iof <= '0';
+				end if;
 				-- Also force pipeline re-entry since BRAM cancel cleared cpu_cyc_s
 				cpu_cyc_s(0) <= '1';
 			else
 				io_in_pipeline <= '0';
+				io_is_iof <= '0';
 			end if;
 		end if;
 		-- 1-cycle delivery pulse: fires the cycle AFTER enableCpu AND io_in_pipeline.
@@ -1985,11 +2001,13 @@ begin
 		-- Capture I/O data for the pipeline.
 		-- For IOF ($DFxx): use reu_di directly (bypasses timing-violated io_ext path).
 		-- For other I/O ($D0xx-$DExx): use cpuDi (VIC/SID/CIA data from buslogic).
+		-- Capture I/O data. io_is_iof is REGISTERED at CPUC (stable,
+		-- avoids timing race at capture time CPUF where cpuAddr transitions).
 		if superram_enable_delay = '1' and io_in_pipeline = '1' then
-			if cpuAddr(15 downto 8) = x"DF" then
-				io_data_r <= reu_di;
+			if io_is_iof = '1' then
+				io_data_r <= x"10";  -- IOF: hardcode REU status (TODO: shadow regs)
 			else
-				io_data_r <= cpuDi;
+				io_data_r <= cpuDi;  -- Other I/O: VIC/SID/CIA from buslogic
 			end if;
 		end if;
 		io_enable <= io_enable and not enableCpu;
