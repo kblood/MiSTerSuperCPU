@@ -332,8 +332,10 @@ signal superram_data_r       : unsigned(7 downto 0);  -- latched SDRAM data for 
 signal io_in_pipeline        : std_logic := '0';
 signal io_data_r             : unsigned(7 downto 0) := (others => '1');
 signal io_read_deliver       : std_logic := '0';
-signal at_cpuc               : std_logic;  -- '1' when sysCycle = CYCLE_CPUC
-signal at_cpucd              : std_logic;  -- '1' when sysCycle = CYCLE_CPUC or CYCLE_CPUD
+signal iof_detect            : std_logic;  -- combinational IOF detect from cpuAddr_pre
+signal iof_detect_d1         : std_logic := '0';  -- registered IOF detect (1-cycle delayed)
+signal at_cpuc               : std_logic;
+signal at_cpucd              : std_logic;
 
 -- BRAM CPU cache signals (retained for cache path, active when bram64k not used)
 signal cache_hit     : std_logic;
@@ -721,9 +723,9 @@ port map (
 
 IOE <= ioe_i;
 IOF <= iof_i;
--- Simple IOF detect for REU chip select (bypasses bus logic -10ns path).
--- Cartridge module uses IOF (separate signal), NOT IOF_raw.
-IOF_raw <= '1' when cpuAddr_pre(15 downto 8) = x"DF" and addr_hi_816 = x"00" else '0';
+-- Simple IOF detect from cpuAddr_pre (bypasses bus logic -10ns path).
+iof_detect <= '1' when cpuAddr_pre(15 downto 8) = x"DF" and addr_hi_816 = x"00" else '0';
+IOF_raw <= iof_detect;
 at_cpuc <= '1' when sysCycle = CYCLE_CPUC else '0';
 -- Suppress BRAM hits from CPUB through CPUD: prevents the BRAM hit from the
 -- previous instruction's fetch from advancing the CPU at the same rotation
@@ -793,15 +795,12 @@ cpuDi <= io_data_r when (io_read_deliver = '1') else
 process(clk32)
 begin
 	if rising_edge(clk32) then
-		-- Capture at superram_enable_delay (CPUF for 3-stage) instead of
-		-- cpu_cyc_s(1) (CPUE): io_ext_r/io_data_r_sv need 1 extra cycle to
-		-- register the settled address ($DF00 at CPUD → io_ext_r at CPUE).
-		if superram_enable_delay = '1' and io_in_pipeline = '1' then
-			if io_ext = '1' then
-				io_data_r <= io_data;  -- registered REU/cart data from c64.sv
-			else
-				io_data_r <= cpuDi;    -- fallback (VIC/SID/CIA, shouldn't happen for IOF)
-			end if;
+		-- Capture io_data ONLY when io_ext is '1' (REU visible).
+		-- If io_ext='0' (not settled yet): keep previous io_data_r value.
+		-- Initial io_data_r = $FF = reu_dout default, so either way the CPU
+		-- gets the correct REU value.
+		if enableCpu = '1' and io_in_pipeline = '1' and io_ext = '1' then
+			io_data_r <= io_data;
 		end if;
 		io_read_deliver <= enableCpu and io_in_pipeline;
 	end if;
@@ -1941,26 +1940,20 @@ begin
 				enableCpu <= cpu_cyc_s(1);
 			end if;
 		end if;
-		-- IOF pipeline detection: AFTER if/else so it OVERRIDES BRAM cancel.
-		-- Only $DFxx reads (REU) use 3-stage. VIC/SID/CIA stay 2-stage.
-		if cpu_cyc = '1' and wb_drain_active = '0' then
-			if cpuAddr(15 downto 8) = x"DF" and cpuWe_pre = '0' and addr_hi_816 = x"00" then
-				io_in_pipeline <= '1';
-				cpu_cyc_s(0) <= '1';  -- force pipeline re-entry after BRAM cancel
-			else
-				io_in_pipeline <= '0';
-			end if;
-		end if;
-		-- FALLBACK: at CPUD, cpuAddr_pre has settled (1 cycle after BRAM
-		-- hit enableCpu at CPUB). If the CPUC check missed $DFxx due to
-		-- register propagation delay, catch it here. The 3-stage pipeline
-		-- still works because cpu_cyc_s(0) was already set at CPUC.
-		-- Fallback at CPUE: cpuAddr has had 3 cycles to settle since BRAM hit.
-		-- No cpu_cyc_s check needed — just verify address is $DFxx.
-		if sysCycle = CYCLE_CPUE and io_in_pipeline = '0'
-		   and cpuAddr(15 downto 8) = x"DF" and cpuWe_pre = '0' and addr_hi_816 = x"00" then
+		-- IOF pipeline detection using iof_detect_d1 (REGISTERED, 1-cycle delayed).
+		-- iof_detect fires when cpuAddr_pre = $DFxx (from P65C816 register).
+		-- iof_detect_d1 is guaranteed stable (registered at previous clock).
+		-- When iof_detect_d1 RISES (was '0', now '1'): the CPU just moved to
+		-- a $DFxx address. Set io_in_pipeline and force pipeline re-entry.
+		-- This replaces the unreliable cpuAddr comparison at CPUC.
+		iof_detect_d1 <= iof_detect;
+		if iof_detect_d1 = '0' and iof_detect = '1' and cpuWe_pre = '0' then
+			-- Rising edge of IOF_raw: CPU just moved to $DFxx read
 			io_in_pipeline <= '1';
-			cpu_cyc_s(0) <= '1';  -- restart pipeline from CPUE
+			cpu_cyc_s(0) <= '1';  -- force pipeline re-entry
+		elsif cpu_cyc = '1' and iof_detect = '0' then
+			-- cpu_cyc for non-$DFxx: clear
+			io_in_pipeline <= '0';
 		end if;
 		-- CRITICAL: clear io_in_pipeline when SDRAM pipeline delivers.
 		-- enableCpu is the SDRAM pipeline output (NOT bram enableCpu_816).
