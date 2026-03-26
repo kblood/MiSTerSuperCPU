@@ -638,7 +638,20 @@ end
 // Without this, MGL loading resets the OSD status bits, leaving reu_cfg=0
 // even though the .reu file data is in SDRAM.
 wire  [1:0] reu_cfg = supercpu_enable ? 2'b11 : status[54:53];
-wire        reu_oe  = IOF && reu_cfg;
+// Bypass IOF (bus logic, -10ns timing violation) for reu_oe.
+// Use c64_addr directly: during CPU phases, c64_addr = cpuAddr = $DFxx.
+// During VIC phases (bad lines): c64_addr = vicAddr (not $DFxx), so reu_oe = 0.
+wire        reu_oe  = (c64_addr[15:8] == 8'hDF) && (supercpu_bank == 8'h00) && (|reu_cfg);
+
+// Register io_ext and io_data in clk_sys: breaks the timing-critical
+// combinational path through io_ext → io_data_i → dataToCpu → cpuDi.
+// 1-cycle delay is fine because the I/O address is stable for many cycles.
+reg         io_ext_r;
+reg   [7:0] io_data_r_sv;
+always @(posedge clk_sys) begin
+	io_ext_r    <= cart_oe | reu_oe | opl_en;
+	io_data_r_sv <= cart_oe ? cart_data : reu_oe ? reu_dout : opl_dout;
+end
 
 reu reu
 (
@@ -1258,8 +1271,8 @@ fpga64_sid_iec fpga64
 	.iof(IOF),
 	.IOF_raw(IOF_raw),
 	.io_rom(io_rom),
-	.io_ext(cart_oe | reu_oe | opl_en),
-	.io_data(cart_oe ? cart_data : reu_oe ? reu_dout : opl_dout),
+	.io_ext(io_ext_r),     // registered: stable, immune to -10ns timing
+	.io_data(io_data_r_sv), // registered: 1-cycle delay, correct for I/O pipeline
 	
 	.dma_req(dma_req),
 	.dma_cycle(dma_cycle),

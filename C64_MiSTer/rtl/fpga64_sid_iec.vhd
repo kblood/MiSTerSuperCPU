@@ -780,14 +780,22 @@ cpuDi <= io_data_r when (io_read_deliver = '1') else
          (scpu_rom_vis & "0000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
          cpuDi_raw;
 
--- I/O data register: captures cpuDi at cpu_cyc_s(1) when address is stable.
--- io_read_deliver is a 1-cycle pulse at the CPU latch edge (from SDRAM
--- pipeline's enableCpu ONLY, not from BRAM hits).
+-- I/O data capture: bypass the bus logic's dataToCpu path entirely.
+-- Use io_ext and io_data DIRECTLY from the c64.sv ports (which are
+-- REGISTERED in c64.sv, stable at capture time). This avoids the
+-- -10ns timing-violated path through dataToCpu → cpuDi.
 process(clk32)
 begin
 	if rising_edge(clk32) then
-		if cpu_cyc_s(1) = '1' and io_in_pipeline = '1' then
-			io_data_r <= cpuDi;
+		-- Capture at superram_enable_delay (CPUF for 3-stage) instead of
+		-- cpu_cyc_s(1) (CPUE): io_ext_r/io_data_r_sv need 1 extra cycle to
+		-- register the settled address ($DF00 at CPUD → io_ext_r at CPUE).
+		if superram_enable_delay = '1' and io_in_pipeline = '1' then
+			if io_ext = '1' then
+				io_data_r <= io_data;  -- registered REU/cart data from c64.sv
+			else
+				io_data_r <= cpuDi;    -- fallback (VIC/SID/CIA, shouldn't happen for IOF)
+			end if;
 		end if;
 		io_read_deliver <= enableCpu and io_in_pipeline;
 	end if;
@@ -1936,6 +1944,17 @@ begin
 			else
 				io_in_pipeline <= '0';
 			end if;
+		end if;
+		-- FALLBACK: at CPUD, cpuAddr_pre has settled (1 cycle after BRAM
+		-- hit enableCpu at CPUB). If the CPUC check missed $DFxx due to
+		-- register propagation delay, catch it here. The 3-stage pipeline
+		-- still works because cpu_cyc_s(0) was already set at CPUC.
+		-- Fallback at CPUE: cpuAddr has had 3 cycles to settle since BRAM hit.
+		-- No cpu_cyc_s check needed — just verify address is $DFxx.
+		if sysCycle = CYCLE_CPUE and io_in_pipeline = '0'
+		   and cpuAddr(15 downto 8) = x"DF" and cpuWe_pre = '0' and addr_hi_816 = x"00" then
+			io_in_pipeline <= '1';
+			cpu_cyc_s(0) <= '1';  -- restart pipeline from CPUE
 		end if;
 		-- CRITICAL: clear io_in_pipeline when SDRAM pipeline delivers.
 		-- enableCpu is the SDRAM pipeline output (NOT bram enableCpu_816).
