@@ -327,6 +327,11 @@ signal turbo_m      : std_logic_vector(2 downto 0);
 signal superram_enable_delay : std_logic := '0';
 signal superram_in_pipeline  : std_logic := '0';  -- latched when cpu_cyc fires for SuperRAM
 signal superram_data_r       : unsigned(7 downto 0);  -- latched SDRAM data for SuperRAM reads
+-- (cpuDi_r removed: cpuDi goes directly to CPU, io_data_r handles I/O)
+-- I/O pipeline signals
+signal io_in_pipeline        : std_logic := '0';
+signal io_data_r             : unsigned(7 downto 0) := (others => '1');
+signal io_read_deliver       : std_logic := '0';
 
 -- BRAM CPU cache signals (retained for cache path, active when bram64k not used)
 signal cache_hit     : std_logic;
@@ -714,7 +719,9 @@ port map (
 
 IOE <= ioe_i;
 IOF <= iof_i;
-IOF_raw <= iof_raw_i;
+-- Simple IOF detect for REU chip select (bypasses bus logic -10ns path).
+-- Cartridge module uses IOF (separate signal), NOT IOF_raw.
+IOF_raw <= '1' when cpuAddr_pre(15 downto 8) = x"DF" and addr_hi_816 = x"00" else '0';
 cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 
 -- SuperCPU register overlay: intercept reads from $D07x and $D0Bx when SuperCPU enabled,
@@ -748,7 +755,8 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 -- avoids this problem. This only applies to reads (cpuWe_pre='0') from
 -- SuperRAM banks (superram_in_pipeline='1'). Bank $00 and ROM reads are
 -- unaffected (use BRAM, cache, or normal buslogic path).
-cpuDi <= bram_do  when (bram_hit_d1 = '1') else
+cpuDi <= io_data_r when (io_read_deliver = '1') else
+         bram_do  when (bram_hit_d1 = '1') else
          cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
          superram_data_r when (enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0') else
          -- SuperCPU $D0Bx registers: gated by scpu_regs_enabled (write $D07F to disable)
@@ -767,6 +775,19 @@ cpuDi <= bram_do  when (bram_hit_d1 = '1') else
          -- $D07E: bit7=ROM visibility (not gated by scpu_regs_enabled)
          (scpu_rom_vis & "0000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
          cpuDi_raw;
+
+-- I/O data register: captures cpuDi at cpu_cyc_s(1) when address is stable.
+-- io_read_deliver is a 1-cycle pulse at the CPU latch edge (from SDRAM
+-- pipeline's enableCpu ONLY, not from BRAM hits).
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if cpu_cyc_s(1) = '1' and io_in_pipeline = '1' then
+			io_data_r <= cpuDi;
+		end if;
+		io_read_deliver <= enableCpu and io_in_pipeline;
+	end if;
+end process;
 
 process(clk32)
 begin
@@ -1876,6 +1897,7 @@ begin
 			enableCpu <= '0';
 			superram_enable_delay <= '0';
 			superram_in_pipeline <= '0';
+			io_in_pipeline <= '0';
 		else
 			cpu_cyc_s <= cpu_cyc_s(0) & (cpu_cyc and not wb_drain_active);
 			-- Latch whether this pipeline cycle is for SuperRAM
@@ -1886,14 +1908,31 @@ begin
 					superram_in_pipeline <= '0';
 				end if;
 			end if;
-			-- 3-stage for SuperRAM, 2-stage for bank $00/ROM
-			if superram_in_pipeline = '1' then
+			-- 3-stage for SuperRAM AND I/O, 2-stage for bank $00 RAM/ROM
+			if superram_in_pipeline = '1' or io_in_pipeline = '1' then
 				superram_enable_delay <= cpu_cyc_s(1);
 				enableCpu <= superram_enable_delay;
 			else
 				superram_enable_delay <= '0';
 				enableCpu <= cpu_cyc_s(1);
 			end if;
+		end if;
+		-- IOF pipeline detection: AFTER if/else so it OVERRIDES BRAM cancel.
+		-- Only $DFxx reads (REU) use 3-stage. VIC/SID/CIA stay 2-stage.
+		if cpu_cyc = '1' and wb_drain_active = '0' then
+			if cpuAddr(15 downto 8) = x"DF" and cpuWe_pre = '0' and addr_hi_816 = x"00" then
+				io_in_pipeline <= '1';
+				cpu_cyc_s(0) <= '1';  -- force pipeline re-entry after BRAM cancel
+			else
+				io_in_pipeline <= '0';
+			end if;
+		end if;
+		-- CRITICAL: clear io_in_pipeline when SDRAM pipeline delivers.
+		-- enableCpu is the SDRAM pipeline output (NOT bram enableCpu_816).
+		-- This prevents io_in_pipeline from persisting into the next instruction.
+		-- Must be AFTER the else-branch so it can override the io_in_pipeline set.
+		if enableCpu = '1' and io_in_pipeline = '1' then
+			io_in_pipeline <= '0';
 		end if;
 		-- Latch raw SDRAM data for SuperRAM reads: capture sdram_raw (direct
 		-- from SDRAM dout, bypasses cartridge module) at enableCpu time
