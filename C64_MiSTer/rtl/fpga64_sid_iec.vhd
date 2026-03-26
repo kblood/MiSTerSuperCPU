@@ -725,7 +725,13 @@ IOF <= iof_i;
 -- Cartridge module uses IOF (separate signal), NOT IOF_raw.
 IOF_raw <= '1' when cpuAddr_pre(15 downto 8) = x"DF" and addr_hi_816 = x"00" else '0';
 at_cpuc <= '1' when sysCycle = CYCLE_CPUC else '0';
-at_cpucd <= '1' when sysCycle = CYCLE_CPUC or sysCycle = CYCLE_CPUD else '0';
+-- Suppress BRAM hits from CPUB through CPUD: prevents the BRAM hit from the
+-- previous instruction's fetch from advancing the CPU at the same rotation
+-- as cpu_cyc fires for the IOF read. 3-cycle window ensures cpuAddr_pre
+-- has settled to $DFxx before the force re-entry check at CPUC.
+-- 4-cycle BRAM suppression window: CPUA through CPUD.
+-- Prevents ALL BRAM hits from advancing the CPU near the CPUC I/O slot.
+at_cpucd <= '1' when sysCycle = CYCLE_CPUA or sysCycle = CYCLE_CPUB or sysCycle = CYCLE_CPUC or sysCycle = CYCLE_CPUD else '0';
 cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 
 -- SuperCPU register overlay: intercept reads from $D07x and $D0Bx when SuperCPU enabled,
