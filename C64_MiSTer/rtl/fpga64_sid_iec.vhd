@@ -332,6 +332,8 @@ signal superram_data_r       : unsigned(7 downto 0);  -- latched SDRAM data for 
 signal io_in_pipeline        : std_logic := '0';
 signal io_data_r             : unsigned(7 downto 0) := (others => '1');
 signal io_read_deliver       : std_logic := '0';
+signal at_cpuc               : std_logic;  -- '1' when sysCycle = CYCLE_CPUC
+signal at_cpucd              : std_logic;  -- '1' when sysCycle = CYCLE_CPUC or CYCLE_CPUD
 
 -- BRAM CPU cache signals (retained for cache path, active when bram64k not used)
 signal cache_hit     : std_logic;
@@ -722,6 +724,8 @@ IOF <= iof_i;
 -- Simple IOF detect for REU chip select (bypasses bus logic -10ns path).
 -- Cartridge module uses IOF (separate signal), NOT IOF_raw.
 IOF_raw <= '1' when cpuAddr_pre(15 downto 8) = x"DF" and addr_hi_816 = x"00" else '0';
+at_cpuc <= '1' when sysCycle = CYCLE_CPUC else '0';
+at_cpucd <= '1' when sysCycle = CYCLE_CPUC or sysCycle = CYCLE_CPUD else '0';
 cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 
 -- SuperCPU register overlay: intercept reads from $D07x and $D0Bx when SuperCPU enabled,
@@ -1103,7 +1107,13 @@ enableCpu_6510 <= (bram_hit_d1 or (cache_hit_d1 and turbo_en) or (enableCpu and 
 -- SuperCPU (P65C816): BRAM acceleration + SDRAM path.
 -- BRAM hit covers 60KB of bank $00 (all except I/O).
 -- SDRAM path handles SuperRAM (banks $01-$EF) and I/O.
-enableCpu_816  <= ((bram_hit_d1 and turbo_en) or (cache_hit_d1 and turbo_en) or (enableCpu and not dma_active))
+-- Suppress BRAM/cache hits at CPUC: at this bus cycle, cpu_cyc may fire
+-- for an I/O read. If a BRAM hit from the previous instruction also fires,
+-- the CPU races past the I/O address before the pipeline can capture data.
+-- sysCycle is registered — no timing issues (unlike cpu_cyc/cs_ram).
+enableCpu_816  <= ((bram_hit_d1 and turbo_en and not at_cpucd) or
+                   (cache_hit_d1 and turbo_en and not at_cpucd) or
+                   (enableCpu and not dma_active))
                   when supercpu_en = '1' else '0';
 
 -- -----------------------------------------------------------------------
