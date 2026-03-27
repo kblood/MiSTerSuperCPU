@@ -28,6 +28,12 @@ module reu
 	input      [15:0] cpu_addr,
 	input       [7:0] cpu_dout,
 	output reg  [7:0] cpu_din,
+	// Direct register outputs for bypass read (edge detection unreliable)
+	output      [7:0] reg_status,
+	output      [7:0] reg_cmd,
+	output     [15:0] reg_addr_c64,
+	output     [23:0] reg_addr_ram,
+	output     [15:0] reg_length,
 	input             cpu_we,
 	input             cpu_cs,
 
@@ -58,27 +64,36 @@ wire  [1:0] op_act = op_cur[3:2]; // 0: read, 1: write, 2: verify, 3: end
 reg dma_we_r;
 assign dma_we = dma_we_r & dma_cycle;
 
+// Direct register read bypass (edge detection unreliable with timing violations)
+assign reg_status   = {irq, status[6:5], 1'b1, 4'b0000};
+assign reg_cmd      = cmd;
+assign reg_addr_c64 = addr_c64;
+assign reg_addr_ram = addr_ram;
+assign reg_length   = length;
+
+// Module-level register declarations (moved from always block for port access)
+reg        old_cs_r;
+reg  [1:0] state_r;
+reg  [3:0] cnt_r;
+reg  [7:0] data_r[2];
+reg [15:0] addr_c64, addr_c64_r;
+reg [23:0] addr_ram, addr_ram_r;
+reg [15:0] length, length_r;
+reg  [7:0] cmd;
+reg  [7:0] intr;
+reg  [7:0] ctl;
+reg  [7:0] status;
+
 always @(posedge clk) begin
-	reg        old_cs;
-	reg  [1:0] state;
-	reg  [3:0] cnt;
-	reg  [7:0] data[2];
-	reg [15:0] addr_c64, addr_c64_r;
-	reg [23:0] addr_ram, addr_ram_r;
-	reg [15:0] length, length_r;
-	reg  [7:0] cmd;
-	reg  [7:0] intr;
-	reg  [7:0] ctl;
 	reg [23:0] addr_mask;
-	reg  [7:0] status;
 	reg        error;
 	
 	irq <= (|(status[6:5] & intr[6:5])) & intr[7];
 
-	error = !op_act[0] && data[0] != data[1];
+	error = !op_act[0] && data_r[0] != data_r[1];
 	addr_mask = ((cfg == 1) ? 24'h7FFFF : (cfg == 2) ? 24'h1FFFFF : 24'hFFFFFF);
 
-	old_cs <= cpu_cs;
+	old_cs_r <= cpu_cs;
 
 	if(reset || !cfg) begin
 		status     <= 0;
@@ -96,10 +111,10 @@ always @(posedge clk) begin
 		ram_we     <= 0;
 		ram_active <= 0;
 		cpu_din    <= 'hFF;
-		state      <= STATE_IDLE;
+		state_r    <= STATE_IDLE;
 	end
 	else begin
-		if(~dma_req & ~old_cs & cpu_cs) begin
+		if(~dma_req & ~old_cs_r & cpu_cs) begin
 			if(cpu_we) begin
 				case(cpu_addr[4:0])
 					 1:       cmd             <= cpu_dout;
@@ -132,7 +147,7 @@ always @(posedge clk) begin
 			end
 		end
 	
-		case(state)
+		case(state_r)
 			STATE_IDLE:
 				if(cmd[7] & (cmd[4] | ff00_wr)) begin
 					case(cmd[1:0])
@@ -143,14 +158,14 @@ always @(posedge clk) begin
 					endcase
 					dma_req    <= 1;
 					stage      <= 0;
-					state      <= STATE_EVAL;
+					state_r    <= STATE_EVAL;
 					addr_ram   <= addr_ram & addr_mask;
 					addr_ram_r <= addr_ram_r & addr_mask;
 				end
 
 			STATE_EVAL:
 				begin
-					cnt <= 0;
+					cnt_r <= 0;
 					if(op_act[1]) begin
 						if(~ctl[7]) addr_c64 <= addr_c64 + 1'd1;
 						if(~ctl[6]) addr_ram <= (cfg == 2) ? {addr_ram[20:19], addr_ram[18:0] + 1'd1} : ((addr_ram + 1'd1) & addr_mask);
@@ -166,7 +181,7 @@ always @(posedge clk) begin
 							cmd[4]    <= 1;
 							cmd[7]    <= 0;
 							dma_req   <= 0;
-							state     <= STATE_IDLE;
+							state_r <= STATE_IDLE;
 						end
 						else length  <= length - 1'd1;
 					end
@@ -174,42 +189,42 @@ always @(posedge clk) begin
 						if (~ram_cycle) begin
 							ram_addr  <= {1'b1, addr_ram};
 							ram_we    <= op_act[0];
-							ram_dout  <= data[op_dat];
+							ram_dout  <= data_r[op_dat];
 							ram_active <= 1;
-							state      <= STATE_PROC_RAM;
+							state_r <= STATE_PROC_RAM;
 						end
 					end
 					else begin
 						if(~dma_cycle) begin
 							dma_addr  <= addr_c64;
 							dma_we_r  <= op_act[0];
-							dma_dout  <= data[op_dat];
-							state     <= STATE_PROC_C64;
+							dma_dout  <= data_r[op_dat];
+							state_r <= STATE_PROC_C64;
 						end
 					end
 				end
 
 			STATE_PROC_RAM:
 				if(ram_cycle) begin
-					cnt    <= cnt + 1'd1;
-					if(&cnt[1:0]) begin
-						data[op_dat] <= ram_din;
+					cnt_r    <= cnt_r + 1'd1;
+					if(&cnt_r[1:0]) begin
+						data_r[op_dat] <= ram_din;
 						ram_we       <= 0;
 						ram_active   <= 0;
 						stage        <= stage + 1'd1;
-						state        <= STATE_EVAL;
+						state_r <= STATE_EVAL;
 					end
 				end
 
 			STATE_PROC_C64:
 				if(dma_cycle) begin
-					cnt <= cnt + 1'd1;
-					if(&cnt[3:0]) begin
+					cnt_r <= cnt_r + 1'd1;
+					if(&cnt_r[3:0]) begin
 						dma_addr     <= 0; // make sure we won't read some device's data while idling.
 						dma_we_r     <= 0;
-						data[op_dat] <= dma_din;
+						data_r[op_dat] <= dma_din;
 						stage        <= stage + 1'd1;
-						state        <= STATE_EVAL;
+						state_r <= STATE_EVAL;
 					end
 				end
 		endcase

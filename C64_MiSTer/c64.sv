@@ -650,7 +650,16 @@ reg         io_ext_r;
 reg   [7:0] io_data_r_sv;
 always @(posedge clk_sys) begin
 	io_ext_r    <= cart_oe | reu_oe | opl_en;
-	io_data_r_sv <= cart_oe ? cart_data : reu_oe ? reu_dout : opl_dout;
+	// Use reu_reg_mux (direct register bypass) instead of reu_dout.
+	// The REU's cpu_din (reu_dout) stays at $FF because the edge detection
+	// on cpu_cs (IOF_raw) is unreliable due to timing violations.
+	// The bypass mux reads registers directly via combinational outputs.
+	if (cart_oe)
+		io_data_r_sv <= cart_data;
+	else if (opl_en)
+		io_data_r_sv <= opl_dout;
+	else
+		io_data_r_sv <= reu_reg_mux;
 end
 
 reu reu
@@ -679,18 +688,57 @@ reu reu
 	.ram_we(reu_ram_we),
 	.ram_active(reu_ram_active),
 
-	.cpu_addr(c64_addr),
+	// Use dbg_cpu_addr (= cpuAddr_pre, direct CPU output) instead of c64_addr
+	// (= systemAddr, which muxes to vicAddr when cpuHasBus='0').
+	// The REU edge-detects cpu_cs at EXT0/EXT1 when cpuHasBus='0', so c64_addr
+	// would be vicAddr and the case(cpu_addr[4:0]) would match the wrong register.
+	.cpu_addr(dbg_cpu_addr),
+	// Use dbg_cpu_we (= cpuWe_pre, direct CPU output) instead of ram_we.
+	// ram_we = ramWE reflects SDRAM writes, but I/O writes ($DFxx) don't
+	// write to SDRAM, so ram_we is always '0' for REU register writes.
 	.cpu_dout(c64_data_out),
 	.cpu_din(reu_dout),
-	.cpu_we(ram_we),
+	.cpu_we(dbg_cpu_we),
 	// Use IOF_raw (without io_enable gating) for REU register access.
 	// P65C816 outputs lag enableCpu by 1 cycle: enableCpu clears io_enable
 	// at cycle N, but the CPU's I/O write address appears at cycle N+1
 	// when io_enable (and thus IOF) is already '0'. IOF_raw bypasses this.
 	.cpu_cs(IOF_raw),
 
-	.irq(reu_irq)
+	.irq(reu_irq),
+
+	// Direct register outputs for bypass read
+	.reg_status(reu_reg_status),
+	.reg_cmd(reu_reg_cmd),
+	.reg_addr_c64(reu_reg_addr_c64),
+	.reg_addr_ram(reu_reg_addr_ram),
+	.reg_length(reu_reg_length)
 );
+
+// REU register bypass read: build mux from direct register outputs.
+// The REU's internal edge detection (cpu_cs) is unreliable due to timing
+// violations on the IOF_raw path. This mux provides register data directly.
+wire [7:0] reu_reg_status;
+wire [7:0] reu_reg_cmd;
+wire [15:0] reu_reg_addr_c64;
+wire [23:0] reu_reg_addr_ram;
+wire [15:0] reu_reg_length;
+
+reg [7:0] reu_reg_mux;
+always @(*) begin
+	case (dbg_cpu_addr[4:0])
+		0:  reu_reg_mux = reu_reg_status;
+		1:  reu_reg_mux = reu_reg_cmd;
+		2:  reu_reg_mux = reu_reg_addr_c64[7:0];
+		3:  reu_reg_mux = reu_reg_addr_c64[15:8];
+		4:  reu_reg_mux = reu_reg_addr_ram[7:0];
+		5:  reu_reg_mux = reu_reg_addr_ram[15:8];
+		6:  reu_reg_mux = reu_reg_addr_ram[23:16];
+		7:  reu_reg_mux = reu_reg_length[7:0];
+		8:  reu_reg_mux = reu_reg_length[15:8];
+		default: reu_reg_mux = 8'hFF;
+	endcase
+end
 
 // rearrange joystick contacts for c64
 wire [6:0] joyA_int = joy[8] ? 7'd0 : {joyA[6:4], joyA[0], joyA[1], joyA[2], joyA[3]};
