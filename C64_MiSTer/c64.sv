@@ -214,8 +214,7 @@ localparam CONF_STR = {
 	"H0S1,D64G64T64D81,Mount #9;",
 	"O[77:76],Mount Write Protected,Off,#8,#9,#8 & #9;",
 	"-;",
-	"F1,PRGCRTTAP;",
-	"F2,REU;",
+	"F1,PRGCRTREUTAP;",
 	"hAdBR[61],Save cartridge;",
 	"hAO[62],Autosave,Off,On;",
 	"h3-;",
@@ -515,8 +514,8 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(1)) hps_io
 
 wire load_prg   = ioctl_index == 'h01;
 wire load_crt   = ioctl_index == 'h41 || ioctl_index == 5;
-wire load_reu   = ioctl_index == 'h02;
-wire load_tap   = ioctl_index == 'h81;
+wire load_reu   = ioctl_index == 'h81;
+wire load_tap   = ioctl_index == 'hC1;
 wire load_flt   = ioctl_index == 7;
 wire load_rom   = ioctl_index == 8;
 wire load_c1581 = ioctl_index == 9;
