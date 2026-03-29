@@ -214,7 +214,8 @@ localparam CONF_STR = {
 	"H0S1,D64G64T64D81,Mount #9;",
 	"O[77:76],Mount Write Protected,Off,#8,#9,#8 & #9;",
 	"-;",
-	"F1,PRGCRTREUTAP;",
+	"F1,PRGCRTTAP;",
+	"F2,REU;",
 	"hAdBR[61],Save cartridge;",
 	"hAO[62],Autosave,Off,On;",
 	"h3-;",
@@ -514,8 +515,8 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(1)) hps_io
 
 wire load_prg   = ioctl_index == 'h01;
 wire load_crt   = ioctl_index == 'h41 || ioctl_index == 5;
-wire load_reu   = ioctl_index == 'h81;
-wire load_tap   = ioctl_index == 'hC1;
+wire load_reu   = ioctl_index == 'h02;
+wire load_tap   = ioctl_index == 'h81;
 wire load_flt   = ioctl_index == 7;
 wire load_rom   = ioctl_index == 8;
 wire load_c1581 = ioctl_index == 9;
@@ -736,6 +737,29 @@ always @(*) begin
 		6:  reu_reg_mux = reu_reg_addr_ram[23:16];
 		7:  reu_reg_mux = reu_reg_length[7:0];
 		8:  reu_reg_mux = reu_reg_length[15:8];
+		// Diagnostic registers
+		9:  reu_reg_mux = reu_ioctl_cnt[7:0];   // Low byte of ioctl count
+		10: reu_reg_mux = reu_ioctl_cnt[15:8];  // Mid byte
+		11: reu_reg_mux = reu_ioctl_cnt[23:16]; // High byte
+		12: reu_reg_mux = reu_ioctl_idx;         // ioctl_index captured at download start
+		// Diagnostic: last ioctl write address
+		13: reu_reg_mux = reu_ioctl_last_addr[7:0];   // $DF0D: last addr low
+		14: reu_reg_mux = reu_ioctl_last_addr[15:8];  // $DF0E: last addr mid
+		15: reu_reg_mux = reu_ioctl_last_addr[23:16]; // $DF0F: last addr high
+		16: reu_reg_mux = {7'b0, reu_ioctl_last_addr[24]}; // $DF10: last addr bit24
+		// Diagnostic: ioctl data and addr at offset $020000
+		17: reu_reg_mux = reu_ioctl_20000_data;        // $DF11: data byte at offset $020000
+		18: reu_reg_mux = reu_ioctl_20000_addr[7:0];   // $DF12: addr low at $020000
+		19: reu_reg_mux = reu_ioctl_20000_addr[15:8];  // $DF13: addr mid
+		20: reu_reg_mux = reu_ioctl_20000_addr[23:16]; // $DF14: addr high
+		21: reu_reg_mux = {7'b0, reu_ioctl_20000_addr[24]}; // $DF15: addr bit24
+		22: reu_reg_mux = reu_ioctl_last_data;              // $DF16: last ioctl data byte
+		23: reu_reg_mux = reu_ioctl_byte0_data;             // $DF17: first byte data
+		24: reu_reg_mux = reu_ioctl_byte1_data;             // $DF18: second byte data
+		25: reu_reg_mux = reu_ioctl_byte2_data;             // $DF19: third byte data
+		26: reu_reg_mux = reu_ioctl_byte3_data;             // $DF1A: fourth byte data
+		27: reu_reg_mux = reu_ioctl_byte0_iaddr[7:0];       // $DF1B: ioctl_addr[7:0] at byte 0
+		28: reu_reg_mux = reu_ioctl_byte0_iaddr[15:8];      // $DF1C: ioctl_addr[15:8] at byte 0
 		default: reu_reg_mux = 8'hFF;
 	endcase
 end
@@ -910,6 +934,7 @@ always @(posedge clk_sys) begin
 		if (load_reu) begin
 			if (ioctl_addr == 0) ioctl_load_addr <= REU_ADDR;
 			ioctl_req_wr <= 1;
+			reu_ioctl_cnt <= reu_ioctl_cnt + 1'd1;
 		end
 	end
 	
@@ -1122,6 +1147,50 @@ wire [17:0] audio_l,audio_r;
 wire  [7:0] r,g,b;
 
 wire        ntsc = status[2];
+
+// REU ioctl diagnostic counter
+reg [23:0] reu_ioctl_cnt = 0;
+// Also capture ioctl_index when download starts
+reg [7:0] reu_ioctl_idx = 0;
+always @(posedge clk_sys) if (ioctl_download && ioctl_wr && ioctl_addr == 0) reu_ioctl_idx <= ioctl_index;
+// Capture last ioctl write address and data (for verifying SDRAM write path)
+reg [24:0] reu_ioctl_last_addr = 0;
+reg  [7:0] reu_ioctl_last_data = 0;
+reg        reu_ioctl_last_we = 0;
+// Capture addr at the specific offset $020000 (byte 131072)
+reg  [7:0] reu_ioctl_20000_data = 0;
+reg [24:0] reu_ioctl_20000_addr = 0;
+// Capture first 4 bytes and ioctl_addr at byte 0
+reg  [7:0] reu_ioctl_byte0_data = 0;
+reg  [7:0] reu_ioctl_byte1_data = 0;
+reg  [7:0] reu_ioctl_byte2_data = 0;
+reg  [7:0] reu_ioctl_byte3_data = 0;
+reg [24:0] reu_ioctl_byte0_iaddr = 0; // ioctl_addr at first byte
+always @(posedge clk_sys) begin
+    // Capture the ioctl_load_addr at each REU ioctl write
+    if (ioctl_download && ioctl_wr && load_reu) begin
+        reu_ioctl_last_addr <= ioctl_load_addr;
+        reu_ioctl_last_data <= ioctl_data;
+        reu_ioctl_last_we <= 1;
+    end
+    // Capture first 4 bytes
+    if (ioctl_download && ioctl_wr && load_reu && reu_ioctl_cnt == 24'h000000) begin
+        reu_ioctl_byte0_data <= ioctl_data;          // io_din[7:0]
+        reu_ioctl_byte0_iaddr <= ioctl_addr;
+    end
+    if (ioctl_download && ioctl_wr && load_reu && reu_ioctl_cnt == 24'h000001)
+        reu_ioctl_byte1_data <= HPS_BUS[31:24];      // io_din[15:8] at byte 1
+    if (ioctl_download && ioctl_wr && load_reu && reu_ioctl_cnt == 24'h000002)
+        reu_ioctl_byte2_data <= ioctl_data;           // io_din[7:0] at byte 2
+    if (ioctl_download && ioctl_wr && load_reu && reu_ioctl_cnt == 24'h000003)
+        reu_ioctl_byte3_data <= HPS_BUS[31:24];      // io_din[15:8] at byte 3
+    // Capture at offset $020000 (count 131072 = when reu_ioctl_cnt reaches $020000)
+    if (ioctl_download && ioctl_wr && load_reu && reu_ioctl_cnt == 24'h020000) begin
+        reu_ioctl_20000_data <= ioctl_data;
+        reu_ioctl_20000_addr <= ioctl_load_addr;
+    end
+end
+
 // SuperCPU always enabled.
 wire        supercpu_enable = 1'b1;
 wire        scpu_rom_opt    = 1'b1;
@@ -1135,18 +1204,26 @@ wire        cpu_has_bus;                    // '1' when CPU owns bus (not VIC)
 // SuperRAM lives in the REU SDRAM region (REU_ADDR = 0x1000000, bit[24]=1).
 // This allows REU images (.reu) loaded via OSD to be directly accessible through
 // 65816 24-bit addressing (e.g., LDA $024000 reads REU offset $024000).
-// The mapping: SDRAM addr = REU_ADDR + {bank, addr16} — direct 1:1 with .reu file.
+// The mapping: SDRAM addr = {1, bank, addr16} — direct 1:1 with .reu file.
 // Bank $02 addr $0000 = REU offset $020000 (matching doom.reu data layout).
 // The first 128KB (banks $00-$01) of the .reu file are the SRAM shadow (usually empty).
 // Note: scpu_rom_en in fpga64_buslogic handles banks $F0-$FF reads from ROM BRAM;
 // writes to ROM-bank addresses go to SDRAM shadow (harmless, never read back).
-wire [24:0] scpu_superram_addr = REU_ADDR + {1'b0, supercpu_bank, c64_addr};
+//
+// TIMING FIX: Use dbg_cpu_addr (= cpuAddr_pre, direct CPU output) instead of
+// c64_addr (= systemAddr, muxed between cpuAddr/vicAddr every cycle boundary).
+// c64_addr has a long combinational path through the bus mux that violates the
+// clk32→clk64 timing constraint (-24ns slack). dbg_cpu_addr comes directly from
+// CPU registers (only changes at enableCpu), so the path is just tCQ + wiring.
+// Same pattern used for REU cpu_addr (see line ~691).
+// Concatenation replaces addition: REU_ADDR + {0, bank, addr} = {1, bank, addr}
+// since REU_ADDR = 25'h1000000 (bit[24]=1) and the operand has bit[24]=0.
+wire [24:0] scpu_superram_addr = {1'b1, supercpu_bank, dbg_cpu_addr};
 // Route non-bank-$00 CPU accesses to SuperRAM SDRAM region.
 // Gate on cpu_has_bus to prevent VIC reads (VIC0) from going to SuperRAM
 // when supercpu_bank retains a non-$00 value from the last CPU instruction.
-// COMBINATIONAL: must NOT be registered — the bank byte transitions from
-// $00 to $02 on the same cycle that cpu_cyc fires. A registered version
-// would be 1 cycle behind, causing the mux to select cart_addr (bank $00).
+// cpu_has_bus is registered (from cpuHasBus in fpga64_sid_iec), supercpu_bank
+// comes directly from CPU core registers — both are fast paths to clk64.
 wire [24:0] scpu_sdram_addr = (supercpu_enable && cpu_has_bus && (supercpu_bank != 8'h00))
                                ? scpu_superram_addr
                                : cart_addr;
