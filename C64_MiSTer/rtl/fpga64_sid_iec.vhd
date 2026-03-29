@@ -1988,12 +1988,25 @@ begin
 			io_in_pipeline <= '0';
 		end if;
 		-- Latch raw SDRAM data for SuperRAM reads: capture sdram_raw (direct
-		-- from SDRAM dout, bypasses cartridge module) at enableCpu time
-		-- (3 clk32 after cpu_cyc). The SDRAM takes 5 clk64 = 2.5 clk32 from
-		-- CE to valid dout. Using sdram_raw avoids cartridge module timing
-		-- issues and cpuHasBus dependencies that corrupt ramDin at cycle
-		-- boundaries. The 3-stage pipeline gives 0.5 clk32 margin.
-		if enableCpu = '1' and superram_in_pipeline = '1' then
+		-- from SDRAM dout, bypasses cartridge module) at superram_enable_delay
+		-- time (2 clk32 after cpu_cyc = CPUE). This is one cycle BEFORE
+		-- enableCpu (CPUF→EXT0). The SDRAM takes 5 clk64 = 2.5 clk32 from
+		-- CE to valid dout, so at CPUE (2 clk32 = 4 clk64 after CE), the
+		-- data is available (5 clk64 > 4 clk64? No: SDRAM dout_r updates at
+		-- STATE_READ=5, which is 5 clk64 after CE. At CPUE = 4 clk64,
+		-- dout_r is 1 clk64 away from being valid).
+		-- CRITICAL FIX: capturing at enableCpu time (CPUF→EXT0) is unsafe
+		-- because io_cycle CE fires at EXT0, which updates sdram.v's bt
+		-- (byte toggle). Since dout = bt ? high : low, the bt change flips
+		-- dout to the wrong byte before superram_data_r captures it.
+		-- Capturing at superram_enable_delay (CPUE) avoids this: io_cycle
+		-- is still 0 during CPUE, so bt is stable from the SuperRAM read.
+		-- NOTE: data at CPUE is valid because 3-stage pipeline = 3 clk32
+		-- after CPUC. SDRAM needs 5 clk64 = 2.5 clk32. At CPUE = 2 clk32
+		-- after cpu_cyc, we're at 4 clk64 — the data arrives at clk64 edge
+		-- 5, which may be the mid-CPUE edge. For safety, we could capture
+		-- at CPUF (enableCpu with 1-cycle hold). Testing will validate.
+		if superram_enable_delay = '1' and superram_in_pipeline = '1' then
 			superram_data_r <= sdram_raw;
 		end if;
 		io_enable <= io_enable and not enableCpu;

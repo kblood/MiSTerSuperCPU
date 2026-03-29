@@ -737,29 +737,31 @@ always @(*) begin
 		6:  reu_reg_mux = reu_reg_addr_ram[23:16];
 		7:  reu_reg_mux = reu_reg_length[7:0];
 		8:  reu_reg_mux = reu_reg_length[15:8];
-		// Diagnostic registers
-		9:  reu_reg_mux = reu_ioctl_cnt[7:0];   // Low byte of ioctl count
-		10: reu_reg_mux = reu_ioctl_cnt[15:8];  // Mid byte
-		11: reu_reg_mux = reu_ioctl_cnt[23:16]; // High byte
-		12: reu_reg_mux = reu_ioctl_idx;         // ioctl_index captured at download start
+		// Diagnostic: ioctl transfer stats
+		9:  reu_reg_mux = reu_ioctl_cnt[7:0];   // $DF09: ioctl byte count low
+		10: reu_reg_mux = reu_ioctl_cnt[15:8];  // $DF0A: ioctl byte count mid
+		11: reu_reg_mux = reu_ioctl_cnt[23:16]; // $DF0B: ioctl byte count high
+		12: reu_reg_mux = reu_ioctl_idx;         // $DF0C: ioctl_index at start
 		// Diagnostic: last ioctl write address
-		13: reu_reg_mux = reu_ioctl_last_addr[7:0];   // $DF0D: last addr low
-		14: reu_reg_mux = reu_ioctl_last_addr[15:8];  // $DF0E: last addr mid
-		15: reu_reg_mux = reu_ioctl_last_addr[23:16]; // $DF0F: last addr high
-		16: reu_reg_mux = {7'b0, reu_ioctl_last_addr[24]}; // $DF10: last addr bit24
-		// Diagnostic: ioctl data and addr at offset $020000
-		17: reu_reg_mux = reu_ioctl_20000_data;        // $DF11: data byte at offset $020000
-		18: reu_reg_mux = reu_ioctl_20000_addr[7:0];   // $DF12: addr low at $020000
-		19: reu_reg_mux = reu_ioctl_20000_addr[15:8];  // $DF13: addr mid
-		20: reu_reg_mux = reu_ioctl_20000_addr[23:16]; // $DF14: addr high
-		21: reu_reg_mux = {7'b0, reu_ioctl_20000_addr[24]}; // $DF15: addr bit24
-		22: reu_reg_mux = reu_ioctl_last_data;              // $DF16: last ioctl data byte
-		23: reu_reg_mux = reu_ioctl_byte0_data;             // $DF17: first byte data
-		24: reu_reg_mux = reu_ioctl_byte1_data;             // $DF18: second byte data
-		25: reu_reg_mux = reu_ioctl_byte2_data;             // $DF19: third byte data
-		26: reu_reg_mux = reu_ioctl_byte3_data;             // $DF1A: fourth byte data
-		27: reu_reg_mux = reu_ioctl_byte0_iaddr[7:0];       // $DF1B: ioctl_addr[7:0] at byte 0
-		28: reu_reg_mux = reu_ioctl_byte0_iaddr[15:8];      // $DF1C: ioctl_addr[15:8] at byte 0
+		13: reu_reg_mux = reu_ioctl_last_addr[7:0];   // $DF0D: last ioctl addr low
+		14: reu_reg_mux = reu_ioctl_last_addr[15:8];  // $DF0E: last ioctl addr mid
+		15: reu_reg_mux = reu_ioctl_last_addr[23:16]; // $DF0F: last ioctl addr high
+		16: reu_reg_mux = {7'b0, reu_ioctl_last_addr[24]}; // $DF10: last ioctl addr bit24
+		17: reu_reg_mux = reu_ioctl_last_data;         // $DF11: last ioctl data byte
+		18: reu_reg_mux = reu_ioctl_byte0_data;        // $DF12: first byte data
+		// Diagnostic: SDRAM write presentation (io_cycle→SDRAM)
+		19: reu_reg_mux = dbg_iowr_count[7:0];        // $DF13: SDRAM write count low
+		20: reu_reg_mux = dbg_iowr_count[15:8];       // $DF14: SDRAM write count mid
+		21: reu_reg_mux = dbg_iowr_count[23:16];      // $DF15: SDRAM write count high
+		22: reu_reg_mux = dbg_iowr_first_addr[7:0];   // $DF16: first SDRAM write addr low
+		23: reu_reg_mux = dbg_iowr_first_addr[15:8];  // $DF17: first SDRAM write addr mid
+		24: reu_reg_mux = dbg_iowr_first_addr[23:16]; // $DF18: first SDRAM write addr high
+		25: reu_reg_mux = {7'b0, dbg_iowr_first_addr[24]}; // $DF19: first write addr bit24
+		26: reu_reg_mux = dbg_iowr_first_data;        // $DF1A: first SDRAM write data
+		// Diagnostic: SDRAM readback after REU upload
+		27: reu_reg_mux = reu_rb_data;                 // $DF1B: readback byte 0 from REU_ADDR
+		28: reu_reg_mux = {5'b0, reu_rb_done, reu_rb_active, reu_rb_pending}; // $DF1C: status
+		29: reu_reg_mux = {7'b0, dbg_wr_pending};  // $DF1D: write test pending (reads as 0/1)
 		default: reu_reg_mux = 8'hFF;
 	endcase
 end
@@ -836,6 +838,37 @@ always @(posedge clk_sys) begin
 	old_download <= ioctl_download;
 	io_cycleD <= io_cycle;
 	cart_hdr_wr <= 0;
+
+	// REU readback: trigger when REU download ends
+	if (old_download && !ioctl_download && load_reu) begin
+		reu_rb_pending <= 1;
+		reu_rb_done <= 0;
+		reu_rb_data <= 8'hEE;
+	end
+
+	// POKE-triggered SDRAM write test: detect writes to $DF1D/$DF1E
+	// IOF_raw = IOF without io_enable gating, dbg_cpu_we = cpuWe_pre
+	// Write to bank $02 addr $0000/$0001 in SDRAM (= REU offset $020000/$020001)
+	// so LDA long $020000/$020001 can verify via SuperRAM CPU path.
+	if (IOF_raw && dbg_cpu_we && dbg_cpu_addr[7:0] == 8'h1D) begin
+		// POKE $DF1D,val → write val to SDRAM bank $02:$0000
+		dbg_wr_pending <= 1;
+		dbg_wr_addr <= REU_ADDR + 25'h20000;  // 25'h1020000
+		dbg_wr_data <= c64_data_out;
+	end
+	if (IOF_raw && dbg_cpu_we && dbg_cpu_addr[7:0] == 8'h1E) begin
+		// POKE $DF1E,val → write val to SDRAM bank $02:$0001
+		dbg_wr_pending <= 1;
+		dbg_wr_addr <= REU_ADDR + 25'h20001;  // 25'h1020001
+		dbg_wr_data <= c64_data_out;
+	end
+	// REU readback: capture SDRAM data (3 io_cycle phases after read)
+	reu_rb_cyc <= {reu_rb_cyc[1:0], io_cycle & reu_rb_active};
+	if (reu_rb_cyc[2] && !reu_rb_done) begin
+		reu_rb_data <= sdram_data;
+		reu_rb_done <= 1;
+		reu_rb_active <= 0;
+	end
 	
 	if (~io_cycle & io_cycleD) begin
 		io_cycle_ce <= 1;
@@ -854,6 +887,26 @@ always @(posedge clk_sys) begin
 		if(ioctl_req_rd) begin
 			io_cycle_addr <= ioctl_load_addr;
 			ioctl_rd_en <= 1;
+		end
+
+		// POKE-triggered SDRAM write test: write to REU SDRAM via io_cycle
+		if (dbg_wr_pending && !ioctl_req_wr && !ioctl_req_rd && !reu_rb_pending) begin
+			io_cycle_addr <= dbg_wr_addr;
+			io_cycle_data <= dbg_wr_data;
+			io_cycle_we <= 1;           // WRITE
+			dbg_wr_pending <= 0;
+			// Auto-trigger readback after write completes
+			reu_rb_pending <= 1;
+			reu_rb_done <= 0;
+			reu_rb_data <= 8'hEE;
+		end
+
+		// SDRAM readback: schedule a read from bank $02:$0000 after write or REU download
+		if (reu_rb_pending && !ioctl_req_wr && !ioctl_req_rd && !dbg_wr_pending) begin
+			io_cycle_addr <= REU_ADDR + 25'h20000;  // bank $02:$0000
+			io_cycle_we <= 0;           // read, not write
+			reu_rb_pending <= 0;
+			reu_rb_active <= 1;
 		end
 	end
 	
@@ -1156,40 +1209,55 @@ always @(posedge clk_sys) if (ioctl_download && ioctl_wr && ioctl_addr == 0) reu
 // Capture last ioctl write address and data (for verifying SDRAM write path)
 reg [24:0] reu_ioctl_last_addr = 0;
 reg  [7:0] reu_ioctl_last_data = 0;
-reg        reu_ioctl_last_we = 0;
-// Capture addr at the specific offset $020000 (byte 131072)
-reg  [7:0] reu_ioctl_20000_data = 0;
-reg [24:0] reu_ioctl_20000_addr = 0;
-// Capture first 4 bytes and ioctl_addr at byte 0
+// Capture first byte data
 reg  [7:0] reu_ioctl_byte0_data = 0;
-reg  [7:0] reu_ioctl_byte1_data = 0;
-reg  [7:0] reu_ioctl_byte2_data = 0;
-reg  [7:0] reu_ioctl_byte3_data = 0;
-reg [24:0] reu_ioctl_byte0_iaddr = 0; // ioctl_addr at first byte
 always @(posedge clk_sys) begin
-    // Capture the ioctl_load_addr at each REU ioctl write
     if (ioctl_download && ioctl_wr && load_reu) begin
         reu_ioctl_last_addr <= ioctl_load_addr;
         reu_ioctl_last_data <= ioctl_data;
-        reu_ioctl_last_we <= 1;
     end
-    // Capture first 4 bytes
-    if (ioctl_download && ioctl_wr && load_reu && reu_ioctl_cnt == 24'h000000) begin
-        reu_ioctl_byte0_data <= ioctl_data;          // io_din[7:0]
-        reu_ioctl_byte0_iaddr <= ioctl_addr;
-    end
-    if (ioctl_download && ioctl_wr && load_reu && reu_ioctl_cnt == 24'h000001)
-        reu_ioctl_byte1_data <= HPS_BUS[31:24];      // io_din[15:8] at byte 1
-    if (ioctl_download && ioctl_wr && load_reu && reu_ioctl_cnt == 24'h000002)
-        reu_ioctl_byte2_data <= ioctl_data;           // io_din[7:0] at byte 2
-    if (ioctl_download && ioctl_wr && load_reu && reu_ioctl_cnt == 24'h000003)
-        reu_ioctl_byte3_data <= HPS_BUS[31:24];      // io_din[15:8] at byte 3
-    // Capture at offset $020000 (count 131072 = when reu_ioctl_cnt reaches $020000)
-    if (ioctl_download && ioctl_wr && load_reu && reu_ioctl_cnt == 24'h020000) begin
-        reu_ioctl_20000_data <= ioctl_data;
-        reu_ioctl_20000_addr <= ioctl_load_addr;
+    if (ioctl_download && ioctl_wr && load_reu && reu_ioctl_cnt == 24'h000000)
+        reu_ioctl_byte0_data <= ioctl_data;
+end
+
+// ---- SDRAM write presentation counter ----
+// Counts every time the SDRAM mux presents an io_cycle WRITE (addr[24]=1 = REU space).
+// If this matches reu_ioctl_cnt, the io_cycle→SDRAM write pipeline is working.
+reg [23:0] dbg_iowr_count = 0;       // total io_cycle writes presented to SDRAM
+reg [24:0] dbg_iowr_first_addr = 0;  // address of first write
+reg  [7:0] dbg_iowr_first_data = 0;  // data of first write
+reg        dbg_iowr_captured = 0;
+always @(posedge clk_sys) begin
+    if (io_cycle && io_cycle_ce && io_cycle_we && !cart_mem_req) begin
+        dbg_iowr_count <= dbg_iowr_count + 1'd1;
+        if (!dbg_iowr_captured) begin
+            dbg_iowr_first_addr <= io_cycle_addr;
+            dbg_iowr_first_data <= io_cycle_data;
+            dbg_iowr_captured <= 1;
+        end
     end
 end
+
+// ---- SDRAM readback after REU ioctl ----
+// After REU download completes, schedule one io_cycle READ from REU_ADDR
+// and capture sdram_data. This verifies writes independently of CPU path.
+// NOTE: reu_rb_pending and reu_rb_active are driven from the main io_cycle
+// always block (line ~824) to avoid multiple-driver errors. Only the capture
+// logic (reu_rb_cyc, reu_rb_data, reu_rb_done) lives here.
+reg        reu_rb_pending = 0;    // readback pending (set here, cleared in io_cycle block)
+reg        reu_rb_active = 0;     // readback in progress (set in io_cycle block)
+reg  [2:0] reu_rb_cyc = 0;       // shift register: wait 3 io_cycle phases for data
+reg  [7:0] reu_rb_data = 8'hEE;  // captured SDRAM data (sentinel $EE = not yet read)
+reg        reu_rb_done = 0;       // readback complete
+
+// ---- POKE-triggered SDRAM write test ----
+// POKE $DF1D,value → write value to REU_ADDR via io_cycle (tests write path)
+// POKE $DF1E,value → write value to REU_ADDR+1 via io_cycle
+// After write, auto-triggers readback from REU_ADDR → reu_rb_data
+// Then LDA long $010000 (bank $01, addr $0000) should read the written value.
+reg        dbg_wr_pending = 0;    // write test pending
+reg [24:0] dbg_wr_addr = 0;      // address to write
+reg  [7:0] dbg_wr_data = 0;      // data to write
 
 // SuperCPU always enabled.
 wire        supercpu_enable = 1'b1;
