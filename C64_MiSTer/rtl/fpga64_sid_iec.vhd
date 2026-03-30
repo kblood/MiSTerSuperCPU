@@ -336,6 +336,7 @@ signal iof_detect            : std_logic;  -- combinational IOF detect from cpuA
 signal iof_detect_d1         : std_logic := '0';  -- registered IOF detect (1-cycle delayed)
 signal at_cpuc               : std_logic;
 signal at_cpucd              : std_logic;
+signal phantom_enable        : std_logic := '0'; -- fast path for VDA=0,VPA=0 cycles
 
 -- BRAM CPU cache signals (retained for cache path, active when bram64k not used)
 signal cache_hit     : std_logic;
@@ -1148,6 +1149,7 @@ enableCpu_6510 <= (bram_hit_d1 or (cache_hit_d1 and turbo_en) or (enableCpu and 
 -- sysCycle is registered — no timing issues (unlike cpu_cyc/cs_ram).
 enableCpu_816  <= ((bram_hit_d1 and turbo_en and not at_cpucd) or
                    (cache_hit_d1 and turbo_en and not at_cpucd) or
+                   (phantom_enable and turbo_en and not at_cpucd) or
                    (enableCpu and not dma_active))
                   when supercpu_en = '1' else '0';
 
@@ -1526,6 +1528,40 @@ begin
 			end if;
 		else
 			bram_hit_d1 <= '0';
+		end if;
+	end if;
+end process;
+
+-- -----------------------------------------------------------------------
+-- Phantom cycle fast path (VDA=0, VPA=0)
+-- 65C816 internal operations (register updates, address calculations) output
+-- VDA=0, VPA=0 on the bus. These cycles don't access memory and just need a
+-- clock enable to advance. Without this bypass, phantom cycles with non-$00
+-- bank bytes (e.g., MVN destination bank) wait for the full SDRAM pipeline
+-- (~32+ clk32 cycles at CPUC). The bypass generates an immediate enable,
+-- eliminating 2 wasted SDRAM round-trips per MVN/MVP iteration.
+-- Guards: no SDRAM pipeline in flight, no pending enable, turbo mode active.
+-- -----------------------------------------------------------------------
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if phantom_enable = '1' then
+			-- 1-cycle suppress (like BRAM/cache hit suppress)
+			phantom_enable <= '0';
+		elsif supercpu_en = '1'
+		   and bram_valid_cycle = '0'   -- VDA=0 AND VPA=0
+		   and turbo_en = '1'
+		   and cpu_cyc = '0'
+		   and cpu_cyc_s(0) = '0'
+		   and cpu_cyc_s(1) = '0'
+		   and superram_enable_delay = '0'
+		   and enableCpu = '0'
+		   and dma_active = '0'
+		   and baLoc = '1'
+		then
+			phantom_enable <= '1';
+		else
+			phantom_enable <= '0';
 		end if;
 	end if;
 end process;
@@ -1936,8 +1972,8 @@ begin
 		-- stale (wrong address). Cancel the pipeline to prevent delivering
 		-- stale data via enableCpu. This allows cache/BRAM to fire freely
 		-- without being blocked by the SDRAM pipeline guards.
-		if (cache_hit_d1 = '1' or bram_hit_d1 = '1') and turbo_en = '1' then
-			-- Cache/BRAM hit advanced the CPU: cancel pending SDRAM pipeline
+		if (cache_hit_d1 = '1' or bram_hit_d1 = '1' or phantom_enable = '1') and turbo_en = '1' then
+			-- Cache/BRAM/phantom hit advanced the CPU: cancel pending SDRAM pipeline
 			cpu_cyc_s <= "00";
 			enableCpu <= '0';
 			superram_enable_delay <= '0';
