@@ -78,8 +78,9 @@ Screenshots are saved by MiSTer to `/media/fat/screenshots/{corename}/`.
 
 ### osd_screen
 
-Opens the OSD, takes a screenshot (capturing the OSD overlay), then closes
-the OSD. This is the method for remotely screenshotting what the OSD looks like.
+Opens the OSD and takes a screenshot capturing the OSD overlay via an HDMI
+capture device (OBS window capture). Falls back to MiSTer's built-in screenshot
+if OBS is not available (but the built-in method cannot capture the OSD overlay).
 
 ```bash
 # Save to default (mister_osd_screen.png)
@@ -89,21 +90,52 @@ python tools/mister_debug.py osd_screen
 python tools/mister_debug.py osd_screen captures/osd_check.png
 ```
 
-**How it works:** MiSTer's `screenshot` command captures the FPGA video output
-including any active OSD overlay. The tool:
-1. Sends F12 via `mbc raw_seq "M"` to open the OSD
-2. Waits for OSD to render (~500ms)
-3. Triggers `echo "screenshot" > /dev/MiSTer_cmd`
-4. Sends F12 again to close the OSD
-5. Retrieves the PNG
+**How it works:**
 
-You can also do this manually with separate commands:
+MiSTer's built-in `screenshot` and `screenshot scaled` commands capture the FPGA
+video output **before** the OSD overlay is composited in the video pipeline. The
+OSD is mixed in hardware at the final HDMI output stage, so no MiSTer-side
+screenshot method can capture it. The tool uses these methods in order:
+
+1. **OBS Window Capture (preferred):** If OBS Studio is running on the local
+   Windows machine with an HDMI capture source (e.g., Genki Shadowcast), the
+   tool captures the OBS preview window using PIL `ImageGrab`. This captures
+   exactly what the HDMI output shows, including the OSD overlay.
+2. **MiSTer built-in screenshot (fallback):** Uses `echo "screenshot" > /dev/MiSTer_cmd`
+   which captures the core video only (no OSD).
+
+The workflow:
+1. Sends F12 via `mtype.py` (uinput virtual keyboard) to open the OSD
+2. Waits for OSD to render (~1s)
+3. Captures the OBS window (or MiSTer screenshot as fallback)
+4. Optionally sends F12 again to close the OSD
+5. Saves the PNG locally
+
+**Important:** `mbc raw_seq` does NOT work for sending F12 to open the OSD.
+MiSTer's main binary filters out mbc's virtual input device. Only `mtype.py`
+works because it creates a uinput device with USB-like identifiers that MiSTer
+accepts. See the keys command below for details.
+
+You can also do this manually:
 ```bash
-python tools/mister_debug.py keys "M"    # Open OSD
+# Open OSD (mtype.py — the ONLY working remote keyboard method)
+python tools/mister_debug.py keys "M"    # or: ssh ... "python3 /tmp/mtype.py f12"
 sleep 1
-python tools/mister_debug.py screen      # Capture (includes OSD)
-python tools/mister_debug.py keys "M"    # Close OSD
+# Capture via OBS window (Python on local machine)
+python -c "from PIL import ImageGrab; ImageGrab.grab(all_screens=True).save('full.png')"
+# Close OSD
+python tools/mister_debug.py keys "M"
 ```
+
+### MiSTer Screenshot Methods Compared
+
+| Method | Captures OSD? | What it captures |
+|--------|--------------|------------------|
+| `echo "screenshot" > /dev/MiSTer_cmd` | **No** | Core video at native resolution |
+| `echo "screenshot scaled" > /dev/MiSTer_cmd` | **No** | Core video scaled by ASCAL |
+| `fbgrab /tmp/fb.png` | **No** | Linux framebuffer (login console) |
+| OBS + HDMI capture device | **Yes** | Full HDMI output including OSD |
+| Physical camera / HDMI capture card | **Yes** | Full display output |
 
 ### uart
 
@@ -136,17 +168,21 @@ Fields:
 
 ### keys
 
-Sends keyboard sequences via `mbc raw_seq`.
+Sends keyboard input to MiSTer via `mtype.py` (uinput virtual keyboard).
+Accepts both mbc-style shorthand and mtype.py native key names.
 
 ```bash
-# Open OSD (F12)
+# Open OSD (F12) — shorthand
 python tools/mister_debug.py keys "M"
 
-# Navigate OSD: F12, down 5x, enter
+# Navigate OSD: F12, down 5x, enter — shorthand
 python tools/mister_debug.py keys "MDDDDDO"
+
+# Using mtype.py native key names
+python tools/mister_debug.py keys f12 down down down enter
 ```
 
-Key codes for `mbc raw_seq`:
+Key codes (mbc-style shorthand):
 | Code | Key |
 |------|-----|
 | M | F12 (OSD toggle) |
@@ -157,8 +193,13 @@ Key codes for `mbc raw_seq`:
 | O | Enter |
 | E | Escape |
 
-Note: `mbc` (MiSTer Batch Control) must be installed on MiSTer. Get it from
-[pocomane/MiSTer_Batch_Control](https://github.com/pocomane/MiSTer_Batch_Control).
+**Why mtype.py, not mbc:** `mbc raw_seq` creates a virtual input device that
+MiSTer's main binary **filters out** — keypresses are silently ignored.
+`mtype.py` works because it creates a uinput device with realistic USB
+identifiers (`Phys=usb-ffb40000.usb-1.9/input0`, vendor=0x04d9, product=0x0006)
+that MiSTer recognizes as a real keyboard. Each mtype.py call takes ~7 seconds
+(6s device settle time + 1s for keypress). The tool falls back to mbc if
+mtype.py fails.
 
 ### status
 
@@ -354,24 +395,45 @@ Commands accepted by the MiSTer main binary via the command pipe
 | `fb_cmd <args>` | Framebuffer video command |
 
 **Note:** There is NO `open_osd` command. To open/close the OSD remotely,
-send an F12 keypress via `mbc raw_seq "M"` or the mrext keyboard API.
+send an F12 keypress via `mtype.py` (uinput). **`mbc raw_seq` does NOT work**
+for this — MiSTer filters out mbc's virtual input device.
 
 ### Remote OSD + Screenshot Workflow
 
-The key insight: MiSTer's `screenshot` command captures the **FPGA video output
-including the OSD overlay** if it is visible. This means you can:
+**Critical:** MiSTer's `screenshot` command captures the FPGA video output
+**before** the OSD overlay is composited. Neither `screenshot` nor
+`screenshot scaled` will include the OSD. To capture the OSD, you need an
+external HDMI capture method (OBS + capture device).
 
+**Method 1: OBS Window Capture (recommended)**
+```bash
+# Open OSD via mtype.py (the only working remote keyboard method)
+ssh root@192.168.50.130 "python3 /tmp/mtype.py f12"
+
+# Capture OBS window from local Windows machine (requires PIL)
+python -c "
+from PIL import ImageGrab
+img = ImageGrab.grab(all_screens=True)
+# Crop to OBS window coordinates (adjust for your setup)
+img.save('osd_screenshot.png')
+"
+
+# Close OSD
+ssh root@192.168.50.130 "python3 /tmp/mtype.py f12"
+```
+
+**Method 2: MiSTer screenshot (no OSD, core video only)**
 ```bash
 # Open OSD
-ssh root@192.168.50.130 'mbc raw_seq "M"'
-sleep 1
+ssh root@192.168.50.130 "python3 /tmp/mtype.py f12"
+sleep 8
 
-# Take screenshot (captures OSD overlay)
+# Take screenshot (will NOT include OSD overlay)
 ssh root@192.168.50.130 'echo "screenshot" > /dev/MiSTer_cmd'
 sleep 1
 
 # Close OSD
-ssh root@192.168.50.130 'mbc raw_seq "M"'
+ssh root@192.168.50.130 "python3 /tmp/mtype.py f12"
 
 # Retrieve screenshot
 scp root@192.168.50.130:/media/fat/screenshots/C64/*.png .

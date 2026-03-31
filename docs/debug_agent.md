@@ -106,55 +106,78 @@ Config file: `/media/fat/config/C64.cfg` (16 bytes)
 ## Remote OSD Control & Screenshots
 
 ### Opening/Closing OSD Remotely
-There is NO `/dev/MiSTer_cmd` command for OSD. Use F12 keypress instead:
+There is NO `/dev/MiSTer_cmd` command for OSD. Use F12 keypress via `mtype.py`:
 ```bash
-# Via mbc (preferred — must be installed on MiSTer)
-ssh root@192.168.50.130 'mbc raw_seq "M"'
+# Via mtype.py (ONLY working method — mbc raw_seq does NOT work)
+ssh root@192.168.50.130 "python3 /tmp/mtype.py f12"
+# Upload mtype.py first: scp tools/mtype.py root@192.168.50.130:/tmp/mtype.py
+
+# Via mister_debug.py:
+python tools/mister_debug.py keys "M"
 
 # Via mrext API (if installed)
 curl -X POST http://192.168.50.130:8182/api/controls/keyboard/f12
 ```
 
+**Why not mbc?** `mbc raw_seq "M"` creates a virtual input device that MiSTer's
+main binary **filters out**. `mtype.py` works because it spoofs USB identifiers
+(`Phys=usb-ffb40000.usb-1.9/input0`, vendor=0x04d9). Each call takes ~7s.
+
 ### Screenshot with OSD Visible
-MiSTer's screenshot captures FPGA video output INCLUDING the OSD overlay:
+MiSTer's built-in `screenshot` and `screenshot scaled` commands capture the FPGA
+video output **before** the OSD overlay is composited in hardware. They will
+**never** include the OSD. To capture the OSD, use an HDMI capture device:
+
 ```bash
+# Best method: OBS + HDMI capture (e.g., Genki Shadowcast)
+# 1. Open OSD
+python tools/mister_debug.py keys "M"
+# 2. Capture OBS preview window (Python on local Windows machine)
+python -c "from PIL import ImageGrab; ImageGrab.grab(all_screens=True).save('osd.png')"
+# 3. Close OSD
+python tools/mister_debug.py keys "M"
+
 # All-in-one tool command:
 python tools/mister_debug.py osd_screen captures/osd.png
-
-# Or manually:
-ssh root@192.168.50.130 'mbc raw_seq "M"'          # Open OSD
-sleep 1
-ssh root@192.168.50.130 'echo "screenshot" > /dev/MiSTer_cmd'  # Capture
-sleep 1
-ssh root@192.168.50.130 'mbc raw_seq "M"'          # Close OSD
-scp root@192.168.50.130:/media/fat/screenshots/C64/*.png .
 ```
+
+### Screenshot Methods Compared
+| Method | Captures OSD? | What it captures |
+|--------|--------------|------------------|
+| `echo "screenshot" > /dev/MiSTer_cmd` | **No** | Core video, native resolution |
+| `echo "screenshot scaled" > /dev/MiSTer_cmd` | **No** | Core video, ASCAL-scaled |
+| `fbgrab /tmp/fb.png` | **No** | Linux framebuffer (console) |
+| OBS + HDMI capture device | **Yes** | Full HDMI output with OSD |
 
 ### Navigating OSD Remotely
-Use `mbc raw_seq` key codes to navigate the OSD menu:
+Use `mtype.py` key names or mbc-style shorthand via mister_debug.py:
 ```bash
 # Open OSD, go down 4 items, press Enter
-ssh root@192.168.50.130 'mbc raw_seq "MDDDDDO"'
-
-# Or via mister_debug.py:
 python tools/mister_debug.py keys "MDDDDDO"
+
+# Or with mtype.py native names:
+python tools/mister_debug.py keys f12 down down down down enter
+
+# Direct SSH:
+ssh root@192.168.50.130 "python3 /tmp/mtype.py f12 down down down down enter"
 ```
 
-### mbc raw_seq Key Codes
-| Code | Key | Notes |
-|------|-----|-------|
-| M | F12 | Toggle OSD menu |
-| U | Up | Navigate up |
-| D | Down | Navigate down |
-| L | Left | Navigate left / back |
-| R | Right | Navigate right |
-| O | Enter | Select/confirm |
-| E | Escape | Cancel/close |
-| H | Home | Jump to top |
-| F | End | Jump to bottom |
-| a-z, 0-9 | Letters/digits | Type characters |
-| :XX | Raw hex keycode | e.g. `:3B` = F1 |
-| !s | Wait 1 second | Timing control |
+### Key Shorthand Codes (mister_debug.py keys command)
+| Code | Key | mtype.py equivalent |
+|------|-----|---------------------|
+| M | F12 | `f12` |
+| U | Up | `up` |
+| D | Down | `down` |
+| L | Left | `left` |
+| R | Right | `right` |
+| O | Enter | `enter` |
+| E | Escape | `esc` |
+| H | Home | `home` |
+| F | End | `end` |
+
+Note: `mbc raw_seq` shorthand (a-z, 0-9, :XX hex, !s wait) is only available
+as a fallback. The primary method is `mtype.py` which accepts Linux key names
+(f1-f12, up, down, left, right, enter, esc, space, tab, etc.).
 
 ## Key Diagnostic Patterns
 

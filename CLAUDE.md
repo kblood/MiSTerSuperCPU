@@ -75,14 +75,16 @@ diagnostic bytes, deploys builds, and interprets debug overlay/UART fields.
 - **Primary tool: `tools/mister_debug.py`** — use this for all MiSTer operations:
   - Deploy: `python tools/mister_debug.py deploy [rbf_path]`
   - Screenshot: `python tools/mister_debug.py screen [output.png]`
-  - OSD Screenshot: `python tools/mister_debug.py osd_screen [output.png]`
+  - OSD Screenshot: `python tools/mister_debug.py osd_screen [output.png]` (requires OBS + HDMI capture)
   - UART: `python tools/mister_debug.py uart [seconds]`
-  - Keyboard: `python tools/mister_debug.py keys <sequence>`
+  - Keyboard: `python tools/mister_debug.py keys <sequence>` (uses mtype.py, NOT mbc)
   - PRG load: `python tools/mister_debug.py load_prg <file.prg>`
   - Status: `python tools/mister_debug.py status`
 - UART baud rate must be set first: `ssh root@192.168.50.130 "stty -F /dev/ttyS1 115200 raw -echo"`
 - Keyboard via mtype.py: `ssh root@192.168.50.130 "python3 /tmp/mtype.py <keys>"`
   Upload first: `scp tools/mtype.py root@192.168.50.130:/tmp/mtype.py`
+- **mbc raw_seq does NOT work for OSD/keyboard** — MiSTer filters mbc's virtual input device
+- MiSTer screenshots (`/dev/MiSTer_cmd`) do NOT capture OSD overlay — use OBS + HDMI capture
 - WSL SSH is broken to MiSTer — always use Windows native ssh/scp
 - Disk images: mount via MGL (use `mistergamedescription` tag, `type="s" index="0"`)
 - **DANGER: NEVER use `busybox devmem` or direct FPGA register access** — crashes MiSTer, requires physical power cycle

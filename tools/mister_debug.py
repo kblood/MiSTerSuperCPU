@@ -231,47 +231,110 @@ def cmd_screen(args):
         print("Error: Failed to retrieve screenshot")
         return 1
 
+MTYPE_REMOTE = "/tmp/mtype.py"
+MTYPE_LOCAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mtype.py")
+
+def _ensure_mtype():
+    """Upload mtype.py to MiSTer if not already there."""
+    out, _, rc = ssh(f'test -f {MTYPE_REMOTE} && echo ok')
+    if 'ok' not in (out or ''):
+        print("Uploading mtype.py to MiSTer...")
+        if not scp_to(MTYPE_LOCAL, MTYPE_REMOTE):
+            print("Error: failed to upload mtype.py")
+            return False
+    return True
+
+def _send_keys_mtype(keys_args):
+    """Send keys via mtype.py on MiSTer. keys_args is a string of mtype arguments."""
+    if not _ensure_mtype():
+        return False
+    # mtype.py takes ~6s for uinput device settle, then sends keys quickly
+    out, err, rc = ssh(f'python3 {MTYPE_REMOTE} {keys_args}', timeout=15)
+    if rc != 0:
+        print(f"mtype.py error: {err}")
+        return False
+    return True
+
+def _capture_obs_window(output_path):
+    """Capture the OBS window via PIL ImageGrab (multi-monitor aware).
+
+    Returns True if OBS was found and captured, False otherwise.
+    """
+    try:
+        import ctypes
+        from PIL import ImageGrab
+        import subprocess
+
+        # Find OBS window handle
+        r = subprocess.run(['powershell', '-c', '(Get-Process obs64 -ErrorAction SilentlyContinue).MainWindowHandle'],
+                           capture_output=True, text=True, timeout=5)
+        hwnd = int(r.stdout.strip()) if r.stdout.strip() else 0
+        if not hwnd:
+            return False
+
+        # Get window rect
+        class RECT(ctypes.Structure):
+            _fields_ = [('left', ctypes.c_long), ('top', ctypes.c_long),
+                        ('right', ctypes.c_long), ('bottom', ctypes.c_long)]
+
+        user32 = ctypes.windll.user32
+        rect = RECT()
+        user32.GetWindowRect(hwnd, ctypes.byref(rect))
+
+        # Get virtual screen origin for coordinate mapping
+        virt_left = user32.GetSystemMetrics(76)   # SM_XVIRTUALSCREEN
+        virt_top = user32.GetSystemMetrics(77)     # SM_YVIRTUALSCREEN
+
+        # Grab all screens and crop to OBS window
+        img = ImageGrab.grab(all_screens=True)
+        crop_box = (rect.left - virt_left, rect.top - virt_top,
+                    rect.right - virt_left, rect.bottom - virt_top)
+        cropped = img.crop(crop_box)
+        cropped.save(output_path)
+        return True
+    except Exception as e:
+        print(f"OBS capture failed: {e}")
+        return False
+
 def cmd_osd_screen(args):
     """Open the OSD, take a screenshot (capturing OSD overlay), then close OSD.
 
-    This works because MiSTer's screenshot command captures the FPGA video
-    output INCLUDING the OSD overlay when it is visible. The workflow:
-      1. Send F12 via mbc raw_seq to open the OSD
-      2. Wait for OSD to render
-      3. Trigger screenshot via /dev/MiSTer_cmd
-      4. Send F12 again to close the OSD
-      5. Retrieve the screenshot PNG
+    MiSTer's built-in screenshot commands capture the FPGA video output BEFORE
+    the OSD overlay is composited in the hardware video pipeline. Neither
+    'screenshot' nor 'screenshot scaled' will include the OSD.
+
+    To capture the OSD, this tool uses OBS Studio + HDMI capture device:
+    1. Opens OSD via mtype.py (uinput — the only working method)
+    2. Captures the OBS preview window via PIL ImageGrab
+    3. Falls back to MiSTer screenshot if OBS is unavailable (no OSD in capture)
     """
     output = args[0] if args else "mister_osd_screen.png"
 
-    # Step 1: Open OSD (F12)
-    print("Opening OSD (F12)...")
-    out, err, rc = ssh('mbc raw_seq "M"')
-    if rc != 0:
-        print(f"Warning: mbc raw_seq failed ({err}), trying uinput fallback...")
-        # Fallback: write F12 keypress via python uinput on MiSTer
-        ssh('python3 -c "'
-            'import struct,os,time;'
-            'f=open(chr(47)+\"dev\"+chr(47)+\"input\"+chr(47)+\"event0\",\"wb\");'
-            'e=struct.pack(\"llHHI\",0,0,1,88,1);f.write(e);f.flush();'
-            'time.sleep(0.05);'
-            'e=struct.pack(\"llHHI\",0,0,1,88,0);f.write(e);f.flush();'
-            'e=struct.pack(\"llHHI\",0,0,0,0,0);f.write(e);f.flush();'
-            'f.close()"')
+    # Step 1: Open OSD (F12 via mtype.py uinput)
+    print("Opening OSD (F12 via mtype.py)...")
+    if not _send_keys_mtype('f12'):
+        print("Error: could not send F12")
+        return 1
 
     # Step 2: Wait for OSD to render
-    time.sleep(0.5)
+    time.sleep(1)
 
-    # Step 3: Take screenshot (captures OSD overlay in FPGA output)
-    print("Taking screenshot with OSD visible...")
+    # Step 3: Try OBS window capture (includes OSD overlay)
+    print("Capturing OBS window (HDMI output with OSD)...")
+    if _capture_obs_window(output):
+        print(f"OSD screenshot saved to {output} (via OBS HDMI capture)")
+        return 0
+
+    # Step 4: Fallback — MiSTer screenshot (will NOT include OSD)
+    print("OBS not available, falling back to MiSTer screenshot (no OSD in capture)...")
     ssh('echo "screenshot" > /dev/MiSTer_cmd')
     time.sleep(1.5)
 
-    # Step 4: Close OSD (F12 again)
+    # Step 5: Close OSD
     print("Closing OSD...")
-    ssh('mbc raw_seq "M"')
+    _send_keys_mtype('f12')
 
-    # Step 5: Find and retrieve the latest screenshot
+    # Step 6: Find and retrieve the latest screenshot
     out, err, rc = ssh(f'ls -t {SCREENSHOT_DIR}/*/*.png 2>/dev/null | head -1')
     if rc != 0 or not out:
         print("Error: No screenshots found")
@@ -281,7 +344,7 @@ def cmd_osd_screen(args):
     print(f"Retrieving {remote_path}...")
 
     if scp_from(remote_path, output):
-        print(f"OSD screenshot saved to {output}")
+        print(f"Screenshot saved to {output} (core video only — no OSD)")
         return 0
     else:
         print("Error: Failed to retrieve screenshot")
@@ -300,20 +363,40 @@ def cmd_uart(args):
     return 0
 
 def cmd_keys(args):
-    """Send keyboard input via mbc raw_seq."""
+    """Send keyboard input via mtype.py (uinput) on MiSTer.
+
+    Translates mbc-style shorthand to mtype.py arguments for convenience.
+    Also accepts mtype.py native arguments directly.
+    """
     if not args:
-        print("Usage: keys <sequence>")
-        print("  M=F12/OSD, U=Up, D=Down, L=Left, R=Right, O=Enter, E=Escape")
+        print("Usage: keys <sequence_or_mtype_args>")
+        print("  Shorthand: M=F12/OSD, U=Up, D=Down, L=Left, R=Right, O=Enter, E=Escape")
+        print("  Or mtype.py args: f12 down down down enter")
         return 1
+
     seq = args[0]
-    print(f"Sending key sequence: {seq}")
-    out, err, rc = ssh(f'mbc raw_seq "{seq}"')
-    if rc != 0:
-        # mbc might not be installed, try alternative
-        print(f"mbc not available ({err}), trying /dev/MiSTer_cmd...")
-        # Can't do raw_seq via MiSTer_cmd, but we can suggest
-        print("Install mbc for key input support")
-    return rc
+
+    # Check if it looks like mbc shorthand (single uppercase letters)
+    MBC_TO_MTYPE = {'M': 'f12', 'U': 'up', 'D': 'down', 'L': 'left',
+                    'R': 'right', 'O': 'enter', 'E': 'esc', 'H': 'home', 'F': 'end'}
+    if all(c in MBC_TO_MTYPE for c in seq):
+        mtype_args = ' '.join(MBC_TO_MTYPE[c] for c in seq)
+        print(f"Sending key sequence: {seq} → mtype.py {mtype_args}")
+    else:
+        # Pass through as mtype.py arguments
+        mtype_args = ' '.join(args)
+        print(f"Sending keys: {mtype_args}")
+
+    if _send_keys_mtype(mtype_args):
+        return 0
+
+    # Fallback to mbc
+    print("mtype.py failed, trying mbc raw_seq fallback...")
+    if all(c in MBC_TO_MTYPE for c in seq):
+        out, err, rc = ssh(f'mbc raw_seq "{seq}"')
+        return rc
+    print("Cannot fall back to mbc for non-shorthand input")
+    return 1
 
 def cmd_reboot(args):
     """Reboot the MiSTer."""
