@@ -3,18 +3,20 @@
 mister_debug.py - MiSTer FPGA remote debug automation tool
 
 Provides commands for the build-deploy-test loop:
-  deploy   - SCP the .rbf to MiSTer and load the core
-  load_prg - Upload and run a PRG file on the test C64 core
-  screen   - Take and retrieve a screenshot
-  uart     - Read debug UART output from /dev/ttyS1
-  keys     - Send keyboard input
-  reboot   - Reboot the MiSTer
-  status   - Check if MiSTer is reachable and what core is running
+  deploy     - SCP the .rbf to MiSTer and load the core
+  load_prg   - Upload and run a PRG file on the test C64 core
+  screen     - Take and retrieve a screenshot
+  osd_screen - Open OSD, take a screenshot (captures OSD overlay), then close OSD
+  uart       - Read debug UART output from /dev/ttyS1
+  keys       - Send keyboard input
+  reboot     - Reboot the MiSTer
+  status     - Check if MiSTer is reachable and what core is running
 
 Usage:
   python tools/mister_debug.py deploy [rbf_path]
   python tools/mister_debug.py load_prg <prg_file>
   python tools/mister_debug.py screen [output_path]
+  python tools/mister_debug.py osd_screen [output_path]
   python tools/mister_debug.py uart [seconds]
   python tools/mister_debug.py keys <key_sequence>
   python tools/mister_debug.py reboot
@@ -36,12 +38,38 @@ from pathlib import Path
 # Configuration
 HOST = os.environ.get("MISTER_HOST", "192.168.50.130")
 USER = os.environ.get("MISTER_USER", "root")
+PASS = os.environ.get("MISTER_PASS", "1")
 DEST = os.environ.get("MISTER_DEST", "/media/fat/_Test/C64.rbf")
 DEFAULT_RBF = "C64_MiSTer/output_files/C64.rbf"
 SCREENSHOT_DIR = "/media/fat/screenshots"
 
+try:
+    import paramiko
+    HAS_PARAMIKO = True
+except ImportError:
+    HAS_PARAMIKO = False
+
+def _get_ssh_client():
+    """Create a paramiko SSH client connected to MiSTer."""
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(HOST, username=USER, password=PASS, timeout=5)
+    return client
+
 def ssh(cmd, timeout=10):
     """Run a command on MiSTer via SSH."""
+    if HAS_PARAMIKO:
+        try:
+            client = _get_ssh_client()
+            stdin, stdout, stderr = client.exec_command(cmd, timeout=timeout)
+            out = stdout.read().decode().strip()
+            err = stderr.read().decode().strip()
+            rc = stdout.channel.recv_exit_status()
+            client.close()
+            return out, err, rc
+        except Exception as e:
+            return "", str(e), 1
+    # Fallback to ssh command
     full_cmd = ["ssh", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=no",
                 f"{USER}@{HOST}", cmd]
     try:
@@ -52,6 +80,17 @@ def ssh(cmd, timeout=10):
 
 def scp_to(local, remote):
     """Copy a file to MiSTer."""
+    if HAS_PARAMIKO:
+        try:
+            client = _get_ssh_client()
+            sftp = client.open_sftp()
+            sftp.put(local, remote)
+            sftp.close()
+            client.close()
+            return True
+        except Exception as e:
+            print(f"SFTP upload error: {e}")
+            return False
     cmd = ["scp", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=no",
            local, f"{USER}@{HOST}:{remote}"]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
@@ -59,6 +98,17 @@ def scp_to(local, remote):
 
 def scp_from(remote, local):
     """Copy a file from MiSTer."""
+    if HAS_PARAMIKO:
+        try:
+            client = _get_ssh_client()
+            sftp = client.open_sftp()
+            sftp.get(remote, local)
+            sftp.close()
+            client.close()
+            return True
+        except Exception as e:
+            print(f"SFTP download error: {e}")
+            return False
     cmd = ["scp", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=no",
            f"{USER}@{HOST}:{remote}", local]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
@@ -92,20 +142,23 @@ def cmd_deploy(args):
     return 0
 
 def cmd_load_prg(args):
-    """Upload a PRG file to MiSTer and load it in the test C64 core.
+    """Upload a PRG file to MiSTer and inject it into the running C64 core.
 
-    Creates an MGL file with absolute paths that loads the test core
-    (/media/fat/_Test/C64.rbf) and injects the PRG via ioctl index 1.
-    The C64 core resets and auto-runs the PRG (if "Reset & Run PRG" is enabled).
+    Uses mbc load_rom to inject the PRG without reloading the core.
+    This preserves UART, overlay, and turbo mode (MGL loading kills these).
 
-    Note: MGL file paths MUST be absolute (/media/fat/...) for reliable
-    PRG injection. Relative paths (games/C64/...) cause the MiSTer framework
-    to fail silently — the core loads but the PRG data is never sent via ioctl.
+    The core must already be running (via deploy). If not, deploy is done first.
+    After injection, the PRG is in RAM but not auto-run. Use SYS 2061 for
+    ca65 PRGs (c64-816.cfg layout) or RUN for BASIC programs.
+
+    Note: mbc load_rom corrupts the BASIC stub, so RUN may not work.
+    Machine code PRGs should use SYS <start_address>.
     """
     if not args:
         print("Usage: load_prg <prg_file>")
-        print("  Uploads the PRG to MiSTer and loads it in the test C64 core.")
-        print("  Example: python tools/mister_debug.py load_prg speedtest.prg")
+        print("  Uploads the PRG to MiSTer and injects it into the running core.")
+        print("  Use SYS 2061 to execute ca65 PRGs, or RUN for BASIC programs.")
+        print("  Example: python tools/mister_debug.py load_prg test.prg")
         return 1
 
     prg_local = args[0]
@@ -124,39 +177,33 @@ def cmd_load_prg(args):
         return 1
     print("Upload complete.")
 
-    # Ensure OSD config has SuperCPU + UART enabled before MGL load.
-    # The MiSTer framework reads /media/fat/config/C64.cfg on core load.
-    # Byte 10 = 0xCC: bit2=SuperCPU, bit3=overlay, bit6=SCPU_ROM, bit7=UART
-    print("Setting OSD config (SuperCPU + UART enabled)...")
-    cfg_bytes = r'\x00\x00\x00\x00\x00\x80\x02\x02\x00\x00\xcc\x00\x00\x00\x00\x00'
-    ssh(f"printf '{cfg_bytes}' > /media/fat/config/C64.cfg")
+    # Check if core is running by reading UART
+    print("Checking if core is running...")
+    out, _, rc = ssh('stty -F /dev/ttyS1 115200 raw -echo; timeout 1 cat /dev/ttyS1 2>/dev/null | head -1',
+                     timeout=5)
+    if not out:
+        print("Core not running or UART not active. Deploying...")
+        if not os.path.exists(DEFAULT_RBF):
+            print(f"Error: {DEFAULT_RBF} not found. Deploy manually first.")
+            return 1
+        rc = cmd_deploy([])
+        if rc != 0:
+            return rc
+        # Wait for boot and verify UART
+        time.sleep(3)
+        out, _, _ = ssh('timeout 2 cat /dev/ttyS1 2>/dev/null | head -1', timeout=5)
+        if not out:
+            print("Warning: UART still not active after deploy")
 
-    # Generate MGL and load via MiSTer_cmd.
-    # Key MGL format requirements discovered through testing:
-    #   - rbf: relative to /media/fat/, WITHOUT .rbf extension (e.g. "_Test/C64")
-    #   - file path: MUST be absolute (/media/fat/games/C64/file.prg)
-    #     Relative paths cause silent failure: core loads but PRG never injected.
-    #   - MGL file must be in /media/fat/ directory
-    mgl_remote = "/media/fat/_prg_load.mgl"
-    # Convert DEST (/media/fat/_Test/C64.rbf) to relative rbf path (_Test/C64)
-    rbf_rel = DEST.replace("/media/fat/", "").replace(".rbf", "")
-    mgl_xml = (
-        '<mistergamedescription>\n'
-        f'  <rbf>{rbf_rel}</rbf>\n'
-        f'  <file delay="2" type="f" index="1" path="{prg_remote}"/>\n'
-        '</mistergamedescription>\n'
-    )
-    print(f"Loading {prg_name} into test C64 core...")
-    # Write MGL using heredoc to preserve newlines
-    ssh(f"cat > {mgl_remote} << 'MGLEOF'\n{mgl_xml}MGLEOF")
-    out, err, rc = ssh(f'echo "load_core {mgl_remote}" > /dev/MiSTer_cmd')
+    # Inject PRG via mbc load_rom (preserves UART/overlay/turbo)
+    print(f"Injecting {prg_name} via mbc load_rom...")
+    out, err, rc = ssh(f'mbc load_rom 1 {prg_remote}', timeout=10)
     if rc != 0:
-        print(f"Warning: load_core returned {rc}: {err}")
-    else:
-        print("PRG load command sent via MGL.")
+        print(f"Error: mbc load_rom failed: {err}")
+        return 1
 
-    time.sleep(8)
-    print(f"Core should be running with {prg_name} now.")
+    time.sleep(2)
+    print(f"PRG injected. Use SYS 2061 (ca65) or RUN (BASIC) to execute.")
     return 0
 
 def cmd_screen(args):
@@ -179,6 +226,62 @@ def cmd_screen(args):
 
     if scp_from(remote_path, output):
         print(f"Screenshot saved to {output}")
+        return 0
+    else:
+        print("Error: Failed to retrieve screenshot")
+        return 1
+
+def cmd_osd_screen(args):
+    """Open the OSD, take a screenshot (capturing OSD overlay), then close OSD.
+
+    This works because MiSTer's screenshot command captures the FPGA video
+    output INCLUDING the OSD overlay when it is visible. The workflow:
+      1. Send F12 via mbc raw_seq to open the OSD
+      2. Wait for OSD to render
+      3. Trigger screenshot via /dev/MiSTer_cmd
+      4. Send F12 again to close the OSD
+      5. Retrieve the screenshot PNG
+    """
+    output = args[0] if args else "mister_osd_screen.png"
+
+    # Step 1: Open OSD (F12)
+    print("Opening OSD (F12)...")
+    out, err, rc = ssh('mbc raw_seq "M"')
+    if rc != 0:
+        print(f"Warning: mbc raw_seq failed ({err}), trying uinput fallback...")
+        # Fallback: write F12 keypress via python uinput on MiSTer
+        ssh('python3 -c "'
+            'import struct,os,time;'
+            'f=open(chr(47)+\"dev\"+chr(47)+\"input\"+chr(47)+\"event0\",\"wb\");'
+            'e=struct.pack(\"llHHI\",0,0,1,88,1);f.write(e);f.flush();'
+            'time.sleep(0.05);'
+            'e=struct.pack(\"llHHI\",0,0,1,88,0);f.write(e);f.flush();'
+            'e=struct.pack(\"llHHI\",0,0,0,0,0);f.write(e);f.flush();'
+            'f.close()"')
+
+    # Step 2: Wait for OSD to render
+    time.sleep(0.5)
+
+    # Step 3: Take screenshot (captures OSD overlay in FPGA output)
+    print("Taking screenshot with OSD visible...")
+    ssh('echo "screenshot" > /dev/MiSTer_cmd')
+    time.sleep(1.5)
+
+    # Step 4: Close OSD (F12 again)
+    print("Closing OSD...")
+    ssh('mbc raw_seq "M"')
+
+    # Step 5: Find and retrieve the latest screenshot
+    out, err, rc = ssh(f'ls -t {SCREENSHOT_DIR}/*/*.png 2>/dev/null | head -1')
+    if rc != 0 or not out:
+        print("Error: No screenshots found")
+        return 1
+
+    remote_path = out.strip()
+    print(f"Retrieving {remote_path}...")
+
+    if scp_from(remote_path, output):
+        print(f"OSD screenshot saved to {output}")
         return 0
     else:
         print("Error: Failed to retrieve screenshot")
@@ -242,13 +345,14 @@ def cmd_status(args):
 
 def main():
     commands = {
-        "deploy":   cmd_deploy,
-        "load_prg": cmd_load_prg,
-        "screen":   cmd_screen,
-        "uart":     cmd_uart,
-        "keys":     cmd_keys,
-        "reboot":   cmd_reboot,
-        "status":   cmd_status,
+        "deploy":     cmd_deploy,
+        "load_prg":   cmd_load_prg,
+        "screen":     cmd_screen,
+        "osd_screen": cmd_osd_screen,
+        "uart":       cmd_uart,
+        "keys":       cmd_keys,
+        "reboot":     cmd_reboot,
+        "status":     cmd_status,
     }
 
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):

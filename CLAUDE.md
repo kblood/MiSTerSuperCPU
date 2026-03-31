@@ -75,6 +75,7 @@ diagnostic bytes, deploys builds, and interprets debug overlay/UART fields.
 - **Primary tool: `tools/mister_debug.py`** — use this for all MiSTer operations:
   - Deploy: `python tools/mister_debug.py deploy [rbf_path]`
   - Screenshot: `python tools/mister_debug.py screen [output.png]`
+  - OSD Screenshot: `python tools/mister_debug.py osd_screen [output.png]`
   - UART: `python tools/mister_debug.py uart [seconds]`
   - Keyboard: `python tools/mister_debug.py keys <sequence>`
   - PRG load: `python tools/mister_debug.py load_prg <file.prg>`

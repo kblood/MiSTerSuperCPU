@@ -22,8 +22,10 @@ For full research on available approaches, see [docs/mister_remote_debug_researc
 |------|---------|
 | Deploy + load core | `python tools/mister_debug.py deploy` |
 | Take screenshot | `python tools/mister_debug.py screen` |
+| Screenshot with OSD | `python tools/mister_debug.py osd_screen` |
 | Read debug UART | `python tools/mister_debug.py uart 3` |
 | Send keys | `python tools/mister_debug.py keys "MDDDO"` |
+| Open OSD remotely | `python tools/mister_debug.py keys "M"` |
 | Check status | `python tools/mister_debug.py status` |
 | Reboot MiSTer | `python tools/mister_debug.py reboot` |
 
@@ -73,6 +75,35 @@ python tools/mister_debug.py screen captures/test1.png
 ```
 
 Screenshots are saved by MiSTer to `/media/fat/screenshots/{corename}/`.
+
+### osd_screen
+
+Opens the OSD, takes a screenshot (capturing the OSD overlay), then closes
+the OSD. This is the method for remotely screenshotting what the OSD looks like.
+
+```bash
+# Save to default (mister_osd_screen.png)
+python tools/mister_debug.py osd_screen
+
+# Save to specific path
+python tools/mister_debug.py osd_screen captures/osd_check.png
+```
+
+**How it works:** MiSTer's `screenshot` command captures the FPGA video output
+including any active OSD overlay. The tool:
+1. Sends F12 via `mbc raw_seq "M"` to open the OSD
+2. Waits for OSD to render (~500ms)
+3. Triggers `echo "screenshot" > /dev/MiSTer_cmd`
+4. Sends F12 again to close the OSD
+5. Retrieves the PNG
+
+You can also do this manually with separate commands:
+```bash
+python tools/mister_debug.py keys "M"    # Open OSD
+sleep 1
+python tools/mister_debug.py screen      # Capture (includes OSD)
+python tools/mister_debug.py keys "M"    # Close OSD
+```
 
 ### uart
 
@@ -307,12 +338,49 @@ ssh root@192.168.50.130 'mbc raw_seq "MDDDO"'
 
 ## /dev/MiSTer_cmd Reference
 
-Commands accepted by the MiSTer main binary via the command pipe:
+Commands accepted by the MiSTer main binary via the command pipe
+(source: `input.cpp` in [Main_MiSTer](https://github.com/MiSTer-devel/Main_MiSTer)):
 
 | Command | Description |
 |---------|-------------|
 | `load_core <path>` | Load a core (.rbf) or MGL file |
-| `screenshot` | Take a screenshot of current output |
+| `screenshot` | Take a raw screenshot of current output |
+| `screenshot scaled` | Take a scaled screenshot of current output |
+| `screenshot scaled <path>` | Take a scaled screenshot, save to specific path |
+| `video_mode <mode>` | Change video output mode |
+| `volume mute` | Mute audio |
+| `volume unmute` | Unmute audio |
+| `volume <0-7>` | Set volume level (0=lowest, 7=highest) |
+| `fb_cmd <args>` | Framebuffer video command |
+
+**Note:** There is NO `open_osd` command. To open/close the OSD remotely,
+send an F12 keypress via `mbc raw_seq "M"` or the mrext keyboard API.
+
+### Remote OSD + Screenshot Workflow
+
+The key insight: MiSTer's `screenshot` command captures the **FPGA video output
+including the OSD overlay** if it is visible. This means you can:
+
+```bash
+# Open OSD
+ssh root@192.168.50.130 'mbc raw_seq "M"'
+sleep 1
+
+# Take screenshot (captures OSD overlay)
+ssh root@192.168.50.130 'echo "screenshot" > /dev/MiSTer_cmd'
+sleep 1
+
+# Close OSD
+ssh root@192.168.50.130 'mbc raw_seq "M"'
+
+# Retrieve screenshot
+scp root@192.168.50.130:/media/fat/screenshots/C64/*.png .
+```
+
+Or use the integrated command:
+```bash
+python tools/mister_debug.py osd_screen captures/osd_check.png
+```
 
 ## mrext Remote API (Optional)
 
