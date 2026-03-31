@@ -71,7 +71,7 @@ def create_uinput():
     dev = name + ids + struct.pack("i", 0) + b"\x00" * (64*4*4)
     os.write(fd, dev)
     fcntl.ioctl(fd, UI_DEV_CREATE)
-    time.sleep(3)  # wait for MiSTer to detect and open device
+    time.sleep(6)  # wait for MiSTer to detect and open device (needs >3s after core reset)
     return fd
 
 def send_key(fd, code, shift=False):

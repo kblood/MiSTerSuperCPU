@@ -444,6 +444,72 @@ Or use the integrated command:
 python tools/mister_debug.py osd_screen captures/osd_check.png
 ```
 
+## Loading REU Files via OSD
+
+### File Browser Path Configuration
+
+The MiSTer C64 core remembers the last directory used for each file slot in
+`/media/fat/config/C64.f{n}` (64-byte fixed-length record, null-padded, path
+relative to `/media/fat/` with `../` prefix).
+
+| Slot | File | OSD Option |
+|------|------|-----------|
+| F1 | `C64.f1` (or `C64.f5`?) | Load *.PRG,CRT,REU,TAP |
+| F2 | `C64.f2` | Load REU *.REU |
+| F5 | `C64.f5` | ROM/Kernal selector |
+| F8 | `C64.f8` | Mount #8 disk |
+| F9 | `C64.f9` | Mount #9 disk |
+
+To pre-seed the REU file browser to open in a specific directory:
+
+```python
+# Run on MiSTer via SSH
+path = '../usb0/games/C64/scpu/doom/doom.reu'  # must be a file, not just dir
+data = path.encode('ascii') + b'\x00' * (64 - len(path))
+open('/media/fat/config/C64.f2', 'wb').write(data)
+```
+
+**Note:** This only takes effect when the core starts (it reads config on load).
+To apply without restarting the core, copy your .reu file into whatever directory
+the browser is currently showing — it refreshes when you navigate in/out.
+
+### OSD Navigation to Load doom.reu
+
+The file browser for "Load REU *.REU" defaults to `/media/usb0/C64/` on this
+MiSTer setup. doom.reu lives at `/media/usb0/games/C64/scpu/doom/doom.reu`
+but a copy also exists at `/media/usb0/C64/doom.reu` for quick OSD access.
+
+**Step-by-step remote mount of doom.reu:**
+
+```bash
+# 1. Open OSD
+ssh root@192.168.50.130 "python3 /tmp/mtype.py f12"
+
+# 2. Navigate to "Load REU *.REU" (4 downs from top, then Enter)
+#    Menu order: Mount#8, Mount#9, Mount Write Protected, Load*.PRG, Load REU
+ssh root@192.168.50.130 "python3 /tmp/mtype.py down down down down enter"
+
+# 3. Capture to confirm file browser is open and doom is visible
+python tools/mister_debug.py osd_screen captures/browser.png
+
+# 4. doom appears ABOVE test (alphabetically) — one Up from default cursor pos, then Enter
+ssh root@192.168.50.130 "python3 /tmp/mtype.py up enter"
+
+# 5. Capture to confirm load bar
+python tools/mister_debug.py osd_screen captures/loading.png
+```
+
+**CRITICAL:** Keep each mtype.py call minimal. Sending too many keypresses in
+one call causes OSD state transitions mid-burst, and remaining keypresses
+leak through to the C64 BASIC interpreter.
+
+### doom.reu Locations on MiSTer
+
+| Path | Notes |
+|------|-------|
+| `/media/usb0/C64/doom.reu` | **Use this** — default OSD browser dir |
+| `/media/usb0/games/C64/scpu/doom/doom.reu` | Original location (with loader.prg) |
+
 ## mrext Remote API (Optional)
 
 If [mrext Remote](https://github.com/wizzomafizzo/mrext) is installed, a REST

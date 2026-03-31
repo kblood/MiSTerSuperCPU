@@ -256,42 +256,80 @@ def _send_keys_mtype(keys_args):
     return True
 
 def _capture_obs_window(output_path):
-    """Capture the OBS window via PIL ImageGrab (multi-monitor aware).
+    """Capture the OBS window via Win32 PrintWindow API.
+
+    Uses PrintWindow with PW_RENDERFULLCONTENT flag to capture the OBS
+    window even when it's behind other windows or on another monitor.
+    This is the only reliable way to screenshot the MiSTer OSD, since
+    MiSTer's built-in screenshot captures video before OSD compositing.
 
     Returns True if OBS was found and captured, False otherwise.
     """
     try:
         import ctypes
-        from PIL import ImageGrab
+        from ctypes import wintypes
+        from PIL import Image
         import subprocess
 
         # Find OBS window handle
-        r = subprocess.run(['powershell', '-c', '(Get-Process obs64 -ErrorAction SilentlyContinue).MainWindowHandle'],
+        r = subprocess.run(['powershell', '-c',
+                            '(Get-Process obs64 -ErrorAction SilentlyContinue).MainWindowHandle'],
                            capture_output=True, text=True, timeout=5)
         hwnd = int(r.stdout.strip()) if r.stdout.strip() else 0
         if not hwnd:
             return False
 
-        # Get window rect
+        user32 = ctypes.windll.user32
+        gdi32 = ctypes.windll.gdi32
+
         class RECT(ctypes.Structure):
             _fields_ = [('left', ctypes.c_long), ('top', ctypes.c_long),
                         ('right', ctypes.c_long), ('bottom', ctypes.c_long)]
 
-        user32 = ctypes.windll.user32
         rect = RECT()
         user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        w = rect.right - rect.left
+        h = rect.bottom - rect.top
+        if w <= 0 or h <= 0:
+            return False
 
-        # Get virtual screen origin for coordinate mapping
-        virt_left = user32.GetSystemMetrics(76)   # SM_XVIRTUALSCREEN
-        virt_top = user32.GetSystemMetrics(77)     # SM_YVIRTUALSCREEN
+        # Create compatible DC and bitmap
+        hwnd_dc = user32.GetWindowDC(hwnd)
+        mem_dc = gdi32.CreateCompatibleDC(hwnd_dc)
+        bitmap = gdi32.CreateCompatibleBitmap(hwnd_dc, w, h)
+        gdi32.SelectObject(mem_dc, bitmap)
 
-        # Grab all screens and crop to OBS window
-        img = ImageGrab.grab(all_screens=True)
-        crop_box = (rect.left - virt_left, rect.top - virt_top,
-                    rect.right - virt_left, rect.bottom - virt_top)
-        cropped = img.crop(crop_box)
-        cropped.save(output_path)
-        return True
+        # PrintWindow with PW_RENDERFULLCONTENT (2) — works even behind other windows
+        PW_RENDERFULLCONTENT = 2
+        result = user32.PrintWindow(hwnd, mem_dc, PW_RENDERFULLCONTENT)
+
+        if result:
+            class BITMAPINFOHEADER(ctypes.Structure):
+                _fields_ = [('biSize', ctypes.c_uint32), ('biWidth', ctypes.c_int32),
+                            ('biHeight', ctypes.c_int32), ('biPlanes', ctypes.c_uint16),
+                            ('biBitCount', ctypes.c_uint16), ('biCompression', ctypes.c_uint32),
+                            ('biSizeImage', ctypes.c_uint32), ('biXPelsPerMeter', ctypes.c_int32),
+                            ('biYPelsPerMeter', ctypes.c_int32), ('biClrUsed', ctypes.c_uint32),
+                            ('biClrImportant', ctypes.c_uint32)]
+
+            bmi = BITMAPINFOHEADER()
+            bmi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+            bmi.biWidth = w
+            bmi.biHeight = -h  # top-down
+            bmi.biPlanes = 1
+            bmi.biBitCount = 32
+            bmi.biCompression = 0  # BI_RGB
+
+            buf = ctypes.create_string_buffer(w * h * 4)
+            gdi32.GetDIBits(mem_dc, bitmap, 0, h, buf, ctypes.byref(bmi), 0)
+            img = Image.frombuffer('RGBA', (w, h), buf, 'raw', 'BGRA', 0, 1)
+            img.save(output_path)
+
+        # Cleanup
+        gdi32.DeleteObject(bitmap)
+        gdi32.DeleteDC(mem_dc)
+        user32.ReleaseDC(hwnd, hwnd_dc)
+        return bool(result)
     except Exception as e:
         print(f"OBS capture failed: {e}")
         return False
