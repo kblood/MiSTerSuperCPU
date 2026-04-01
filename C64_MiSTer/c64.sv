@@ -215,6 +215,7 @@ localparam CONF_STR = {
 	"O[77:76],Mount Write Protected,Off,#8,#9,#8 & #9;",
 	"-;",
 	"F1,PRGCRTREUTAP;",
+	"F2,REU,Load REU;",
 	"hAdBR[61],Save cartridge;",
 	"hAO[62],Autosave,Off,On;",
 	"h3-;",
@@ -512,9 +513,11 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(1)) hps_io
 	.ioctl_wait(ioctl_req_wr|ioctl_req_rd|reset_wait)
 );
 
-wire load_prg   = ioctl_index == 'h01;
+wire reu_by_ext = (ioctl_file_ext == ".REU" || ioctl_file_ext == ".reu");
+wire load_prg   = ioctl_index == 'h01 && !reu_by_ext;
 wire load_crt   = ioctl_index == 'h41 || ioctl_index == 5;
-wire load_reu   = ioctl_index == 'h81;
+wire load_reu   = ioctl_index == 'h81 || ioctl_index == 'h02   // F1 pos2 or F2 pos0
+               || (ioctl_index == 'h01 && reu_by_ext);         // MGL fallback
 wire load_tap   = ioctl_index == 'hC1;
 wire load_flt   = ioctl_index == 7;
 wire load_rom   = ioctl_index == 8;
@@ -1286,13 +1289,19 @@ wire        cpu_has_bus;                    // '1' when CPU owns bus (not VIC)
 // Concatenation replaces addition: REU_ADDR + {0, bank, addr} = {1, bank, addr}
 // since REU_ADDR = 25'h1000000 (bit[24]=1) and the operand has bit[24]=0.
 wire [24:0] scpu_superram_addr = {1'b1, supercpu_bank, dbg_cpu_addr};
+// Registered SuperRAM address: breaks the CPU→SDRAM combinational path that
+// violates clk64 setup time (-18ns slack). The registered version is always
+// valid at CYCLE_CPUC because the CPU only changes its address at enableCpu
+// (CYCLE_CPUF), and the next CPUC is 24+ clk32 cycles later.
+reg [24:0] scpu_superram_addr_r;
+always @(posedge clk_sys) scpu_superram_addr_r <= scpu_superram_addr;
+
 // Route non-bank-$00 CPU accesses to SuperRAM SDRAM region.
 // Gate on cpu_has_bus to prevent VIC reads (VIC0) from going to SuperRAM
 // when supercpu_bank retains a non-$00 value from the last CPU instruction.
-// cpu_has_bus is registered (from cpuHasBus in fpga64_sid_iec), supercpu_bank
-// comes directly from CPU core registers — both are fast paths to clk64.
+// Uses registered address (scpu_superram_addr_r) for clean clk64 timing.
 wire [24:0] scpu_sdram_addr = (supercpu_enable && cpu_has_bus && (supercpu_bank != 8'h00))
-                               ? scpu_superram_addr
+                               ? scpu_superram_addr_r
                                : cart_addr;
 
 // SuperRAM SDRAM diagnostic: latch the mux conditions at cart_ce rising edge
@@ -1310,6 +1319,9 @@ reg       last_cart_ce_dbg = 0;
 reg       dbg_dma_ram_active_seen = 0;  // sticky: was reu_ram_active ever 1?
 reg       dbg_dma_ram_we_seen = 0;      // sticky: was reu_ram_we ever 1?
 reg [3:0] dbg_dma_ce_count = 0;        // count of cart_ce during DMA
+// Extended DMA debug: track reu_ram_active independently of cart_ce
+reg       dbg_dma_ram_active_ever = 0;  // sticky: reu_ram_active ever 1 during dma_req?
+reg [3:0] dbg_dma_ram_active_clks = 0; // count of clk32 cycles reu_ram_active was 1
 always @(posedge clk_sys) begin
 	last_cart_ce_dbg <= cart_ce;
 	if (cart_ce && !last_cart_ce_dbg && supercpu_bank != 8'h00) begin
@@ -1323,11 +1335,19 @@ always @(posedge clk_sys) begin
 		dbg_dma_ram_active_seen <= 0;
 		dbg_dma_ram_we_seen <= 0;
 		dbg_dma_ce_count <= 0;
+		dbg_dma_ram_active_ever <= 0;
+		dbg_dma_ram_active_clks <= 0;
 	end else if (dma_req) begin
 		if (cart_ce && !last_cart_ce_dbg) begin
 			dbg_dma_ce_count <= dbg_dma_ce_count + 1'd1;
 			if (reu_ram_active) dbg_dma_ram_active_seen <= 1;
 			if (reu_ram_active && reu_ram_we) dbg_dma_ram_we_seen <= 1;
+		end
+		// Track reu_ram_active independently of cart_ce timing
+		if (reu_ram_active) begin
+			dbg_dma_ram_active_ever <= 1;
+			if (!(&dbg_dma_ram_active_clks))  // saturate at 15
+				dbg_dma_ram_active_clks <= dbg_dma_ram_active_clks + 1'd1;
 		end
 	end else if (dbg_dma_ce_count != 0) begin
 		// DMA just ended — keep sticky values for reading
@@ -1698,6 +1718,19 @@ video_sync sync
 	.vblank(vblank)
 );
 
+// Debug vblank: derive from raw vsync (not affected by c64_pause).
+// When the core is paused (OSD freeze), vblank from video_sync stops pulsing,
+// which kills the debug overlay and UART. Using the raw VIC vsync ensures
+// debug infrastructure always runs.
+// Note: MGL loading kills UART regardless (ARM-side issue, not FPGA).
+// Use direct deploy + mbc load_rom instead of MGL.
+reg dbg_vblank;
+always @(posedge clk_sys) begin
+	reg [1:0] vsync_sr;
+	vsync_sr <= {vsync_sr[0], vsync};
+	dbg_vblank <= vsync_sr[0] & ~vsync_sr[1]; // rising edge of vsync
+end
+
 reg hq2x160;
 always @(posedge clk_sys) begin
 	reg old_vsync;
@@ -1764,9 +1797,12 @@ wire freeze_sync;
 reg freeze;
 always @(posedge clk_sys) begin
 	reg old_sync;
-	
+
 	old_sync <= freeze_sync;
-	if(old_sync ^ freeze_sync) freeze <= OSD_STATUS & status[42];
+	if (~reset_n)
+		freeze <= 0;
+	else if(old_sync ^ freeze_sync)
+		freeze <= OSD_STATUS & status[42];
 end
 
 assign HDMI_FREEZE = freeze;
@@ -1837,7 +1873,7 @@ debug_uart_fmt debug_fmt
 	.clk(clk_sys),
 	.reset(~reset_n),
 	.enable(dbg_uart_en),
-	.vblank(vblank),
+	.vblank(dbg_vblank),  // Use pause-independent vblank for UART
 	.cpu_addr(dbg_cpu_addr),
 	.cpu_data(dbg_cpu_data),
 	.cpu_bank(supercpu_bank),
@@ -1847,8 +1883,9 @@ debug_uart_fmt debug_fmt
 	.cpu_emul(supercpu_emul),
 	.turbo_en(dbg_turbo_en),
 	// Override diag with DMA debug after ANY DMA (when ce_count > 0)
-	// bit7=dma_ram_active_seen, bit6=dma_ram_we_seen, bit5:2=dma_ce_count, bit1:0=normal
-	.diag(dbg_dma_ce_count != 0 ? {dbg_dma_ram_active_seen, dbg_dma_ram_we_seen, dbg_dma_ce_count, dbg_diag[1:0]} : dbg_diag),
+	// bit7=dma_ram_active_ever, bit6=dma_ram_active_seen(at CE), bit5=dma_ram_we_seen,
+	// bit4:1=dma_ram_active_clks, bit0=turbo_en
+	.diag(dbg_dma_ce_count != 0 ? {dbg_dma_ram_active_ever, dbg_dma_ram_active_seen, dbg_dma_ram_we_seen, dbg_dma_ram_active_clks, dbg_diag[0]} : dbg_diag),
 	.cache_hit_pulse(dbg_cache_hit_d1),
 	.enable_cpu_pulse(dbg_enable_cpu_t65),
 	.cpu_cyc_pulse(dbg_cpu_cyc),

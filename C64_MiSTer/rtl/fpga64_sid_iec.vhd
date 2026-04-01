@@ -324,13 +324,13 @@ signal turbo_m      : std_logic_vector(2 downto 0);
 -- SuperRAM 3-stage pipeline: extra delay for turbo slot SDRAM reads.
 -- VIC0 SDRAM data clobbers dout_r before 2-stage enableCpu fires.
 -- Adding 1 extra cycle gives the SDRAM read more time to complete.
- signal superram_enable_delay : std_logic := '0';
- signal superram_in_pipeline  : std_logic := '0';  -- latched when cpu_cyc fires for SuperRAM
- signal superram_data_r       : unsigned(7 downto 0);  -- latched SDRAM data for SuperRAM reads
- signal cpuDi_r               : unsigned(7 downto 0) := (others => '1');  -- latched buslogic data for base CPUC pipeline
- -- I/O pipeline signals
- signal io_in_pipeline        : std_logic := '0';
- signal io_data_r             : unsigned(7 downto 0) := (others => '1');
+signal superram_enable_delay : std_logic := '0';
+signal superram_in_pipeline  : std_logic := '0';  -- latched when cpu_cyc fires for SuperRAM
+signal superram_data_r       : unsigned(7 downto 0);  -- latched SDRAM data for SuperRAM reads
+-- (cpuDi_r removed: cpuDi goes directly to CPU, io_data_r handles I/O)
+-- I/O pipeline signals
+signal io_in_pipeline        : std_logic := '0';
+signal io_data_r             : unsigned(7 downto 0) := (others => '1');
 -- io_read_deliver removed: cpuDi mux now uses combinational (enableCpu AND io_in_pipeline)
 signal iof_detect            : std_logic;  -- combinational IOF detect from cpuAddr_pre
 signal iof_detect_d1         : std_logic := '0';  -- registered IOF detect (1-cycle delayed)
@@ -792,7 +792,7 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 cpuDi <= io_data when (iof_detect = '1' and cpuWe_pre = '0') else
          bram_do  when (bram_hit_d1 = '1') else
          cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
-         superram_data_r when (enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0') else
+         sdram_raw when (enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0') else
          -- SuperCPU $D0Bx registers: gated by scpu_regs_enabled (write $D07F to disable)
          -- $D0BC: computed from dosext(0), ramlink(0), optim low bits
          ("00000" & scpu_optim_mode & '1') when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC" and scpu_regs_enabled = '1') else
@@ -808,7 +808,7 @@ cpuDi <= io_data when (iof_detect = '1' and cpuWe_pre = '0') else
          (emu_mode_816 & "0000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B6" and scpu_regs_enabled = '1') else
          -- $D07E: bit7=ROM visibility (not gated by scpu_regs_enabled)
          (scpu_rom_vis & "0000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
-         cpuDi_r;
+         cpuDi_raw;
 
 -- I/O data capture: bypass the bus logic's dataToCpu path entirely.
 -- Use io_ext and io_data DIRECTLY from the c64.sv ports (which are
@@ -817,14 +817,6 @@ cpuDi <= io_data when (iof_detect = '1' and cpuWe_pre = '0') else
 process(clk32)
 begin
 	if rising_edge(clk32) then
-		-- Base CPUC pipeline: capture buslogic output one cycle before enableCpu
-		-- advances the CPU. At the following EXT0 edge, cpuHasBus has already
-		-- dropped, so the live cpuDi_raw mux may have flipped to VIC data.
-		if cpu_cyc_s(1) = '1' and superram_in_pipeline = '0' and cpuWe_pre = '0'
-		   and cpuHasBus = '1' then
-			cpuDi_r <= cpuDi_raw;
-		end if;
-
 		-- Capture io_data at superram_enable_delay (1 cycle BEFORE enableCpu).
 		-- In the 3-stage IOF pipeline: cpu_cyc(CPUC) → cpu_cyc_s → superram_enable_delay(CPUE) → enableCpu(CPUF).
 		-- The CPU samples cpuDi when enableCpu_816 goes high (EXT0 edge, after CPUF).
@@ -1155,7 +1147,7 @@ enableCpu_6510 <= (bram_hit_d1 or (cache_hit_d1 and turbo_en) or (enableCpu and 
 -- for an I/O read. If a BRAM hit from the previous instruction also fires,
 -- the CPU races past the I/O address before the pipeline can capture data.
 -- sysCycle is registered — no timing issues (unlike cpu_cyc/cs_ram).
-enableCpu_816  <= ((bram_hit_d1 and turbo_en and not at_cpucd) or
+enableCpu_816  <= ((bram_hit_d1 and not at_cpucd) or
                    (cache_hit_d1 and turbo_en and not at_cpucd) or
                    (phantom_enable and turbo_en and not at_cpucd) or
                    (enableCpu and not dma_active))
@@ -1514,9 +1506,6 @@ begin
 			bram_suppress <= '0';
 		elsif bram64k_en = '1'
 		   and dma_active = '0' and baLoc = '1'
-		   and scpu_speed_1mhz = '0'
-		   and scpu_sys_1mhz = '0'
-		   and iec_slow_mode = '0'
 		   and cpu_cyc = '0'
 		   and cpu_cyc_s(0) = '0'
 		   and cpu_cyc_s(1) = '0'
@@ -1980,7 +1969,7 @@ begin
 		-- stale (wrong address). Cancel the pipeline to prevent delivering
 		-- stale data via enableCpu. This allows cache/BRAM to fire freely
 		-- without being blocked by the SDRAM pipeline guards.
-		if (cache_hit_d1 = '1' or bram_hit_d1 = '1' or phantom_enable = '1') and turbo_en = '1' then
+		if (bram_hit_d1 = '1') or ((cache_hit_d1 = '1' or phantom_enable = '1') and turbo_en = '1') then
 			-- Cache/BRAM/phantom hit advanced the CPU: cancel pending SDRAM pipeline
 			cpu_cyc_s <= "00";
 			enableCpu <= '0';
