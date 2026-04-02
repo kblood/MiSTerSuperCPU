@@ -40,6 +40,8 @@ module sdram (
 	input      [24:0] addr,       // 25 bit byte address
 	input      [ 7:0] din,
 	output     [ 7:0]	dout,
+	output     [ 7:0]	dout_hi,    // high byte of last SDRAM read (bt-independent)
+	output     [ 7:0]	dout_lo,    // low byte of last SDRAM read (bt-independent)
 
 	input 		 		refresh,    // refresh cycle
 	input 		 		ce,         // cpu/chipset access
@@ -117,6 +119,8 @@ reg bt;
 reg [15:0] dout_r;
 
 assign dout = bt ? dout_r[15:8] : dout_r[7:0];
+assign dout_hi = dout_r[15:8];  // always high byte, no bt dependency
+assign dout_lo = dout_r[7:0];   // always low byte, no bt dependency
 
 always @(posedge clk) begin
 	reg [8:0] caddr;

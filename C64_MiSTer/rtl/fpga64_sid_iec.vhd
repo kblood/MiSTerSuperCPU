@@ -58,6 +58,8 @@ port(
 	ramAddr     : out unsigned(15 downto 0);
 	ramDin      : in  unsigned(7 downto 0);
 	sdram_raw   : in  unsigned(7 downto 0);  -- raw SDRAM dout, bypasses cartridge module
+	sdram_hi    : in  unsigned(7 downto 0);  -- high byte of SDRAM word (bt-independent)
+	sdram_lo    : in  unsigned(7 downto 0);  -- low byte of SDRAM word (bt-independent)
 	ramDout     : out unsigned(7 downto 0);
 	ramCE       : out std_logic;
 	ramWE       : out std_logic;
@@ -792,7 +794,7 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 cpuDi <= io_data when (iof_detect = '1' and cpuWe_pre = '0') else
          bram_do  when (bram_hit_d1 = '1') else
          cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
-         sdram_raw when (enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0') else
+         superram_data_r when (enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0') else
          -- SuperCPU $D0Bx registers: gated by scpu_regs_enabled (write $D07F to disable)
          -- $D0BC: computed from dosext(0), ramlink(0), optim low bits
          ("00000" & scpu_optim_mode & '1') when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC" and scpu_regs_enabled = '1') else
@@ -1290,9 +1292,13 @@ scpu_rom_overlay <= supercpu_rom and scpu_rom_vis and supercpu_en;
 -- Gate fill on baLoc: during badlines (baLoc='0'), cpuHasBus='0' so buslogic
 -- outputs VIC data (not CPU data) on cpuDi_raw. Filling the cache with VIC
 -- garbage corrupts cached bytes, causing wrong data on subsequent reads.
+-- SuperRAM guard: when superram_in_pipeline='1', cpuDi_raw has bank $00 data
+-- (buslogic doesn't know about banks $01+). Filling the cache with that data
+-- causes subsequent cache hits to serve wrong bytes, crashing SuperRAM execution.
 cache_fill_we <= enableCpu and not wb_drain_active and not cpuWe_pre
                  and bram_valid_cycle
                  and not scpu_rom_overlay
+                 and not superram_in_pipeline
                  and baLoc;
 
 -- Cache hit pipeline: allow hits during non-CPU slots + idle CPU slots.
@@ -2040,7 +2046,7 @@ begin
 		-- 5, which may be the mid-CPUE edge. For safety, we could capture
 		-- at CPUF (enableCpu with 1-cycle hold). Testing will validate.
 		if superram_enable_delay = '1' and superram_in_pipeline = '1' then
-			superram_data_r <= sdram_raw;
+			superram_data_r <= sdram_lo;  -- capture LOW byte (bt-independent, registered)
 		end if;
 		io_enable <= io_enable and not enableCpu;
 

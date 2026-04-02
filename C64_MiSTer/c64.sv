@@ -1177,8 +1177,13 @@ sdram sdram
 	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : cart_ce     ),
 	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : (reu_ram_active ? reu_ram_we : cart_we) ),
 	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : (reu_ram_active ? reu_ram_dout : cart_wrdata) ),
-	.dout( sdram_data )
+	.dout( sdram_data ),
+	.dout_hi( sdram_data_hi ),
+	.dout_lo( sdram_data_lo )
 );
+
+wire  [7:0] sdram_data_hi;
+wire  [7:0] sdram_data_lo;
 
 wire  [7:0] c64_data_out;
 wire  [7:0] c64_data_in;
@@ -1457,6 +1462,8 @@ fpga64_sid_iec fpga64
 	.ramDout(c64_data_out),
 	.ramDin(c64_data_in),
 	.sdram_raw(sdram_data),
+	.sdram_hi(sdram_data_hi),
+	.sdram_lo(sdram_data_lo),
 	.ramCE(ram_ce),
 	.ramWE(ram_we),
 
