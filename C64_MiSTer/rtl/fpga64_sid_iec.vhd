@@ -357,6 +357,7 @@ signal wb_data       : unsigned(7 downto 0);
 signal wb_ack        : std_logic;
 signal wb_drain_active : std_logic;
 signal cache_fill_we   : std_logic;
+signal cache_fill_data : unsigned(7 downto 0);  -- muxed fill source
 -- 64KB dual-port BRAM signals (bank $00 fast RAM)
 signal bram64k_en     : std_logic;  -- master enable for BRAM path
 signal bram_do        : unsigned(7 downto 0);  -- Port A read output (CPU)
@@ -1245,7 +1246,7 @@ port map (
 	cpu_do    => cpuDo_pre,
 	cache_di  => cache_di,
 	cache_hit => cache_hit,
-	fill_data => cpuDi_raw,  -- fill from buslogic output (correct for RAM, ROM, cartridge)
+	fill_data => cache_fill_data,
 	fill_we   => cache_fill_we,
 	fill_addr => cpuAddr_pre,
 	fill_bank => cache_cpu_bank,
@@ -1292,9 +1293,9 @@ scpu_rom_overlay <= supercpu_rom and scpu_rom_vis and supercpu_en;
 -- Gate fill on baLoc: during badlines (baLoc='0'), cpuHasBus='0' so buslogic
 -- outputs VIC data (not CPU data) on cpuDi_raw. Filling the cache with VIC
 -- garbage corrupts cached bytes, causing wrong data on subsequent reads.
--- SuperRAM guard: when superram_in_pipeline='1', cpuDi_raw has bank $00 data
--- (buslogic doesn't know about banks $01+). Filling the cache with that data
--- causes subsequent cache hits to serve wrong bytes, crashing SuperRAM execution.
+-- SuperRAM cache fill is suppressed (superram_in_pipeline guard in cache_fill_we).
+-- Bank $00 fills from cpuDi_raw (buslogic output).
+cache_fill_data <= cpuDi_raw;
 cache_fill_we <= enableCpu and not wb_drain_active and not cpuWe_pre
                  and bram_valid_cycle
                  and not scpu_rom_overlay
@@ -1576,9 +1577,41 @@ supercpu_cycle <= cpu_cyc and cs_ram and cpuHasBus when supercpu_en = '1' else '
 supercpu_bank <= addr_hi_816;
 cpu_has_bus   <= cpuHasBus;
 
--- Debug outputs: active CPU's bus signals
-dbg_cpu_addr <= cpuAddr_pre;
-dbg_cpu_data <= cpuDo_pre;
+-- Crash latch: captures the LAST SuperRAM CPU state before bank→$00 transition.
+-- When crash_latched='1', debug outputs are FROZEN at the crash state.
+-- This lets the UART (which samples at vblank) see the exact crash moment.
+-- A: shows last SuperRAM address, D: shows sdram_lo at that moment,
+-- B: shows crash bank, I: shows IR at crash.
+process(clk32)
+	variable prev_bank_v    : unsigned(7 downto 0) := x"00";
+	variable latched_v      : std_logic := '0';
+	variable latch_addr_v   : unsigned(15 downto 0) := x"0000";
+	variable latch_data_v   : unsigned(7 downto 0) := x"00";
+begin
+	if rising_edge(clk32) then
+		if reset = '1' then
+			latched_v := '0';
+			prev_bank_v := x"00";
+		elsif enableCpu_816 = '1' then
+			if addr_hi_816 /= x"00" then
+				latch_addr_v := cpuAddr_pre;
+				latch_data_v := sdram_lo;
+			end if;
+			if prev_bank_v /= x"00" and addr_hi_816 = x"00" and latched_v = '0' then
+				latched_v := '1';
+			end if;
+			prev_bank_v := addr_hi_816;
+		end if;
+		-- Override debug outputs when crash detected
+		if latched_v = '1' then
+			dbg_cpu_addr <= latch_addr_v;
+			dbg_cpu_data <= latch_data_v;
+		else
+			dbg_cpu_addr <= cpuAddr_pre;
+			dbg_cpu_data <= cpuDo_pre;
+		end if;
+	end if;
+end process;
 dbg_cpu_we   <= cpuWe_pre;
 dbg_cpu_en   <= enableCpu_816 when supercpu_en = '1' else enableCpu_6510;
 -- Turbo/cache diagnostics (active signals for per-frame counting in overlay)
