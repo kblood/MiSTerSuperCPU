@@ -314,6 +314,10 @@ start:
     bne @t3_lbl
 @t3_lbl_done:
 
+    ; Show ">" indicator before MVN starts
+    lda #62              ; '>' screen code
+    sta SCREEN+4*ROW+38
+
     ; Enter native mode
     clc
     xce
@@ -329,9 +333,11 @@ start:
     lda #15
     mvn SRAM_BANK, $00   ; dst=bank $02, src=bank $00
 
-    ; Read back from SuperRAM using LDA long and store to bank $00
+    ; Show "<" indicator after MVN completes
     sep #$20
     .a8
+    lda #60              ; '<' screen code
+    sta $00 + SCREEN+4*ROW+39
     ; Read first byte from $02:SRAM_ADDR
     lda $020000 + SRAM_ADDR
     sta $00 + zp_tmp

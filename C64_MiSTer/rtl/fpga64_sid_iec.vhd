@@ -795,7 +795,7 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 cpuDi <= io_data when (iof_detect = '1' and cpuWe_pre = '0') else
          bram_do  when (bram_hit_d1 = '1') else
          cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
-         superram_data_r when (enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0') else
+         sdram_raw when (enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0') else
          -- SuperCPU $D0Bx registers: gated by scpu_regs_enabled (write $D07F to disable)
          -- $D0BC: computed from dosext(0), ramlink(0), optim low bits
          ("00000" & scpu_optim_mode & '1') when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC" and scpu_regs_enabled = '1') else
@@ -1150,7 +1150,7 @@ enableCpu_6510 <= (bram_hit_d1 or (cache_hit_d1 and turbo_en) or (enableCpu and 
 -- for an I/O read. If a BRAM hit from the previous instruction also fires,
 -- the CPU races past the I/O address before the pipeline can capture data.
 -- sysCycle is registered — no timing issues (unlike cpu_cyc/cs_ram).
-enableCpu_816  <= ((bram_hit_d1 and not at_cpucd) or
+enableCpu_816  <= ((bram_hit_d1 and turbo_en and not at_cpucd) or
                    (cache_hit_d1 and turbo_en and not at_cpucd) or
                    (phantom_enable and turbo_en and not at_cpucd) or
                    (enableCpu and not dma_active))
@@ -1513,6 +1513,9 @@ begin
 			bram_suppress <= '0';
 		elsif bram64k_en = '1'
 		   and dma_active = '0' and baLoc = '1'
+		   and scpu_speed_1mhz = '0'
+		   and scpu_sys_1mhz = '0'
+		   and iec_slow_mode = '0'
 		   and cpu_cyc = '0'
 		   and cpu_cyc_s(0) = '0'
 		   and cpu_cyc_s(1) = '0'
@@ -1577,41 +1580,10 @@ supercpu_cycle <= cpu_cyc and cs_ram and cpuHasBus when supercpu_en = '1' else '
 supercpu_bank <= addr_hi_816;
 cpu_has_bus   <= cpuHasBus;
 
--- Crash latch: captures the LAST SuperRAM CPU state before bank→$00 transition.
--- When crash_latched='1', debug outputs are FROZEN at the crash state.
--- This lets the UART (which samples at vblank) see the exact crash moment.
--- A: shows last SuperRAM address, D: shows sdram_lo at that moment,
--- B: shows crash bank, I: shows IR at crash.
-process(clk32)
-	variable prev_bank_v    : unsigned(7 downto 0) := x"00";
-	variable latched_v      : std_logic := '0';
-	variable latch_addr_v   : unsigned(15 downto 0) := x"0000";
-	variable latch_data_v   : unsigned(7 downto 0) := x"00";
-begin
-	if rising_edge(clk32) then
-		if reset = '1' then
-			latched_v := '0';
-			prev_bank_v := x"00";
-		elsif enableCpu_816 = '1' then
-			if addr_hi_816 /= x"00" then
-				latch_addr_v := cpuAddr_pre;
-				latch_data_v := sdram_lo;
-			end if;
-			if prev_bank_v /= x"00" and addr_hi_816 = x"00" and latched_v = '0' then
-				latched_v := '1';
-			end if;
-			prev_bank_v := addr_hi_816;
-		end if;
-		-- Override debug outputs when crash detected
-		if latched_v = '1' then
-			dbg_cpu_addr <= latch_addr_v;
-			dbg_cpu_data <= latch_data_v;
-		else
-			dbg_cpu_addr <= cpuAddr_pre;
-			dbg_cpu_data <= cpuDo_pre;
-		end if;
-	end if;
-end process;
+-- Debug outputs: dbg_cpu_addr feeds the SDRAM address path (scpu_superram_addr).
+-- NEVER override it with latched/debug values — that breaks all SuperRAM reads.
+dbg_cpu_addr <= cpuAddr_pre;
+dbg_cpu_data <= cpuDo_pre;
 dbg_cpu_we   <= cpuWe_pre;
 dbg_cpu_en   <= enableCpu_816 when supercpu_en = '1' else enableCpu_6510;
 -- Turbo/cache diagnostics (active signals for per-frame counting in overlay)
@@ -2008,7 +1980,7 @@ begin
 		-- stale (wrong address). Cancel the pipeline to prevent delivering
 		-- stale data via enableCpu. This allows cache/BRAM to fire freely
 		-- without being blocked by the SDRAM pipeline guards.
-		if (bram_hit_d1 = '1') or ((cache_hit_d1 = '1' or phantom_enable = '1') and turbo_en = '1') then
+		if (cache_hit_d1 = '1' or bram_hit_d1 = '1' or phantom_enable = '1') and turbo_en = '1' then
 			-- Cache/BRAM/phantom hit advanced the CPU: cancel pending SDRAM pipeline
 			cpu_cyc_s <= "00";
 			enableCpu <= '0';

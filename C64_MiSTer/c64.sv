@@ -1293,20 +1293,15 @@ wire        cpu_has_bus;                    // '1' when CPU owns bus (not VIC)
 // Same pattern used for REU cpu_addr (see line ~691).
 // Concatenation replaces addition: REU_ADDR + {0, bank, addr} = {1, bank, addr}
 // since REU_ADDR = 25'h1000000 (bit[24]=1) and the operand has bit[24]=0.
+// SDRAM address mux MUST be combinational — registering it introduces
+// a 1-cycle latency that breaks STA/LDA long round-trips (verified 2026-04-02).
 wire [24:0] scpu_superram_addr = {1'b1, supercpu_bank, dbg_cpu_addr};
-// Registered SuperRAM address: breaks the CPU→SDRAM combinational path that
-// violates clk64 setup time (-18ns slack). The registered version is always
-// valid at CYCLE_CPUC because the CPU only changes its address at enableCpu
-// (CYCLE_CPUF), and the next CPUC is 24+ clk32 cycles later.
-reg [24:0] scpu_superram_addr_r;
-always @(posedge clk_sys) scpu_superram_addr_r <= scpu_superram_addr;
 
 // Route non-bank-$00 CPU accesses to SuperRAM SDRAM region.
 // Gate on cpu_has_bus to prevent VIC reads (VIC0) from going to SuperRAM
 // when supercpu_bank retains a non-$00 value from the last CPU instruction.
-// Uses registered address (scpu_superram_addr_r) for clean clk64 timing.
 wire [24:0] scpu_sdram_addr = (supercpu_enable && cpu_has_bus && (supercpu_bank != 8'h00))
-                               ? scpu_superram_addr_r
+                               ? scpu_superram_addr
                                : cart_addr;
 
 // SuperRAM SDRAM diagnostic: latch the mux conditions at cart_ce rising edge
