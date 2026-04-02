@@ -251,6 +251,9 @@ begin
 	-- Bank $00, $8000-$9FFF: kickstart ROM replaces BASIC during initial boot ONLY.
 	-- Once the kickstart hides itself (supercpu_rom_vis='0'), BASIC ROM must be visible
 	-- again so the KERNAL/BASIC can run normally.
+	-- NOTE: $E000-$FFFF (KERNAL area) is NOT mapped here. VICE uses a separate
+	-- "bootmap" flag for that, and a kernal shadow SRAM for runtime. The native mode
+	-- vectors at $FFE4-$FFEF are served from the kernal shadow, not the EPROM.
 	scpu_rom_en <= '1' when supercpu_en = '1' and supercpu_rom = '1' and cpuWe = '0' and
 	                        (supercpu_bank = x"F8" or
 	                         (supercpu_bank = x"00" and cpuAddr(15 downto 13) = "100"

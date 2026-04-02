@@ -795,7 +795,7 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 cpuDi <= io_data when (iof_detect = '1' and cpuWe_pre = '0') else
          bram_do  when (bram_hit_d1 = '1') else
          cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
-         sdram_raw when (enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0') else
+         superram_data_r when (enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0') else
          -- SuperCPU $D0Bx registers: gated by scpu_regs_enabled (write $D07F to disable)
          -- $D0BC: computed from dosext(0), ramlink(0), optim low bits
          ("00000" & scpu_optim_mode & '1') when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC" and scpu_regs_enabled = '1') else
@@ -2049,9 +2049,13 @@ begin
 		-- after CPUC. SDRAM needs 5 clk64 = 2.5 clk32. At CPUE = 2 clk32
 		-- after cpu_cyc, we're at 4 clk64 — the data arrives at clk64 edge
 		-- 5, which may be the mid-CPUE edge. For safety, we could capture
-		-- at CPUF (enableCpu with 1-cycle hold). Testing will validate.
+		-- Capture at superram_enable_delay (CPUE), before io_cycle CE at EXT0
+		-- flips bt (byte toggle). At CPUE, bt still has the SuperRAM value
+		-- (addr[24]=1 → bt=1), so sdram_raw correctly returns the HIGH byte
+		-- where SuperRAM data is stored. Using sdram_lo would return the
+		-- wrong byte since SuperRAM lives in the HIGH byte of SDRAM words.
 		if superram_enable_delay = '1' and superram_in_pipeline = '1' then
-			superram_data_r <= sdram_lo;  -- capture LOW byte (bt-independent, registered)
+			superram_data_r <= sdram_raw;  -- bt-dependent, correct at CPUE
 		end if;
 		io_enable <= io_enable and not enableCpu;
 
