@@ -294,6 +294,12 @@ signal scpu_speed_1mhz   : std_logic := '0';  -- '1' = software-forced 1MHz ($D0
 signal scpu_sys_1mhz     : std_logic := '0';  -- '1' = system-forced 1MHz ($D072)
 -- SuperCPU register visibility ($D07E = enable, $D07F = disable)
 signal scpu_regs_enabled : std_logic := '1';
+-- Hardware enable: ANY write to $D07E sets this. Write to $D07F/$D07D clears it.
+-- When hwenable=1 and bootmap=0, kernal shadow is active at $E000-$FFFF.
+signal scpu_hwenable     : std_logic := '0';
+-- Boot ROM map: '1' at reset (EPROM at $8000-$FFFF). Cleared by write to $D0B6,
+-- set by write to $D0B7 (both require hwenable=1).
+signal scpu_bootmap      : std_logic := '1';
 -- Optimization mode (real hardware: $D074-$D077 select mirror range; no-op here)
 signal scpu_optim_mode   : unsigned(1 downto 0) := "11"; -- 11=no optimization (default)
 signal vpa_816      : std_logic;
@@ -391,6 +397,10 @@ signal bram_valid_we       : std_logic;
 signal iec_slow_mode : std_logic := '0';
 signal iec_slow_ctr  : unsigned(19 downto 0) := (others => '0');
 signal scpu_rom_overlay : std_logic;  -- SCPU ROM BRAM active (data differs from SDRAM)
+-- ROM stub: minimal native mode vector table when hwenable=1, bootmap=0
+-- Provides RTI at $FF00 and native vectors ($FFE4-$FFEF) pointing to $FF00
+signal scpu_rom_stub_active : std_logic;
+signal scpu_rom_stub_data   : unsigned(7 downto 0);
 signal cache_cpu_bank   : unsigned(7 downto 0);  -- bank for cache: $00 for T65, addr_hi_816 for SuperCPU
 signal cache_cpu_en     : std_logic;             -- enable for cache: from active CPU
 
@@ -792,7 +802,26 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 -- io_data has reu_dout/cart_data captured during the CPU phase (cpuHasBus='1').
 -- This replaces the complex 3-stage IOF pipeline which had timing alignment
 -- issues between enableCpu and io_in_pipeline in turbo mode.
+-- ROM stub: provide native mode vectors and RTI handler after boot.
+-- On real SuperCPU, internal SRAM at $E000-$FFFF is populated by kickstart with
+-- KERNAL copy + native vectors. Since we don't have that SRAM content, this stub
+-- provides minimal vectors pointing to RTI at $FF00. Active whenever bootmap=0
+-- (boot complete) regardless of hwenable — real SRAM vectors persist after $D07F.
+-- Excludes $FFF0-$FFFF (emulation mode vectors, served by C64 KERNAL/RAM normally).
+scpu_rom_stub_active <= '1' when supercpu_en = '1' and scpu_bootmap = '0'
+                        and emu_mode_816 = '0' and addr_hi_816 = x"00"
+                        and cpuAddr_pre(15 downto 8) = x"FF" and cpuWe_pre = '0'
+                        and (cpuAddr_pre(7 downto 0) = x"00"   -- $FF00: RTI handler
+                          or cpuAddr_pre(7 downto 0) = x"01"   -- $FF01: RTL handler
+                          or (cpuAddr_pre(7 downto 4) = x"E" and cpuAddr_pre(3 downto 2) /= "00"))  -- $FFE4-$FFEF
+                        else '0';
+scpu_rom_stub_data <= x"40" when cpuAddr_pre(7 downto 0) = x"00" else  -- RTI at $FF00
+                      x"6B" when cpuAddr_pre(7 downto 0) = x"01" else  -- RTL at $FF01
+                      (x"FF") when cpuAddr_pre(0) = '1' else            -- vector high byte → $FFxx
+                      x"00";                                             -- vector low byte → $xx00
+
 cpuDi <= io_data when (iof_detect = '1' and cpuWe_pre = '0') else
+         scpu_rom_stub_data when (scpu_rom_stub_active = '1') else
          bram_do  when (bram_hit_d1 = '1') else
          cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
          superram_data_r when (enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0') else
@@ -801,7 +830,7 @@ cpuDi <= io_data when (iof_detect = '1' and cpuWe_pre = '0') else
          ("00000" & scpu_optim_mode & '1') when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC" and scpu_regs_enabled = '1') else
          x"40" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B0" and scpu_regs_enabled = '1') else
          -- $D0B2: bit7=hwenable, bit6=sys_1mhz (VICE-verified)
-         (scpu_regs_enabled & scpu_sys_1mhz & "000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B2" and scpu_regs_enabled = '1') else
+         (scpu_hwenable & scpu_sys_1mhz & "000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B2" and scpu_regs_enabled = '1') else
          -- $D0B8: bit7=software 1MHz, bit6=combined 1MHz (sw OR sys)
          (scpu_speed_1mhz & (scpu_speed_1mhz or scpu_sys_1mhz) & "000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B8" and scpu_regs_enabled = '1') else
          ("000000" & scpu_optim_mode) when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B4" and scpu_regs_enabled = '1') else
@@ -1845,6 +1874,8 @@ begin
 			scpu_speed_1mhz   <= '0'; -- Default: 20MHz (cache handles I/O at 1MHz)
 			scpu_sys_1mhz     <= '0'; -- Default: system turbo
 			scpu_regs_enabled <= '1'; -- Registers visible after reset
+			scpu_hwenable     <= '0'; -- Hardware registers disabled at reset
+			scpu_bootmap      <= '1'; -- Boot ROM map active at reset
 			scpu_optim_mode   <= "11"; -- No optimization (mirror all)
 			dbg_vic_mode_r    <= (others => '0');
 		elsif supercpu_en = '1' and cpuWe = '1' and addr_hi_816 = x"00" then
@@ -1854,10 +1885,20 @@ begin
 				scpu_sys_1mhz <= '1';          -- Any write to $D072 = system 1MHz enable
 			elsif cpuAddr = x"D073" then
 				scpu_sys_1mhz <= '0';          -- Any write to $D073 = system 1MHz disable
-			elsif cpuAddr = x"D07E" and supercpu_rom = '1' then
-				scpu_rom_vis <= cpuDo(7);      -- bit7=0: KERNAL visible; bit7=1: SCPU ROM
+			elsif cpuAddr = x"D07E" then
+				-- VICE: ANY write to $D07E = hwenable strobe (data irrelevant)
+				scpu_hwenable <= '1';
 				scpu_regs_enabled <= '1';      -- $D07E also enables hardware registers
+				-- Legacy: keep rom_vis behavior for kickstart boot compatibility.
+				-- Auto-clear bootmap when rom_vis goes 1→0 (simulates kickstart $D0B6 write).
+				if supercpu_rom = '1' then
+					scpu_rom_vis <= cpuDo(7);
+					if cpuDo(7) = '0' and scpu_rom_vis = '1' then
+						scpu_bootmap <= '0';   -- kickstart clearing rom_vis = bootmap done
+					end if;
+				end if;
 			elsif cpuAddr = x"D07F" or cpuAddr = x"D07D" then
+				scpu_hwenable <= '0';          -- $D07F/$D07D clears hwenable
 				scpu_regs_enabled <= '0';      -- $D07F/$D07D disables hardware registers
 			elsif cpuAddr = x"D078" then
 				cache_flush_sw <= '1';         -- SIMM config on real HW; we use as cache flush
@@ -1873,6 +1914,14 @@ begin
 				scpu_optim_mode <= "10";       -- BASIC optimization ($0400-$07FF)
 			elsif cpuAddr = x"D077" then
 				scpu_optim_mode <= "11";       -- No optimization (mirror all, default)
+			end if;
+			-- Bootmap registers (require hwenable=1, VICE-verified)
+			if scpu_hwenable = '1' then
+				if cpuAddr = x"D0B6" then
+					scpu_bootmap <= '0';       -- Clear bootmap (kernal shadow active)
+				elsif cpuAddr = x"D0B7" then
+					scpu_bootmap <= '1';       -- Set bootmap (EPROM active)
+				end if;
 			end if;
 			-- Debug registers (always writable, independent of scpu_regs_enabled)
 			if cpuAddr = x"D07C" then
