@@ -289,6 +289,10 @@ signal emu_mode_816 : std_logic;
 -- instead of $FC90, and the RTL trick boots the C64 KERNAL successfully.
 signal scpu_rom_vis      : std_logic := '1';
 signal supercpu_en_prev  : std_logic := '0';
+-- In native mode bank $00, force HIRAM=0/LORAM=0 so CPU always sees RAM at
+-- $8000-$FFFF (not KERNAL/BASIC ROM). Real SuperCPU SRAM serves all bank $00
+-- reads regardless of $01. Keep CHAREN=1 so I/O at $D000-$DFFF still works.
+signal scpu_bankswitch   : unsigned(2 downto 0);
 -- SuperCPU speed control (real hardware: $D07A/$D07B = software, $D072/$D073 = system)
 signal scpu_speed_1mhz   : std_logic := '0';  -- '1' = software-forced 1MHz ($D07A)
 signal scpu_sys_1mhz     : std_logic := '0';  -- '1' = system-forced 1MHz ($D072)
@@ -397,10 +401,16 @@ signal bram_valid_we       : std_logic;
 signal iec_slow_mode : std_logic := '0';
 signal iec_slow_ctr  : unsigned(19 downto 0) := (others => '0');
 signal scpu_rom_overlay : std_logic;  -- SCPU ROM BRAM active (data differs from SDRAM)
--- ROM stub: minimal native mode vector table when hwenable=1, bootmap=0
--- Provides RTI at $FF00 and native vectors ($FFE4-$FFEF) pointing to $FF00
+-- Native mode vector SRAM: writable registers for $FFE4-$FFEF and $FF00-$FF01.
+-- On real SuperCPU, $E000-$FFFF is SRAM populated by kickstart. We only provide
+-- the vector area + RTI/RTL handlers. Software (e.g. Doom) can write its own
+-- IRQ handler address to $FFE6/$FFE7 and it will persist.
 signal scpu_rom_stub_active : std_logic;
 signal scpu_rom_stub_data   : unsigned(7 downto 0);
+-- 14 writable bytes: $FF00, $FF01, $FFE4-$FFEF
+-- Index: 0=$FF00, 1=$FF01, 2=$FFE4, 3=$FFE5, ..., 13=$FFEF
+type native_vec_array is array(0 to 13) of unsigned(7 downto 0);
+signal scpu_native_vec : native_vec_array;
 signal cache_cpu_bank   : unsigned(7 downto 0);  -- bank for cache: $00 for T65, addr_hi_816 for SuperCPU
 signal cache_cpu_en     : std_logic;             -- enable for cache: from active CPU
 
@@ -684,7 +694,7 @@ port map (
 	cpuHasBus => cpuHasBus,
 	aec => aec,
 
-	bankSwitch => cpuIO(2 downto 0),
+	bankSwitch => scpu_bankswitch,
 
 	game => game,
 	exrom => exrom,
@@ -807,6 +817,10 @@ cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
 -- KERNAL copy + native vectors. Since we don't have that SRAM content, this stub
 -- provides minimal vectors pointing to RTI at $FF00. Active whenever bootmap=0
 -- (boot complete) regardless of hwenable — real SRAM vectors persist after $D07F.
+-- Native mode bank $00 RAM override: handled in cpuDi mux, not bankSwitch.
+-- bankSwitch passes through unchanged to avoid affecting buslogic/VIC.
+scpu_bankswitch <= cpuIO(2 downto 0);
+
 -- Excludes $FFF0-$FFFF (emulation mode vectors, served by C64 KERNAL/RAM normally).
 scpu_rom_stub_active <= '1' when supercpu_en = '1' and scpu_bootmap = '0'
                         and emu_mode_816 = '0' and addr_hi_816 = x"00"
@@ -815,16 +829,29 @@ scpu_rom_stub_active <= '1' when supercpu_en = '1' and scpu_bootmap = '0'
                           or cpuAddr_pre(7 downto 0) = x"01"   -- $FF01: RTL handler
                           or (cpuAddr_pre(7 downto 4) = x"E" and cpuAddr_pre(3 downto 2) /= "00"))  -- $FFE4-$FFEF
                         else '0';
-scpu_rom_stub_data <= x"40" when cpuAddr_pre(7 downto 0) = x"00" else  -- RTI at $FF00
-                      x"6B" when cpuAddr_pre(7 downto 0) = x"01" else  -- RTL at $FF01
-                      (x"FF") when cpuAddr_pre(0) = '1' else            -- vector high byte → $FFxx
-                      x"00";                                             -- vector low byte → $xx00
+-- Read from writable native vector registers (explicit index, no arithmetic)
+scpu_rom_stub_data <= scpu_native_vec(0)  when cpuAddr_pre(7 downto 0) = x"00" else  -- $FF00
+                      scpu_native_vec(1)  when cpuAddr_pre(7 downto 0) = x"01" else  -- $FF01
+                      scpu_native_vec(2)  when cpuAddr_pre(7 downto 0) = x"E4" else  -- $FFE4
+                      scpu_native_vec(3)  when cpuAddr_pre(7 downto 0) = x"E5" else
+                      scpu_native_vec(4)  when cpuAddr_pre(7 downto 0) = x"E6" else
+                      scpu_native_vec(5)  when cpuAddr_pre(7 downto 0) = x"E7" else
+                      scpu_native_vec(6)  when cpuAddr_pre(7 downto 0) = x"E8" else
+                      scpu_native_vec(7)  when cpuAddr_pre(7 downto 0) = x"E9" else
+                      scpu_native_vec(8)  when cpuAddr_pre(7 downto 0) = x"EA" else
+                      scpu_native_vec(9)  when cpuAddr_pre(7 downto 0) = x"EB" else
+                      scpu_native_vec(10) when cpuAddr_pre(7 downto 0) = x"EC" else
+                      scpu_native_vec(11) when cpuAddr_pre(7 downto 0) = x"ED" else
+                      scpu_native_vec(12) when cpuAddr_pre(7 downto 0) = x"EE" else
+                      scpu_native_vec(13) when cpuAddr_pre(7 downto 0) = x"EF" else
+                      x"00";
 
 cpuDi <= io_data when (iof_detect = '1' and cpuWe_pre = '0') else
          scpu_rom_stub_data when (scpu_rom_stub_active = '1') else
          bram_do  when (bram_hit_d1 = '1') else
          cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
          superram_data_r when (enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0') else
+         -- TODO: Native mode bank $00 RAM override for $8000-$FFFF (Doom needs this)
          -- SuperCPU $D0Bx registers: gated by scpu_regs_enabled (write $D07F to disable)
          -- $D0BC: computed from dosext(0), ramlink(0), optim low bits
          ("00000" & scpu_optim_mode & '1') when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC" and scpu_regs_enabled = '1') else
@@ -1878,6 +1905,22 @@ begin
 			scpu_bootmap      <= '1'; -- Boot ROM map active at reset
 			scpu_optim_mode   <= "11"; -- No optimization (mirror all)
 			dbg_vic_mode_r    <= (others => '0');
+			-- Initialize native mode vector registers with defaults:
+			-- $FF00=RTI($40), $FF01=RTL($6B), $FFE4-$FFEF = vectors → $FF00
+			scpu_native_vec(0)  <= x"40"; -- $FF00: RTI
+			scpu_native_vec(1)  <= x"6B"; -- $FF01: RTL
+			scpu_native_vec(2)  <= x"00"; -- $FFE4: COP low
+			scpu_native_vec(3)  <= x"FF"; -- $FFE5: COP high → $FF00
+			scpu_native_vec(4)  <= x"00"; -- $FFE6: BRK low
+			scpu_native_vec(5)  <= x"FF"; -- $FFE7: BRK high → $FF00
+			scpu_native_vec(6)  <= x"00"; -- $FFE8: ABORT low
+			scpu_native_vec(7)  <= x"FF"; -- $FFE9: ABORT high → $FF00
+			scpu_native_vec(8)  <= x"00"; -- $FFEA: NMI low
+			scpu_native_vec(9)  <= x"FF"; -- $FFEB: NMI high → $FF00
+			scpu_native_vec(10) <= x"00"; -- $FFEC: unused low
+			scpu_native_vec(11) <= x"FF"; -- $FFED: unused high → $FF00
+			scpu_native_vec(12) <= x"00"; -- $FFEE: IRQ low
+			scpu_native_vec(13) <= x"FF"; -- $FFEF: IRQ high → $FF00
 		elsif supercpu_en = '1' and cpuWe = '1' and addr_hi_816 = x"00" then
 			-- SuperCPU register writes (active in bank $00 only)
 			-- $D072/$D073: system 1MHz (unconditional, works even with regs disabled)
@@ -1926,6 +1969,27 @@ begin
 			-- Debug registers (always writable, independent of scpu_regs_enabled)
 			if cpuAddr = x"D07C" then
 				dbg_vic_mode_r(1 downto 0) <= cpuDo(1 downto 0); -- runtime test mode
+			end if;
+			-- Native mode vector writes: bank $00, $FFxx, native mode
+			-- Software (e.g. Doom) writes its own IRQ handler address to $FFE6/$FFE7
+			if emu_mode_816 = '0' and cpuAddr(15 downto 8) = x"FF" then
+				case cpuAddr(7 downto 0) is
+					when x"00" => scpu_native_vec(0)  <= cpuDo;
+					when x"01" => scpu_native_vec(1)  <= cpuDo;
+					when x"E4" => scpu_native_vec(2)  <= cpuDo;
+					when x"E5" => scpu_native_vec(3)  <= cpuDo;
+					when x"E6" => scpu_native_vec(4)  <= cpuDo;
+					when x"E7" => scpu_native_vec(5)  <= cpuDo;
+					when x"E8" => scpu_native_vec(6)  <= cpuDo;
+					when x"E9" => scpu_native_vec(7)  <= cpuDo;
+					when x"EA" => scpu_native_vec(8)  <= cpuDo;
+					when x"EB" => scpu_native_vec(9)  <= cpuDo;
+					when x"EC" => scpu_native_vec(10) <= cpuDo;
+					when x"ED" => scpu_native_vec(11) <= cpuDo;
+					when x"EE" => scpu_native_vec(12) <= cpuDo;
+					when x"EF" => scpu_native_vec(13) <= cpuDo;
+					when others => null;
+				end case;
 			end if;
 		end if;
 	end if;
