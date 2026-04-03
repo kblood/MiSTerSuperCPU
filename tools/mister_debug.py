@@ -70,7 +70,10 @@ def ssh(cmd, timeout=10):
         except Exception as e:
             return "", str(e), 1
     # Fallback to ssh command
+    # IdentitiesOnly + PubkeyAuthentication=no prevents SSH agent from offering
+    # too many keys (which causes "Too many authentication failures" on MiSTer)
     full_cmd = ["ssh", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=no",
+                "-o", "PubkeyAuthentication=no",
                 f"{USER}@{HOST}", cmd]
     try:
         result = subprocess.run(full_cmd, capture_output=True, text=True, timeout=timeout)
@@ -92,6 +95,7 @@ def scp_to(local, remote):
             print(f"SFTP upload error: {e}")
             return False
     cmd = ["scp", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=no",
+           "-o", "PubkeyAuthentication=no",
            local, f"{USER}@{HOST}:{remote}"]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     return result.returncode == 0
@@ -110,6 +114,7 @@ def scp_from(remote, local):
             print(f"SFTP download error: {e}")
             return False
     cmd = ["scp", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=no",
+           "-o", "PubkeyAuthentication=no",
            f"{USER}@{HOST}:{remote}", local]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
     return result.returncode == 0
@@ -248,10 +253,14 @@ def _send_keys_mtype(keys_args):
     """Send keys via mtype.py on MiSTer. keys_args is a string of mtype arguments."""
     if not _ensure_mtype():
         return False
-    # mtype.py takes ~6s for uinput device settle, then sends keys quickly
-    out, err, rc = ssh(f'python3 {MTYPE_REMOTE} {keys_args}', timeout=15)
+    # mtype.py takes ~6s for uinput device settle, then sends keys.
+    # Longer text needs more time (0.05s per char + 0.1s per key event).
+    cmd = f'python3 {MTYPE_REMOTE} {keys_args}'
+    out, err, rc = ssh(cmd, timeout=30)
     if rc != 0:
-        print(f"mtype.py error: {err}")
+        print(f"mtype.py error (rc={rc}): {err}")
+        if out:
+            print(f"mtype.py stdout: {out}")
         return False
     return True
 

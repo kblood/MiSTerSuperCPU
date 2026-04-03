@@ -1368,6 +1368,8 @@ wire        dbg_cpu_en;
 wire [15:0] dbg_cpu_sp;
 wire  [7:0] dbg_cpu_p;
 wire  [7:0] dbg_cpu_ir;
+wire  [7:0] dbg_cpu_pbr;
+wire  [7:0] dbg_cpu_dbr;
 wire  [7:0] dbg_cia1_pa;
 wire  [7:0] dbg_cia1_pb;
 wire [15:0] dbg_scr_wr_addr;
@@ -1423,6 +1425,8 @@ fpga64_sid_iec fpga64
 	.dbg_cpu_sp(dbg_cpu_sp),
 	.dbg_cpu_p(dbg_cpu_p),
 	.dbg_cpu_ir(dbg_cpu_ir),
+	.dbg_cpu_pbr(dbg_cpu_pbr),
+	.dbg_cpu_dbr(dbg_cpu_dbr),
 	.dbg_cia1_pa(dbg_cia1_pa),
 	.dbg_cia1_pb(dbg_cia1_pb),
 	.dbg_scr_wr_addr(dbg_scr_wr_addr),
@@ -1885,6 +1889,8 @@ debug_uart_fmt debug_fmt
 	.cpu_p(dbg_cpu_p),
 	.cpu_ir(dbg_cpu_ir),
 	.cpu_emul(supercpu_emul),
+	.cpu_pbr(dbg_cpu_pbr),
+	.cpu_dbr(dbg_cpu_dbr),
 	.turbo_en(dbg_turbo_en),
 	// Override diag with DMA debug after ANY DMA (when ce_count > 0)
 	// bit7=dma_ram_active_ever, bit6=dma_ram_active_seen(at CE), bit5=dma_ram_we_seen,

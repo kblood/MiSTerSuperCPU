@@ -1,12 +1,12 @@
 // debug_uart_fmt.sv - Formats CPU debug state as ASCII hex lines over UART
 //
 // Sends one line per frame (at vblank) containing CPU state:
-//   A:xxxx D:xx B:xx S:xxxx P:xx I:xx E:x F:xxxx T:xx C:xxxx N:xxxx\n
+//   A:xxxx K:xx B:xx S:xxxx P:xx I:xx E:x F:xxxx T:xx C:xxxx N:xxxx\n
 //
 // Fields:
 //   A = CPU address (16-bit)
-//   D = CPU data bus (8-bit)
-//   B = Bank (8-bit, A23-A16)
+//   K = PBR - Program Bank Register (8-bit)
+//   B = Address bus bank byte (8-bit, A23-A16)
 //   S = Stack pointer (16-bit)
 //   P = Processor status (8-bit)
 //   I = Instruction register / opcode (8-bit)
@@ -33,6 +33,8 @@ module debug_uart_fmt (
 	input   [7:0] cpu_p,
 	input   [7:0] cpu_ir,
 	input         cpu_emul,
+	input   [7:0] cpu_pbr,      // Program Bank Register
+	input   [7:0] cpu_dbr,      // Data Bank Register
 
 	// Turbo/cache diagnostics (active signals, counted per frame)
 	input         turbo_en,
@@ -58,6 +60,8 @@ reg [15:0] lat_sp;
 reg  [7:0] lat_p;
 reg  [7:0] lat_ir;
 reg        lat_emul;
+reg  [7:0] lat_pbr;
+reg  [7:0] lat_dbr;
 reg [15:0] lat_frame;
 reg        lat_turbo;
 reg  [7:0] lat_diag;
@@ -144,22 +148,22 @@ always @(*) begin
 		7'd4:  line_char = hex_char(lat_addr[7:4]);
 		7'd5:  line_char = hex_char(lat_addr[3:0]);
 		7'd6:  line_char = " ";
-		7'd7:  line_char = "D";
+		7'd7:  line_char = "K";  // K = PBR (program bank register)
 		7'd8:  line_char = ":";
-		7'd9:  line_char = hex_char(lat_data[7:4]);
-		7'd10: line_char = hex_char(lat_data[3:0]);
+		7'd9:  line_char = hex_char(lat_pbr[7:4]);
+		7'd10: line_char = hex_char(lat_pbr[3:0]);
 		7'd11: line_char = " ";
 		7'd12: line_char = "B";
 		7'd13: line_char = ":";
 		7'd14: line_char = hex_char(lat_bank[7:4]);
 		7'd15: line_char = hex_char(lat_bank[3:0]);
 		7'd16: line_char = " ";
-		7'd17: line_char = "R";  // R = Raw cpu_cyc count per frame
+		7'd17: line_char = "S";  // S = Stack pointer (16-bit)
 		7'd18: line_char = ":";
-		7'd19: line_char = hex_char(lat_cy_cnt[19:16]);
-		7'd20: line_char = hex_char(lat_cy_cnt[15:12]);
-		7'd21: line_char = hex_char(lat_cy_cnt[11:8]);
-		7'd22: line_char = hex_char(lat_cy_cnt[7:4]);
+		7'd19: line_char = hex_char(lat_sp[15:12]);
+		7'd20: line_char = hex_char(lat_sp[11:8]);
+		7'd21: line_char = hex_char(lat_sp[7:4]);
+		7'd22: line_char = hex_char(lat_sp[3:0]);
 		7'd23: line_char = " ";
 		7'd24: line_char = "P";
 		7'd25: line_char = ":";
@@ -238,6 +242,8 @@ always @(posedge clk) begin
 			lat_p      <= cpu_p;
 			lat_ir     <= cpu_ir;
 			lat_emul   <= cpu_emul;
+			lat_pbr    <= cpu_pbr;
+			lat_dbr    <= cpu_dbr;
 			lat_frame  <= frame_cnt;
 			lat_turbo  <= turbo_en;
 			lat_diag   <= diag;

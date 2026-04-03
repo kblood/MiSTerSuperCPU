@@ -88,6 +88,8 @@ port(
 	dbg_cpu_sp    : out unsigned(15 downto 0);
 	dbg_cpu_p     : out unsigned(7 downto 0);
 	dbg_cpu_ir    : out unsigned(7 downto 0);
+	dbg_cpu_pbr   : out unsigned(7 downto 0);
+	dbg_cpu_dbr   : out unsigned(7 downto 0);
 	-- CIA1 keyboard scan diagnostic: PA/PB captured when CPU reads $DC01 and PB≠$FF
 	dbg_cia1_pa   : out unsigned(7 downto 0);
 	dbg_cia1_pb   : out unsigned(7 downto 0);
@@ -312,6 +314,8 @@ signal dbg_pc_816   : unsigned(15 downto 0);
 signal dbg_sp_816   : unsigned(15 downto 0);
 signal dbg_p_816    : unsigned(7 downto 0);
 signal dbg_ir_816   : unsigned(7 downto 0);
+signal dbg_pbr_816  : unsigned(7 downto 0);
+signal dbg_dbr_816  : unsigned(7 downto 0);
 
 -- 6510 CPU signals (renamed from _pre for MUX clarity)
 signal cpuAddr_6510 : unsigned(15 downto 0);
@@ -1264,7 +1268,9 @@ port map (
 	dbg_pc => dbg_pc_816,
 	dbg_sp => dbg_sp_816,
 	dbg_p  => dbg_p_816,
-	dbg_ir => dbg_ir_816
+	dbg_ir => dbg_ir_816,
+	dbg_pbr => dbg_pbr_816,
+	dbg_dbr => dbg_dbr_816
 );
 
 -- -----------------------------------------------------------------------
@@ -1350,13 +1356,12 @@ scpu_rom_overlay <= supercpu_rom and scpu_rom_vis and supercpu_en;
 -- Gate fill on baLoc: during badlines (baLoc='0'), cpuHasBus='0' so buslogic
 -- outputs VIC data (not CPU data) on cpuDi_raw. Filling the cache with VIC
 -- garbage corrupts cached bytes, causing wrong data on subsequent reads.
--- SuperRAM cache fill is suppressed (superram_in_pipeline guard in cache_fill_we).
--- Bank $00 fills from cpuDi_raw (buslogic output).
-cache_fill_data <= cpuDi_raw;
+-- SuperRAM cache fills use superram_data_r (SDRAM high byte latch).
+-- Bank $00 fills use cpuDi_raw (buslogic output with ROM/IO overlay).
+cache_fill_data <= superram_data_r when superram_in_pipeline = '1' else cpuDi_raw;
 cache_fill_we <= enableCpu and not wb_drain_active and not cpuWe_pre
                  and bram_valid_cycle
                  and not scpu_rom_overlay
-                 and not superram_in_pipeline
                  and baLoc;
 
 -- Cache hit pipeline: allow hits during non-CPU slots + idle CPU slots.
@@ -1673,6 +1678,8 @@ dbg_diag <= dma_active & enableCpu & cache_hit & scpu_rom_overlay & iec_slow_mod
 dbg_cpu_sp   <= dbg_sp_816 when supercpu_en = '1' else x"0000";
 dbg_cpu_p    <= dbg_p_816  when supercpu_en = '1' else x"00";
 dbg_cpu_ir   <= dbg_ir_816 when supercpu_en = '1' else x"00";
+dbg_cpu_pbr  <= dbg_pbr_816 when supercpu_en = '1' else x"00";
+dbg_cpu_dbr  <= dbg_dbr_816 when supercpu_en = '1' else x"00";
 
 -- Diagnostic: capture first time CPU enters a non-$00 bank (sticky max bank seen).
 -- K (cia1_pa): highest bank byte (PBR) ever seen while CPU active.

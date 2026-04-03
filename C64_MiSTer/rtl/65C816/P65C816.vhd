@@ -27,7 +27,9 @@ entity P65C816 is
 		  DBG_PC	: out std_logic_vector(15 downto 0);
 		  DBG_SP	: out std_logic_vector(15 downto 0);
 		  DBG_P	: out std_logic_vector(7 downto 0);
-		  DBG_IR	: out std_logic_vector(7 downto 0)
+		  DBG_IR	: out std_logic_vector(7 downto 0);
+		  DBG_PBR	: out std_logic_vector(7 downto 0);
+		  DBG_DBR	: out std_logic_vector(7 downto 0)
     );
 end P65C816;
 
@@ -268,6 +270,8 @@ begin
 	DBG_SP <= SP;
 	DBG_P  <= P(7 downto 0);
 	DBG_IR <= IR;
+	DBG_PBR <= PBR;
+	DBG_DBR <= DBR;
 
 	process(CLK, RST_N)
 	begin
