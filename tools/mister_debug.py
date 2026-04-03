@@ -421,9 +421,24 @@ def cmd_keys(args):
         mtype_args = ' '.join(MBC_TO_MTYPE[c] for c in seq)
         print(f"Sending key sequence: {seq} → mtype.py {mtype_args}")
     else:
-        # Pass through as mtype.py arguments
-        mtype_args = ' '.join(args)
-        print(f"Sending keys: {mtype_args}")
+        # Convert \r-separated text to mtype.py "line" enter "line" enter format
+        raw = ' '.join(args)
+        if '\\r' in raw:
+            parts = raw.split('\\r')
+            mtype_tokens = []
+            for i, part in enumerate(parts):
+                if part:
+                    # Shell-quote each text segment for remote bash
+                    escaped = part.replace("'", "'\\''")
+                    mtype_tokens.append(f"'{escaped}'")
+                if i < len(parts) - 1:
+                    mtype_tokens.append('enter')
+            mtype_args = ' '.join(mtype_tokens)
+        else:
+            # Shell-quote the whole thing if it contains special chars
+            escaped = raw.replace("'", "'\\''")
+            mtype_args = f"'{escaped}'"
+        print(f"Sending keys: {raw[:80]}...")
 
     if _send_keys_mtype(mtype_args):
         return 0

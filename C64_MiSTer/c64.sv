@@ -627,12 +627,12 @@ reg reu_ram_active_d;
 always @(posedge clk_sys) reu_ram_active_d <= reu_ram_active;
 wire reu_ram_settled = reu_ram_active & reu_ram_active_d;
 
-// REU SDRAM data capture: continuously latch sdram_data while reu_ram_active.
-reg [7:0] reu_sdram_capture;
-always @(posedge clk_sys) begin
-	if (reu_ram_active)
-		reu_sdram_capture <= sdram_data;
-end
+// REU SDRAM data: use sdram_data_reu (dedicated latch in sdram.v that captures
+// the high byte only when a read completes for an address with bit[24]=1).
+// This avoids two problems with capturing sdram_data directly:
+// 1. bt (byte toggle) gets overwritten by io_cycle CEs with bit[24]=0
+// 2. Delay-based capture races against CAS latency + intervening CEs
+wire [7:0] sdram_data_reu;  // from sdram.dout_reu — stable REU read data
 
 // (registered SDRAM mux removed — broke VIC timing. Using CE gating instead.)
 
@@ -682,12 +682,13 @@ reu reu
 	// REU SDRAM access via cart_ce (fires at VIC0 and CPUC every rotation).
 	// During reu_ram_active=1, the SDRAM addr mux routes through reu_ram_addr,
 	// so all cart_ce pulses read/write from/to the REU address.
-	// ram_din uses the capture register instead of raw sdram_data to avoid
-	// timing hazards between the SDRAM output and the REU's data latch.
+	// ram_din uses sdram_data_reu (dedicated latch in sdram.v) — captures high byte
+	// only when SDRAM completes a read for addr with bit[24]=1 (REU region).
+	// This avoids bt clobbering and capture timing races.
 	.ram_cycle(cart_ce & dma_req),
 	.ram_addr(reu_ram_addr),
 	.ram_dout(reu_ram_dout),
-	.ram_din(reu_sdram_capture),
+	.ram_din(sdram_data_reu),
 	.ram_we(reu_ram_we),
 	.ram_active(reu_ram_active),
 
@@ -1179,7 +1180,8 @@ sdram sdram
 	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : (reu_ram_active ? reu_ram_dout : cart_wrdata) ),
 	.dout( sdram_data ),
 	.dout_hi( sdram_data_hi ),
-	.dout_lo( sdram_data_lo )
+	.dout_lo( sdram_data_lo ),
+	.dout_reu( sdram_data_reu )
 );
 
 wire  [7:0] sdram_data_hi;

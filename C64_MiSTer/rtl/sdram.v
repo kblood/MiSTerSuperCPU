@@ -42,6 +42,7 @@ module sdram (
 	output     [ 7:0]	dout,
 	output     [ 7:0]	dout_hi,    // high byte of last SDRAM read (bt-independent)
 	output     [ 7:0]	dout_lo,    // low byte of last SDRAM read (bt-independent)
+	output     [ 7:0]	dout_reu,   // high byte latched only for REU reads (bt=1, read)
 
 	input 		 		refresh,    // refresh cycle
 	input 		 		ce,         // cpu/chipset access
@@ -122,6 +123,12 @@ assign dout = bt ? dout_r[15:8] : dout_r[7:0];
 assign dout_hi = dout_r[15:8];  // always high byte, no bt dependency
 assign dout_lo = dout_r[7:0];   // always low byte, no bt dependency
 
+// REU data latch: captures high byte when a read completes for an address
+// with bit[24]=1 (REU/SuperRAM region). Updated inside the main always block
+// where 'wr' is accessible. Stays latched until the next REU read completes.
+reg [7:0] dout_reu_r;
+assign dout_reu = dout_reu_r;
+
 always @(posedge clk) begin
 	reg [8:0] caddr;
 	reg [7:0] wrdata;
@@ -130,7 +137,10 @@ always @(posedge clk) begin
 	sd_cmd  <= CMD_NOP;
 	sd_data <= 16'bZ;
 
-	if(q == STATE_READ) dout_r <= sd_data;
+	if(q == STATE_READ) begin
+		dout_r <= sd_data;
+		if(bt && !wr) dout_reu_r <= sd_data[15:8];
+	end
 
 	if(reset) begin
 		sd_ba <= 0;
