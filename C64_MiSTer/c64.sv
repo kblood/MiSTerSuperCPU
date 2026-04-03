@@ -1302,6 +1302,8 @@ wire [24:0] scpu_superram_addr = {1'b1, supercpu_bank, dbg_cpu_addr};
 // Route non-bank-$00 CPU accesses to SuperRAM SDRAM region.
 // Gate on cpu_has_bus to prevent VIC reads (VIC0) from going to SuperRAM
 // when supercpu_bank retains a non-$00 value from the last CPU instruction.
+// NOTE: scpu_sdram_addr MUST be combinational — registering it introduces
+// a 1-cycle latency that causes stale addresses when BRAM hits fire at CPUB.
 wire [24:0] scpu_sdram_addr = (supercpu_enable && cpu_has_bus && (supercpu_bank != 8'h00))
                                ? scpu_superram_addr
                                : cart_addr;
