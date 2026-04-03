@@ -1,14 +1,14 @@
--- c64_ram64k.vhd — 32KB dual-port BRAM for C64 bank $00 RAM
+-- c64_ram64k.vhd — 64KB dual-port BRAM for C64 bank $00 RAM
 --
--- Covers $0000-$7FFF (zero page, stack, screen RAM, BASIC workspace).
+-- Covers $0000-$FFFF (full bank $00 address space).
 -- Port A: CPU read/write (full speed, 1-cycle registered read)
 -- Port B: VIC-II read (independent, zero contention with CPU)
 --
--- Uses M10K block RAM on Cyclone V (~26 M10K blocks for 32KB).
--- Both ports share the same 32KB storage — true dual-port.
+-- Uses M10K block RAM on Cyclone V (~52 M10K blocks for 64KB).
+-- Both ports share the same 64KB storage — true dual-port.
 --
--- Address: 16-bit input, only lower 15 bits used ($0000-$7FFF).
--- Caller must gate writes and hit checks for the valid address range.
+-- Address: 16-bit input, full range used ($0000-$FFFF).
+-- Caller must gate writes and hit checks for valid address ranges.
 -- Port A read latency: 1 clock cycle (M10K registered output)
 -- Port B read latency: 1 clock cycle (M10K registered output)
 
@@ -34,9 +34,9 @@ end c64_ram64k;
 
 architecture rtl of c64_ram64k is
 
-	-- 32KB storage: 32768 x 8 bits = 262,144 bits
+	-- 64KB storage: 65536 x 8 bits = 524,288 bits
 	-- Quartus infers M10K blocks for this array.
-	type ram_t is array(0 to 32767) of std_logic_vector(7 downto 0);
+	type ram_t is array(0 to 65535) of std_logic_vector(7 downto 0);
 	shared variable ram : ram_t;
 
 	-- Prevent Quartus from using MLAB (force M10K)
@@ -46,22 +46,23 @@ architecture rtl of c64_ram64k is
 begin
 
 	-- Port A: CPU read/write (1-cycle registered read)
-	-- Only lower 15 bits of address used (32KB range)
+	-- Full 16-bit address used (64KB range)
 	process(clk)
 	begin
 		if rising_edge(clk) then
 			if a_we = '1' then
-				ram(to_integer(a_addr(14 downto 0))) := std_logic_vector(a_din);
+				ram(to_integer(a_addr)) := std_logic_vector(a_din);
 			end if;
-			a_dout <= unsigned(ram(to_integer(a_addr(14 downto 0))));
+			a_dout <= unsigned(ram(to_integer(a_addr)));
 		end if;
 	end process;
 
 	-- Port B: VIC-II read only (1-cycle registered read)
+	-- Caller gates b_addr to $0000-$7FFF; upper half unused by VIC.
 	process(clk)
 	begin
 		if rising_edge(clk) then
-			b_dout <= unsigned(ram(to_integer(b_addr(14 downto 0))));
+			b_dout <= unsigned(ram(to_integer(b_addr)));
 		end if;
 	end process;
 

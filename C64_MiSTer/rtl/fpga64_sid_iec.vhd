@@ -388,6 +388,7 @@ signal bram_byte_valid    : std_logic;  -- M10K per-byte valid output (1-cycle l
 signal bram_rom_region    : std_logic;  -- '1' when addr in possibly-ROM region
 signal bram_hit_addr      : std_logic;  -- combinational: address+bank check (no valid)
 signal bram_hit_ram       : std_logic;  -- combinational: always-RAM hit (with page valid)
+signal bram_hit_native    : std_logic;  -- combinational: native mode hit for $8000-$FFFF (excl. I/O)
 signal bram_hit_rom_pre   : std_logic;  -- combinational: ROM region address check
 signal bram_hit_rom_pre_d1: std_logic := '0';  -- pipelined ROM hit check (aligned with M10K)
 signal bram_suppress      : std_logic := '0';  -- extra suppress cycle for ROM region hits
@@ -1200,7 +1201,7 @@ end process;
 enableCpu_6510 <= (bram_hit_d1 or (cache_hit_d1 and turbo_en) or (enableCpu and not dma_active))
                   when supercpu_en = '0' else '0';
 -- SuperCPU (P65C816): BRAM acceleration + SDRAM path.
--- BRAM hit covers 60KB of bank $00 (all except I/O).
+-- BRAM hit covers 32KB ($0000-$7FFF) always + 28KB ($8000-$FFFF excl I/O) in native mode.
 -- SDRAM path handles SuperRAM (banks $01-$EF) and I/O.
 -- Suppress BRAM/cache hits at CPUC: at this bus cycle, cpu_cyc may fire
 -- for an I/O read. If a BRAM hit from the previous instruction also fires,
@@ -1448,8 +1449,9 @@ port map (
 );
 
 -- BRAM write enable: CPU writes + SDRAM read fill + cache hit fill
--- Covers $0000-$7FFF (32KB): zero page, stack, screen RAM, BASIC workspace.
--- Reduced from 60KB to 32KB to keep M10K usage under 90% (fitter stability).
+-- Covers $0000-$FFFF (64KB): full bank $00 address space.
+-- In native mode, $8000-$FFFF acts as SRAM shadow (like real SuperCPU).
+-- In emulation mode, $8000-$FFFF BRAM is written but reads go through buslogic.
 -- 1. CPU writes: write-through to BRAM (keeps BRAM coherent with SDRAM)
 -- 2. SDRAM read fills: cpuDi_raw from buslogic (correct data for current config)
 -- 3. Cache hit fills: cache_di from 8KB cache (keeps BRAM coherent when cache
@@ -1464,7 +1466,6 @@ bram_valid_cycle <= (vda_816 or vpa_816) when supercpu_en = '1' else '1';
 
 bram_we <= '1' when bram64k_en = '1'
                 and cache_cpu_bank = x"00"
-                and cpuAddr_pre(15) = '0'  -- $0000-$7FFF only (32KB)
                 and bram_valid_cycle = '1'
                 and (
                     -- CPU write: store write data to BRAM
@@ -1504,10 +1505,11 @@ begin
 	end if;
 end process;
 
--- Per-page valid tracking: 256 registers (pages 0-127 used for $0000-$7FFF).
--- Combinational read = zero latency. bram_we gates on addr(15)='0' so
--- pages 128-255 are never set.
--- Cleared on reset/invalidation (NOT on bank change — always-RAM is bank-invariant).
+-- Per-page valid tracking: 256 registers (all 256 pages for $0000-$FFFF).
+-- Combinational read = zero latency. Pages 128-255 ($8000-$FFFF) are set
+-- when CPU writes or SDRAM read fills occur (emulation mode fills with ROM data,
+-- native mode fills with SRAM shadow data).
+-- Cleared on reset/invalidation (NOT on bank change — bank $00 is bank-invariant).
 process(clk32)
 begin
 	if rising_edge(clk32) then
@@ -1526,16 +1528,32 @@ end process;
 -- Combinational read: page valid for current CPU address (no latency!)
 bram_page_valid <= bram_pgvalid(to_integer(unsigned(std_logic_vector(cpuAddr_pre(15 downto 8)))));
 
--- ROM region detection: disabled for 32KB BRAM ($0000-$7FFF has no ROM regions)
+-- ROM region detection: disabled (BRAM hit for upper half gated by native mode)
 bram_rom_region <= '0';
 
 -- Base address check: bank $00, $0000-$7FFF, read access, no ROM overlay
+-- This covers the always-available lower half (both emulation and native mode).
 bram_hit_addr <= '1' when bram64k_en = '1'
                       and cache_cpu_bank = x"00"
-                      and cpuAddr_pre(15) = '0'  -- $0000-$7FFF only (32KB)
+                      and cpuAddr_pre(15) = '0'  -- $0000-$7FFF only
                       and cpuWe_pre = '0'
                       and scpu_rom_overlay = '0'
                 else '0';
+
+-- Native mode BRAM hit: $8000-$FFFF in bank $00, native mode only.
+-- Excludes $D000-$DFFF (I/O region — always served by buslogic).
+-- In native mode, real SuperCPU has 128KB SRAM for all of bank $00/$01.
+-- BRAM acts as this SRAM shadow, filled from buslogic reads during emulation
+-- mode (KERNAL/BASIC ROM data cached) and updated by CPU writes.
+bram_hit_native <= '1' when bram64k_en = '1'
+                        and cache_cpu_bank = x"00"
+                        and cpuAddr_pre(15) = '1'         -- $8000-$FFFF
+                        and cpuAddr_pre(15 downto 12) /= x"D"  -- exclude I/O $D000-$DFFF
+                        and emu_mode_816 = '0'             -- native mode only
+                        and cpuWe_pre = '0'
+                        and scpu_rom_overlay = '0'
+                        and bram_page_valid = '1'
+                   else '0';
 
 -- BRAM CPU read path: per-page valid gated by DMA coherency.
 -- DMA invalidates all pages (bram_pgvalid cleared when dma_active='1'),
@@ -1578,8 +1596,8 @@ begin
 		   and superram_enable_delay = '0'  -- 3-stage pipeline guard
 		   and enableCpu = '0'
 		then
-			if bram_hit_ram = '1' then
-				-- Always-RAM: page valid confirmed (combinational, no pipeline)
+			if (bram_hit_ram = '1' or bram_hit_native = '1') then
+				-- Always-RAM or native mode upper half: page valid confirmed (combinational)
 				bram_hit_d1 <= '1';
 				bram_hit_was_rom <= '0';
 			elsif bram_hit_rom_pre_d1 = '1' and bram_byte_valid = '1' then

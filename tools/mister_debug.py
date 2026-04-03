@@ -421,9 +421,20 @@ def cmd_keys(args):
         mtype_args = ' '.join(MBC_TO_MTYPE[c] for c in seq)
         print(f"Sending key sequence: {seq} → mtype.py {mtype_args}")
     else:
-        # Convert \r-separated text to mtype.py "line" enter "line" enter format
+        # Check if input looks like mtype.py native arguments (key names, wait:N)
+        MTYPE_KEYS = {'f1','f2','f3','f4','f5','f6','f7','f8','f9','f10','f11','f12',
+                      'up','down','left','right','enter','esc','space','backspace',
+                      'tab','home','end','pageup','pagedown','delete','insert'}
         raw = ' '.join(args)
-        if '\\r' in raw:
+        tokens = raw.split()
+        is_native = all(t.lower() in MTYPE_KEYS or t.lower().startswith('wait:') for t in tokens)
+
+        if is_native:
+            # Pass through as-is — these are mtype.py key arguments
+            mtype_args = raw
+            print(f"Sending keys: {raw[:80]}...")
+        elif '\\r' in raw:
+            # Convert \r-separated text to mtype.py "line" enter "line" enter format
             parts = raw.split('\\r')
             mtype_tokens = []
             for i, part in enumerate(parts):
@@ -434,11 +445,12 @@ def cmd_keys(args):
                 if i < len(parts) - 1:
                     mtype_tokens.append('enter')
             mtype_args = ' '.join(mtype_tokens)
+            print(f"Sending keys: {raw[:80]}...")
         else:
             # Shell-quote the whole thing if it contains special chars
             escaped = raw.replace("'", "'\\''")
             mtype_args = f"'{escaped}'"
-        print(f"Sending keys: {raw[:80]}...")
+            print(f"Sending keys: {raw[:80]}...")
 
     if _send_keys_mtype(mtype_args):
         return 0
