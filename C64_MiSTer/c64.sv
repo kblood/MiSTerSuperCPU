@@ -750,6 +750,49 @@ wire [15:0] reu_reg_rd_attempts;
 wire  [4:0] reu_reg_last_addr_lo;
 wire  [7:0] reu_reg_last_dout;
 
+// Read-side page select for the 128-entry crash trace ring buffer.
+// CPU writes the desired page (0..3) to $DF1F. Writes to $DF1F pass
+// through reu.v's falling-edge cs but $1F is outside reu.v's register
+// range (0..10) so reu.v ignores it.
+reg [1:0] bug_page;
+initial bug_page = 2'b00;
+always @(posedge clk_sys) begin
+	if (dbg_cpu_we && dbg_cpu_addr == 16'hDF1F)
+		bug_page <= dbg_cpu_data[1:0];
+end
+
+// Paged view of the 128-entry ring buffer: one 32-entry window at a time.
+// Layout in dbg_bug_buf:
+//   [7:0]       = status
+//   [4103:8]    = 128 × 32 bits (PC_lo, PC_hi, PBR, IR) — entry k at bit 8+k*32
+//   [5127:4104] = 128 × 8 bits P — entry k P at bit 4104+k*8
+// Each page shows 32 contiguous entries: page p covers entries p*32..p*32+31.
+reg [31:0] trace_entry_view [0:31];  // full 32-bit entry per slot
+reg  [7:0] trace_p_view     [0:31];  // P byte per slot
+integer ti;
+always @(*) begin
+	for (ti = 0; ti < 32; ti = ti + 1) begin
+		case (bug_page)
+			2'd0: begin
+				trace_entry_view[ti] = dbg_bug_buf[8    + 0*1024 + ti*32 +: 32];
+				trace_p_view[ti]     = dbg_bug_buf[4104 + 0*256  + ti*8  +: 8];
+			end
+			2'd1: begin
+				trace_entry_view[ti] = dbg_bug_buf[8    + 1*1024 + ti*32 +: 32];
+				trace_p_view[ti]     = dbg_bug_buf[4104 + 1*256  + ti*8  +: 8];
+			end
+			2'd2: begin
+				trace_entry_view[ti] = dbg_bug_buf[8    + 2*1024 + ti*32 +: 32];
+				trace_p_view[ti]     = dbg_bug_buf[4104 + 2*256  + ti*8  +: 8];
+			end
+			2'd3: begin
+				trace_entry_view[ti] = dbg_bug_buf[8    + 3*1024 + ti*32 +: 32];
+				trace_p_view[ti]     = dbg_bug_buf[4104 + 3*256  + ti*8  +: 8];
+			end
+		endcase
+	end
+end
+
 reg [7:0] reu_reg_mux;
 always @(*) begin
 	case (dbg_cpu_addr[7:0])
@@ -787,171 +830,142 @@ always @(*) begin
 		27: reu_reg_mux = reu_rb_data;                 // $DF1B: readback byte 0 from REU_ADDR
 		28: reu_reg_mux = {5'b0, reu_rb_done, reu_rb_active, reu_rb_pending}; // $DF1C: status
 		29: reu_reg_mux = {7'b0, dbg_wr_pending};  // $DF1D: write test pending (reads as 0/1)
-		// Crash trace ring buffer (2026-04-12 expanded for Doom K:2D→K:00 diagnosis)
-		// $DF20: status {2'b0, wp[4:0], frozen}
-		// $DF21..$DFA0: 32 entries × 4 bytes = (PC_lo, PC_hi, PBR, IR) each.
-		// Read in chronological order from (wp+1) wrapping to (wp).
+		// Crash trace ring buffer (expanded to 128 entries, 2026-04-13)
+		// $DF20: status = {wp[6:0], frozen}
+		// $DF21..$DFA0: 32 entries × 4 bytes = (PC_lo, PC_hi, PBR, IR) each
+		//   (current page, select page via write to $DF1F)
+		// $DFC9..$DFE8: 32 P bytes for the current page
+		// 128 entries total → 4 pages. Write 0/1/2/3 to $DF1F to pick.
 		32: reu_reg_mux = dbg_bug_buf[7:0];  // $DF20 status
 		// Entry  0: $DF21..$DF24
-		33: reu_reg_mux = dbg_bug_buf[  8 +  0*32 +  7 :   8 +  0*32 +  0];
-		34: reu_reg_mux = dbg_bug_buf[  8 +  0*32 + 15 :   8 +  0*32 +  8];
-		35: reu_reg_mux = dbg_bug_buf[  8 +  0*32 + 23 :   8 +  0*32 + 16];
-		36: reu_reg_mux = dbg_bug_buf[  8 +  0*32 + 31 :   8 +  0*32 + 24];
-		// Entry  1: $DF25..$DF28
-		37: reu_reg_mux = dbg_bug_buf[  8 +  1*32 +  7 :   8 +  1*32 +  0];
-		38: reu_reg_mux = dbg_bug_buf[  8 +  1*32 + 15 :   8 +  1*32 +  8];
-		39: reu_reg_mux = dbg_bug_buf[  8 +  1*32 + 23 :   8 +  1*32 + 16];
-		40: reu_reg_mux = dbg_bug_buf[  8 +  1*32 + 31 :   8 +  1*32 + 24];
-		// Entry  2: $DF29..$DF2C
-		41: reu_reg_mux = dbg_bug_buf[  8 +  2*32 +  7 :   8 +  2*32 +  0];
-		42: reu_reg_mux = dbg_bug_buf[  8 +  2*32 + 15 :   8 +  2*32 +  8];
-		43: reu_reg_mux = dbg_bug_buf[  8 +  2*32 + 23 :   8 +  2*32 + 16];
-		44: reu_reg_mux = dbg_bug_buf[  8 +  2*32 + 31 :   8 +  2*32 + 24];
-		// Entry  3: $DF2D..$DF30
-		45: reu_reg_mux = dbg_bug_buf[  8 +  3*32 +  7 :   8 +  3*32 +  0];
-		46: reu_reg_mux = dbg_bug_buf[  8 +  3*32 + 15 :   8 +  3*32 +  8];
-		47: reu_reg_mux = dbg_bug_buf[  8 +  3*32 + 23 :   8 +  3*32 + 16];
-		48: reu_reg_mux = dbg_bug_buf[  8 +  3*32 + 31 :   8 +  3*32 + 24];
-		// Entry  4: $DF31..$DF34
-		49: reu_reg_mux = dbg_bug_buf[  8 +  4*32 +  7 :   8 +  4*32 +  0];
-		50: reu_reg_mux = dbg_bug_buf[  8 +  4*32 + 15 :   8 +  4*32 +  8];
-		51: reu_reg_mux = dbg_bug_buf[  8 +  4*32 + 23 :   8 +  4*32 + 16];
-		52: reu_reg_mux = dbg_bug_buf[  8 +  4*32 + 31 :   8 +  4*32 + 24];
-		// Entry  5: $DF35..$DF38
-		53: reu_reg_mux = dbg_bug_buf[  8 +  5*32 +  7 :   8 +  5*32 +  0];
-		54: reu_reg_mux = dbg_bug_buf[  8 +  5*32 + 15 :   8 +  5*32 +  8];
-		55: reu_reg_mux = dbg_bug_buf[  8 +  5*32 + 23 :   8 +  5*32 + 16];
-		56: reu_reg_mux = dbg_bug_buf[  8 +  5*32 + 31 :   8 +  5*32 + 24];
-		// Entry  6: $DF39..$DF3C
-		57: reu_reg_mux = dbg_bug_buf[  8 +  6*32 +  7 :   8 +  6*32 +  0];
-		58: reu_reg_mux = dbg_bug_buf[  8 +  6*32 + 15 :   8 +  6*32 +  8];
-		59: reu_reg_mux = dbg_bug_buf[  8 +  6*32 + 23 :   8 +  6*32 + 16];
-		60: reu_reg_mux = dbg_bug_buf[  8 +  6*32 + 31 :   8 +  6*32 + 24];
-		// Entry  7: $DF3D..$DF40
-		61: reu_reg_mux = dbg_bug_buf[  8 +  7*32 +  7 :   8 +  7*32 +  0];
-		62: reu_reg_mux = dbg_bug_buf[  8 +  7*32 + 15 :   8 +  7*32 +  8];
-		63: reu_reg_mux = dbg_bug_buf[  8 +  7*32 + 23 :   8 +  7*32 + 16];
-		64: reu_reg_mux = dbg_bug_buf[  8 +  7*32 + 31 :   8 +  7*32 + 24];
-		// Entry  8: $DF41..$DF44
-		65: reu_reg_mux = dbg_bug_buf[  8 +  8*32 +  7 :   8 +  8*32 +  0];
-		66: reu_reg_mux = dbg_bug_buf[  8 +  8*32 + 15 :   8 +  8*32 +  8];
-		67: reu_reg_mux = dbg_bug_buf[  8 +  8*32 + 23 :   8 +  8*32 + 16];
-		68: reu_reg_mux = dbg_bug_buf[  8 +  8*32 + 31 :   8 +  8*32 + 24];
-		// Entry  9: $DF45..$DF48
-		69: reu_reg_mux = dbg_bug_buf[  8 +  9*32 +  7 :   8 +  9*32 +  0];
-		70: reu_reg_mux = dbg_bug_buf[  8 +  9*32 + 15 :   8 +  9*32 +  8];
-		71: reu_reg_mux = dbg_bug_buf[  8 +  9*32 + 23 :   8 +  9*32 + 16];
-		72: reu_reg_mux = dbg_bug_buf[  8 +  9*32 + 31 :   8 +  9*32 + 24];
-		// Entry 10: $DF49..$DF4C
-		73: reu_reg_mux = dbg_bug_buf[  8 + 10*32 +  7 :   8 + 10*32 +  0];
-		74: reu_reg_mux = dbg_bug_buf[  8 + 10*32 + 15 :   8 + 10*32 +  8];
-		75: reu_reg_mux = dbg_bug_buf[  8 + 10*32 + 23 :   8 + 10*32 + 16];
-		76: reu_reg_mux = dbg_bug_buf[  8 + 10*32 + 31 :   8 + 10*32 + 24];
-		// Entry 11: $DF4D..$DF50
-		77: reu_reg_mux = dbg_bug_buf[  8 + 11*32 +  7 :   8 + 11*32 +  0];
-		78: reu_reg_mux = dbg_bug_buf[  8 + 11*32 + 15 :   8 + 11*32 +  8];
-		79: reu_reg_mux = dbg_bug_buf[  8 + 11*32 + 23 :   8 + 11*32 + 16];
-		80: reu_reg_mux = dbg_bug_buf[  8 + 11*32 + 31 :   8 + 11*32 + 24];
-		// Entry 12: $DF51..$DF54
-		81: reu_reg_mux = dbg_bug_buf[  8 + 12*32 +  7 :   8 + 12*32 +  0];
-		82: reu_reg_mux = dbg_bug_buf[  8 + 12*32 + 15 :   8 + 12*32 +  8];
-		83: reu_reg_mux = dbg_bug_buf[  8 + 12*32 + 23 :   8 + 12*32 + 16];
-		84: reu_reg_mux = dbg_bug_buf[  8 + 12*32 + 31 :   8 + 12*32 + 24];
-		// Entry 13: $DF55..$DF58
-		85: reu_reg_mux = dbg_bug_buf[  8 + 13*32 +  7 :   8 + 13*32 +  0];
-		86: reu_reg_mux = dbg_bug_buf[  8 + 13*32 + 15 :   8 + 13*32 +  8];
-		87: reu_reg_mux = dbg_bug_buf[  8 + 13*32 + 23 :   8 + 13*32 + 16];
-		88: reu_reg_mux = dbg_bug_buf[  8 + 13*32 + 31 :   8 + 13*32 + 24];
-		// Entry 14: $DF59..$DF5C
-		89: reu_reg_mux = dbg_bug_buf[  8 + 14*32 +  7 :   8 + 14*32 +  0];
-		90: reu_reg_mux = dbg_bug_buf[  8 + 14*32 + 15 :   8 + 14*32 +  8];
-		91: reu_reg_mux = dbg_bug_buf[  8 + 14*32 + 23 :   8 + 14*32 + 16];
-		92: reu_reg_mux = dbg_bug_buf[  8 + 14*32 + 31 :   8 + 14*32 + 24];
-		// Entry 15: $DF5D..$DF60
-		93: reu_reg_mux = dbg_bug_buf[  8 + 15*32 +  7 :   8 + 15*32 +  0];
-		94: reu_reg_mux = dbg_bug_buf[  8 + 15*32 + 15 :   8 + 15*32 +  8];
-		95: reu_reg_mux = dbg_bug_buf[  8 + 15*32 + 23 :   8 + 15*32 + 16];
-		96: reu_reg_mux = dbg_bug_buf[  8 + 15*32 + 31 :   8 + 15*32 + 24];
-		// Entry 16: $DF61..$DF64
-		97:  reu_reg_mux = dbg_bug_buf[  8 + 16*32 +  7 :   8 + 16*32 +  0];
-		98:  reu_reg_mux = dbg_bug_buf[  8 + 16*32 + 15 :   8 + 16*32 +  8];
-		99:  reu_reg_mux = dbg_bug_buf[  8 + 16*32 + 23 :   8 + 16*32 + 16];
-		100: reu_reg_mux = dbg_bug_buf[  8 + 16*32 + 31 :   8 + 16*32 + 24];
-		// Entry 17: $DF65..$DF68
-		101: reu_reg_mux = dbg_bug_buf[  8 + 17*32 +  7 :   8 + 17*32 +  0];
-		102: reu_reg_mux = dbg_bug_buf[  8 + 17*32 + 15 :   8 + 17*32 +  8];
-		103: reu_reg_mux = dbg_bug_buf[  8 + 17*32 + 23 :   8 + 17*32 + 16];
-		104: reu_reg_mux = dbg_bug_buf[  8 + 17*32 + 31 :   8 + 17*32 + 24];
-		// Entry 18: $DF69..$DF6C
-		105: reu_reg_mux = dbg_bug_buf[  8 + 18*32 +  7 :   8 + 18*32 +  0];
-		106: reu_reg_mux = dbg_bug_buf[  8 + 18*32 + 15 :   8 + 18*32 +  8];
-		107: reu_reg_mux = dbg_bug_buf[  8 + 18*32 + 23 :   8 + 18*32 + 16];
-		108: reu_reg_mux = dbg_bug_buf[  8 + 18*32 + 31 :   8 + 18*32 + 24];
-		// Entry 19: $DF6D..$DF70
-		109: reu_reg_mux = dbg_bug_buf[  8 + 19*32 +  7 :   8 + 19*32 +  0];
-		110: reu_reg_mux = dbg_bug_buf[  8 + 19*32 + 15 :   8 + 19*32 +  8];
-		111: reu_reg_mux = dbg_bug_buf[  8 + 19*32 + 23 :   8 + 19*32 + 16];
-		112: reu_reg_mux = dbg_bug_buf[  8 + 19*32 + 31 :   8 + 19*32 + 24];
-		// Entry 20: $DF71..$DF74
-		113: reu_reg_mux = dbg_bug_buf[  8 + 20*32 +  7 :   8 + 20*32 +  0];
-		114: reu_reg_mux = dbg_bug_buf[  8 + 20*32 + 15 :   8 + 20*32 +  8];
-		115: reu_reg_mux = dbg_bug_buf[  8 + 20*32 + 23 :   8 + 20*32 + 16];
-		116: reu_reg_mux = dbg_bug_buf[  8 + 20*32 + 31 :   8 + 20*32 + 24];
-		// Entry 21: $DF75..$DF78
-		117: reu_reg_mux = dbg_bug_buf[  8 + 21*32 +  7 :   8 + 21*32 +  0];
-		118: reu_reg_mux = dbg_bug_buf[  8 + 21*32 + 15 :   8 + 21*32 +  8];
-		119: reu_reg_mux = dbg_bug_buf[  8 + 21*32 + 23 :   8 + 21*32 + 16];
-		120: reu_reg_mux = dbg_bug_buf[  8 + 21*32 + 31 :   8 + 21*32 + 24];
-		// Entry 22: $DF79..$DF7C
-		121: reu_reg_mux = dbg_bug_buf[  8 + 22*32 +  7 :   8 + 22*32 +  0];
-		122: reu_reg_mux = dbg_bug_buf[  8 + 22*32 + 15 :   8 + 22*32 +  8];
-		123: reu_reg_mux = dbg_bug_buf[  8 + 22*32 + 23 :   8 + 22*32 + 16];
-		124: reu_reg_mux = dbg_bug_buf[  8 + 22*32 + 31 :   8 + 22*32 + 24];
-		// Entry 23: $DF7D..$DF80
-		125: reu_reg_mux = dbg_bug_buf[  8 + 23*32 +  7 :   8 + 23*32 +  0];
-		126: reu_reg_mux = dbg_bug_buf[  8 + 23*32 + 15 :   8 + 23*32 +  8];
-		127: reu_reg_mux = dbg_bug_buf[  8 + 23*32 + 23 :   8 + 23*32 + 16];
-		128: reu_reg_mux = dbg_bug_buf[  8 + 23*32 + 31 :   8 + 23*32 + 24];
-		// Entry 24: $DF81..$DF84
-		129: reu_reg_mux = dbg_bug_buf[  8 + 24*32 +  7 :   8 + 24*32 +  0];
-		130: reu_reg_mux = dbg_bug_buf[  8 + 24*32 + 15 :   8 + 24*32 +  8];
-		131: reu_reg_mux = dbg_bug_buf[  8 + 24*32 + 23 :   8 + 24*32 + 16];
-		132: reu_reg_mux = dbg_bug_buf[  8 + 24*32 + 31 :   8 + 24*32 + 24];
-		// Entry 25: $DF85..$DF88
-		133: reu_reg_mux = dbg_bug_buf[  8 + 25*32 +  7 :   8 + 25*32 +  0];
-		134: reu_reg_mux = dbg_bug_buf[  8 + 25*32 + 15 :   8 + 25*32 +  8];
-		135: reu_reg_mux = dbg_bug_buf[  8 + 25*32 + 23 :   8 + 25*32 + 16];
-		136: reu_reg_mux = dbg_bug_buf[  8 + 25*32 + 31 :   8 + 25*32 + 24];
-		// Entry 26: $DF89..$DF8C
-		137: reu_reg_mux = dbg_bug_buf[  8 + 26*32 +  7 :   8 + 26*32 +  0];
-		138: reu_reg_mux = dbg_bug_buf[  8 + 26*32 + 15 :   8 + 26*32 +  8];
-		139: reu_reg_mux = dbg_bug_buf[  8 + 26*32 + 23 :   8 + 26*32 + 16];
-		140: reu_reg_mux = dbg_bug_buf[  8 + 26*32 + 31 :   8 + 26*32 + 24];
-		// Entry 27: $DF8D..$DF90
-		141: reu_reg_mux = dbg_bug_buf[  8 + 27*32 +  7 :   8 + 27*32 +  0];
-		142: reu_reg_mux = dbg_bug_buf[  8 + 27*32 + 15 :   8 + 27*32 +  8];
-		143: reu_reg_mux = dbg_bug_buf[  8 + 27*32 + 23 :   8 + 27*32 + 16];
-		144: reu_reg_mux = dbg_bug_buf[  8 + 27*32 + 31 :   8 + 27*32 + 24];
-		// Entry 28: $DF91..$DF94
-		145: reu_reg_mux = dbg_bug_buf[  8 + 28*32 +  7 :   8 + 28*32 +  0];
-		146: reu_reg_mux = dbg_bug_buf[  8 + 28*32 + 15 :   8 + 28*32 +  8];
-		147: reu_reg_mux = dbg_bug_buf[  8 + 28*32 + 23 :   8 + 28*32 + 16];
-		148: reu_reg_mux = dbg_bug_buf[  8 + 28*32 + 31 :   8 + 28*32 + 24];
-		// Entry 29: $DF95..$DF98
-		149: reu_reg_mux = dbg_bug_buf[  8 + 29*32 +  7 :   8 + 29*32 +  0];
-		150: reu_reg_mux = dbg_bug_buf[  8 + 29*32 + 15 :   8 + 29*32 +  8];
-		151: reu_reg_mux = dbg_bug_buf[  8 + 29*32 + 23 :   8 + 29*32 + 16];
-		152: reu_reg_mux = dbg_bug_buf[  8 + 29*32 + 31 :   8 + 29*32 + 24];
-		// Entry 30: $DF99..$DF9C
-		153: reu_reg_mux = dbg_bug_buf[  8 + 30*32 +  7 :   8 + 30*32 +  0];
-		154: reu_reg_mux = dbg_bug_buf[  8 + 30*32 + 15 :   8 + 30*32 +  8];
-		155: reu_reg_mux = dbg_bug_buf[  8 + 30*32 + 23 :   8 + 30*32 + 16];
-		156: reu_reg_mux = dbg_bug_buf[  8 + 30*32 + 31 :   8 + 30*32 + 24];
-		// Entry 31: $DF9D..$DFA0
-		157: reu_reg_mux = dbg_bug_buf[  8 + 31*32 +  7 :   8 + 31*32 +  0];
-		158: reu_reg_mux = dbg_bug_buf[  8 + 31*32 + 15 :   8 + 31*32 +  8];
-		159: reu_reg_mux = dbg_bug_buf[  8 + 31*32 + 23 :   8 + 31*32 + 16];
-		160: reu_reg_mux = dbg_bug_buf[  8 + 31*32 + 31 :   8 + 31*32 + 24];
+		33:  reu_reg_mux = trace_entry_view[ 0][ 7: 0];
+		34:  reu_reg_mux = trace_entry_view[ 0][15: 8];
+		35:  reu_reg_mux = trace_entry_view[ 0][23:16];
+		36:  reu_reg_mux = trace_entry_view[ 0][31:24];
+		37:  reu_reg_mux = trace_entry_view[ 1][ 7: 0];
+		38:  reu_reg_mux = trace_entry_view[ 1][15: 8];
+		39:  reu_reg_mux = trace_entry_view[ 1][23:16];
+		40:  reu_reg_mux = trace_entry_view[ 1][31:24];
+		41:  reu_reg_mux = trace_entry_view[ 2][ 7: 0];
+		42:  reu_reg_mux = trace_entry_view[ 2][15: 8];
+		43:  reu_reg_mux = trace_entry_view[ 2][23:16];
+		44:  reu_reg_mux = trace_entry_view[ 2][31:24];
+		45:  reu_reg_mux = trace_entry_view[ 3][ 7: 0];
+		46:  reu_reg_mux = trace_entry_view[ 3][15: 8];
+		47:  reu_reg_mux = trace_entry_view[ 3][23:16];
+		48:  reu_reg_mux = trace_entry_view[ 3][31:24];
+		49:  reu_reg_mux = trace_entry_view[ 4][ 7: 0];
+		50:  reu_reg_mux = trace_entry_view[ 4][15: 8];
+		51:  reu_reg_mux = trace_entry_view[ 4][23:16];
+		52:  reu_reg_mux = trace_entry_view[ 4][31:24];
+		53:  reu_reg_mux = trace_entry_view[ 5][ 7: 0];
+		54:  reu_reg_mux = trace_entry_view[ 5][15: 8];
+		55:  reu_reg_mux = trace_entry_view[ 5][23:16];
+		56:  reu_reg_mux = trace_entry_view[ 5][31:24];
+		57:  reu_reg_mux = trace_entry_view[ 6][ 7: 0];
+		58:  reu_reg_mux = trace_entry_view[ 6][15: 8];
+		59:  reu_reg_mux = trace_entry_view[ 6][23:16];
+		60:  reu_reg_mux = trace_entry_view[ 6][31:24];
+		61:  reu_reg_mux = trace_entry_view[ 7][ 7: 0];
+		62:  reu_reg_mux = trace_entry_view[ 7][15: 8];
+		63:  reu_reg_mux = trace_entry_view[ 7][23:16];
+		64:  reu_reg_mux = trace_entry_view[ 7][31:24];
+		65:  reu_reg_mux = trace_entry_view[ 8][ 7: 0];
+		66:  reu_reg_mux = trace_entry_view[ 8][15: 8];
+		67:  reu_reg_mux = trace_entry_view[ 8][23:16];
+		68:  reu_reg_mux = trace_entry_view[ 8][31:24];
+		69:  reu_reg_mux = trace_entry_view[ 9][ 7: 0];
+		70:  reu_reg_mux = trace_entry_view[ 9][15: 8];
+		71:  reu_reg_mux = trace_entry_view[ 9][23:16];
+		72:  reu_reg_mux = trace_entry_view[ 9][31:24];
+		73:  reu_reg_mux = trace_entry_view[10][ 7: 0];
+		74:  reu_reg_mux = trace_entry_view[10][15: 8];
+		75:  reu_reg_mux = trace_entry_view[10][23:16];
+		76:  reu_reg_mux = trace_entry_view[10][31:24];
+		77:  reu_reg_mux = trace_entry_view[11][ 7: 0];
+		78:  reu_reg_mux = trace_entry_view[11][15: 8];
+		79:  reu_reg_mux = trace_entry_view[11][23:16];
+		80:  reu_reg_mux = trace_entry_view[11][31:24];
+		81:  reu_reg_mux = trace_entry_view[12][ 7: 0];
+		82:  reu_reg_mux = trace_entry_view[12][15: 8];
+		83:  reu_reg_mux = trace_entry_view[12][23:16];
+		84:  reu_reg_mux = trace_entry_view[12][31:24];
+		85:  reu_reg_mux = trace_entry_view[13][ 7: 0];
+		86:  reu_reg_mux = trace_entry_view[13][15: 8];
+		87:  reu_reg_mux = trace_entry_view[13][23:16];
+		88:  reu_reg_mux = trace_entry_view[13][31:24];
+		89:  reu_reg_mux = trace_entry_view[14][ 7: 0];
+		90:  reu_reg_mux = trace_entry_view[14][15: 8];
+		91:  reu_reg_mux = trace_entry_view[14][23:16];
+		92:  reu_reg_mux = trace_entry_view[14][31:24];
+		93:  reu_reg_mux = trace_entry_view[15][ 7: 0];
+		94:  reu_reg_mux = trace_entry_view[15][15: 8];
+		95:  reu_reg_mux = trace_entry_view[15][23:16];
+		96:  reu_reg_mux = trace_entry_view[15][31:24];
+		97:  reu_reg_mux = trace_entry_view[16][ 7: 0];
+		98:  reu_reg_mux = trace_entry_view[16][15: 8];
+		99:  reu_reg_mux = trace_entry_view[16][23:16];
+		100: reu_reg_mux = trace_entry_view[16][31:24];
+		101: reu_reg_mux = trace_entry_view[17][ 7: 0];
+		102: reu_reg_mux = trace_entry_view[17][15: 8];
+		103: reu_reg_mux = trace_entry_view[17][23:16];
+		104: reu_reg_mux = trace_entry_view[17][31:24];
+		105: reu_reg_mux = trace_entry_view[18][ 7: 0];
+		106: reu_reg_mux = trace_entry_view[18][15: 8];
+		107: reu_reg_mux = trace_entry_view[18][23:16];
+		108: reu_reg_mux = trace_entry_view[18][31:24];
+		109: reu_reg_mux = trace_entry_view[19][ 7: 0];
+		110: reu_reg_mux = trace_entry_view[19][15: 8];
+		111: reu_reg_mux = trace_entry_view[19][23:16];
+		112: reu_reg_mux = trace_entry_view[19][31:24];
+		113: reu_reg_mux = trace_entry_view[20][ 7: 0];
+		114: reu_reg_mux = trace_entry_view[20][15: 8];
+		115: reu_reg_mux = trace_entry_view[20][23:16];
+		116: reu_reg_mux = trace_entry_view[20][31:24];
+		117: reu_reg_mux = trace_entry_view[21][ 7: 0];
+		118: reu_reg_mux = trace_entry_view[21][15: 8];
+		119: reu_reg_mux = trace_entry_view[21][23:16];
+		120: reu_reg_mux = trace_entry_view[21][31:24];
+		121: reu_reg_mux = trace_entry_view[22][ 7: 0];
+		122: reu_reg_mux = trace_entry_view[22][15: 8];
+		123: reu_reg_mux = trace_entry_view[22][23:16];
+		124: reu_reg_mux = trace_entry_view[22][31:24];
+		125: reu_reg_mux = trace_entry_view[23][ 7: 0];
+		126: reu_reg_mux = trace_entry_view[23][15: 8];
+		127: reu_reg_mux = trace_entry_view[23][23:16];
+		128: reu_reg_mux = trace_entry_view[23][31:24];
+		129: reu_reg_mux = trace_entry_view[24][ 7: 0];
+		130: reu_reg_mux = trace_entry_view[24][15: 8];
+		131: reu_reg_mux = trace_entry_view[24][23:16];
+		132: reu_reg_mux = trace_entry_view[24][31:24];
+		133: reu_reg_mux = trace_entry_view[25][ 7: 0];
+		134: reu_reg_mux = trace_entry_view[25][15: 8];
+		135: reu_reg_mux = trace_entry_view[25][23:16];
+		136: reu_reg_mux = trace_entry_view[25][31:24];
+		137: reu_reg_mux = trace_entry_view[26][ 7: 0];
+		138: reu_reg_mux = trace_entry_view[26][15: 8];
+		139: reu_reg_mux = trace_entry_view[26][23:16];
+		140: reu_reg_mux = trace_entry_view[26][31:24];
+		141: reu_reg_mux = trace_entry_view[27][ 7: 0];
+		142: reu_reg_mux = trace_entry_view[27][15: 8];
+		143: reu_reg_mux = trace_entry_view[27][23:16];
+		144: reu_reg_mux = trace_entry_view[27][31:24];
+		145: reu_reg_mux = trace_entry_view[28][ 7: 0];
+		146: reu_reg_mux = trace_entry_view[28][15: 8];
+		147: reu_reg_mux = trace_entry_view[28][23:16];
+		148: reu_reg_mux = trace_entry_view[28][31:24];
+		149: reu_reg_mux = trace_entry_view[29][ 7: 0];
+		150: reu_reg_mux = trace_entry_view[29][15: 8];
+		151: reu_reg_mux = trace_entry_view[29][23:16];
+		152: reu_reg_mux = trace_entry_view[29][31:24];
+		153: reu_reg_mux = trace_entry_view[30][ 7: 0];
+		154: reu_reg_mux = trace_entry_view[30][15: 8];
+		155: reu_reg_mux = trace_entry_view[30][23:16];
+		156: reu_reg_mux = trace_entry_view[30][31:24];
+		157: reu_reg_mux = trace_entry_view[31][ 7: 0];
+		158: reu_reg_mux = trace_entry_view[31][15: 8];
+		159: reu_reg_mux = trace_entry_view[31][23:16];
+		160: reu_reg_mux = trace_entry_view[31][31:24];
 		// REU FETCH diagnostics (loader.prg debugging)
 		161: reu_reg_mux = reu_reg_cmd_count[7:0];        // $DFA1
 		162: reu_reg_mux = reu_reg_cmd_count[15:8];       // $DFA2
@@ -997,6 +1011,39 @@ always @(*) begin
 		198: reu_reg_mux = dbg_iof_we_at_raw_rise_cnt[7:0];  // $DFC6 iof_we_latched=1 at cs rise
 		199: reu_reg_mux = dbg_iof_we_at_raw_rise_cnt[15:8]; // $DFC7
 		200: reu_reg_mux = {7'b0, dbg_iof_we_at_raw_rise};   // $DFC8 sticky last value
+		// Crash trace ring buffer — P byte region for current page ($DFC9..$DFE8)
+		201: reu_reg_mux = trace_p_view[ 0];  // $DFC9
+		202: reu_reg_mux = trace_p_view[ 1];
+		203: reu_reg_mux = trace_p_view[ 2];
+		204: reu_reg_mux = trace_p_view[ 3];
+		205: reu_reg_mux = trace_p_view[ 4];
+		206: reu_reg_mux = trace_p_view[ 5];
+		207: reu_reg_mux = trace_p_view[ 6];
+		208: reu_reg_mux = trace_p_view[ 7];
+		209: reu_reg_mux = trace_p_view[ 8];
+		210: reu_reg_mux = trace_p_view[ 9];
+		211: reu_reg_mux = trace_p_view[10];
+		212: reu_reg_mux = trace_p_view[11];
+		213: reu_reg_mux = trace_p_view[12];
+		214: reu_reg_mux = trace_p_view[13];
+		215: reu_reg_mux = trace_p_view[14];
+		216: reu_reg_mux = trace_p_view[15];
+		217: reu_reg_mux = trace_p_view[16];
+		218: reu_reg_mux = trace_p_view[17];
+		219: reu_reg_mux = trace_p_view[18];
+		220: reu_reg_mux = trace_p_view[19];
+		221: reu_reg_mux = trace_p_view[20];
+		222: reu_reg_mux = trace_p_view[21];
+		223: reu_reg_mux = trace_p_view[22];
+		224: reu_reg_mux = trace_p_view[23];
+		225: reu_reg_mux = trace_p_view[24];
+		226: reu_reg_mux = trace_p_view[25];
+		227: reu_reg_mux = trace_p_view[26];
+		228: reu_reg_mux = trace_p_view[27];
+		229: reu_reg_mux = trace_p_view[28];
+		230: reu_reg_mux = trace_p_view[29];
+		231: reu_reg_mux = trace_p_view[30];
+		232: reu_reg_mux = trace_p_view[31];  // $DFE8
 		default: reu_reg_mux = 8'hFF;
 	endcase
 end
@@ -1689,7 +1736,7 @@ wire        dbg_cache_hit_d1;
 wire        dbg_enable_cpu_t65;
 wire        dbg_cpu_cyc;
 wire  [7:0] dbg_diag;
-wire [1287:0] dbg_bug_buf;  // 161 bytes: status + 32×(PC16,PBR8,IR8) + 32×P8
+wire [5127:0] dbg_bug_buf;  // 641 bytes: status + 128×(PC16,PBR8,IR8) + 128×P8
 wire [15:0] dbg_native_irq_vec;  // native IRQ vector ($FFEE/$FFEF)
 
 fpga64_sid_iec fpga64
@@ -2228,7 +2275,7 @@ debug_uart_fmt debug_fmt
 	.native_irq_vec(last_doom_addr),   // W:xxxx = last addr when PBR!=00 (freezes at crash)
 	.crash_bank(last_doom_bank),       // L:xx = last bank when PBR!=00 (freezes at crash)
 	.vic_irq(~dbg_diag[7]),  // dbg_diag[7] = NOT_irq_vic, invert for active-high
-	.trace_buf(dbg_bug_buf),           // 129-byte crash trace ring buffer
+	.trace_buf(dbg_bug_buf),           // 641-byte crash trace ring buffer (128 entries × 5 bytes + status)
 	.tx_data(dbg_uart_data),
 	.tx_send(dbg_uart_send),
 	.tx_busy(dbg_uart_busy)

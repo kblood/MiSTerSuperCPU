@@ -122,18 +122,14 @@ port(
 	dbg_enable_cpu_t65 : out std_logic;
 	dbg_cpu_cyc        : out std_logic;
 	dbg_diag           : out unsigned(7 downto 0);
-	-- Crash trace ring buffer (129 bytes packed = 8 status + 32 × 4 entry bytes)
-	-- Layout (LSB first):
-	--   [7:0]   = status: bit0=frozen, bits[5:1]=write_pos[4:0], bits[7:6]=reserved
-	--   [39:8]  = entry 0: PC_lo[7:0], PC_hi[15:8], PBR[23:16], IR[31:24]
-	--   [71:40] = entry 1
-	--   ... 32 entries total ...
-	--   [1031:1000] = entry 31
-	-- Capture: every time dbg_pc_816 changes (one entry per instruction).
-	-- Trigger: PBR transitions from $2D to $00 (Doom crash signature).
-	-- After trigger, capture 4 more entries then freeze permanently.
-	-- Read the buffer in chronological order from (wp+1) wrapping to (wp).
-	dbg_bug_buf        : out std_logic_vector(1287 downto 0);
+	-- Crash trace ring buffer (128 entries, 5 bytes each: PC_lo, PC_hi, PBR, IR, P)
+	-- Packed layout (LSB first):
+	--   [7:0]       = status: bit0=frozen, bits[7:1]=write_pos[6:0]
+	--   [4103:8]    = 128 × (PC_lo, PC_hi, PBR, IR) = 128 × 32 = 4096 bits
+	--   [5127:4104] = 128 × P = 128 × 8 = 1024 bits
+	-- Read-paging: c64.sv exposes one 32-entry page at $DF21-$DFA0 + $DFC9-$DFE8
+	-- (select page via CPU write to $DF1F, bits[1:0]).
+	dbg_bug_buf        : out std_logic_vector(5127 downto 0);
 	-- Native mode IRQ vector value ($FFEE/$FFEF from scpu_native_vec)
 	dbg_native_irq_vec : out std_logic_vector(15 downto 0);
 
@@ -462,14 +458,14 @@ signal scpu_native_vec : native_vec_array;
 --     still in $00 → permanent freeze (crash confirmed).
 --
 -- Buffer is exposed via $DF20-$DFA0 in c64.sv.
-constant TRACE_DEPTH : integer := 32;
+constant TRACE_DEPTH : integer := 128;
 type trace_pc_arr_t   is array(0 to TRACE_DEPTH-1) of unsigned(15 downto 0);
 type trace_byte_arr_t is array(0 to TRACE_DEPTH-1) of unsigned(7 downto 0);
 signal bug_pc         : trace_pc_arr_t   := (others => (others => '0'));
 signal bug_pbr        : trace_byte_arr_t := (others => (others => '0'));
 signal bug_ir_buf     : trace_byte_arr_t := (others => (others => '0'));
 signal bug_p          : trace_byte_arr_t := (others => (others => '0'));
-signal bug_wp         : unsigned(4 downto 0) := (others => '0');
+signal bug_wp         : unsigned(6 downto 0) := (others => '0');
 signal bug_frozen     : std_logic := '0';
 signal bug_armed      : std_logic := '0';                       -- tentative freeze active
 signal bug_timeout    : unsigned(23 downto 0) := (others => '0');-- 24-bit timeout (~16M CPU-enable cycles)
@@ -1875,11 +1871,12 @@ begin
 end process;
 
 -- Pack the buffer into the wide output port (LSB first).
--- byte 0 = status: bit0=frozen, bits[5:1]=write_pos[4:0], bits[7:6]=reserved.
--- Each entry occupies 4 bytes: PC_lo, PC_hi, PBR, IR. 32 entries = 128 bytes.
--- Total: 1 + 128 = 129 bytes = 1032 bits.
+-- byte 0 = status: bit0=frozen, bits[7:1]=write_pos[6:0].
+-- Each entry occupies 4 bytes: PC_lo, PC_hi, PBR, IR. 128 entries = 512 bytes.
+-- P region: 128 × 1 byte = 128 bytes at bits 4104..5127.
+-- Total: 1 + 512 + 128 = 641 bytes = 5128 bits.
 dbg_bug_buf(7 downto 0) <=
-	"00" & std_logic_vector(bug_wp) & bug_frozen;
+	std_logic_vector(bug_wp) & bug_frozen;
 
 trace_pack: for i in 0 to TRACE_DEPTH-1 generate
 	dbg_bug_buf( 8 + i*32 +  7 downto  8 + i*32 +  0) <= std_logic_vector(bug_pc(i)(7 downto 0));
@@ -1888,10 +1885,10 @@ trace_pack: for i in 0 to TRACE_DEPTH-1 generate
 	dbg_bug_buf( 8 + i*32 + 31 downto  8 + i*32 + 24) <= std_logic_vector(bug_ir_buf(i));
 end generate;
 
--- P register bytes appended after the 32 4-byte entries, keeping the existing
--- reu_reg_mux layout in c64.sv intact. Layout: bits 1032..1287 = 32 × P byte.
+-- P register bytes appended after the 128 4-byte entries. Layout:
+-- bits 4104..5127 = 128 × P byte (P region starts at 8 + 128*32 = 4104).
 trace_pack_p: for i in 0 to TRACE_DEPTH-1 generate
-	dbg_bug_buf(1032 + i*8 + 7 downto 1032 + i*8) <= std_logic_vector(bug_p(i));
+	dbg_bug_buf(4104 + i*8 + 7 downto 4104 + i*8) <= std_logic_vector(bug_p(i));
 end generate;
 
 -- Expose native IRQ vector value for UART debug
