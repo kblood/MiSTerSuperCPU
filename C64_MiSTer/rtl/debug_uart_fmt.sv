@@ -85,9 +85,9 @@ reg        lat_vic_irq;
 
 // Crash trace stream: one entry per vblank when trace is frozen.
 // trace_idx cycles 0..127 through the ring buffer after freeze trips.
-reg  [6:0] trace_idx;
+(* preserve *) reg  [6:0] trace_idx;
 reg        lat_frozen;
-reg  [6:0] lat_trace_idx;
+(* preserve *) reg  [6:0] lat_trace_idx;
 reg [31:0] lat_trace_entry;  // {IR, PBR, PC_hi, PC_lo}
 reg  [7:0] lat_trace_p;      // P register for the selected entry
 
@@ -135,7 +135,7 @@ reg        char_pending;  // a character is ready to send
 // 75     !/. (VIC IRQ indicator)
 // 76     ' ' when frozen (to continue line), '\n' when not
 // --- Crash trace extension (only emitted when lat_frozen=1) ---
-// 77-81  TR:xx (trace_idx 0..31)
+// 77-81  TR:xx (trace_idx 00..7F)
 // 82     space
 // 83-89  PC:xxxx
 // 90     space
@@ -606,7 +606,7 @@ always @(posedge clk) begin
 			lat_trace_entry <= trace_entry_sel;
 			lat_trace_p     <= trace_p_sel;
 			if (trace_buf[0])
-				trace_idx <= trace_idx + 1'b1;
+				trace_idx <= trace_idx + 7'd1;
 
 			sending      <= 1;
 			char_idx     <= 0;

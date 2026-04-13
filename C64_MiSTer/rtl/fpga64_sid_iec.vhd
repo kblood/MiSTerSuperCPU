@@ -469,6 +469,7 @@ signal bug_wp         : unsigned(6 downto 0) := (others => '0');
 signal bug_frozen     : std_logic := '0';
 signal bug_armed      : std_logic := '0';                       -- tentative freeze active
 signal bug_timeout    : unsigned(23 downto 0) := (others => '0');-- 24-bit timeout (~16M CPU-enable cycles)
+signal brk_detect_r   : std_logic := '0'; -- registered: BRK opcode in non-$00 bank
 signal trace_prev_pc  : unsigned(15 downto 0) := (others => '0');
 signal trace_prev_pbr : unsigned(7 downto 0)  := (others => '0');
 signal trace_prev_ir  : unsigned(7 downto 0)  := (others => '0');
@@ -1798,6 +1799,20 @@ dbg_cpu_dbr  <= dbg_dbr_816 when supercpu_en = '1' else x"00";
 process(clk32)
 begin
 	if rising_edge(clk32) then
+		-- Register the BRK-in-game detect independently of enableCpu_816 gating
+		-- so the freeze path has a short, single-cycle-slack-friendly input.
+		if enableCpu_816 = '1' and dbg_pbr_816 /= x"00" and dbg_ir_816 = x"00" then
+			brk_detect_r <= '1';
+		end if;
+
+		-- Unconditional freeze-on-BRK: one FF → one FF path, no gates.
+		-- Outside the `if supercpu_en='1' and bug_frozen='0'` gate so the
+		-- assignment's critical path stays at a single clk32 cycle even when
+		-- fitter placement is tight.
+		if brk_detect_r = '1' then
+			bug_frozen <= '1';
+		end if;
+
 		if supercpu_en = '1' and bug_frozen = '0' then
 			if enableCpu_816 = '1' then
 				-- Track previous values for transition detection (always update).
@@ -1813,57 +1828,22 @@ begin
 					seen_bank_2d <= '1';
 				end if;
 
-				if bug_armed = '0' then
-					-- Phase 1: free-run capture on every IR change (one entry
-					-- per instruction instead of per byte-fetch — roughly
-					-- doubles effective history depth).
-					if dbg_ir_816 /= trace_prev_ir then
-						bug_pc(to_integer(bug_wp))     <= dbg_pc_816;
-						bug_pbr(to_integer(bug_wp))    <= dbg_pbr_816;
-						bug_ir_buf(to_integer(bug_wp)) <= dbg_ir_816;
-						bug_p(to_integer(bug_wp))      <= dbg_p_816;
-						bug_wp <= bug_wp + 1;
-					end if;
+				-- Free-run capture on every IR change (one entry per instruction
+				-- instead of per byte-fetch — doubles effective history depth).
+				if dbg_ir_816 /= trace_prev_ir then
+					bug_pc(to_integer(bug_wp))     <= dbg_pc_816;
+					bug_pbr(to_integer(bug_wp))    <= dbg_pbr_816;
+					bug_ir_buf(to_integer(bug_wp)) <= dbg_ir_816;
+					bug_p(to_integer(bug_wp))      <= dbg_p_816;
+					bug_wp <= bug_wp + 1;
+				end if;
 
-					-- NEW PRIMARY TRIGGER: freeze on the FIRST X=0→X=1
-					-- transition seen after Doom (bank $2D) has run. The
-					-- Doom rendering loop expects X=0 throughout — any X=1
-					-- is the precursor to the LDY-as-2-byte BRK crash.
-					-- Freezing immediately on the transition leaves the
-					-- X=0 instructions in the buffer and the first X=1
-					-- instruction at the most recent slot.
-					if seen_bank_2d = '1'
-					   and dbg_p_816(4) = '1'
-					   and trace_prev_p(4) = '0' then
-						bug_frozen <= '1';
-					end if;
-
-					-- Fallback trigger: game-bank → $00 transition (Phase 2).
-					-- Kept as a safety net in case the X-transition trigger
-					-- never fires (e.g., crash mechanism is something else).
-					if trace_prev_pbr /= x"00" and trace_prev_pbr(7) = '0'
-					   and dbg_pbr_816 = x"00" then
-						bug_armed   <= '1';
-						bug_timeout <= (others => '0');
-					end if;
-
-				else
-					-- Phase 2: tentative freeze, no captures, just timeout.
-					if dbg_pbr_816 /= x"00" then
-						-- False alarm (normal IRQ exited): release.
-						bug_armed   <= '0';
-						bug_timeout <= (others => '0');
-					else
-						bug_timeout <= bug_timeout + 1;
-						-- Commit after 2^24 CPU-enable cycles.
-						-- @ 1 MHz = 16.8 s, @ 20 MHz = 0.84 s. Long enough that
-						-- Doom's 1 MHz raster-busy-wait subroutines in bank $00
-						-- (which can take ~50 ms each) don't false-trigger, but
-						-- short enough that a real BRK loop is latched quickly.
-						if bug_timeout = x"FFFFFE" then
-							bug_frozen <= '1';
-						end if;
-					end if;
+				-- Secondary trigger: freeze on the FIRST X=0→X=1 transition
+				-- seen after Doom (bank $2D) has run.
+				if seen_bank_2d = '1'
+				   and dbg_p_816(4) = '1'
+				   and trace_prev_p(4) = '0' then
+					bug_frozen <= '1';
 				end if;
 			end if;
 		end if;
