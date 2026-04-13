@@ -44,7 +44,8 @@ entity cpu_65c816 is
 		dbg_p         : out unsigned(7 downto 0);
 		dbg_ir        : out unsigned(7 downto 0);
 		dbg_pbr       : out unsigned(7 downto 0);
-		dbg_dbr       : out unsigned(7 downto 0)
+		dbg_dbr       : out unsigned(7 downto 0);
+		dbg_state     : out unsigned(3 downto 0)
 	);
 end cpu_65c816;
 
@@ -63,6 +64,7 @@ architecture rtl of cpu_65c816 is
 	signal localIR    : std_logic_vector(7 downto 0);
 	signal localPBR   : std_logic_vector(7 downto 0);
 	signal localDBR   : std_logic_vector(7 downto 0);
+	signal localSTATE : std_logic_vector(3 downto 0);
 
 	signal currentIO  : std_logic_vector(7 downto 0);
 	signal ioDir      : std_logic_vector(7 downto 0);
@@ -99,7 +101,8 @@ begin
 		DBG_P   => localP,
 		DBG_IR  => localIR,
 		DBG_PBR => localPBR,
-		DBG_DBR => localDBR
+		DBG_DBR => localDBR,
+		DBG_STATE => localSTATE
 	);
 
 	-- 6510 I/O port at $0000-$0001 (active only in bank $00)
@@ -169,5 +172,6 @@ accessIO <= '1' when localA(23 downto 1) = "00000000000000000000000" else '0';
 	dbg_ir <= unsigned(localIR);
 	dbg_pbr <= unsigned(localPBR);
 	dbg_dbr <= unsigned(localDBR);
+	dbg_state <= unsigned(localSTATE);
 
 end architecture;

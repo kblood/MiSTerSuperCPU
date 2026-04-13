@@ -34,6 +34,21 @@ module reu
 	output     [15:0] reg_addr_c64,
 	output     [23:0] reg_addr_ram,
 	output     [15:0] reg_length,
+	// CPU-written snapshot registers (captured at $DFxx write, preserved across autonomous updates)
+	output     [15:0] reg_addr_c64_r,
+	output     [23:0] reg_addr_ram_r,
+	output     [15:0] reg_length_r,
+	// Command-fire diagnostics (loader.prg debugging)
+	output reg [15:0] reg_cmd_count,     // incremented at STATE_IDLE→STATE_EVAL
+	output reg [15:0] reg_xfer_count,    // incremented at transfer completion
+	output reg  [7:0] reg_first_cmd,     // cmd byte at FIRST fire (never overwritten)
+	output reg  [1:0] reg_state,         // live FSM state
+	// CS edge / write/read counters (visible inside reu.v's clock domain)
+	output reg [15:0] reg_cs_edges,      // # rising edges of cpu_cs seen
+	output reg [15:0] reg_wr_attempts,   // # cs edges with cpu_we = 1
+	output reg [15:0] reg_rd_attempts,   // # cs edges with cpu_we = 0
+	output reg  [4:0] reg_last_addr_lo,  // cpu_addr[4:0] at last cs edge
+	output reg  [7:0] reg_last_dout,     // cpu_dout at last cs edge
 	input             cpu_we,
 	input             cpu_cs,
 
@@ -65,11 +80,14 @@ reg dma_we_r;
 assign dma_we = dma_we_r & dma_cycle;
 
 // Direct register read bypass (edge detection unreliable with timing violations)
-assign reg_status   = {irq, status[6:5], 1'b1, 4'b0000};
-assign reg_cmd      = cmd;
-assign reg_addr_c64 = addr_c64;
-assign reg_addr_ram = addr_ram;
-assign reg_length   = length;
+assign reg_status     = {irq, status[6:5], 1'b1, 4'b0000};
+assign reg_cmd        = cmd;
+assign reg_addr_c64   = addr_c64;
+assign reg_addr_ram   = addr_ram;
+assign reg_length     = length;
+assign reg_addr_c64_r = addr_c64_r;
+assign reg_addr_ram_r = addr_ram_r;
+assign reg_length_r   = length_r;
 
 // Module-level register declarations (moved from always block for port access)
 reg        old_cs_r;
@@ -112,8 +130,30 @@ always @(posedge clk) begin
 		ram_active <= 0;
 		cpu_din    <= 'hFF;
 		state_r    <= STATE_IDLE;
+		reg_cmd_count  <= 0;
+		reg_xfer_count <= 0;
+		reg_first_cmd  <= 0;
+		reg_state      <= STATE_IDLE;
+		reg_cs_edges     <= 0;
+		reg_wr_attempts  <= 0;
+		reg_rd_attempts  <= 0;
+		reg_last_addr_lo <= 0;
+		reg_last_dout    <= 0;
 	end
 	else begin
+		// Internal cs edge diagnostics — count ALL edges reu.v observes
+		// on its cpu_cs input (independent of dma_req gate). If reg_cs_edges
+		// stays 0 during a test, the IOF chain isn't delivering a pulse at
+		// all. If it ticks but reg_wr_attempts doesn't, cpu_we is 0 at the
+		// rising edge (phase mismatch between cs and we).
+		if(~old_cs_r & cpu_cs) begin
+			reg_cs_edges     <= reg_cs_edges + 1'b1;
+			reg_last_addr_lo <= cpu_addr[4:0];
+			reg_last_dout    <= cpu_dout;
+			if(cpu_we) reg_wr_attempts <= reg_wr_attempts + 1'b1;
+			else       reg_rd_attempts <= reg_rd_attempts + 1'b1;
+		end
+
 		if(~dma_req & ~old_cs_r & cpu_cs) begin
 			if(cpu_we) begin
 				case(cpu_addr[4:0])
@@ -161,6 +201,9 @@ always @(posedge clk) begin
 					state_r    <= STATE_EVAL;
 					addr_ram   <= addr_ram & addr_mask;
 					addr_ram_r <= addr_ram_r & addr_mask;
+					// Diagnostic: count command fires, capture FIRST cmd byte
+					reg_cmd_count <= reg_cmd_count + 1'b1;
+					if (reg_cmd_count == 16'd0) reg_first_cmd <= cmd;
 				end
 
 			STATE_EVAL:
@@ -182,6 +225,8 @@ always @(posedge clk) begin
 							cmd[7]    <= 0;
 							dma_req   <= 0;
 							state_r <= STATE_IDLE;
+							// Diagnostic: count transfer completions
+							reg_xfer_count <= reg_xfer_count + 1'b1;
 						end
 						else length  <= length - 1'd1;
 					end
@@ -228,6 +273,8 @@ always @(posedge clk) begin
 					end
 				end
 		endcase
+		// Live mirror of FSM state for diagnostics ($DFB5)
+		reg_state <= state_r;
 	end
 end
 

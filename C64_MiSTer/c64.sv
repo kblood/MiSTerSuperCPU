@@ -692,22 +692,17 @@ reu reu
 	.ram_we(reu_ram_we),
 	.ram_active(reu_ram_active),
 
-	// Use dbg_cpu_addr (= cpuAddr_pre, direct CPU output) instead of c64_addr
-	// (= systemAddr, which muxes to vicAddr when cpuHasBus='0').
-	// The REU edge-detects cpu_cs at EXT0/EXT1 when cpuHasBus='0', so c64_addr
-	// would be vicAddr and the case(cpu_addr[4:0]) would match the wrong register.
-	.cpu_addr(dbg_cpu_addr),
-	// Use dbg_cpu_we (= cpuWe_pre, direct CPU output) instead of ram_we.
-	// ram_we = ramWE reflects SDRAM writes, but I/O writes ($DFxx) don't
-	// write to SDRAM, so ram_we is always '0' for REU register writes.
-	.cpu_dout(c64_data_out),
+	// iof_fall_pulse is a 1-cycle pulse fired at the end of a $DFxx access.
+	// By that cycle iof_*_latched hold the LAST observed values during
+	// the access (for writes cpuWe=1 was captured). reu.v sees a clean
+	// rising edge on cpu_cs with cpu_we = iof_we_latched settled to 1 for
+	// writes or 0 for reads. Fires at most once per access so back-to-back
+	// writes each get their own edge.
+	.cpu_addr(iof_addr_latched),
+	.cpu_dout(iof_dout_latched),
 	.cpu_din(reu_dout),
-	.cpu_we(dbg_cpu_we),
-	// Use IOF_raw (without io_enable gating) for REU register access.
-	// P65C816 outputs lag enableCpu by 1 cycle: enableCpu clears io_enable
-	// at cycle N, but the CPU's I/O write address appears at cycle N+1
-	// when io_enable (and thus IOF) is already '0'. IOF_raw bypasses this.
-	.cpu_cs(IOF_raw),
+	.cpu_we(iof_we_latched),
+	.cpu_cs(iof_fall_pulse),
 
 	.irq(reu_irq),
 
@@ -716,7 +711,20 @@ reu reu
 	.reg_cmd(reu_reg_cmd),
 	.reg_addr_c64(reu_reg_addr_c64),
 	.reg_addr_ram(reu_reg_addr_ram),
-	.reg_length(reu_reg_length)
+	.reg_length(reu_reg_length),
+	// CPU-written snapshot registers + command-fire diagnostics
+	.reg_addr_c64_r(reu_reg_addr_c64_r),
+	.reg_addr_ram_r(reu_reg_addr_ram_r),
+	.reg_length_r(reu_reg_length_r),
+	.reg_cmd_count(reu_reg_cmd_count),
+	.reg_xfer_count(reu_reg_xfer_count),
+	.reg_first_cmd(reu_reg_first_cmd),
+	.reg_state(reu_reg_state),
+	.reg_cs_edges(reu_reg_cs_edges),
+	.reg_wr_attempts(reu_reg_wr_attempts),
+	.reg_rd_attempts(reu_reg_rd_attempts),
+	.reg_last_addr_lo(reu_reg_last_addr_lo),
+	.reg_last_dout(reu_reg_last_dout)
 );
 
 // REU register bypass read: build mux from direct register outputs.
@@ -727,10 +735,24 @@ wire [7:0] reu_reg_cmd;
 wire [15:0] reu_reg_addr_c64;
 wire [23:0] reu_reg_addr_ram;
 wire [15:0] reu_reg_length;
+// FETCH diagnostics (loader.prg debugging)
+wire [15:0] reu_reg_addr_c64_r;
+wire [23:0] reu_reg_addr_ram_r;
+wire [15:0] reu_reg_length_r;
+wire [15:0] reu_reg_cmd_count;
+wire [15:0] reu_reg_xfer_count;
+wire  [7:0] reu_reg_first_cmd;
+wire  [1:0] reu_reg_state;
+// Internal reu.v cs/we edge diagnostics (loader.prg debugging)
+wire [15:0] reu_reg_cs_edges;
+wire [15:0] reu_reg_wr_attempts;
+wire [15:0] reu_reg_rd_attempts;
+wire  [4:0] reu_reg_last_addr_lo;
+wire  [7:0] reu_reg_last_dout;
 
 reg [7:0] reu_reg_mux;
 always @(*) begin
-	case (dbg_cpu_addr[4:0])
+	case (dbg_cpu_addr[7:0])
 		0:  reu_reg_mux = reu_reg_status;
 		1:  reu_reg_mux = reu_reg_cmd;
 		2:  reu_reg_mux = reu_reg_addr_c64[7:0];
@@ -765,6 +787,216 @@ always @(*) begin
 		27: reu_reg_mux = reu_rb_data;                 // $DF1B: readback byte 0 from REU_ADDR
 		28: reu_reg_mux = {5'b0, reu_rb_done, reu_rb_active, reu_rb_pending}; // $DF1C: status
 		29: reu_reg_mux = {7'b0, dbg_wr_pending};  // $DF1D: write test pending (reads as 0/1)
+		// Crash trace ring buffer (2026-04-12 expanded for Doom K:2D→K:00 diagnosis)
+		// $DF20: status {2'b0, wp[4:0], frozen}
+		// $DF21..$DFA0: 32 entries × 4 bytes = (PC_lo, PC_hi, PBR, IR) each.
+		// Read in chronological order from (wp+1) wrapping to (wp).
+		32: reu_reg_mux = dbg_bug_buf[7:0];  // $DF20 status
+		// Entry  0: $DF21..$DF24
+		33: reu_reg_mux = dbg_bug_buf[  8 +  0*32 +  7 :   8 +  0*32 +  0];
+		34: reu_reg_mux = dbg_bug_buf[  8 +  0*32 + 15 :   8 +  0*32 +  8];
+		35: reu_reg_mux = dbg_bug_buf[  8 +  0*32 + 23 :   8 +  0*32 + 16];
+		36: reu_reg_mux = dbg_bug_buf[  8 +  0*32 + 31 :   8 +  0*32 + 24];
+		// Entry  1: $DF25..$DF28
+		37: reu_reg_mux = dbg_bug_buf[  8 +  1*32 +  7 :   8 +  1*32 +  0];
+		38: reu_reg_mux = dbg_bug_buf[  8 +  1*32 + 15 :   8 +  1*32 +  8];
+		39: reu_reg_mux = dbg_bug_buf[  8 +  1*32 + 23 :   8 +  1*32 + 16];
+		40: reu_reg_mux = dbg_bug_buf[  8 +  1*32 + 31 :   8 +  1*32 + 24];
+		// Entry  2: $DF29..$DF2C
+		41: reu_reg_mux = dbg_bug_buf[  8 +  2*32 +  7 :   8 +  2*32 +  0];
+		42: reu_reg_mux = dbg_bug_buf[  8 +  2*32 + 15 :   8 +  2*32 +  8];
+		43: reu_reg_mux = dbg_bug_buf[  8 +  2*32 + 23 :   8 +  2*32 + 16];
+		44: reu_reg_mux = dbg_bug_buf[  8 +  2*32 + 31 :   8 +  2*32 + 24];
+		// Entry  3: $DF2D..$DF30
+		45: reu_reg_mux = dbg_bug_buf[  8 +  3*32 +  7 :   8 +  3*32 +  0];
+		46: reu_reg_mux = dbg_bug_buf[  8 +  3*32 + 15 :   8 +  3*32 +  8];
+		47: reu_reg_mux = dbg_bug_buf[  8 +  3*32 + 23 :   8 +  3*32 + 16];
+		48: reu_reg_mux = dbg_bug_buf[  8 +  3*32 + 31 :   8 +  3*32 + 24];
+		// Entry  4: $DF31..$DF34
+		49: reu_reg_mux = dbg_bug_buf[  8 +  4*32 +  7 :   8 +  4*32 +  0];
+		50: reu_reg_mux = dbg_bug_buf[  8 +  4*32 + 15 :   8 +  4*32 +  8];
+		51: reu_reg_mux = dbg_bug_buf[  8 +  4*32 + 23 :   8 +  4*32 + 16];
+		52: reu_reg_mux = dbg_bug_buf[  8 +  4*32 + 31 :   8 +  4*32 + 24];
+		// Entry  5: $DF35..$DF38
+		53: reu_reg_mux = dbg_bug_buf[  8 +  5*32 +  7 :   8 +  5*32 +  0];
+		54: reu_reg_mux = dbg_bug_buf[  8 +  5*32 + 15 :   8 +  5*32 +  8];
+		55: reu_reg_mux = dbg_bug_buf[  8 +  5*32 + 23 :   8 +  5*32 + 16];
+		56: reu_reg_mux = dbg_bug_buf[  8 +  5*32 + 31 :   8 +  5*32 + 24];
+		// Entry  6: $DF39..$DF3C
+		57: reu_reg_mux = dbg_bug_buf[  8 +  6*32 +  7 :   8 +  6*32 +  0];
+		58: reu_reg_mux = dbg_bug_buf[  8 +  6*32 + 15 :   8 +  6*32 +  8];
+		59: reu_reg_mux = dbg_bug_buf[  8 +  6*32 + 23 :   8 +  6*32 + 16];
+		60: reu_reg_mux = dbg_bug_buf[  8 +  6*32 + 31 :   8 +  6*32 + 24];
+		// Entry  7: $DF3D..$DF40
+		61: reu_reg_mux = dbg_bug_buf[  8 +  7*32 +  7 :   8 +  7*32 +  0];
+		62: reu_reg_mux = dbg_bug_buf[  8 +  7*32 + 15 :   8 +  7*32 +  8];
+		63: reu_reg_mux = dbg_bug_buf[  8 +  7*32 + 23 :   8 +  7*32 + 16];
+		64: reu_reg_mux = dbg_bug_buf[  8 +  7*32 + 31 :   8 +  7*32 + 24];
+		// Entry  8: $DF41..$DF44
+		65: reu_reg_mux = dbg_bug_buf[  8 +  8*32 +  7 :   8 +  8*32 +  0];
+		66: reu_reg_mux = dbg_bug_buf[  8 +  8*32 + 15 :   8 +  8*32 +  8];
+		67: reu_reg_mux = dbg_bug_buf[  8 +  8*32 + 23 :   8 +  8*32 + 16];
+		68: reu_reg_mux = dbg_bug_buf[  8 +  8*32 + 31 :   8 +  8*32 + 24];
+		// Entry  9: $DF45..$DF48
+		69: reu_reg_mux = dbg_bug_buf[  8 +  9*32 +  7 :   8 +  9*32 +  0];
+		70: reu_reg_mux = dbg_bug_buf[  8 +  9*32 + 15 :   8 +  9*32 +  8];
+		71: reu_reg_mux = dbg_bug_buf[  8 +  9*32 + 23 :   8 +  9*32 + 16];
+		72: reu_reg_mux = dbg_bug_buf[  8 +  9*32 + 31 :   8 +  9*32 + 24];
+		// Entry 10: $DF49..$DF4C
+		73: reu_reg_mux = dbg_bug_buf[  8 + 10*32 +  7 :   8 + 10*32 +  0];
+		74: reu_reg_mux = dbg_bug_buf[  8 + 10*32 + 15 :   8 + 10*32 +  8];
+		75: reu_reg_mux = dbg_bug_buf[  8 + 10*32 + 23 :   8 + 10*32 + 16];
+		76: reu_reg_mux = dbg_bug_buf[  8 + 10*32 + 31 :   8 + 10*32 + 24];
+		// Entry 11: $DF4D..$DF50
+		77: reu_reg_mux = dbg_bug_buf[  8 + 11*32 +  7 :   8 + 11*32 +  0];
+		78: reu_reg_mux = dbg_bug_buf[  8 + 11*32 + 15 :   8 + 11*32 +  8];
+		79: reu_reg_mux = dbg_bug_buf[  8 + 11*32 + 23 :   8 + 11*32 + 16];
+		80: reu_reg_mux = dbg_bug_buf[  8 + 11*32 + 31 :   8 + 11*32 + 24];
+		// Entry 12: $DF51..$DF54
+		81: reu_reg_mux = dbg_bug_buf[  8 + 12*32 +  7 :   8 + 12*32 +  0];
+		82: reu_reg_mux = dbg_bug_buf[  8 + 12*32 + 15 :   8 + 12*32 +  8];
+		83: reu_reg_mux = dbg_bug_buf[  8 + 12*32 + 23 :   8 + 12*32 + 16];
+		84: reu_reg_mux = dbg_bug_buf[  8 + 12*32 + 31 :   8 + 12*32 + 24];
+		// Entry 13: $DF55..$DF58
+		85: reu_reg_mux = dbg_bug_buf[  8 + 13*32 +  7 :   8 + 13*32 +  0];
+		86: reu_reg_mux = dbg_bug_buf[  8 + 13*32 + 15 :   8 + 13*32 +  8];
+		87: reu_reg_mux = dbg_bug_buf[  8 + 13*32 + 23 :   8 + 13*32 + 16];
+		88: reu_reg_mux = dbg_bug_buf[  8 + 13*32 + 31 :   8 + 13*32 + 24];
+		// Entry 14: $DF59..$DF5C
+		89: reu_reg_mux = dbg_bug_buf[  8 + 14*32 +  7 :   8 + 14*32 +  0];
+		90: reu_reg_mux = dbg_bug_buf[  8 + 14*32 + 15 :   8 + 14*32 +  8];
+		91: reu_reg_mux = dbg_bug_buf[  8 + 14*32 + 23 :   8 + 14*32 + 16];
+		92: reu_reg_mux = dbg_bug_buf[  8 + 14*32 + 31 :   8 + 14*32 + 24];
+		// Entry 15: $DF5D..$DF60
+		93: reu_reg_mux = dbg_bug_buf[  8 + 15*32 +  7 :   8 + 15*32 +  0];
+		94: reu_reg_mux = dbg_bug_buf[  8 + 15*32 + 15 :   8 + 15*32 +  8];
+		95: reu_reg_mux = dbg_bug_buf[  8 + 15*32 + 23 :   8 + 15*32 + 16];
+		96: reu_reg_mux = dbg_bug_buf[  8 + 15*32 + 31 :   8 + 15*32 + 24];
+		// Entry 16: $DF61..$DF64
+		97:  reu_reg_mux = dbg_bug_buf[  8 + 16*32 +  7 :   8 + 16*32 +  0];
+		98:  reu_reg_mux = dbg_bug_buf[  8 + 16*32 + 15 :   8 + 16*32 +  8];
+		99:  reu_reg_mux = dbg_bug_buf[  8 + 16*32 + 23 :   8 + 16*32 + 16];
+		100: reu_reg_mux = dbg_bug_buf[  8 + 16*32 + 31 :   8 + 16*32 + 24];
+		// Entry 17: $DF65..$DF68
+		101: reu_reg_mux = dbg_bug_buf[  8 + 17*32 +  7 :   8 + 17*32 +  0];
+		102: reu_reg_mux = dbg_bug_buf[  8 + 17*32 + 15 :   8 + 17*32 +  8];
+		103: reu_reg_mux = dbg_bug_buf[  8 + 17*32 + 23 :   8 + 17*32 + 16];
+		104: reu_reg_mux = dbg_bug_buf[  8 + 17*32 + 31 :   8 + 17*32 + 24];
+		// Entry 18: $DF69..$DF6C
+		105: reu_reg_mux = dbg_bug_buf[  8 + 18*32 +  7 :   8 + 18*32 +  0];
+		106: reu_reg_mux = dbg_bug_buf[  8 + 18*32 + 15 :   8 + 18*32 +  8];
+		107: reu_reg_mux = dbg_bug_buf[  8 + 18*32 + 23 :   8 + 18*32 + 16];
+		108: reu_reg_mux = dbg_bug_buf[  8 + 18*32 + 31 :   8 + 18*32 + 24];
+		// Entry 19: $DF6D..$DF70
+		109: reu_reg_mux = dbg_bug_buf[  8 + 19*32 +  7 :   8 + 19*32 +  0];
+		110: reu_reg_mux = dbg_bug_buf[  8 + 19*32 + 15 :   8 + 19*32 +  8];
+		111: reu_reg_mux = dbg_bug_buf[  8 + 19*32 + 23 :   8 + 19*32 + 16];
+		112: reu_reg_mux = dbg_bug_buf[  8 + 19*32 + 31 :   8 + 19*32 + 24];
+		// Entry 20: $DF71..$DF74
+		113: reu_reg_mux = dbg_bug_buf[  8 + 20*32 +  7 :   8 + 20*32 +  0];
+		114: reu_reg_mux = dbg_bug_buf[  8 + 20*32 + 15 :   8 + 20*32 +  8];
+		115: reu_reg_mux = dbg_bug_buf[  8 + 20*32 + 23 :   8 + 20*32 + 16];
+		116: reu_reg_mux = dbg_bug_buf[  8 + 20*32 + 31 :   8 + 20*32 + 24];
+		// Entry 21: $DF75..$DF78
+		117: reu_reg_mux = dbg_bug_buf[  8 + 21*32 +  7 :   8 + 21*32 +  0];
+		118: reu_reg_mux = dbg_bug_buf[  8 + 21*32 + 15 :   8 + 21*32 +  8];
+		119: reu_reg_mux = dbg_bug_buf[  8 + 21*32 + 23 :   8 + 21*32 + 16];
+		120: reu_reg_mux = dbg_bug_buf[  8 + 21*32 + 31 :   8 + 21*32 + 24];
+		// Entry 22: $DF79..$DF7C
+		121: reu_reg_mux = dbg_bug_buf[  8 + 22*32 +  7 :   8 + 22*32 +  0];
+		122: reu_reg_mux = dbg_bug_buf[  8 + 22*32 + 15 :   8 + 22*32 +  8];
+		123: reu_reg_mux = dbg_bug_buf[  8 + 22*32 + 23 :   8 + 22*32 + 16];
+		124: reu_reg_mux = dbg_bug_buf[  8 + 22*32 + 31 :   8 + 22*32 + 24];
+		// Entry 23: $DF7D..$DF80
+		125: reu_reg_mux = dbg_bug_buf[  8 + 23*32 +  7 :   8 + 23*32 +  0];
+		126: reu_reg_mux = dbg_bug_buf[  8 + 23*32 + 15 :   8 + 23*32 +  8];
+		127: reu_reg_mux = dbg_bug_buf[  8 + 23*32 + 23 :   8 + 23*32 + 16];
+		128: reu_reg_mux = dbg_bug_buf[  8 + 23*32 + 31 :   8 + 23*32 + 24];
+		// Entry 24: $DF81..$DF84
+		129: reu_reg_mux = dbg_bug_buf[  8 + 24*32 +  7 :   8 + 24*32 +  0];
+		130: reu_reg_mux = dbg_bug_buf[  8 + 24*32 + 15 :   8 + 24*32 +  8];
+		131: reu_reg_mux = dbg_bug_buf[  8 + 24*32 + 23 :   8 + 24*32 + 16];
+		132: reu_reg_mux = dbg_bug_buf[  8 + 24*32 + 31 :   8 + 24*32 + 24];
+		// Entry 25: $DF85..$DF88
+		133: reu_reg_mux = dbg_bug_buf[  8 + 25*32 +  7 :   8 + 25*32 +  0];
+		134: reu_reg_mux = dbg_bug_buf[  8 + 25*32 + 15 :   8 + 25*32 +  8];
+		135: reu_reg_mux = dbg_bug_buf[  8 + 25*32 + 23 :   8 + 25*32 + 16];
+		136: reu_reg_mux = dbg_bug_buf[  8 + 25*32 + 31 :   8 + 25*32 + 24];
+		// Entry 26: $DF89..$DF8C
+		137: reu_reg_mux = dbg_bug_buf[  8 + 26*32 +  7 :   8 + 26*32 +  0];
+		138: reu_reg_mux = dbg_bug_buf[  8 + 26*32 + 15 :   8 + 26*32 +  8];
+		139: reu_reg_mux = dbg_bug_buf[  8 + 26*32 + 23 :   8 + 26*32 + 16];
+		140: reu_reg_mux = dbg_bug_buf[  8 + 26*32 + 31 :   8 + 26*32 + 24];
+		// Entry 27: $DF8D..$DF90
+		141: reu_reg_mux = dbg_bug_buf[  8 + 27*32 +  7 :   8 + 27*32 +  0];
+		142: reu_reg_mux = dbg_bug_buf[  8 + 27*32 + 15 :   8 + 27*32 +  8];
+		143: reu_reg_mux = dbg_bug_buf[  8 + 27*32 + 23 :   8 + 27*32 + 16];
+		144: reu_reg_mux = dbg_bug_buf[  8 + 27*32 + 31 :   8 + 27*32 + 24];
+		// Entry 28: $DF91..$DF94
+		145: reu_reg_mux = dbg_bug_buf[  8 + 28*32 +  7 :   8 + 28*32 +  0];
+		146: reu_reg_mux = dbg_bug_buf[  8 + 28*32 + 15 :   8 + 28*32 +  8];
+		147: reu_reg_mux = dbg_bug_buf[  8 + 28*32 + 23 :   8 + 28*32 + 16];
+		148: reu_reg_mux = dbg_bug_buf[  8 + 28*32 + 31 :   8 + 28*32 + 24];
+		// Entry 29: $DF95..$DF98
+		149: reu_reg_mux = dbg_bug_buf[  8 + 29*32 +  7 :   8 + 29*32 +  0];
+		150: reu_reg_mux = dbg_bug_buf[  8 + 29*32 + 15 :   8 + 29*32 +  8];
+		151: reu_reg_mux = dbg_bug_buf[  8 + 29*32 + 23 :   8 + 29*32 + 16];
+		152: reu_reg_mux = dbg_bug_buf[  8 + 29*32 + 31 :   8 + 29*32 + 24];
+		// Entry 30: $DF99..$DF9C
+		153: reu_reg_mux = dbg_bug_buf[  8 + 30*32 +  7 :   8 + 30*32 +  0];
+		154: reu_reg_mux = dbg_bug_buf[  8 + 30*32 + 15 :   8 + 30*32 +  8];
+		155: reu_reg_mux = dbg_bug_buf[  8 + 30*32 + 23 :   8 + 30*32 + 16];
+		156: reu_reg_mux = dbg_bug_buf[  8 + 30*32 + 31 :   8 + 30*32 + 24];
+		// Entry 31: $DF9D..$DFA0
+		157: reu_reg_mux = dbg_bug_buf[  8 + 31*32 +  7 :   8 + 31*32 +  0];
+		158: reu_reg_mux = dbg_bug_buf[  8 + 31*32 + 15 :   8 + 31*32 +  8];
+		159: reu_reg_mux = dbg_bug_buf[  8 + 31*32 + 23 :   8 + 31*32 + 16];
+		160: reu_reg_mux = dbg_bug_buf[  8 + 31*32 + 31 :   8 + 31*32 + 24];
+		// REU FETCH diagnostics (loader.prg debugging)
+		161: reu_reg_mux = reu_reg_cmd_count[7:0];        // $DFA1
+		162: reu_reg_mux = reu_reg_cmd_count[15:8];       // $DFA2
+		163: reu_reg_mux = reu_reg_xfer_count[7:0];       // $DFA3
+		164: reu_reg_mux = reu_reg_xfer_count[15:8];      // $DFA4
+		165: reu_reg_mux = reu_reg_first_cmd;             // $DFA5
+		166: reu_reg_mux = {6'b0, reu_reg_state};         // $DFA6: live FSM state
+		// CPU-written snapshot (preserved across autonomous addr/length updates)
+		167: reu_reg_mux = reu_reg_addr_c64_r[7:0];       // $DFA7
+		168: reu_reg_mux = reu_reg_addr_c64_r[15:8];      // $DFA8
+		169: reu_reg_mux = reu_reg_addr_ram_r[7:0];       // $DFA9
+		170: reu_reg_mux = reu_reg_addr_ram_r[15:8];      // $DFAA
+		171: reu_reg_mux = reu_reg_addr_ram_r[23:16];     // $DFAB
+		172: reu_reg_mux = reu_reg_length_r[7:0];         // $DFAC
+		173: reu_reg_mux = reu_reg_length_r[15:8];        // $DFAD
+		// IOF-chain diagnostic counters (where do REU writes die?)
+		174: reu_reg_mux = dbg_dfxx_cpu_cnt[7:0];         // $DFAE
+		175: reu_reg_mux = dbg_dfxx_cpu_cnt[15:8];        // $DFAF
+		176: reu_reg_mux = dbg_dfxx_we_cnt[7:0];          // $DFB0
+		177: reu_reg_mux = dbg_dfxx_we_cnt[15:8];         // $DFB1
+		178: reu_reg_mux = dbg_iof_det_cnt[7:0];          // $DFB2
+		179: reu_reg_mux = dbg_iof_det_cnt[15:8];         // $DFB3
+		180: reu_reg_mux = dbg_iof_raw_cnt[7:0];          // $DFB4
+		181: reu_reg_mux = dbg_iof_raw_cnt[15:8];         // $DFB5
+		182: reu_reg_mux = dbg_dfxx_last_we_lo;           // $DFB6
+		183: reu_reg_mux = dbg_dfxx_last_we_data;         // $DFB7
+		// Internal reu.v cs/we edge diagnostics
+		184: reu_reg_mux = reu_reg_cs_edges[7:0];         // $DFB8
+		185: reu_reg_mux = reu_reg_cs_edges[15:8];        // $DFB9
+		186: reu_reg_mux = reu_reg_wr_attempts[7:0];      // $DFBA
+		187: reu_reg_mux = reu_reg_wr_attempts[15:8];     // $DFBB
+		188: reu_reg_mux = reu_reg_rd_attempts[7:0];      // $DFBC
+		189: reu_reg_mux = reu_reg_rd_attempts[15:8];     // $DFBD
+		190: reu_reg_mux = {3'b0, reu_reg_last_addr_lo};  // $DFBE
+		191: reu_reg_mux = reu_reg_last_dout;             // $DFBF
+		// Phase-alignment diagnostics
+		192: reu_reg_mux = dbg_iof_we_coinc[7:0];         // $DFC0 iof_det & we lo
+		193: reu_reg_mux = dbg_iof_we_coinc[15:8];        // $DFC1
+		194: reu_reg_mux = dbg_iof_we_latched_hi_cnt[7:0]; // $DFC2 iof_we_r rising edges lo
+		195: reu_reg_mux = dbg_iof_we_latched_hi_cnt[15:8];// $DFC3
+		196: reu_reg_mux = dbg_iof_cs_we_overlap[7:0];    // $DFC4 IOF_raw & iof_we_r lo
+		197: reu_reg_mux = dbg_iof_cs_we_overlap[15:8];   // $DFC5
+		198: reu_reg_mux = dbg_iof_we_at_raw_rise_cnt[7:0];  // $DFC6 iof_we_latched=1 at cs rise
+		199: reu_reg_mux = dbg_iof_we_at_raw_rise_cnt[15:8]; // $DFC7
+		200: reu_reg_mux = {7'b0, dbg_iof_we_at_raw_rise};   // $DFC8 sticky last value
 		default: reu_reg_mux = 8'hFF;
 	endcase
 end
@@ -1201,6 +1433,16 @@ wire        mod_key;
 wire        IOE;
 wire        IOF;
 wire        IOF_raw;  // IOF without io_enable gating — for REU cpu_cs
+// Phase-aligned cpu_we / cpu_addr / cpu_dout latched at IOF_raw edge.
+// CPU writes are 1-cycle in turbo mode; without these, reu.v's edge
+// detector samples cpu_we AFTER the write phase ended → all writes look
+// like reads. iof_*_latched carry the cycle-N values into cycle N+1 to
+// match IOF_raw's 1-cycle pipeline delay.
+wire        iof_we_latched;
+wire [15:0] iof_addr_latched;
+wire  [7:0] iof_dout_latched;
+wire        iof_fall_pulse;
+wire        iof_detect_diag;  // combinational iof_detect (diagnostic)
 wire        romL;
 wire        romH;
 wire        UMAXromH;
@@ -1244,6 +1486,54 @@ always @(posedge clk_sys) begin
             dbg_iowr_first_data <= io_cycle_data;
             dbg_iowr_captured <= 1;
         end
+    end
+end
+
+// ---- IOF diagnostic counters (REU register write debugging) ----
+// Track each stage of the cpuAddr_pre → iof_detect → IOF_raw → reu_cs chain
+// to identify where REU register writes from BASIC are getting lost.
+reg [15:0] dbg_dfxx_cpu_cnt = 0;     // CPU cycles where dbg_cpu_addr[15:8]==$DF
+reg [15:0] dbg_dfxx_we_cnt  = 0;     // CPU cycles where $DFxx AND dbg_cpu_we
+reg [15:0] dbg_iof_det_cnt  = 0;     // rising edges of iof_detect (combinational)
+reg [15:0] dbg_iof_raw_cnt  = 0;     // rising edges of IOF_raw (registered)
+reg        iof_det_d        = 0;
+reg        iof_raw_d        = 0;
+reg  [7:0] dbg_dfxx_last_we_lo = 0;  // low byte of last $DFxx address with we=1
+reg  [7:0] dbg_dfxx_last_we_data = 0; // data byte of last $DFxx write
+// coincidence: cycles where iof_detect (dfxx AND addr_hi_816=0) AND cpuWe=1
+reg [15:0] dbg_iof_we_coinc = 0;
+// latched iof_we_r visible from c64.sv clock domain (for comparison)
+reg [15:0] dbg_iof_we_latched_hi_cnt = 0;
+reg        iof_we_latched_d = 0;
+// Overlap check: cycles where IOF_raw=1 AND iof_we_latched=1. If this is
+// 0, the two signals never align at reu.v's sampling point. If non-zero,
+// reu.v's edge detection should have captured the write.
+reg [15:0] dbg_iof_cs_we_overlap = 0;
+// What iof_we_latched looks like AT the moment IOF_raw rises
+reg        dbg_iof_we_at_raw_rise = 0;
+reg [15:0] dbg_iof_we_at_raw_rise_cnt = 0;
+reg        iof_raw_d2 = 0;
+always @(posedge clk_sys) begin
+    iof_det_d <= iof_detect_diag;
+    iof_raw_d <= IOF_raw;
+    iof_we_latched_d <= iof_we_latched;
+    if (dbg_cpu_addr[15:8] == 8'hDF) begin
+        dbg_dfxx_cpu_cnt <= dbg_dfxx_cpu_cnt + 1'd1;
+        if (dbg_cpu_we) begin
+            dbg_dfxx_we_cnt <= dbg_dfxx_we_cnt + 1'd1;
+            dbg_dfxx_last_we_lo   <= dbg_cpu_addr[7:0];
+            dbg_dfxx_last_we_data <= c64_data_out;
+        end
+    end
+    if (iof_detect_diag && !iof_det_d) dbg_iof_det_cnt <= dbg_iof_det_cnt + 1'd1;
+    if (IOF_raw && !iof_raw_d)         dbg_iof_raw_cnt <= dbg_iof_raw_cnt + 1'd1;
+    if (iof_detect_diag && dbg_cpu_we) dbg_iof_we_coinc <= dbg_iof_we_coinc + 1'd1;
+    if (iof_we_latched && !iof_we_latched_d) dbg_iof_we_latched_hi_cnt <= dbg_iof_we_latched_hi_cnt + 1'd1;
+    if (IOF_raw && iof_we_latched) dbg_iof_cs_we_overlap <= dbg_iof_cs_we_overlap + 1'd1;
+    iof_raw_d2 <= IOF_raw;
+    if (IOF_raw && !iof_raw_d2) begin
+        dbg_iof_we_at_raw_rise <= iof_we_latched;
+        if (iof_we_latched) dbg_iof_we_at_raw_rise_cnt <= dbg_iof_we_at_raw_rise_cnt + 1'd1;
     end
 end
 
@@ -1399,6 +1689,8 @@ wire        dbg_cache_hit_d1;
 wire        dbg_enable_cpu_t65;
 wire        dbg_cpu_cyc;
 wire  [7:0] dbg_diag;
+wire [1287:0] dbg_bug_buf;  // 161 bytes: status + 32×(PC16,PBR8,IR8) + 32×P8
+wire [15:0] dbg_native_irq_vec;  // native IRQ vector ($FFEE/$FFEF)
 
 fpga64_sid_iec fpga64
 (
@@ -1456,6 +1748,8 @@ fpga64_sid_iec fpga64
 	.dbg_enable_cpu_t65(dbg_enable_cpu_t65),
 	.dbg_cpu_cyc(dbg_cpu_cyc),
 	.dbg_diag(dbg_diag),
+	.dbg_bug_buf(dbg_bug_buf),
+	.dbg_native_irq_vec(dbg_native_irq_vec),
 
 	.ps2_key(key),
 	.kbd_reset((~reset_n & ~status[1]) | reset_keys),
@@ -1465,6 +1759,7 @@ fpga64_sid_iec fpga64
 	.ramDout(c64_data_out),
 	.ramDin(c64_data_in),
 	.sdram_raw(sdram_data),
+	.sdram_superram(sdram_data_reu),
 	.sdram_hi(sdram_data_hi),
 	.sdram_lo(sdram_data_lo),
 	.ramCE(ram_ce),
@@ -1492,6 +1787,11 @@ fpga64_sid_iec fpga64
 	.ioe(IOE),
 	.iof(IOF),
 	.IOF_raw(IOF_raw),
+	.iof_detect_o(iof_detect_diag),
+	.iof_we_o(iof_we_latched),
+	.iof_addr_o(iof_addr_latched),
+	.iof_dout_o(iof_dout_latched),
+	.iof_fall_pulse_o(iof_fall_pulse),
 	.io_rom(io_rom),
 	.io_ext(io_ext_r),     // registered: stable, immune to -10ns timing
 	.io_data(io_data_r_sv), // registered: 1-cycle delay, correct for I/O pipeline
@@ -1741,6 +2041,30 @@ always @(posedge clk_sys) begin
 	dbg_vblank <= vsync_sr[0] & ~vsync_sr[1]; // rising edge of vsync
 end
 
+// Crash diagnostic: capture PBR at first unexpected bank transition.
+// Arms when PBR=$20 (Doom entry). Latches the DESTINATION PBR when it
+// first goes to something outside {$00, $20, $2D}.
+// Doom uses $87-$8B for DATA (STA [$dp],Y), but PBR stays $20/$2D.
+// If PBR itself goes to $80+ or other unexpected bank, that's the crash.
+// Continuously track last address in Doom code banks ($20-$2D, $80).
+// W: shows last_doom_addr, L: shows last_doom_bank.
+// These update live and freeze naturally when CPU crashes (never returns to Doom code).
+// Also track last addr when PBR != $00 (catches subroutine/data banks).
+reg [15:0] last_doom_addr = 16'h0000;
+reg  [7:0] last_doom_bank = 8'h00;
+always @(posedge clk_sys) begin
+	if (~reset_n) begin
+		last_doom_addr <= 16'h0000;
+		last_doom_bank <= 8'h00;
+	end else if (dbg_cpu_en) begin
+		// Track last address in any non-$00 bank (covers all Doom code + subroutines)
+		if (dbg_cpu_pbr != 8'h00) begin
+			last_doom_addr <= dbg_cpu_addr;
+			last_doom_bank <= dbg_cpu_pbr;
+		end
+	end
+end
+
 reg hq2x160;
 always @(posedge clk_sys) begin
 	reg old_vsync;
@@ -1901,6 +2225,10 @@ debug_uart_fmt debug_fmt
 	.cache_hit_pulse(dbg_cache_hit_d1),
 	.enable_cpu_pulse(dbg_enable_cpu_t65),
 	.cpu_cyc_pulse(dbg_cpu_cyc),
+	.native_irq_vec(last_doom_addr),   // W:xxxx = last addr when PBR!=00 (freezes at crash)
+	.crash_bank(last_doom_bank),       // L:xx = last bank when PBR!=00 (freezes at crash)
+	.vic_irq(~dbg_diag[7]),  // dbg_diag[7] = NOT_irq_vic, invert for active-high
+	.trace_buf(dbg_bug_buf),           // 129-byte crash trace ring buffer
 	.tx_data(dbg_uart_data),
 	.tx_send(dbg_uart_send),
 	.tx_busy(dbg_uart_busy)

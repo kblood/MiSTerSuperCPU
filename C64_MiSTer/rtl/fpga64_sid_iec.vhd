@@ -58,6 +58,7 @@ port(
 	ramAddr     : out unsigned(15 downto 0);
 	ramDin      : in  unsigned(7 downto 0);
 	sdram_raw   : in  unsigned(7 downto 0);  -- raw SDRAM dout, bypasses cartridge module
+	sdram_superram : in unsigned(7 downto 0);  -- SDRAM dout_reu: bt=1 latch, clk64-domain stable
 	sdram_hi    : in  unsigned(7 downto 0);  -- high byte of SDRAM word (bt-independent)
 	sdram_lo    : in  unsigned(7 downto 0);  -- low byte of SDRAM word (bt-independent)
 	ramDout     : out unsigned(7 downto 0);
@@ -121,6 +122,20 @@ port(
 	dbg_enable_cpu_t65 : out std_logic;
 	dbg_cpu_cyc        : out std_logic;
 	dbg_diag           : out unsigned(7 downto 0);
+	-- Crash trace ring buffer (129 bytes packed = 8 status + 32 × 4 entry bytes)
+	-- Layout (LSB first):
+	--   [7:0]   = status: bit0=frozen, bits[5:1]=write_pos[4:0], bits[7:6]=reserved
+	--   [39:8]  = entry 0: PC_lo[7:0], PC_hi[15:8], PBR[23:16], IR[31:24]
+	--   [71:40] = entry 1
+	--   ... 32 entries total ...
+	--   [1031:1000] = entry 31
+	-- Capture: every time dbg_pc_816 changes (one entry per instruction).
+	-- Trigger: PBR transitions from $2D to $00 (Doom crash signature).
+	-- After trigger, capture 4 more entries then freeze permanently.
+	-- Read the buffer in chronological order from (wp+1) wrapping to (wp).
+	dbg_bug_buf        : out std_logic_vector(1287 downto 0);
+	-- Native mode IRQ vector value ($FFEE/$FFEF from scpu_native_vec)
+	dbg_native_irq_vec : out std_logic_vector(15 downto 0);
 
 	-- VGA/SCART interface
 	vic_variant : in  std_logic_vector(1 downto 0);
@@ -146,6 +161,15 @@ port(
 	IOE			: out std_logic;
 	IOF			: out std_logic;
 	IOF_raw		: out std_logic;  -- IOF without io_enable, for REU cpu_cs
+	iof_detect_o: out std_logic;  -- combinational iof_detect (diagnostic)
+	-- Latched-at-IOF values: cpu_we / cpu_addr / cpu_dout captured on the
+	-- same clk32 edge that registers IOF_raw, so they're phase-aligned with
+	-- IOF_raw at reu.v's edge detector. Without these, single-cycle CPU
+	-- writes complete before IOF_raw rises and reu.v sees them as reads.
+	iof_we_o    : out std_logic;
+	iof_addr_o  : out unsigned(15 downto 0);
+	iof_dout_o  : out unsigned(7 downto 0);
+	iof_fall_pulse_o : out std_logic;  -- 1-cycle pulse at end of $DFxx access
 	freeze_key  : out std_logic;
 	mod_key     : out std_logic;
 	tape_play   : out std_logic;
@@ -274,6 +298,12 @@ signal cpuDi        : unsigned(7 downto 0);
 signal cpuDi_raw    : unsigned(7 downto 0);
 signal cpuDo        : unsigned(7 downto 0);
 signal cpuDo_pre    : unsigned(7 downto 0);
+-- Latched at IOF_raw rising for phase-aligned writes to reu.v
+signal iof_we_r         : std_logic := '0';
+signal iof_addr_r       : unsigned(15 downto 0) := (others => '0');
+signal iof_dout_r       : unsigned(7 downto 0)  := (others => '0');
+signal iof_detect_d2    : std_logic := '0';  -- alias of iof_detect_d1
+signal iof_fall_pulse_r : std_logic := '0';  -- 1-cycle pulse at end of $DFxx access
 signal cpuIO        : unsigned(7 downto 0);
 
 -- 65C816 CPU signals
@@ -352,6 +382,7 @@ signal iof_detect            : std_logic;  -- combinational IOF detect from cpuA
 signal iof_detect_d1         : std_logic := '0';  -- registered IOF detect (1-cycle delayed)
 signal at_cpuc               : std_logic;
 signal at_cpucd              : std_logic;
+signal io_slowdown           : std_logic;  -- suppress turbo for I/O addresses ($D000-$DFFF bank $00)
 signal phantom_enable        : std_logic := '0'; -- fast path for VDA=0,VPA=0 cycles
 
 -- BRAM CPU cache signals (retained for cache path, active when bram64k not used)
@@ -416,6 +447,37 @@ signal scpu_rom_stub_data   : unsigned(7 downto 0);
 -- Index: 0=$FF00, 1=$FF01, 2=$FFE4, 3=$FFE5, ..., 13=$FFEF
 type native_vec_array is array(0 to 13) of unsigned(7 downto 0);
 signal scpu_native_vec : native_vec_array;
+
+-- Crash trace ring buffer (2026-04-12 expanded for Doom K:2D→K:00 diagnosis)
+-- 32 entries × (PC[15:0], PBR[7:0], IR[7:0]) = 32 × 32 bits = 128 bytes total.
+-- Captures one entry per instruction (gated by dbg_pc_816 change) so 32 entries
+-- = 32 instructions of pre-trigger history.
+--
+-- TWO-PHASE TRIGGER:
+--   Phase 1 (free-run): capture every PC change. Always.
+--   Phase 2 (tentative): on PBR=$2D→$00 transition, STOP CAPTURING and arm
+--     a timeout counter. The buffer now holds the K:2D context at the moment
+--     of transition. If PBR returns to non-$00 before timeout → false alarm
+--     (normal VIC IRQ), release and resume capturing. If timeout expires while
+--     still in $00 → permanent freeze (crash confirmed).
+--
+-- Buffer is exposed via $DF20-$DFA0 in c64.sv.
+constant TRACE_DEPTH : integer := 32;
+type trace_pc_arr_t   is array(0 to TRACE_DEPTH-1) of unsigned(15 downto 0);
+type trace_byte_arr_t is array(0 to TRACE_DEPTH-1) of unsigned(7 downto 0);
+signal bug_pc         : trace_pc_arr_t   := (others => (others => '0'));
+signal bug_pbr        : trace_byte_arr_t := (others => (others => '0'));
+signal bug_ir_buf     : trace_byte_arr_t := (others => (others => '0'));
+signal bug_p          : trace_byte_arr_t := (others => (others => '0'));
+signal bug_wp         : unsigned(4 downto 0) := (others => '0');
+signal bug_frozen     : std_logic := '0';
+signal bug_armed      : std_logic := '0';                       -- tentative freeze active
+signal bug_timeout    : unsigned(23 downto 0) := (others => '0');-- 24-bit timeout (~16M CPU-enable cycles)
+signal trace_prev_pc  : unsigned(15 downto 0) := (others => '0');
+signal trace_prev_pbr : unsigned(7 downto 0)  := (others => '0');
+signal trace_prev_ir  : unsigned(7 downto 0)  := (others => '0');
+signal trace_prev_p   : unsigned(7 downto 0)  := (others => '0');
+signal seen_bank_2d   : std_logic := '0';
 signal cache_cpu_bank   : unsigned(7 downto 0);  -- bank for cache: $00 for T65, addr_hi_816 for SuperCPU
 signal cache_cpu_en     : std_logic;             -- enable for cache: from active CPU
 
@@ -754,23 +816,40 @@ IOE <= ioe_i;
 IOF <= iof_i;
 -- Simple IOF detect from cpuAddr_pre (bypasses bus logic -10ns path).
 iof_detect <= '1' when cpuAddr_pre(15 downto 8) = x"DF" and addr_hi_816 = x"00" else '0';
--- Gate IOF_raw with phi0_cpu so it only asserts during CPU phases.
--- Without this gate, iof_detect rises at EXT0 (when cpuAddr changes) but
--- cpu_we (= ramWE) is '0' during non-CPU phases, so the REU sees all
--- accesses as reads and never registers writes (STA $DFxx).
--- With phi0_cpu gate, the rising edge is at CPU0 where ramWE is valid.
+iof_detect_o <= iof_detect;  -- expose for c64.sv diagnostic counters
 -- Register IOF_raw to eliminate timing violations from the combinational
 -- cpuAddr_pre → iof_detect → IOF_raw path (-10ns slack).
--- The combinational version fails to meet setup time at clock edges,
--- causing the REU's edge detection (and io_data_r_sv capture) to never
--- see '1'. Registration adds 1-cycle latency but the CPU reads many
--- cycles later so this is acceptable.
+-- NOTE: previously gated with phi0_cpu, but the 2-stage SDRAM enable pipeline
+-- pushes enableCpu to CPUF, so the CPU's new $DFxx address only appears at
+-- EXT0 of the next rotation — by which time phi0_cpu has already gone low.
+-- The gate caused IOF_raw to never rise from 1MHz BASIC writes (verified
+-- 2026-04-13: iof_det_cnt=12, iof_raw_cnt=0). cpuWe_pre is held stable
+-- across phases by the CPU, so the original phi0_cpu concern (cpu_we=0 in
+-- non-CPU phases) does not apply with the dbg_cpu_we wiring.
+-- IOF_raw is the registered 1-cycle-delayed iof_detect (kept for the
+-- existing diagnostic path in c64.sv). For reu.v write detection we use
+-- iof_fall_pulse_r instead: a 1-cycle pulse that fires ONE cycle after
+-- iof_detect goes low. By that time iof_we_r / iof_addr_r / iof_dout_r
+-- reflect the LAST observed values during the access — for writes that
+-- means cpuWe=1 was captured, for reads cpuWe=0. reu.v's edge detector
+-- sees a clean rising edge with cpu_we settled.
 process(clk32)
 begin
 	if rising_edge(clk32) then
-		IOF_raw <= iof_detect and phi0_cpu;
+		iof_detect_d2    <= iof_detect;  -- alias of iof_detect_d1
+		IOF_raw          <= iof_detect;  -- 1-cycle delayed, used for diagnostics
+		iof_fall_pulse_r <= iof_detect_d2 and not iof_detect; -- 1-cycle pulse at end of access
+		if iof_detect = '1' then
+			iof_we_r   <= cpuWe_pre;
+			iof_addr_r <= cpuAddr_pre;
+			iof_dout_r <= cpuDo_pre;
+		end if;
 	end if;
 end process;
+iof_we_o   <= iof_we_r;
+iof_addr_o <= iof_addr_r;
+iof_dout_o <= iof_dout_r;
+iof_fall_pulse_o <= iof_fall_pulse_r;
 at_cpuc <= '1' when sysCycle = CYCLE_CPUC else '0';
 -- Suppress BRAM hits from CPUB through CPUD: prevents the BRAM hit from the
 -- previous instruction's fetch from advancing the CPU at the same rotation
@@ -855,7 +934,7 @@ cpuDi <= io_data when (iof_detect = '1' and cpuWe_pre = '0') else
          scpu_rom_stub_data when (scpu_rom_stub_active = '1') else
          bram_do  when (bram_hit_d1 = '1') else
          cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
-         superram_data_r when (enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0') else
+         sdram_superram when (enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0') else
          -- TODO: Native mode bank $00 RAM override for $8000-$FFFF (Doom needs this)
          -- SuperCPU $D0Bx registers: gated by scpu_regs_enabled (write $D07F to disable)
          -- $D0BC: computed from dosext(0), ramlink(0), optim low bits
@@ -1211,8 +1290,25 @@ enableCpu_6510 <= (bram_hit_d1 or (cache_hit_d1 and turbo_en) or (enableCpu and 
 -- for an I/O read. If a BRAM hit from the previous instruction also fires,
 -- the CPU races past the I/O address before the pipeline can capture data.
 -- sysCycle is registered — no timing issues (unlike cpu_cyc/cs_ram).
-enableCpu_816  <= ((bram_hit_d1 and turbo_en and not at_cpucd) or
-                   (cache_hit_d1 and turbo_en and not at_cpucd) or
+--
+-- I/O slow-down: When the CPU addresses $D000-$DFFF in bank $00, suppress
+-- turbo enables so the access waits for the 1MHz CPU slot (phi0_cpu='1').
+-- Real SuperCPU hardware stalls the 20MHz CPU for I/O access, ensuring
+-- VIC/SID/CIA writes/reads go through the C64 bus at 1MHz.
+-- Without this, turbo-mode VIC writes are silently dropped (phi0_cpu='0').
+-- Only slow down WRITES to I/O (VIC write gate needs phi0_cpu='1').
+-- Reads from I/O registers work at turbo speed (data always on bus).
+-- Also require VDA=1, VPA=0 to avoid slowing instruction fetches or phantom cycles.
+io_slowdown <= '1' when cpuAddr_pre(15 downto 12) = x"D"
+                     and addr_hi_816 = x"00"
+                     and supercpu_en = '1'
+                     and cpuWe_pre = '1'
+                     and vpa_816 = '0'
+                     and vda_816 = '1'
+               else '0';
+
+enableCpu_816  <= ((bram_hit_d1 and turbo_en and not at_cpucd and not io_slowdown) or
+                   (cache_hit_d1 and turbo_en and not at_cpucd and not io_slowdown) or
                    (phantom_enable and turbo_en and not at_cpucd) or
                    (enableCpu and not dma_active))
                   when supercpu_en = '1' else '0';
@@ -1270,7 +1366,8 @@ port map (
 	dbg_p  => dbg_p_816,
 	dbg_ir => dbg_ir_816,
 	dbg_pbr => dbg_pbr_816,
-	dbg_dbr => dbg_dbr_816
+	dbg_dbr => dbg_dbr_816,
+	dbg_state => open
 );
 
 -- -----------------------------------------------------------------------
@@ -1356,12 +1453,16 @@ scpu_rom_overlay <= supercpu_rom and scpu_rom_vis and supercpu_en;
 -- Gate fill on baLoc: during badlines (baLoc='0'), cpuHasBus='0' so buslogic
 -- outputs VIC data (not CPU data) on cpuDi_raw. Filling the cache with VIC
 -- garbage corrupts cached bytes, causing wrong data on subsequent reads.
--- SuperRAM cache fills use superram_data_r (SDRAM high byte latch).
--- Bank $00 fills use cpuDi_raw (buslogic output with ROM/IO overlay).
-cache_fill_data <= superram_data_r when superram_in_pipeline = '1' else cpuDi_raw;
+-- SuperRAM cache fill is suppressed (superram_in_pipeline guard in cache_fill_we).
+-- Bank $00 fills from cpuDi_raw (buslogic output).
+-- BISECT 2026-04-08: SuperRAM cache fills (commit 36c135c) caused 4-byte
+-- instructions ($AF/$8F/$5C) to crash CPU when fetched from BRAM. Reverting
+-- the SuperRAM fill enable until root cause understood.
+cache_fill_data <= cpuDi_raw;
 cache_fill_we <= enableCpu and not wb_drain_active and not cpuWe_pre
                  and bram_valid_cycle
                  and not scpu_rom_overlay
+                 and not superram_in_pipeline
                  and baLoc;
 
 -- Cache hit pipeline: allow hits during non-CPU slots + idle CPU slots.
@@ -1680,6 +1781,121 @@ dbg_cpu_p    <= dbg_p_816  when supercpu_en = '1' else x"00";
 dbg_cpu_ir   <= dbg_ir_816 when supercpu_en = '1' else x"00";
 dbg_cpu_pbr  <= dbg_pbr_816 when supercpu_en = '1' else x"00";
 dbg_cpu_dbr  <= dbg_dbr_816 when supercpu_en = '1' else x"00";
+
+-- Crash trace capture process.
+-- Free-running ring buffer of (PC, PBR, IR) tuples, one entry per instruction.
+-- Two-phase trigger to distinguish crash from normal VIC IRQs:
+--
+-- Phase 1 (free-run): captures entries when PC changes. Detects $2D→$00
+-- transition and arms Phase 2.
+--
+-- Phase 2 (tentative): captures DISABLED so the buffer preserves K:2D
+-- context. Counter increments per CE cycle while PBR stays $00. If PBR
+-- returns to non-$00 → false alarm, release back to Phase 1. If counter
+-- reaches max → permanent freeze (the buffer holds the last 32 K:2D
+-- instructions before the actual crash).
+-- NOTE: This process deliberately does NOT clear trace signals on warm reset.
+-- After a crash the CPU is in a BRK loop and needs a soft reset (which pulses
+-- the C64 reset line) to boot BASIC, from which a reader PRG can dump the
+-- trace via $DF20-$DFA0. Power-on initialization is handled by the VHDL
+-- signal defaults. Once frozen, the trace stays frozen until cold boot.
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if supercpu_en = '1' and bug_frozen = '0' then
+			if enableCpu_816 = '1' then
+				-- Track previous values for transition detection (always update).
+				trace_prev_pc  <= dbg_pc_816;
+				trace_prev_pbr <= dbg_pbr_816;
+				trace_prev_ir  <= dbg_ir_816;
+				trace_prev_p   <= dbg_p_816;
+
+				-- Mark Doom as "running" once bank $2D is seen — this gates the
+				-- X-flag transition trigger so we don't catch any pre-Doom
+				-- emulation-mode X=1 state during the C64 KERNAL boot path.
+				if dbg_pbr_816 = x"2D" then
+					seen_bank_2d <= '1';
+				end if;
+
+				if bug_armed = '0' then
+					-- Phase 1: free-run capture on every IR change (one entry
+					-- per instruction instead of per byte-fetch — roughly
+					-- doubles effective history depth).
+					if dbg_ir_816 /= trace_prev_ir then
+						bug_pc(to_integer(bug_wp))     <= dbg_pc_816;
+						bug_pbr(to_integer(bug_wp))    <= dbg_pbr_816;
+						bug_ir_buf(to_integer(bug_wp)) <= dbg_ir_816;
+						bug_p(to_integer(bug_wp))      <= dbg_p_816;
+						bug_wp <= bug_wp + 1;
+					end if;
+
+					-- NEW PRIMARY TRIGGER: freeze on the FIRST X=0→X=1
+					-- transition seen after Doom (bank $2D) has run. The
+					-- Doom rendering loop expects X=0 throughout — any X=1
+					-- is the precursor to the LDY-as-2-byte BRK crash.
+					-- Freezing immediately on the transition leaves the
+					-- X=0 instructions in the buffer and the first X=1
+					-- instruction at the most recent slot.
+					if seen_bank_2d = '1'
+					   and dbg_p_816(4) = '1'
+					   and trace_prev_p(4) = '0' then
+						bug_frozen <= '1';
+					end if;
+
+					-- Fallback trigger: game-bank → $00 transition (Phase 2).
+					-- Kept as a safety net in case the X-transition trigger
+					-- never fires (e.g., crash mechanism is something else).
+					if trace_prev_pbr /= x"00" and trace_prev_pbr(7) = '0'
+					   and dbg_pbr_816 = x"00" then
+						bug_armed   <= '1';
+						bug_timeout <= (others => '0');
+					end if;
+
+				else
+					-- Phase 2: tentative freeze, no captures, just timeout.
+					if dbg_pbr_816 /= x"00" then
+						-- False alarm (normal IRQ exited): release.
+						bug_armed   <= '0';
+						bug_timeout <= (others => '0');
+					else
+						bug_timeout <= bug_timeout + 1;
+						-- Commit after 2^24 CPU-enable cycles.
+						-- @ 1 MHz = 16.8 s, @ 20 MHz = 0.84 s. Long enough that
+						-- Doom's 1 MHz raster-busy-wait subroutines in bank $00
+						-- (which can take ~50 ms each) don't false-trigger, but
+						-- short enough that a real BRK loop is latched quickly.
+						if bug_timeout = x"FFFFFE" then
+							bug_frozen <= '1';
+						end if;
+					end if;
+				end if;
+			end if;
+		end if;
+	end if;
+end process;
+
+-- Pack the buffer into the wide output port (LSB first).
+-- byte 0 = status: bit0=frozen, bits[5:1]=write_pos[4:0], bits[7:6]=reserved.
+-- Each entry occupies 4 bytes: PC_lo, PC_hi, PBR, IR. 32 entries = 128 bytes.
+-- Total: 1 + 128 = 129 bytes = 1032 bits.
+dbg_bug_buf(7 downto 0) <=
+	"00" & std_logic_vector(bug_wp) & bug_frozen;
+
+trace_pack: for i in 0 to TRACE_DEPTH-1 generate
+	dbg_bug_buf( 8 + i*32 +  7 downto  8 + i*32 +  0) <= std_logic_vector(bug_pc(i)(7 downto 0));
+	dbg_bug_buf( 8 + i*32 + 15 downto  8 + i*32 +  8) <= std_logic_vector(bug_pc(i)(15 downto 8));
+	dbg_bug_buf( 8 + i*32 + 23 downto  8 + i*32 + 16) <= std_logic_vector(bug_pbr(i));
+	dbg_bug_buf( 8 + i*32 + 31 downto  8 + i*32 + 24) <= std_logic_vector(bug_ir_buf(i));
+end generate;
+
+-- P register bytes appended after the 32 4-byte entries, keeping the existing
+-- reu_reg_mux layout in c64.sv intact. Layout: bits 1032..1287 = 32 × P byte.
+trace_pack_p: for i in 0 to TRACE_DEPTH-1 generate
+	dbg_bug_buf(1032 + i*8 + 7 downto 1032 + i*8) <= std_logic_vector(bug_p(i));
+end generate;
+
+-- Expose native IRQ vector value for UART debug
+dbg_native_irq_vec <= std_logic_vector(scpu_native_vec(13)) & std_logic_vector(scpu_native_vec(12));
 
 -- Diagnostic: capture first time CPU enters a non-$00 bank (sticky max bank seen).
 -- K (cia1_pa): highest bank byte (PBR) ever seen while CPU active.
@@ -2151,7 +2367,7 @@ begin
 		if cpu_cyc = '1' and wb_drain_active = '0' then
 			if iof_detect = '1' and cpuWe_pre = '0' then
 				io_in_pipeline <= '1';
-				cpu_cyc_s(0) <= '1';  -- force re-entry if BRAM cancelled
+				cpu_cyc_s(0) <= '1';
 			else
 				io_in_pipeline <= '0';
 			end if;
@@ -2169,31 +2385,21 @@ begin
 		if enableCpu = '1' and io_in_pipeline = '1' then
 			io_in_pipeline <= '0';
 		end if;
-		-- Latch raw SDRAM data for SuperRAM reads: capture sdram_raw (direct
-		-- from SDRAM dout, bypasses cartridge module) at superram_enable_delay
-		-- time (2 clk32 after cpu_cyc = CPUE). This is one cycle BEFORE
-		-- enableCpu (CPUF→EXT0). The SDRAM takes 5 clk64 = 2.5 clk32 from
-		-- CE to valid dout, so at CPUE (2 clk32 = 4 clk64 after CE), the
-		-- data is available (5 clk64 > 4 clk64? No: SDRAM dout_r updates at
-		-- STATE_READ=5, which is 5 clk64 after CE. At CPUE = 4 clk64,
-		-- dout_r is 1 clk64 away from being valid).
-		-- CRITICAL FIX: capturing at enableCpu time (CPUF→EXT0) is unsafe
-		-- because io_cycle CE fires at EXT0, which updates sdram.v's bt
-		-- (byte toggle). Since dout = bt ? high : low, the bt change flips
-		-- dout to the wrong byte before superram_data_r captures it.
-		-- Capturing at superram_enable_delay (CPUE) avoids this: io_cycle
-		-- is still 0 during CPUE, so bt is stable from the SuperRAM read.
-		-- NOTE: data at CPUE is valid because 3-stage pipeline = 3 clk32
-		-- after CPUC. SDRAM needs 5 clk64 = 2.5 clk32. At CPUE = 2 clk32
-		-- after cpu_cyc, we're at 4 clk64 — the data arrives at clk64 edge
-		-- 5, which may be the mid-CPUE edge. For safety, we could capture
-		-- Capture at superram_enable_delay (CPUE), before io_cycle CE at EXT0
-		-- flips bt (byte toggle). At CPUE, bt still has the SuperRAM value
-		-- (addr[24]=1 → bt=1), so sdram_raw correctly returns the HIGH byte
-		-- where SuperRAM data is stored. Using sdram_lo would return the
-		-- wrong byte since SuperRAM lives in the HIGH byte of SDRAM words.
+		-- SuperRAM data path: cpuDi now uses sdram_superram (dout_reu from
+		-- sdram.v) directly instead of superram_data_r. sdram_superram is a
+		-- clk64-domain register (dout_reu_r) updated at STATE_READ only for
+		-- bt=1 reads (SuperRAM). This avoids TWO timing issues:
+		-- 1. bt race: io_cycle CE at EXT0 flips bt in sdram.v, corrupting
+		--    the bt-dependent dout before a clk32-domain capture could read it.
+		-- 2. SDRAM CAS latency race: the 3-stage pipeline's clk32 capture
+		--    at superram_enable_delay (CPUE) or enableCpu (CPUF) may coincide
+		--    with the clk64 STATE_READ edge, causing a clock domain crossing
+		--    race where the old dout_r value is read instead of the new one.
+		--    sdram_superram avoids this because it's stable 2+ clk64 cycles
+		--    before the CPU reads cpuDi at enableCpu_816 time.
+		-- Legacy capture retained for diagnostic purposes only.
 		if superram_enable_delay = '1' and superram_in_pipeline = '1' then
-			superram_data_r <= sdram_raw;  -- bt-dependent, correct at CPUE
+			superram_data_r <= sdram_raw;  -- DIAGNOSTIC ONLY, not used in cpuDi
 		end if;
 		io_enable <= io_enable and not enableCpu;
 

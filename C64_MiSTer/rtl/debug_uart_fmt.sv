@@ -1,7 +1,7 @@
 // debug_uart_fmt.sv - Formats CPU debug state as ASCII hex lines over UART
 //
 // Sends one line per frame (at vblank) containing CPU state:
-//   A:xxxx K:xx B:xx S:xxxx P:xx I:xx E:x F:xxxx T:xx C:xxxx N:xxxx\n
+//   A:xxxx K:xx B:xx S:xxxx P:xx I:xx E:x F:xxxx T:xx C:xxxx N:xxxx W:xxxx L:xx[!/.]\n
 //
 // Fields:
 //   A = CPU address (16-bit)
@@ -43,6 +43,18 @@ module debug_uart_fmt (
 	input         enable_cpu_pulse,
 	input         cpu_cyc_pulse,
 
+	// Crash diagnostics
+	input  [15:0] native_irq_vec,   // native IRQ vector value ($FFEE/$FFEF)
+	input   [7:0] crash_bank,       // first unexpected PBR (crash bank latch)
+	input         vic_irq,          // VIC IRQ asserted (active high)
+
+	// Crash trace ring buffer
+	// Layout (161 bytes = 1288 bits):
+	//   [7:0]       status (bit0 = frozen, bits[5:1] = wp)
+	//   [1031:8]    32 × (PC_lo, PC_hi, PBR, IR) — 4 bytes per entry
+	//   [1287:1032] 32 × P byte — one per entry, appended
+	input [1287:0] trace_buf,
+
 	// UART TX interface
 	output reg [7:0] tx_data,
 	output reg       tx_send,
@@ -67,6 +79,17 @@ reg        lat_turbo;
 reg  [7:0] lat_diag;
 reg [19:0] lat_ch_cnt;
 reg [19:0] lat_en_cnt;
+reg [15:0] lat_irq_vec;
+reg  [7:0] lat_crash_bank;
+reg        lat_vic_irq;
+
+// Crash trace stream: one entry per vblank when trace is frozen.
+// trace_idx cycles 0..31 through the ring buffer after freeze trips.
+reg  [4:0] trace_idx;
+reg        lat_frozen;
+reg  [4:0] lat_trace_idx;
+reg [31:0] lat_trace_entry;  // {IR, PBR, PC_hi, PC_lo}
+reg  [7:0] lat_trace_p;      // P register for the selected entry
 
 // Per-frame counters (running, latched at vblank)
 // 20-bit to avoid 16-bit wrapping (max ~628k cycles/frame)
@@ -81,60 +104,138 @@ reg        sending;       // currently sending a line
 reg [6:0]  char_idx;      // character position within the line
 reg        char_pending;  // a character is ready to send
 
-// Line format: "A:xxxx D:xx B:xx S:xxxx P:xx I:xx E:x F:xxxx T:xx C:xxxx N:xxxx\n"
-// Total: 62 characters + \n = 63 characters
+// Line format: "A:xxxx K:xx B:xx S:xxxx P:xx I:xx E:x F:xxxx T:xx C:xxxx N:xxxx V:xxxx L:xx.\n"
+// Total: 77 characters + \n = 78 characters
 // Character positions (0-indexed):
-//  0  A
-//  1  :
-//  2-5 addr hex
-//  6  space
-//  7  D
-//  8  :
-//  9-10 data hex
-// 11  space
-// 12  B
-// 13  :
-// 14-15 bank hex
-// 16  space
-// 17  S
-// 18  :
-// 19-22 sp hex
-// 23  space
-// 24  P
-// 25  :
-// 26-27 p hex
-// 28  space
-// 29  I
-// 30  :
-// 31-32 ir hex
-// 33  space
-// 34  E
-// 35  :
-// 36  emul hex
-// 37  space
-// 38  F
-// 39  :
-// 40-43 frame hex
-// 44  space
-// 45  T
-// 46  :
-// 47-48 diag hex (2 digits)
-// 49  space
-// 50  C
-// 51  :
-// 52-55 cache hit count hex
-// 56  space
-// 57  N
-// 58  :
-// 59-62 enable count hex
-// 63  \n
-localparam LINE_LEN = 7'd64;
+//  0-5   A:xxxx
+//  6     space
+//  7-10  K:xx (PBR)
+// 11     space
+// 12-15  B:xx (bank)
+// 16     space
+// 17-22  S:xxxx
+// 23     space
+// 24-27  P:xx
+// 28     space
+// 29-32  I:xx
+// 33     space
+// 34-36  E:x
+// 37     space
+// 38-43  F:xxxx
+// 44     space
+// 45-48  T:xx
+// 49     space
+// 50-55  C:xxxx (20-bit, show top 16)
+// 56     space
+// 57-62  N:xxxx (20-bit, show top 16)
+// 63     space
+// 64-69  V:xxxx (native IRQ vector)
+// 70     space
+// 71-74  L:xx (crash bank latch)
+// 75     !/. (VIC IRQ indicator)
+// 76     ' ' when frozen (to continue line), '\n' when not
+// --- Crash trace extension (only emitted when lat_frozen=1) ---
+// 77-81  TR:xx (trace_idx 0..31)
+// 82     space
+// 83-89  PC:xxxx
+// 90     space
+// 91-94  K:xx
+// 95     space
+// 96-99  I:xx
+// 100    space
+// 101-104 P:xx
+// 105    \n
+localparam LINE_LEN_NORMAL = 7'd77;
+localparam LINE_LEN_FROZEN = 7'd106;
+wire [6:0] line_len_cur = lat_frozen ? LINE_LEN_FROZEN : LINE_LEN_NORMAL;
 
 // Hex nibble to ASCII
 function [7:0] hex_char;
 	input [3:0] nibble;
 	hex_char = (nibble < 4'd10) ? (8'h30 + {4'b0, nibble}) : (8'h41 + {4'b0, nibble} - 8'd10);
 endfunction
+
+// Combinational mux: select one of 32 trace entries using constant part-selects.
+// Avoids variable part-select (which crashed Quartus 17 Analysis & Synthesis).
+reg [31:0] trace_entry_sel;
+always @(*) begin
+	case (trace_idx)
+		5'd0:  trace_entry_sel = trace_buf[  39:   8];
+		5'd1:  trace_entry_sel = trace_buf[  71:  40];
+		5'd2:  trace_entry_sel = trace_buf[ 103:  72];
+		5'd3:  trace_entry_sel = trace_buf[ 135: 104];
+		5'd4:  trace_entry_sel = trace_buf[ 167: 136];
+		5'd5:  trace_entry_sel = trace_buf[ 199: 168];
+		5'd6:  trace_entry_sel = trace_buf[ 231: 200];
+		5'd7:  trace_entry_sel = trace_buf[ 263: 232];
+		5'd8:  trace_entry_sel = trace_buf[ 295: 264];
+		5'd9:  trace_entry_sel = trace_buf[ 327: 296];
+		5'd10: trace_entry_sel = trace_buf[ 359: 328];
+		5'd11: trace_entry_sel = trace_buf[ 391: 360];
+		5'd12: trace_entry_sel = trace_buf[ 423: 392];
+		5'd13: trace_entry_sel = trace_buf[ 455: 424];
+		5'd14: trace_entry_sel = trace_buf[ 487: 456];
+		5'd15: trace_entry_sel = trace_buf[ 519: 488];
+		5'd16: trace_entry_sel = trace_buf[ 551: 520];
+		5'd17: trace_entry_sel = trace_buf[ 583: 552];
+		5'd18: trace_entry_sel = trace_buf[ 615: 584];
+		5'd19: trace_entry_sel = trace_buf[ 647: 616];
+		5'd20: trace_entry_sel = trace_buf[ 679: 648];
+		5'd21: trace_entry_sel = trace_buf[ 711: 680];
+		5'd22: trace_entry_sel = trace_buf[ 743: 712];
+		5'd23: trace_entry_sel = trace_buf[ 775: 744];
+		5'd24: trace_entry_sel = trace_buf[ 807: 776];
+		5'd25: trace_entry_sel = trace_buf[ 839: 808];
+		5'd26: trace_entry_sel = trace_buf[ 871: 840];
+		5'd27: trace_entry_sel = trace_buf[ 903: 872];
+		5'd28: trace_entry_sel = trace_buf[ 935: 904];
+		5'd29: trace_entry_sel = trace_buf[ 967: 936];
+		5'd30: trace_entry_sel = trace_buf[ 999: 968];
+		5'd31: trace_entry_sel = trace_buf[1031:1000];
+		default: trace_entry_sel = 32'h0;
+	endcase
+end
+
+// Parallel mux for the P byte appended after the main trace region.
+// P bytes live at bits 1032..1287, one 8-bit entry per slot.
+reg [7:0] trace_p_sel;
+always @(*) begin
+	case (trace_idx)
+		5'd0:  trace_p_sel = trace_buf[1039:1032];
+		5'd1:  trace_p_sel = trace_buf[1047:1040];
+		5'd2:  trace_p_sel = trace_buf[1055:1048];
+		5'd3:  trace_p_sel = trace_buf[1063:1056];
+		5'd4:  trace_p_sel = trace_buf[1071:1064];
+		5'd5:  trace_p_sel = trace_buf[1079:1072];
+		5'd6:  trace_p_sel = trace_buf[1087:1080];
+		5'd7:  trace_p_sel = trace_buf[1095:1088];
+		5'd8:  trace_p_sel = trace_buf[1103:1096];
+		5'd9:  trace_p_sel = trace_buf[1111:1104];
+		5'd10: trace_p_sel = trace_buf[1119:1112];
+		5'd11: trace_p_sel = trace_buf[1127:1120];
+		5'd12: trace_p_sel = trace_buf[1135:1128];
+		5'd13: trace_p_sel = trace_buf[1143:1136];
+		5'd14: trace_p_sel = trace_buf[1151:1144];
+		5'd15: trace_p_sel = trace_buf[1159:1152];
+		5'd16: trace_p_sel = trace_buf[1167:1160];
+		5'd17: trace_p_sel = trace_buf[1175:1168];
+		5'd18: trace_p_sel = trace_buf[1183:1176];
+		5'd19: trace_p_sel = trace_buf[1191:1184];
+		5'd20: trace_p_sel = trace_buf[1199:1192];
+		5'd21: trace_p_sel = trace_buf[1207:1200];
+		5'd22: trace_p_sel = trace_buf[1215:1208];
+		5'd23: trace_p_sel = trace_buf[1223:1216];
+		5'd24: trace_p_sel = trace_buf[1231:1224];
+		5'd25: trace_p_sel = trace_buf[1239:1232];
+		5'd26: trace_p_sel = trace_buf[1247:1240];
+		5'd27: trace_p_sel = trace_buf[1255:1248];
+		5'd28: trace_p_sel = trace_buf[1263:1256];
+		5'd29: trace_p_sel = trace_buf[1271:1264];
+		5'd30: trace_p_sel = trace_buf[1279:1272];
+		5'd31: trace_p_sel = trace_buf[1287:1280];
+		default: trace_p_sel = 8'h0;
+	endcase
+end
 
 // Character lookup
 reg [7:0] line_char;
@@ -204,7 +305,50 @@ always @(*) begin
 		7'd60: line_char = hex_char(lat_en_cnt[15:12]);
 		7'd61: line_char = hex_char(lat_en_cnt[11:8]);
 		7'd62: line_char = hex_char(lat_en_cnt[7:4]);
-		7'd63: line_char = 8'h0A;  // newline
+		7'd63: line_char = " ";
+		7'd64: line_char = "W";  // W:xxxx = last addr when PBR=$20
+		7'd65: line_char = ":";
+		7'd66: line_char = hex_char(lat_irq_vec[15:12]);
+		7'd67: line_char = hex_char(lat_irq_vec[11:8]);
+		7'd68: line_char = hex_char(lat_irq_vec[7:4]);
+		7'd69: line_char = hex_char(lat_irq_vec[3:0]);
+		7'd70: line_char = " ";
+		7'd71: line_char = "L";
+		7'd72: line_char = ":";
+		7'd73: line_char = hex_char(lat_crash_bank[7:4]);
+		7'd74: line_char = hex_char(lat_crash_bank[3:0]);
+		7'd75: line_char = lat_vic_irq ? "!" : ".";
+		7'd76: line_char = lat_frozen ? " " : 8'h0A;  // continue when frozen
+		// Trace extension (only reached when lat_frozen=1)
+		7'd77: line_char = "T";
+		7'd78: line_char = "R";
+		7'd79: line_char = ":";
+		7'd80: line_char = hex_char({3'b0, lat_trace_idx[4]});
+		7'd81: line_char = hex_char(lat_trace_idx[3:0]);
+		7'd82: line_char = " ";
+		7'd83: line_char = "P";
+		7'd84: line_char = "C";
+		7'd85: line_char = ":";
+		7'd86: line_char = hex_char(lat_trace_entry[15:12]); // PC_hi[7:4]
+		7'd87: line_char = hex_char(lat_trace_entry[11:8]);  // PC_hi[3:0]
+		7'd88: line_char = hex_char(lat_trace_entry[7:4]);   // PC_lo[7:4]
+		7'd89: line_char = hex_char(lat_trace_entry[3:0]);   // PC_lo[3:0]
+		7'd90: line_char = " ";
+		7'd91: line_char = "K";
+		7'd92: line_char = ":";
+		7'd93: line_char = hex_char(lat_trace_entry[23:20]); // PBR[7:4]
+		7'd94: line_char = hex_char(lat_trace_entry[19:16]); // PBR[3:0]
+		7'd95: line_char = " ";
+		7'd96: line_char = "I";
+		7'd97: line_char = ":";
+		7'd98: line_char = hex_char(lat_trace_entry[31:28]); // IR[7:4]
+		7'd99: line_char = hex_char(lat_trace_entry[27:24]); // IR[3:0]
+		7'd100: line_char = " ";
+		7'd101: line_char = "P";
+		7'd102: line_char = ":";
+		7'd103: line_char = hex_char(lat_trace_p[7:4]);
+		7'd104: line_char = hex_char(lat_trace_p[3:0]);
+		7'd105: line_char = 8'h0A;                           // newline
 		default: line_char = " ";
 	endcase
 end
@@ -220,6 +364,11 @@ always @(posedge clk) begin
 		ch_cnt      <= 0;
 		en_cnt      <= 0;
 		cy_cnt      <= 0;
+		trace_idx       <= 0;
+		lat_frozen      <= 0;
+		lat_trace_idx   <= 0;
+		lat_trace_entry <= 0;
+		lat_trace_p     <= 0;
 	end
 	else begin
 		vblank_r <= vblank;
@@ -250,10 +399,22 @@ always @(posedge clk) begin
 			lat_ch_cnt <= ch_cnt;
 			lat_en_cnt <= en_cnt;
 			lat_cy_cnt <= cy_cnt;
+			lat_irq_vec <= native_irq_vec;
+			lat_crash_bank <= crash_bank;
+			lat_vic_irq <= vic_irq;
 			frame_cnt  <= frame_cnt + 1'b1;
 			ch_cnt     <= 0;
 			en_cnt     <= 0;
 			cy_cnt     <= 0;
+
+			// Latch frozen status and current trace entry for this frame.
+			// trace_entry_sel is a combinational mux selected by trace_idx.
+			lat_frozen      <= trace_buf[0];
+			lat_trace_idx   <= trace_idx;
+			lat_trace_entry <= trace_entry_sel;
+			lat_trace_p     <= trace_p_sel;
+			if (trace_buf[0])
+				trace_idx <= trace_idx + 1'b1;
 
 			sending      <= 1;
 			char_idx     <= 0;
@@ -269,7 +430,7 @@ always @(posedge clk) begin
 
 		// After tx_send, advance to next character
 		if (sending && !char_pending && !tx_busy && !tx_send) begin
-			if (char_idx == LINE_LEN - 1'b1) begin
+			if (char_idx == line_len_cur - 1'b1) begin
 				sending <= 0;
 			end
 			else begin

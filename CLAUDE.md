@@ -39,6 +39,71 @@ alongside the existing 6510 emulation mode.
 - The existing turbo mode gives CPU extra cycles from EXT slots
 - SuperCPU mode needs: 65C816 instruction decode, 20MHz effective CPU,
   24-bit addressing, 16MB SDRAM access, SuperCPU control registers
+- Full architecture reference: `docs/supercpu_architecture_reference.md`
+- Feature implementation status / regression test plan / gaps: `docs/supercpu_feature_status.md`
+
+## Real SuperCPU vs MiSTer Implementation
+The real CMD SuperCPU has 128KB SRAM (banks $00-$01), a 1-byte write buffer
+("CacheWrite"), and SuperRAM starting at bank $02. Key differences from our
+MiSTer implementation:
+- **Real HW**: 128KB SRAM (full bank $00+$01 mirror). **MiSTer**: 64KB BRAM + 8KB cache
+- **Real HW**: Bank $01 = SRAM (ROM shadows). **MiSTer**: Bank $01 = SuperRAM/SDRAM (WRONG)
+- **Real HW**: SuperRAM starts bank $02. **MiSTer**: SuperRAM starts bank $01 (WRONG)
+- **Real HW**: $D078 = SIMM config. **MiSTer**: $D078 = cache flush (repurposed)
+- **Real HW**: Optimization modes control write mirroring range. **MiSTer**: Not implemented
+- **Real HW**: ROM in banks $F0-$FF (bootmap). **MiSTer**: Minimal ROM stub at $FF00
+- **REU and SuperRAM are SEPARATE memory systems** — REU DMA only accesses C64
+  motherboard RAM, NOT SuperRAM. To copy REU→SuperRAM, software must:
+  REU FETCH → bank $00 RAM → CPU long store → SuperRAM bank.
+- **Doom loading**: io.prg uses REU FETCH DMA + long stores. Doom game code runs
+  from SuperRAM only (no REU DMA at runtime).
+
+## REU Register Path and Loading (VERIFIED 2026-04-13)
+**REU write path**: `reu.v` cpu_cs is driven by `iof_fall_pulse` (a 1-cycle
+pulse generated at the FALLING edge of `iof_detect` in `fpga64_sid_iec.vhd`),
+NOT by `IOF_raw` directly. cpu_we/addr/dout use latched values
+(`iof_we_latched` / `iof_addr_latched` / `iof_dout_latched`) captured during
+the $DFxx access. This is required because in turbo mode the CPU's STA $DFxx
+write cycle is only 1 clk32 long — by the time registered `IOF_raw` rises,
+`cpuWe_pre` has already dropped, causing all writes to be classified as
+reads. DO NOT revert to the edge-based cs approach. If REU writes stop
+working, check `iof_fall_pulse_r` and the latched-input wiring first.
+Full details: memory file `project_reu_iof_falling_edge_fix.md`.
+
+**REU register writes are offset-1**: $DF00 is status (read-only), $DF01 is
+command, $DF02/$DF03 is C64 target address, $DF04/$DF05/$DF06 is REU address,
+$DF07/$DF08 is length. Use cmd $91 (FETCH immediate, execute + type 1) or
+$90 (STASH immediate). Length auto-loads to $FFFF after completion — always
+re-write length before each DMA.
+
+**Loading .reu files (e.g., doom.reu)**: the ONLY working scriptable path is
+MGL via MiSTer_cmd pipe. `mbc load_rom` does NOT handle .reu files (mbc
+has aliases for C64.CART/DISK/PRG/TAPE only — no C64.REU). Recipe:
+```bash
+# 1. Deploy core (wipes SDRAM)
+python tools/mister_debug.py deploy C64_MiSTer/output_files/C64.rbf
+
+# 2. Ensure the RBF is at the path the MGL references.
+#    doom.mgl contains: <rbf>_Computer/C64</rbf>
+ssh root@192.168.50.130 "cp /media/fat/_Test/C64.rbf /media/fat/_Computer/C64.rbf"
+
+# 3. Load the MGL — triggers the <file> tag's ioctl download to REU SDRAM
+ssh root@192.168.50.130 "echo 'load_core /media/fat/_Computer/doom.mgl' > /dev/MiSTer_cmd"
+# Wait ~15 seconds for 16MB transfer.
+```
+A suitable MGL file has `<rbf>` (path under /media/fat/) and one or more
+`<file delay="5" type="f" index="2" path="..."/>` tags. `index="2"` routes
+to the REU slot. Prior memory claiming "MGL via pipe doesn't transfer file
+data" was WRONG — it failed because the REU write path was broken pre-fix,
+so verification FETCH couldn't read the loaded data.
+
+**Doom launcher (after REU loaded)**:
+```
+POKE49152,120:POKE49153,24:POKE49154,251:POKE49155,92
+POKE49156,0:POKE49157,0:POKE49158,32
+SYS49152
+```
+Assembles SEI; CLC; XCE; JML $20:0000 at $C000.
 
 ## Code Conventions
 - VHDL signals: lowercase with underscores (e.g., cpu_data_out)
@@ -61,6 +126,7 @@ alongside the existing 6510 emulation mode.
 - SDRAM address mux (scpu_sdram_addr) MUST be combinational — registering it
   introduces a 1-cycle latency that breaks LDA long bank transitions
 - $D078 cache flush clears BOTH 8KB cache AND 32KB BRAM page valid bits
+  (NOTE: real SuperCPU uses $D078 for SIMM configuration, we repurposed it)
 - SDRAM pipeline: bank $00 uses 2-stage, SuperRAM uses 3-stage (superram_enable_delay)
 - XCE instruction: use `(P(0)='1' or P(8)='1')` for SP/X/Y forcing (not just P(0))
 
@@ -86,6 +152,9 @@ diagnostic bytes, deploys builds, and interprets debug overlay/UART fields.
 - **mbc raw_seq does NOT work for OSD/keyboard** — MiSTer filters mbc's virtual input device
 - MiSTer screenshots (`/dev/MiSTer_cmd`) do NOT capture OSD overlay — use OBS + HDMI capture
 - WSL SSH is broken to MiSTer — always use Windows native ssh/scp
+- **SSH auth**: Windows `ssh` command fails (too many keys tried). Always use
+  `python tools/mister_debug.py` which connects via paramiko with password auth.
+  For manual SSH, use paramiko in Python or `ssh -o IdentitiesOnly=yes -i <specific_key>`
 - Disk images: mount via MGL (use `mistergamedescription` tag, `type="s" index="0"`)
 - **DANGER: NEVER use `busybox devmem` or direct FPGA register access** — crashes MiSTer, requires physical power cycle
 

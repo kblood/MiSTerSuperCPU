@@ -201,8 +201,10 @@ def cmd_load_prg(args):
             print("Warning: UART still not active after deploy")
 
     # Inject PRG via mbc load_rom (preserves UART/overlay/turbo)
+    # mbc syntax: mbc load_rom <CORE_NAME> <FILE_PATH>
+    # C64.PRG is the core name for PRG loading on the C64 core
     print(f"Injecting {prg_name} via mbc load_rom...")
-    out, err, rc = ssh(f'mbc load_rom 1 {prg_remote}', timeout=10)
+    out, err, rc = ssh(f'mbc load_rom C64.PRG {prg_remote}', timeout=10)
     if rc != 0:
         print(f"Error: mbc load_rom failed: {err}")
         return 1
@@ -428,7 +430,7 @@ def cmd_keys(args):
                     'R': 'right', 'O': 'enter', 'E': 'esc', 'H': 'home', 'F': 'end'}
     if all(c in MBC_TO_MTYPE for c in seq):
         mtype_args = ' '.join(MBC_TO_MTYPE[c] for c in seq)
-        print(f"Sending key sequence: {seq} → mtype.py {mtype_args}")
+        print(f"Sending key sequence: {seq} -> mtype.py {mtype_args}")
     else:
         # Check if input looks like mtype.py native arguments (key names, wait:N)
         MTYPE_KEYS = {'f1','f2','f3','f4','f5','f6','f7','f8','f9','f10','f11','f12',
