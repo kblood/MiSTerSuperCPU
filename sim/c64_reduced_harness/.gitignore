@@ -1,0 +1,7 @@
+work/
+*.cf
+*.o
+*.fst
+*.ghw
+*.vcd
+*.log

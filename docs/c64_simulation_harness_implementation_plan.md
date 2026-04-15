@@ -287,6 +287,39 @@ Shared helpers for:
 
 ## Phase 4 — Reduced-System Harness Around `fpga64_sid_iec`
 
+Status (2026-04-16): **SKELETON IMPLEMENTED** at `sim/c64_reduced_harness/`.
+Runs end-to-end in under 1s, 40/40 scoreboard checks PASS, exit 0.
+Instantiates the **real** `P65C816` CPU core + behavioral SDRAM
+(`sim/common/memory_models/simple_sdram_model.vhd`, 2-stage bank $00 /
+3-stage SuperRAM) + faithful `inj_meminit` + `bram_invalidate` /
+`cache_flush` glue + 1-cycle-latency cache stub with the
+`not bram_invalidate` fill gate. Scenarios: (A) reset + 500-cycle
+warm-up, (B) scripted PRG load at $0801, (C) immediate readback,
+(D) +2000 CPU cycles then re-verify ("loaded-then-wiped" catch).
+
+Result: **does not reproduce the hardware bug** — yet another ruling-out.
+The skeleton does **not** instantiate the real `fpga64_sid_iec.vhd` — that
+requires VHDL stubs for multiple Verilog children (`mos6526.v`, `sid_top`,
+`reu.v`, `sdram.v`, `cartridge.v`) that GHDL cannot analyze. Phase 4b
+(below) is the unified "full reduced `fpga64_sid_iec` on real ROMs" target.
+
+### Phase 4b (next) — Full real-DUT harness
+
+Author VHDL behavioral stubs with matching entity interfaces but empty
+or minimal-correct architectures for: `mos6526`, `sid_top`, `reu`,
+`sdram` (wrap the existing simple_sdram_model), `cartridge`. Then
+instantiate the **real** `C64_MiSTer/rtl/fpga64_sid_iec.vhd` on top.
+Pre-populate KERNAL/BASIC/CHARGEN regions from real .rom binary files
+at elaboration time. With the real DUT, the bench automatically gets:
+- sysCycle 32-phase bus arbitration (EXT/DMA/VIC/CPU slots)
+- Turbo mode scheduling + write buffer drain
+- Real BRAM + real cache + real SDRAM mux
+- Real BASIC boot + auto-RUN path
+
+This is the closest we can get to hardware without building a bitstream,
+and should reproduce any bug that lives in the scheduler or the BASIC
+auto-RUN NEW-wipe path.
+
 ### Goal
 Only if needed, move up to a larger integration target that includes the real bus arbitration and more of the real memory path.
 
