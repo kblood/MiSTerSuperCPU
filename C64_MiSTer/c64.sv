@@ -1069,8 +1069,8 @@ always @(*) begin
 		251: reu_reg_mux = dbg_req_cons_cnt[15:8];// $DFFB req_cons_cnt hi
 		252: reu_reg_mux = dbg_wr1_addr_lo;       // $DFFC first write addr lo
 		253: reu_reg_mux = dbg_wr1_addr_hi;       // $DFFD first write addr hi
-		254: reu_reg_mux = dbg_wr1_data;          // $DFFE first write data
-		255: reu_reg_mux = dbg_wr2_data;          // $DFFF second write data
+		254: reu_reg_mux = dbg_inj_fall_cnt;      // $DFFE inj_meminit falling edges
+		255: reu_reg_mux = dbg_strk_cnt;          // $DFFF start_strk pulses (RUN-type-ahead fires)
 		default: reu_reg_mux = 8'hFF;
 	endcase
 end
@@ -1393,14 +1393,14 @@ always @(posedge clk_sys) begin
 		end
 	end
 
-	// meminit for RAM injection — fire ONCE on the FALLING edge of ioctl_download.
-	// The original `old_download != ioctl_download` fired on BOTH edges, running
-	// the zero-page init twice: once at download START (with stale inj_end, before
-	// any data streamed) and once at END (with correct inj_end). The first run
-	// wrote the STALE inj_end to $2D/$2E (VAR pointer), and the second run's
-	// writes were masked by the BRAM that had captured the first run's values.
-	// Fix: trigger only on falling edge so inj_end is final.
-	if (old_download && ~ioctl_download && load_prg && !inj_meminit) begin
+	// meminit for RAM injection — fire on FALLING edge of ioctl_download
+	// only (commit 8ef779f). The verified-working fix: run zero-page BASIC
+	// pointer init AFTER the PRG bytes have landed in SDRAM/BRAM, so that
+	// inj_end has its real post-load value and BASIC sees a valid program.
+	// Firing on rising edge (vanilla behavior) is wrong for SCPU because it
+	// races the PRG header processing and leaves BASIC pointers pointing
+	// at garbage.
+	if (old_download & ~ioctl_download && load_prg && !inj_meminit) begin
 		inj_meminit <= 1;
 		ioctl_load_addr <= 0;
 		dbg_inj_rise_cnt <= dbg_inj_rise_cnt + 1'b1;
@@ -1408,13 +1408,13 @@ always @(posedge clk_sys) begin
 
 	if (inj_meminit) begin
 		if (!ioctl_req_wr) begin
-			// check if done
+			// check if done with ZP walk
 			if (ioctl_load_addr == 'h100) begin
 				inj_meminit <= 0;
 			end
 			else begin
 				ioctl_req_wr <= 1;
-				
+
 				// Initialize BASIC pointers to simulate the BASIC LOAD command
 				case(ioctl_load_addr)
 					// TXT (2B-2C)
@@ -1425,15 +1425,15 @@ always @(posedge clk_sys) begin
 					// SAVE_START (AC-AD)
 					// Set these two bytes to zero just as they would be on reset (the BASIC LOAD command does not alter these)
 					'hAC, 'hAD: inj_meminit_data <= 'h00;
-					
+
 					// VAR (2D-2E), ARY (2F-30), STR (31-32), LOAD_END (AE-AF)
 					// Set these just as they would be with the BASIC LOAD command (essentially they are all set to the load end address)
 					'h2D, 'h2F, 'h31, 'hAE: inj_meminit_data <= inj_end[7:0];
 					'h2E, 'h30, 'h32, 'hAF: inj_meminit_data <= inj_end[15:8];
-					
+
 					default: begin
 						ioctl_req_wr <= 0;
-						
+
 						// advance the address
 						ioctl_load_addr <= ioctl_load_addr + 1'b1;
 					end

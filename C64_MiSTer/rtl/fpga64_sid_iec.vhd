@@ -415,6 +415,8 @@ signal cache_same_line : std_logic;
 signal cache_flush   : std_logic;
 signal cache_flush_sw : std_logic := '0';  -- software-triggered flush via $D078
 signal cache_flush_bank : std_logic := '0'; -- flush on C64 bank register change
+signal bram_invalidate_d     : std_logic := '0';
+signal bram_invalidate_pulse : std_logic;  -- 1-cycle pulse on rising edge of bram_invalidate
 signal cache_flush_active : std_logic; -- debug: cache is flushing
 signal cache_tag_match    : std_logic; -- debug: tag matches current address
 -- Write buffer drain signals
@@ -500,6 +502,7 @@ signal bug_frozen     : std_logic := '0';
 signal bug_armed      : std_logic := '0';                       -- tentative freeze active
 signal bug_timeout    : unsigned(23 downto 0) := (others => '0');-- 24-bit timeout (~16M CPU-enable cycles)
 signal brk_detect_r   : std_logic := '0'; -- registered: BRK opcode in non-$00 bank
+signal bram_inval_d   : std_logic := '0'; -- 1-cycle delay of bram_invalidate for edge detect
 signal trace_prev_pc  : unsigned(15 downto 0) := (others => '0');
 signal trace_prev_pbr : unsigned(7 downto 0)  := (others => '0');
 signal trace_prev_ir  : unsigned(7 downto 0)  := (others => '0');
@@ -1468,7 +1471,22 @@ begin
 	end if;
 end process;
 
-cache_flush <= reset or dma_active or cache_flush_sw or cache_flush_bank or bram_invalidate;
+-- bram_invalidate arrives as a LEVEL held high for the entire ioctl_download +
+-- inj_meminit window. Folding the level directly into cache_flush made the
+-- cpu_cache flush state machine re-enter the 1024-cycle sweep continuously
+-- for the full window (50-500 ms), which starved the CPU cache and slowed
+-- BASIC cold boot so much that NEW ($A644) ran AFTER meminit ended — wiping
+-- the just-loaded $0801/$0802 link bytes. Generate a 1-cycle pulse at the
+-- rising edge so cache_flush triggers exactly one sweep per PRG load window.
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		bram_invalidate_d <= bram_invalidate;
+	end if;
+end process;
+bram_invalidate_pulse <= bram_invalidate and not bram_invalidate_d;
+
+cache_flush <= reset or dma_active or cache_flush_sw or cache_flush_bank or bram_invalidate_pulse;
 
 -- SCPU ROM overlay: when active, BRAM serves different data than SDRAM.
 -- Cache fills from SDRAM, so cached data would be WRONG (C64 KERNAL/BASIC
@@ -1490,10 +1508,15 @@ scpu_rom_overlay <= supercpu_rom and scpu_rom_vis and supercpu_en;
 -- instructions ($AF/$8F/$5C) to crash CPU when fetched from BRAM. Reverting
 -- the SuperRAM fill enable until root cause understood.
 cache_fill_data <= cpuDi_raw;
+-- Gate cache fills during bram_invalidate: during ioctl PRG download +
+-- inj_meminit, CPU cold-start reads could fill the cache with pre-load
+-- (RAMTAS-zero) bytes that survive post-load. Per docs/prg_loading_debug_
+-- without_hardware.md.
 cache_fill_we <= enableCpu and not wb_drain_active and not cpuWe_pre
                  and bram_valid_cycle
                  and not scpu_rom_overlay
                  and not superram_in_pipeline
+                 and not bram_invalidate
                  and baLoc;
 
 -- Cache hit pipeline: allow hits during non-CPU slots + idle CPU slots.
@@ -1870,10 +1893,14 @@ end process;
 -- After a crash the CPU is in a BRK loop and needs a soft reset (which pulses
 -- the C64 reset line) to boot BASIC, from which a reader PRG can dump the
 -- trace via $DF20-$DFA0. Power-on initialization is handled by the VHDL
--- signal defaults. Once frozen, the trace stays frozen until cold boot.
+-- signal defaults. Once frozen, the trace stays frozen until cold boot OR
+-- until a new PRG download starts (rising edge of bram_invalidate), which
+-- unfreezes and rewinds the ring buffer so the post-load instruction stream
+-- can be captured fresh.
 process(clk32)
 begin
 	if rising_edge(clk32) then
+		bram_inval_d <= bram_invalidate;
 		-- Register the BRK-in-game detect independently of enableCpu_816 gating
 		-- so the freeze path has a short, single-cycle-slack-friendly input.
 		if enableCpu_816 = '1' and dbg_pbr_816 /= x"00" and dbg_ir_816 = x"00" then
@@ -1886,6 +1913,16 @@ begin
 		-- fitter placement is tight.
 		if brk_detect_r = '1' then
 			bug_frozen <= '1';
+		end if;
+
+		-- PRG-load trace reset: on rising edge of bram_invalidate (= start of
+		-- ioctl PRG download), unfreeze and rewind the trace buffer so the
+		-- cold-boot-NEW freeze from a prior run doesn't mask the actual
+		-- post-load execution we want to capture.
+		if bram_invalidate = '1' and bram_inval_d = '0' then
+			bug_frozen  <= '0';
+			bug_wp      <= (others => '0');
+			brk_detect_r <= '0';
 		end if;
 
 		if supercpu_en = '1' and bug_frozen = '0' then
@@ -1918,6 +1955,14 @@ begin
 				if seen_bank_2d = '1'
 				   and dbg_p_816(4) = '1'
 				   and trace_prev_p(4) = '0' then
+					bug_frozen <= '1';
+				end if;
+
+				-- $0801 wipe trigger: freeze once the $0801 write trap has fired
+				-- (dbg_0801_cnt_r > 0 means CPU wrote $0801 post-download). The
+				-- trap already filters cpuWe/cpuAddr/bank so we just consume its
+				-- registered output to keep the bug_frozen set path short.
+				if dbg_0801_cnt_r /= x"00" then
 					bug_frozen <= '1';
 				end if;
 			end if;
