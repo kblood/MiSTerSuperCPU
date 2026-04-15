@@ -1,0 +1,7 @@
+# Never commit ROM binaries — they are copyrighted by Commodore / CMD.
+*.bin
+*.rom
+*.raw
+# Keep this .gitignore and the README
+!.gitignore
+!README.md
