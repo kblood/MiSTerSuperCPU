@@ -76,6 +76,17 @@ port(
 	supercpu_en : in  std_logic := '0';
 	supercpu_rom : in  std_logic := '0'; -- '1' = SuperCPU kickstart ROM active
 	bram_invalidate : in std_logic := '0'; -- pulse to clear all BRAM valid bits
+	-- io_cycle write-through to BRAM: keeps BRAM coherent with SDRAM for
+	-- ioctl PRG loads that write SDRAM via io_cycle (which bypasses CPU bus).
+	io_bram_we   : in std_logic := '0';
+	io_bram_addr : in unsigned(15 downto 0) := (others => '0');
+	io_bram_din  : in unsigned(7 downto 0)  := (others => '0');
+	-- $0801 write PC trap (post-download): captures PC/IR of CPU writes at $0801
+	dbg_0801_trap_en : in std_logic := '0'; -- active when ioctl_download=0 && !inj_meminit
+	dbg_0801_pc      : out unsigned(15 downto 0);
+	dbg_0801_ir      : out unsigned(7 downto 0);
+	dbg_0801_data_out: out unsigned(7 downto 0);
+	dbg_0801_cnt     : out unsigned(7 downto 0);
 	supercpu_emul : out std_logic;             -- '1' = 65C816 in 6502 emulation mode
 	supercpu_cycle : out std_logic;            -- '1' during CPU SDRAM access slot
 	supercpu_bank : out unsigned(7 downto 0);  -- current bank byte (A23-A16)
@@ -132,6 +143,14 @@ port(
 	dbg_bug_buf        : out std_logic_vector(5127 downto 0);
 	-- Native mode IRQ vector value ($FFEE/$FFEF from scpu_native_vec)
 	dbg_native_irq_vec : out std_logic_vector(15 downto 0);
+	-- SuperRAM read-path diagnostic latches (captured on every enableCpu pulse
+	-- where superram_in_pipeline=1 and cpuWe_pre=0). Exposed at $DFE9-$DFEF.
+	dbg_srr_count      : out unsigned(15 downto 0);
+	dbg_srr_data       : out unsigned(7 downto 0);
+	dbg_srr_addr_hi    : out unsigned(7 downto 0);
+	dbg_srr_cache_bank : out unsigned(7 downto 0);
+	dbg_srr_addr_lo    : out unsigned(7 downto 0);
+	dbg_srr_addr_mid   : out unsigned(7 downto 0);
 
 	-- VGA/SCART interface
 	vic_variant : in  std_logic_vector(1 downto 0);
@@ -369,6 +388,13 @@ signal turbo_m      : std_logic_vector(2 downto 0);
 signal superram_enable_delay : std_logic := '0';
 signal superram_in_pipeline  : std_logic := '0';  -- latched when cpu_cyc fires for SuperRAM
 signal superram_data_r       : unsigned(7 downto 0);  -- latched SDRAM data for SuperRAM reads
+-- SuperRAM read-path diagnostic latches (exposed at $DFE9-$DFEF via c64.sv)
+signal dbg_srr_count_r     : unsigned(15 downto 0) := (others => '0');
+signal dbg_srr_data_r      : unsigned(7 downto 0)  := (others => '0');
+signal dbg_srr_addr_hi_r   : unsigned(7 downto 0)  := (others => '0');
+signal dbg_srr_cache_bank_r: unsigned(7 downto 0)  := (others => '0');
+signal dbg_srr_addr_lo_r   : unsigned(7 downto 0)  := (others => '0');
+signal dbg_srr_addr_mid_r  : unsigned(7 downto 0)  := (others => '0');
 -- (cpuDi_r removed: cpuDi goes directly to CPU, io_data_r handles I/O)
 -- I/O pipeline signals
 signal io_in_pipeline        : std_logic := '0';
@@ -403,9 +429,13 @@ signal cache_fill_data : unsigned(7 downto 0);  -- muxed fill source
 signal bram64k_en     : std_logic;  -- master enable for BRAM path
 signal bram_do        : unsigned(7 downto 0);  -- Port A read output (CPU)
 signal bram_vic_do    : unsigned(7 downto 0);  -- Port B read output (VIC)
-signal bram_we        : std_logic;  -- Port A write enable
+signal bram_we        : std_logic;  -- Port A write enable (CPU source)
 signal bram_valid_cycle : std_logic; -- '1' when bus cycle is valid (not phantom)
 signal bram_din       : unsigned(7 downto 0);  -- Port A data input (muxed: write data or fill data)
+-- Port A mux: io_cycle bank $00 writes override CPU-driven signals
+signal bram_port_a_addr : unsigned(15 downto 0);
+signal bram_port_a_din  : unsigned(7 downto 0);
+signal bram_port_a_we   : std_logic;
 signal bram_hit_d1    : std_logic := '0';  -- registered BRAM hit (with suppress)
 -- Per-page valid (register-based, combinational read) for always-RAM regions.
 -- 256 flags, one per 256-byte page. Works for $0000-$7FFF, $C000-$CFFF because
@@ -498,6 +528,10 @@ signal cia2_pbe     : unsigned(7 downto 0);
 signal dbg_cia1_pa_r : unsigned(7 downto 0) := x"FF";
 signal dbg_cia1_pb_r : unsigned(7 downto 0) := x"FF";
 -- Screen-RAM write detector (latches last CPU write to $0400-$07FF)
+signal dbg_0801_pc_r    : unsigned(15 downto 0) := (others => '0');
+signal dbg_0801_ir_r    : unsigned(7 downto 0)  := (others => '0');
+signal dbg_0801_data_r  : unsigned(7 downto 0)  := (others => '0');
+signal dbg_0801_cnt_r   : unsigned(7 downto 0)  := (others => '0');
 signal dbg_scr_wr_addr_r : unsigned(15 downto 0) := (others => '0');
 signal dbg_scr_wr_pc_r   : unsigned(15 downto 0) := (others => '0');
 signal dbg_scr_wr_data_r : unsigned(7 downto 0) := (others => '0');
@@ -1434,7 +1468,7 @@ begin
 	end if;
 end process;
 
-cache_flush <= reset or dma_active or cache_flush_sw or cache_flush_bank;
+cache_flush <= reset or dma_active or cache_flush_sw or cache_flush_bank or bram_invalidate;
 
 -- SCPU ROM overlay: when active, BRAM serves different data than SDRAM.
 -- Cache fills from SDRAM, so cached data would be WRONG (C64 KERNAL/BASIC
@@ -1538,14 +1572,25 @@ bram_din <= cpuDo_pre when cpuWe_pre = '1'
        else cache_di  when cache_hit_d1 = '1'
        else cpuDi_raw;
 
+-- Port A address/din/we muxing: when io_bram_we is asserted (io_cycle writing
+-- to bank $00 from HPS ioctl path), override the CPU-driven signals so the
+-- byte lands in BRAM. io_cycle phases run while CPU is halted so there is
+-- no contention with CPU accesses. Correctness: without this, io_cycle PRG
+-- loads leave BRAM stale with pre-load (RAMTAS zero) bytes while SDRAM has
+-- the real PRG data, so CPU reads return zeros for every byte beyond the
+-- first miss-fill.
+bram_port_a_addr <= io_bram_addr when io_bram_we = '1' else cpuAddr_pre;
+bram_port_a_din  <= io_bram_din  when io_bram_we = '1' else bram_din;
+bram_port_a_we   <= io_bram_we or bram_we;
+
 ram64k_inst: entity work.c64_ram64k
 port map (
 	clk    => clk32,
-	-- Port A: CPU
-	a_addr => cpuAddr_pre,
-	a_din  => bram_din,
+	-- Port A: CPU (or io_cycle write-through)
+	a_addr => bram_port_a_addr,
+	a_din  => bram_port_a_din,
 	a_dout => bram_do,
-	a_we   => bram_we,
+	a_we   => bram_port_a_we,
 	-- Port B: VIC-II (read only)
 	b_addr => systemAddr,
 	b_dout => bram_vic_do
@@ -1622,6 +1667,10 @@ begin
 			-- cache_flush_sw ($D078 write) also clears BRAM pages so that
 			-- externally-loaded code (mbc load_rom) isn't masked by stale BRAM.
 			bram_pgvalid <= (others => '0');
+		elsif io_bram_we = '1' then
+			-- io_cycle write-through: mark the page valid so CPU reads hit BRAM
+			-- with the just-written byte rather than stale pre-load data.
+			bram_pgvalid(to_integer(unsigned(std_logic_vector(io_bram_addr(15 downto 8))))) <= '1';
 		elsif bram_we = '1' then
 			bram_pgvalid(to_integer(unsigned(std_logic_vector(cpuAddr_pre(15 downto 8))))) <= '1';
 		end if;
@@ -1778,6 +1827,32 @@ dbg_cpu_p    <= dbg_p_816  when supercpu_en = '1' else x"00";
 dbg_cpu_ir   <= dbg_ir_816 when supercpu_en = '1' else x"00";
 dbg_cpu_pbr  <= dbg_pbr_816 when supercpu_en = '1' else x"00";
 dbg_cpu_dbr  <= dbg_dbr_816 when supercpu_en = '1' else x"00";
+
+-- SuperRAM read-path diagnostics exposed to c64.sv
+dbg_srr_count      <= dbg_srr_count_r;
+dbg_srr_data       <= dbg_srr_data_r;
+dbg_srr_addr_hi    <= dbg_srr_addr_hi_r;
+dbg_srr_cache_bank <= dbg_srr_cache_bank_r;
+dbg_srr_addr_lo    <= dbg_srr_addr_lo_r;
+dbg_srr_addr_mid   <= dbg_srr_addr_mid_r;
+
+-- SuperRAM read-path capture: latch addr_hi_816/cache_cpu_bank/sdram_superram
+-- at the exact moment the CPU receives a SuperRAM read byte on cpuDi. The
+-- latch condition mirrors the cpuDi mux gate so only real reads are counted.
+-- Readable via $DFE9-$DFEF: count/data/addr_hi/cache_bank/addr_lo/addr_mid.
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0' then
+			dbg_srr_count_r      <= dbg_srr_count_r + 1;
+			dbg_srr_data_r       <= sdram_superram;
+			dbg_srr_addr_hi_r    <= addr_hi_816;
+			dbg_srr_cache_bank_r <= cache_cpu_bank;
+			dbg_srr_addr_lo_r    <= cpuAddr_pre(7 downto 0);
+			dbg_srr_addr_mid_r   <= cpuAddr_pre(15 downto 8);
+		end if;
+	end if;
+end process;
 
 -- Crash trace capture process.
 -- Free-running ring buffer of (PC, PBR, IR) tuples, one entry per instruction.
@@ -1953,6 +2028,34 @@ dbg_scr_wr_ir   <= dbg_scr_wr_ir_r;
 dbg_scr_zero_hit <= dbg_scr_zero_hit_r;
 dbg_scr_wr_bank <= dbg_scr_wr_bank_r;
 dbg_scr_arm <= dbg_scr_wr_arm_r;
+
+-- $0801 write PC trap: captures PC/IR/data on every CPU write at $000801
+-- while dbg_0801_trap_en='1'. Lets us find which BASIC/KERNAL routine is
+-- wiping our PRG byte after an ioctl PRG load.
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if reset = '1' or dbg_0801_trap_en = '0' then
+			-- Reset when the window closes (download or meminit active) so each
+			-- window starts counting fresh. Avoids accumulating from initial
+			-- boot-NEW writes that happen before any PRG load.
+			dbg_0801_pc_r   <= (others => '0');
+			dbg_0801_ir_r   <= (others => '0');
+			dbg_0801_data_r <= (others => '0');
+			dbg_0801_cnt_r  <= (others => '0');
+		elsif cpuWe = '1' and sysCycle >= CYCLE_CPU0
+		      and cpuAddr = x"0801" and addr_hi_816 = x"00" then
+			dbg_0801_pc_r   <= dbg_pc_816;
+			dbg_0801_ir_r   <= dbg_ir_816;
+			dbg_0801_data_r <= cpuDo;
+			dbg_0801_cnt_r  <= dbg_0801_cnt_r + 1;
+		end if;
+	end if;
+end process;
+dbg_0801_pc       <= dbg_0801_pc_r;
+dbg_0801_ir       <= dbg_0801_ir_r;
+dbg_0801_data_out <= dbg_0801_data_r;
+dbg_0801_cnt      <= dbg_0801_cnt_r;
 
 -- VIC c-access capture: detect when VIC receives $00 screen code during badline.
 --

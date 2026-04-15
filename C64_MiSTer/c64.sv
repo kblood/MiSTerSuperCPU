@@ -215,7 +215,6 @@ localparam CONF_STR = {
 	"O[77:76],Mount Write Protected,Off,#8,#9,#8 & #9;",
 	"-;",
 	"F1,PRGCRTREUTAP;",
-	"F2,REU,Load REU;",
 	"hAdBR[61],Save cartridge;",
 	"hAO[62],Autosave,Off,On;",
 	"h3-;",
@@ -516,7 +515,7 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(1)) hps_io
 wire reu_by_ext = (ioctl_file_ext == ".REU" || ioctl_file_ext == ".reu");
 wire load_prg   = ioctl_index == 'h01 && !reu_by_ext;
 wire load_crt   = ioctl_index == 'h41 || ioctl_index == 5;
-wire load_reu   = ioctl_index == 'h81 || ioctl_index == 'h02   // F1 pos2 or F2 pos0
+wire load_reu   = ioctl_index == 'h81                          // F1 pos2 (OSD file browser)
                || (ioctl_index == 'h01 && reu_by_ext);         // MGL fallback
 wire load_tap   = ioctl_index == 'hC1;
 wire load_flt   = ioctl_index == 7;
@@ -830,6 +829,8 @@ always @(*) begin
 		27: reu_reg_mux = reu_rb_data;                 // $DF1B: readback byte 0 from REU_ADDR
 		28: reu_reg_mux = {5'b0, reu_rb_done, reu_rb_active, reu_rb_pending}; // $DF1C: status
 		29: reu_reg_mux = {7'b0, dbg_wr_pending};  // $DF1D: write test pending (reads as 0/1)
+		30: reu_reg_mux = {6'b0, dbg_iowr_nonzero_bankhi, dbg_bi_seen};  // $DF1E: b0=bi_seen, b1=bankhi_nonzero
+		31: reu_reg_mux = dbg_iowr_bankhi_val;                           // $DF1F: captured [23:16] byte on first out-of-bank0 write
 		// Crash trace ring buffer (expanded to 128 entries, 2026-04-13)
 		// $DF20: status = {wp[6:0], frozen}
 		// $DF21..$DFA0: 32 entries × 4 bytes = (PC_lo, PC_hi, PBR, IR) each
@@ -1044,6 +1045,32 @@ always @(*) begin
 		230: reu_reg_mux = trace_p_view[29];
 		231: reu_reg_mux = trace_p_view[30];
 		232: reu_reg_mux = trace_p_view[31];  // $DFE8
+		// SuperRAM read-path diagnostics (see fpga64_sid_iec.vhd dbg_srr_* latches)
+		233: reu_reg_mux = dbg_srr_count[7:0];   // $DFE9 total SuperRAM reads lo
+		234: reu_reg_mux = dbg_srr_count[15:8];  // $DFEA total SuperRAM reads hi
+		235: reu_reg_mux = dbg_srr_data;         // $DFEB last sdram_superram byte
+		236: reu_reg_mux = dbg_srr_addr_hi;      // $DFEC addr_hi_816 at last read
+		237: reu_reg_mux = dbg_srr_cache_bank;   // $DFED cache_cpu_bank at last read
+		238: reu_reg_mux = dbg_srr_addr_lo;      // $DFEE cpuAddr_pre[7:0]  at last read
+		239: reu_reg_mux = dbg_srr_addr_mid;     // $DFEF cpuAddr_pre[15:8] at last read
+		// PRG load diagnostics
+		240: reu_reg_mux = dbg_prg_dl_cnt;        // $DFF0 PRG download starts
+		241: reu_reg_mux = dbg_inj_rise_cnt;      // $DFF1 inj_meminit rising edges
+		242: reu_reg_mux = dbg_0801_pc[7:0];      // $DFF2 PC lo of last CPU write @ $0801
+		243: reu_reg_mux = dbg_0801_pc[15:8];     // $DFF3 PC hi
+		244: reu_reg_mux = dbg_0801_cnt_sv;       // $DFF4 CPU writes at $0801 (post-dl)
+		245: reu_reg_mux = dbg_0801_data_sv;      // $DFF5 last CPU-written byte at $0801
+		246: reu_reg_mux = dbg_sdram_0801_cnt;    // $DFF6 SDRAM-iface writes at $0801
+		247: reu_reg_mux = dbg_sdram_0801_data;   // $DFF7 last SDRAM-iface data at $0801
+		// Per-PRG download trace (resets on PRG download rising edge)
+		248: reu_reg_mux = dbg_req_set_cnt[7:0];  // $DFF8 req_set_cnt lo
+		249: reu_reg_mux = dbg_req_set_cnt[15:8]; // $DFF9 req_set_cnt hi
+		250: reu_reg_mux = dbg_req_cons_cnt[7:0]; // $DFFA req_cons_cnt lo
+		251: reu_reg_mux = dbg_req_cons_cnt[15:8];// $DFFB req_cons_cnt hi
+		252: reu_reg_mux = dbg_wr1_addr_lo;       // $DFFC first write addr lo
+		253: reu_reg_mux = dbg_wr1_addr_hi;       // $DFFD first write addr hi
+		254: reu_reg_mux = dbg_wr1_data;          // $DFFE first write data
+		255: reu_reg_mux = dbg_wr2_data;          // $DFFF second write data
 		default: reu_reg_mux = 8'hFF;
 	endcase
 end
@@ -1092,11 +1119,44 @@ reg        erasing;
 
 reg        inj_meminit = 0;
 
+// PRG load diagnostic counters (accessible via $DFF0-$DFF7)
+reg  [7:0] dbg_prg_dl_cnt = 0;        // PRG downloads started (ioctl_download rising + load_prg)
+reg  [7:0] dbg_inj_rise_cnt = 0;      // inj_meminit 0→1 edges
+reg  [7:0] dbg_inj_fall_cnt = 0;      // inj_meminit 1→0 edges
+reg  [7:0] dbg_strk_cnt = 0;          // start_strk pulses
+reg  [7:0] dbg_inj_end_lo = 0;        // last inj_end low byte
+reg  [7:0] dbg_inj_end_hi = 0;        // last inj_end high byte
+reg  [7:0] dbg_last_ioctl_idx = 0;    // last ioctl_index on download start
+reg  [7:0] dbg_last_load_flags = 0;   // {load_tap,load_rom,load_crt,load_reu,load_flt,load_prg,reu_by_ext,1'b0}
+// Per-download trace: reset on PRG download rising edge, captures request/consume counts.
+reg [15:0] dbg_req_set_cnt = 0;       // # times ioctl_wr path set ioctl_req_wr for this PRG
+reg [15:0] dbg_req_cons_cnt = 0;      // # times io_cycle consumed a ioctl_req_wr for this PRG
+reg  [7:0] dbg_wr1_addr_lo = 0;       // first consumed write: addr[7:0]
+reg  [7:0] dbg_wr1_addr_hi = 0;       // first consumed write: addr[15:8]
+reg  [7:0] dbg_wr1_data    = 0;       // first consumed write: data
+reg  [7:0] dbg_wr2_addr_lo = 0;       // second consumed write
+reg  [7:0] dbg_wr2_addr_hi = 0;
+reg  [7:0] dbg_wr2_data    = 0;
+// Sticky flags for specific addresses during a PRG download:
+reg        dbg_hit_0800 = 0;  // any io_cycle write at addr 25'h000800 during PRG dl
+reg        dbg_hit_0801 = 0;  // $000801
+reg        dbg_hit_0802 = 0;  // $000802
+reg  [7:0] dbg_0801_data = 0; // data written at $0801 (last)
+reg  [7:0] dbg_0802_data = 0; // data written at $0802 (last)
+// CPU-side write capture: any ram_we pulse at $0801 after ioctl_download drops.
+// Fires during BASIC boot / RUN processing. If count > 0 after download end,
+// the CPU is overwriting what io_cycle just wrote.
+reg  [7:0] dbg_cpu_wr_0801_cnt = 0;
+reg  [7:0] dbg_cpu_wr_0801_data = 0;  // last CPU-written byte at $0801
+
 wire       io_cycle;
 reg        io_cycle_ce;
 reg        io_cycle_we;
 reg [24:0] io_cycle_addr;
 reg  [7:0] io_cycle_data;
+// 1-cycle pulse to write-through an io_cycle bank-$00 byte to BRAM port A.
+// Keeps BRAM coherent with SDRAM for ioctl PRG downloads (which bypass CPU).
+reg        io_bram_we_pulse = 0;
 
 localparam TAP_ADDR = 25'h0200000;
 localparam REU_ADDR = 25'h1000000;
@@ -1152,6 +1212,7 @@ always @(posedge clk_sys) begin
 		reu_rb_active <= 0;
 	end
 	
+	io_bram_we_pulse <= 0;  // default: clear pulse each clock
 	if (~io_cycle & io_cycleD) begin
 		io_cycle_ce <= 1;
 		io_cycle_we <= 0;
@@ -1164,6 +1225,39 @@ always @(posedge clk_sys) begin
 			if (erasing) io_cycle_data <= {8{ioctl_load_addr[6]}};
 			else if (inj_meminit) io_cycle_data <= inj_meminit_data;
 			else io_cycle_data <= ioctl_data;
+			// Bank $00 write-through to BRAM: fire a 1-cycle pulse so the
+			// byte lands in BRAM alongside the SDRAM write.
+			if (ioctl_load_addr[24:16] == 9'h000)
+				io_bram_we_pulse <= 1;
+			// Per-PRG diag: capture first 2 consumed writes + count
+			if (ioctl_download && load_prg) begin
+				dbg_req_cons_cnt <= dbg_req_cons_cnt + 1'b1;
+				if (dbg_req_cons_cnt == 16'd0) begin
+					dbg_wr1_addr_lo <= ioctl_load_addr[7:0];
+					dbg_wr1_addr_hi <= ioctl_load_addr[15:8];
+					dbg_wr1_data    <= (erasing) ? {8{ioctl_load_addr[6]}}
+					                 : (inj_meminit ? inj_meminit_data : ioctl_data);
+				end else if (dbg_req_cons_cnt == 16'd1) begin
+					dbg_wr2_addr_lo <= ioctl_load_addr[7:0];
+					dbg_wr2_addr_hi <= ioctl_load_addr[15:8];
+					dbg_wr2_data    <= (erasing) ? {8{ioctl_load_addr[6]}}
+					                 : (inj_meminit ? inj_meminit_data : ioctl_data);
+				end
+			end
+			// Address-specific sticky flags: count ALL io_cycle writes (not gated)
+			if (ioctl_load_addr[24:16] == 9'h000) begin
+				if (ioctl_load_addr[15:0] == 16'h0800) dbg_hit_0800 <= 1;
+				if (ioctl_load_addr[15:0] == 16'h0801) begin
+					dbg_hit_0801  <= 1;
+					dbg_0801_data <= (erasing) ? {8{ioctl_load_addr[6]}}
+					               : (inj_meminit ? inj_meminit_data : ioctl_data);
+				end
+				if (ioctl_load_addr[15:0] == 16'h0802) begin
+					dbg_hit_0802  <= 1;
+					dbg_0802_data <= (erasing) ? {8{ioctl_load_addr[6]}}
+					               : (inj_meminit ? inj_meminit_data : ioctl_data);
+				end
+			end
 		end
 
 		if(ioctl_req_rd) begin
@@ -1214,7 +1308,11 @@ always @(posedge clk_sys) begin
 			if      (ioctl_addr == 0) begin ioctl_load_addr[7:0]  <= ioctl_data; inj_end[7:0]  <= ioctl_data; end
 			// Load address high-byte
 			else if (ioctl_addr == 1) begin ioctl_load_addr[15:8] <= ioctl_data; inj_end[15:8] <= ioctl_data; end
-			else begin ioctl_req_wr <= 1; inj_end <= inj_end + 1'b1; end
+			else begin
+				ioctl_req_wr <= 1;
+				inj_end <= inj_end + 1'b1;
+				dbg_req_set_cnt <= dbg_req_set_cnt + 1'b1;
+			end
 		end
 
 		if (load_crt) begin
@@ -1279,10 +1377,33 @@ always @(posedge clk_sys) begin
 		ext_crt <= ioctl_download && (ioctl_file_ext == ".CRT");
 	end 
 
-	// meminit for RAM injection
-	if (old_download != ioctl_download && load_prg && !inj_meminit) begin
+	// PRG load diagnostics: capture load flags + ioctl_index on any download start
+	if (~old_download & ioctl_download) begin
+		dbg_last_ioctl_idx <= ioctl_index;
+		dbg_last_load_flags <= {load_tap, load_rom, load_crt, load_reu, load_flt, load_prg, reu_by_ext, 1'b0};
+		if (load_prg) begin
+			dbg_prg_dl_cnt <= dbg_prg_dl_cnt + 1'b1;
+			dbg_req_set_cnt  <= 0;
+			dbg_req_cons_cnt <= 0;
+			dbg_wr1_addr_lo  <= 0; dbg_wr1_addr_hi <= 0; dbg_wr1_data <= 0;
+			dbg_wr2_addr_lo  <= 0; dbg_wr2_addr_hi <= 0; dbg_wr2_data <= 0;
+			dbg_hit_0800 <= 0; dbg_hit_0801 <= 0; dbg_hit_0802 <= 0;
+			dbg_0801_data <= 0; dbg_0802_data <= 0;
+			dbg_cpu_wr_0801_cnt <= 0; dbg_cpu_wr_0801_data <= 0;
+		end
+	end
+
+	// meminit for RAM injection — fire ONCE on the FALLING edge of ioctl_download.
+	// The original `old_download != ioctl_download` fired on BOTH edges, running
+	// the zero-page init twice: once at download START (with stale inj_end, before
+	// any data streamed) and once at END (with correct inj_end). The first run
+	// wrote the STALE inj_end to $2D/$2E (VAR pointer), and the second run's
+	// writes were masked by the BRAM that had captured the first run's values.
+	// Fix: trigger only on falling edge so inj_end is final.
+	if (old_download && ~ioctl_download && load_prg && !inj_meminit) begin
 		inj_meminit <= 1;
 		ioctl_load_addr <= 0;
+		dbg_inj_rise_cnt <= dbg_inj_rise_cnt + 1'b1;
 	end
 
 	if (inj_meminit) begin
@@ -1323,7 +1444,25 @@ always @(posedge clk_sys) begin
 
 	old_meminit <= inj_meminit;
 	start_strk  <= old_meminit & ~inj_meminit;
-	bram_inval_pulse <= old_meminit & ~inj_meminit;  // invalidate BRAM when meminit ends
+	// Hold BRAM/cache invalid throughout the ioctl download and the following
+	// inj_meminit zero-page init. A 1-cycle pulse after meminit was not enough:
+	// BRAM retained KERNAL RAMTAS zeros at $0801+ because ioctl writes only hit
+	// SDRAM (via io_cycle), not BRAM. Holding bram_invalidate high for the full
+	// download window clears bram_pgvalid and keeps cache_flush asserted so the
+	// first post-download CPU read misses BRAM/cache and fills from SDRAM.
+	bram_inval_hold <= ioctl_download | inj_meminit;
+	if (old_meminit & ~inj_meminit) begin
+		dbg_inj_fall_cnt <= dbg_inj_fall_cnt + 1'b1;
+		dbg_strk_cnt <= dbg_strk_cnt + 1'b1;
+		dbg_inj_end_lo <= inj_end[7:0];
+		dbg_inj_end_hi <= inj_end[15:8];
+	end
+	// CPU-side $0801 write trap — count CPU writes at $0801 after download+meminit
+	// so we can tell if BASIC/KERNAL is overwriting the PRG byte.
+	if (!ioctl_download && !inj_meminit && ram_we && c64_addr == 16'h0801) begin
+		dbg_cpu_wr_0801_cnt  <= dbg_cpu_wr_0801_cnt + 1'b1;
+		dbg_cpu_wr_0801_data <= c64_data_out;
+	end
 	
 	old_st0 <= status[17];
 	if (~old_st0 & status[17]) cart_attached <= 0;
@@ -1347,7 +1486,7 @@ always @(posedge clk_sys) begin
 end
 
 reg        start_strk = 0;
-reg        bram_inval_pulse = 0;
+reg        bram_inval_hold = 0;  // held high during ioctl_download + inj_meminit
 reg        reset_keys = 0;
 reg [10:0] key = 0;
 always @(posedge clk_sys) begin
@@ -1522,18 +1661,33 @@ end
 // Counts every time the SDRAM mux presents an io_cycle WRITE (addr[24]=1 = REU space).
 // If this matches reu_ioctl_cnt, the io_cycle→SDRAM write pipeline is working.
 reg [23:0] dbg_iowr_count = 0;       // total io_cycle writes presented to SDRAM
-reg [24:0] dbg_iowr_first_addr = 0;  // address of first write
-reg  [7:0] dbg_iowr_first_data = 0;  // data of first write
-reg        dbg_iowr_captured = 0;
+reg [24:0] dbg_iowr_first_addr = 0;  // now: LAST write address (updated every write)
+reg  [7:0] dbg_iowr_first_data = 0;  // now: LAST write data
+// Sticky: was bram_inval_hold ever 1?
+reg        dbg_bi_seen = 0;
+// Sticky: did ANY io_cycle write have addr[24:16] != 0 (outside bank 0)?
+reg        dbg_iowr_nonzero_bankhi = 0;
+reg [7:0]  dbg_iowr_bankhi_val = 0;   // capture the offending [23:16] byte
+// SDRAM-interface-level counter: fires ONLY when the actual SDRAM write
+// for $000801 lands at the sdram module inputs. If count=0, the write
+// never reached SDRAM even though io_cycle consume fired.
+reg  [7:0] dbg_sdram_0801_cnt = 0;
+reg  [7:0] dbg_sdram_0801_data = 0;
 always @(posedge clk_sys) begin
     if (io_cycle && io_cycle_ce && io_cycle_we && !cart_mem_req) begin
         dbg_iowr_count <= dbg_iowr_count + 1'd1;
-        if (!dbg_iowr_captured) begin
-            dbg_iowr_first_addr <= io_cycle_addr;
-            dbg_iowr_first_data <= io_cycle_data;
-            dbg_iowr_captured <= 1;
+        dbg_iowr_first_addr <= io_cycle_addr;
+        dbg_iowr_first_data <= io_cycle_data;
+        if (io_cycle_addr[23:16] != 8'h00 && !dbg_iowr_nonzero_bankhi) begin
+            dbg_iowr_nonzero_bankhi <= 1;
+            dbg_iowr_bankhi_val <= io_cycle_addr[23:16];
+        end
+        if (io_cycle_addr == 25'h0000801) begin
+            dbg_sdram_0801_cnt  <= dbg_sdram_0801_cnt + 1'b1;
+            dbg_sdram_0801_data <= io_cycle_data;
         end
     end
+    if (bram_inval_hold) dbg_bi_seen <= 1;
 end
 
 // ---- IOF diagnostic counters (REU register write debugging) ----
@@ -1713,6 +1867,10 @@ wire  [7:0] dbg_cia1_pa;
 wire  [7:0] dbg_cia1_pb;
 wire [15:0] dbg_scr_wr_addr;
 wire [15:0] dbg_scr_wr_pc;
+wire [15:0] dbg_0801_pc;
+wire [7:0]  dbg_0801_ir;
+wire [7:0]  dbg_0801_data_sv;
+wire [7:0]  dbg_0801_cnt_sv;
 wire  [7:0] dbg_scr_wr_data;
 wire  [7:0] dbg_scr_wr_ir;
 wire        dbg_scr_zero_hit;
@@ -1738,6 +1896,13 @@ wire        dbg_cpu_cyc;
 wire  [7:0] dbg_diag;
 wire [5127:0] dbg_bug_buf;  // 641 bytes: status + 128×(PC16,PBR8,IR8) + 128×P8
 wire [15:0] dbg_native_irq_vec;  // native IRQ vector ($FFEE/$FFEF)
+// SuperRAM read-path diagnostic latches (exposed at $DFE9-$DFEF)
+wire [15:0] dbg_srr_count;
+wire  [7:0] dbg_srr_data;
+wire  [7:0] dbg_srr_addr_hi;
+wire  [7:0] dbg_srr_cache_bank;
+wire  [7:0] dbg_srr_addr_lo;
+wire  [7:0] dbg_srr_addr_mid;
 
 fpga64_sid_iec fpga64
 (
@@ -1754,7 +1919,15 @@ fpga64_sid_iec fpga64
 	.scpu_speed(status[89:88]),
 	.supercpu_en(supercpu_enable),
 	.supercpu_rom(scpu_rom_opt),
-	.bram_invalidate(bram_inval_pulse),
+	.bram_invalidate(bram_inval_hold),
+	.io_bram_we(io_bram_we_pulse),
+	.io_bram_addr(io_cycle_addr[15:0]),
+	.io_bram_din(io_cycle_data),
+	.dbg_0801_trap_en(~ioctl_download & ~inj_meminit),
+	.dbg_0801_pc(dbg_0801_pc),
+	.dbg_0801_ir(dbg_0801_ir),
+	.dbg_0801_data_out(dbg_0801_data_sv),
+	.dbg_0801_cnt(dbg_0801_cnt_sv),
 	.supercpu_emul(supercpu_emul),
 	.supercpu_cycle(supercpu_cycle),
 	.supercpu_bank(supercpu_bank),
@@ -1797,6 +1970,12 @@ fpga64_sid_iec fpga64
 	.dbg_diag(dbg_diag),
 	.dbg_bug_buf(dbg_bug_buf),
 	.dbg_native_irq_vec(dbg_native_irq_vec),
+	.dbg_srr_count(dbg_srr_count),
+	.dbg_srr_data(dbg_srr_data),
+	.dbg_srr_addr_hi(dbg_srr_addr_hi),
+	.dbg_srr_cache_bank(dbg_srr_cache_bank),
+	.dbg_srr_addr_lo(dbg_srr_addr_lo),
+	.dbg_srr_addr_mid(dbg_srr_addr_mid),
 
 	.ps2_key(key),
 	.kbd_reset((~reset_n & ~status[1]) | reset_keys),
