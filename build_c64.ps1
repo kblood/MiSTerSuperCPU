@@ -14,6 +14,18 @@
 .PARAMETER SyntaxOnly
     Run analysis and elaboration only (no fitting/routing/bitstream).
 
+.PARAMETER Debug
+    Build with DEBUG_ENABLE=1 (all instrumentation active — crash trace ring
+    buffer, debug overlay, UART debug stream, REU/SuperRAM diagnostic counters).
+    This is the default and matches the committed source state.
+
+.PARAMETER Release
+    Build with DEBUG_ENABLE=0. Gates out all debug-only RTL, recovering
+    ~1500-2500 ALMs and restoring positive clk32 setup slack. Use for timing
+    stress tests or a shipping core. Before invoking Quartus, this flag
+    patches the QSF VERILOG_MACRO and the VHDL DEBUG_ENABLE generic default
+    in fpga64_sid_iec.vhd; the originals are restored on exit via try/finally.
+
 .PARAMETER QuartusPath
     Override the Quartus install path inside WSL.
     Default: auto-detected from ~/intelFPGA_lite/*/quartus/bin
@@ -35,11 +47,12 @@
     Default path: C:\intelFPGA_lite\17.0\quartus\bin64 (or set $env:QUARTUS_WIN_BIN).
 
 .EXAMPLE
-    .\build_c64.ps1
+    .\build_c64.ps1                       # debug build (default)
+    .\build_c64.ps1 -Release              # release build (DEBUG_ENABLE=0)
     .\build_c64.ps1 -Clean
     .\build_c64.ps1 -SyntaxOnly
     .\build_c64.ps1 -Program              # build then auto-program via USB Blaster
-    .\build_c64.ps1 -Clean -Program       # clean build then program
+    .\build_c64.ps1 -Release -Clean       # clean release build
     .\build_c64.ps1 -QuartusPath "/home/user/intelFPGA_lite/17.0/quartus/bin"
     .\build_c64.ps1 -UseWindowsQuartus
 #>
@@ -48,6 +61,8 @@ param(
     [switch]$Clean,
     [switch]$SyntaxOnly,
     [switch]$Program,
+    [switch]$Debug,
+    [switch]$Release,
     [string]$QuartusPath = "",
     [switch]$UseWindowsQuartus,
     [string]$QuartusWinBin = "",
@@ -58,6 +73,22 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = $PSScriptRoot
 $CoreDir = Join-Path $ProjectRoot "C64_MiSTer"
 $RepoUrl = "https://github.com/MiSTer-devel/C64_MiSTer.git"
+
+# --- DEBUG_ENABLE flavor selection ---
+if ($Debug -and $Release) {
+    Write-Host "ERROR: -Debug and -Release are mutually exclusive." -ForegroundColor Red
+    exit 1
+}
+# Default (neither specified) = debug. Preserves existing workflow.
+$DebugEnable = $true
+if ($Release) { $DebugEnable = $false }
+$DebugEnableInt = if ($DebugEnable) { 1 } else { 0 }
+$DebugEnableVhdl = if ($DebugEnable) { "true" } else { "false" }
+$BuildFlavor = if ($DebugEnable) { "DEBUG (instrumented)" } else { "RELEASE (DEBUG_ENABLE=0)" }
+Write-Host ""
+Write-Host "================================================================" -ForegroundColor Yellow
+Write-Host "  Build flavor: $BuildFlavor" -ForegroundColor Yellow
+Write-Host "================================================================" -ForegroundColor Yellow
 
 function Write-Step($msg) {
     Write-Host "`n=== $msg ===" -ForegroundColor Cyan
@@ -206,9 +237,82 @@ if ($Clean) {
     }
 }
 
+# --- Patch DEBUG_ENABLE in QSF + VHDL ---
+# Snapshot the original contents BEFORE modification so we can restore them
+# on exit (success, failure, or Ctrl-C). The build script is the single
+# source of truth for which flavor is being built — users should not edit
+# the QSF or VHDL generic default directly.
+
+$QsfPath    = Join-Path $CoreDir "C64.qsf"
+$VhdlPath   = Join-Path $CoreDir "rtl\fpga64_sid_iec.vhd"
+$QsfOrig    = $null
+$VhdlOrig   = $null
+$Patched    = $false
+
+function Patch-DebugEnable {
+    param([bool]$Enable)
+
+    if (-not (Test-Path $QsfPath))  { throw "Cannot find QSF: $QsfPath" }
+    if (-not (Test-Path $VhdlPath)) { throw "Cannot find VHDL: $VhdlPath" }
+
+    $script:QsfOrig  = [System.IO.File]::ReadAllText($QsfPath)
+    $script:VhdlOrig = [System.IO.File]::ReadAllText($VhdlPath)
+
+    $macroVal = if ($Enable) { "1" } else { "0" }
+    $vhdlVal  = if ($Enable) { "true" } else { "false" }
+
+    # QSF: patch the VERILOG_MACRO DEBUG_ENABLE line.
+    $qsfNew = $script:QsfOrig -replace `
+        '(set_global_assignment\s+-name\s+VERILOG_MACRO\s+"DEBUG_ENABLE=)[01](")', `
+        ('${1}' + $macroVal + '${2}')
+    if ($qsfNew -eq $script:QsfOrig) {
+        throw "QSF patch failed: VERILOG_MACRO DEBUG_ENABLE line not found in $QsfPath"
+    }
+
+    # VHDL: patch the DEBUG_ENABLE generic default value.
+    $vhdlNew = $script:VhdlOrig -replace `
+        '(DEBUG_ENABLE\s*:\s*boolean\s*:=\s*)(true|false)', `
+        ('${1}' + $vhdlVal)
+    if ($vhdlNew -eq $script:VhdlOrig) {
+        throw "VHDL patch failed: DEBUG_ENABLE generic default not found in $VhdlPath"
+    }
+
+    [System.IO.File]::WriteAllText($QsfPath,  $qsfNew)
+    [System.IO.File]::WriteAllText($VhdlPath, $vhdlNew)
+    $script:Patched = $true
+
+    Write-Host "  Patched QSF:  VERILOG_MACRO DEBUG_ENABLE=$macroVal" -ForegroundColor Gray
+    Write-Host "  Patched VHDL: DEBUG_ENABLE generic default = $vhdlVal" -ForegroundColor Gray
+}
+
+function Restore-DebugEnable {
+    if (-not $script:Patched) { return }
+    if ($null -ne $script:QsfOrig) {
+        [System.IO.File]::WriteAllText($QsfPath,  $script:QsfOrig)
+    }
+    if ($null -ne $script:VhdlOrig) {
+        [System.IO.File]::WriteAllText($VhdlPath, $script:VhdlOrig)
+    }
+    $script:Patched = $false
+    Write-Host "  Restored original QSF + VHDL (DEBUG_ENABLE pair)" -ForegroundColor Gray
+}
+
+# Guarantee restoration even if the shell is killed by Ctrl-C while Quartus
+# is running. PowerShell's trap covers CancelKeyPress.
+$null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -SupportEvent -Action {
+    if ($script:Patched) {
+        try { Restore-DebugEnable } catch { }
+    }
+}
+
+Write-Step "Patching DEBUG_ENABLE = $DebugEnableInt ($DebugEnableVhdl)"
+Patch-DebugEnable -Enable $DebugEnable
+
 # --- Build ---
 
 $startTime = Get-Date
+
+try {
 
 if ($UseWindowsQuartus) {
     $quartusSh = Join-Path $QuartusWinBin "quartus_sh.exe"
@@ -254,6 +358,10 @@ if ($UseWindowsQuartus) {
     # Run build via WSL, streaming output in real-time
     wsl bash --noprofile --norc -c $buildCmd
     $exitCode = $LASTEXITCODE
+}
+
+} finally {
+    Restore-DebugEnable
 }
 
 $elapsed = (Get-Date) - $startTime
