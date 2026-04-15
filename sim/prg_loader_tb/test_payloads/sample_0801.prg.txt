@@ -1,0 +1,23 @@
+# Sample PRG byte stream — human-readable.
+#
+# This file documents the bytes the bench's hardcoded scenario S1 pushes
+# through the ioctl interface. The bench does NOT read this file at sim
+# time; it exists as reference for adding new payloads later.
+#
+# To add a new scenario, define a new `byte_array_t` constant in
+# prg_loader_tb.vhd and call push_prg(...) with it from the stim process.
+#
+# Layout of a PRG byte stream:
+#   byte 0 : load address low  (set ioctl_addr = 0)
+#   byte 1 : load address high (set ioctl_addr = 1)
+#   byte 2 : first payload byte at load_addr
+#   byte 3 : next payload byte at load_addr + 1
+#   ...
+#
+# S1 payload (loaded at $0801, 6 bytes):
+#
+#   $0801  A9 42     LDA #$42
+#   $0803  8D 00 04  STA $0400       ; write '*' to top-left screen cell
+#   $0806  60        RTS
+#
+# Byte stream (hex): 01 08 A9 42 8D 00 04 60
