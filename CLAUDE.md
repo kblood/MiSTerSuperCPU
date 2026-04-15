@@ -76,26 +76,20 @@ $DF07/$DF08 is length. Use cmd $91 (FETCH immediate, execute + type 1) or
 $90 (STASH immediate). Length auto-loads to $FFFF after completion — always
 re-write length before each DMA.
 
-**Loading .reu files (e.g., doom.reu)**: the ONLY working scriptable path is
-MGL via MiSTer_cmd pipe. `mbc load_rom` does NOT handle .reu files (mbc
-has aliases for C64.CART/DISK/PRG/TAPE only — no C64.REU). Recipe:
-```bash
-# 1. Deploy core (wipes SDRAM)
-python tools/mister_debug.py deploy C64_MiSTer/output_files/C64.rbf
+**Loading .reu files (e.g., doom.reu)**: Use an MGL file via the MiSTer_cmd
+pipe. `echo load_core X.mgl > /dev/MiSTer_cmd` DOES process `<file>` tags —
+Dragon's Lair MGLs (and other stock MiSTer MGLs) prove the pipe handler
+loads both `<rbf>` and `<file>` elements end-to-end. The load_reu ioctl
+path is wired in c64.sv at both `ioctl_index == 'h81` (OSD F1 browser) and
+`ioctl_index == 'h01 && reu_by_ext` (MGL file-tag fallback matching on the
+`.REU`/`.reu` extension).
 
-# 2. Ensure the RBF is at the path the MGL references.
-#    doom.mgl contains: <rbf>_Computer/C64</rbf>
-ssh root@192.168.50.130 "cp /media/fat/_Test/C64.rbf /media/fat/_Computer/C64.rbf"
+`mbc load_rom` does NOT work for REU — mbc has no C64.REU alias and routes
+`.reu` as a PRG. Use a custom MGL via pipe instead.
 
-# 3. Load the MGL — triggers the <file> tag's ioctl download to REU SDRAM
-ssh root@192.168.50.130 "echo 'load_core /media/fat/_Computer/doom.mgl' > /dev/MiSTer_cmd"
-# Wait ~15 seconds for 16MB transfer.
-```
-A suitable MGL file has `<rbf>` (path under /media/fat/) and one or more
-`<file delay="5" type="f" index="2" path="..."/>` tags. `index="2"` routes
-to the REU slot. Prior memory claiming "MGL via pipe doesn't transfer file
-data" was WRONG — it failed because the REU write path was broken pre-fix,
-so verification FETCH couldn't read the loaded data.
+SDRAM is volatile but survives `load_core` bitstream reloads on the same
+power-on cycle (see `project_sdram_survives_deploy.md`), so a single MGL
+load populates REU SDRAM that persists across subsequent iterative deploys.
 
 **Doom launcher (after REU loaded)**:
 ```
@@ -157,6 +151,16 @@ diagnostic bytes, deploys builds, and interprets debug overlay/UART fields.
   For manual SSH, use paramiko in Python or `ssh -o IdentitiesOnly=yes -i <specific_key>`
 - Disk images: mount via MGL (use `mistergamedescription` tag, `type="s" index="0"`)
 - **DANGER: NEVER use `busybox devmem` or direct FPGA register access** — crashes MiSTer, requires physical power cycle
+- **DANGER: NEVER write our modified build into `/media/fat/_Computer/`**. That folder
+  must contain only the OFFICIAL upstream release rbfs (vanilla MiSTer cores). Our
+  modified build goes EXCLUSIVELY to `/media/fat/_Test/C64.rbf`. Reasons: (1) MGL
+  files reference `<rbf>_Computer/C64</rbf>` and must load a known-good vanilla,
+  (2) MiSTer's `get_rbf()` prefers date-stamped files like `C64_YYYYMMDD.rbf` over
+  plain `C64.rbf` — overwriting one without the other produces confusing load
+  behavior. Canonical vanilla rbf source: `C64_MiSTer/releases/C64_20250828.rbf`
+  (md5 `32a3ef42a78ed8b255bed895d09b833c`, 3,767,168 bytes). If you need to reset
+  them: `scp C64_MiSTer/releases/C64_20250828.rbf` to BOTH `/media/fat/_Computer/C64.rbf`
+  AND `/media/fat/_Computer/C64_20250828.rbf`.
 
 ### Ultimate 64 Agent
 Use for testing and comparing against real Ultimate 64 hardware via its REST API.

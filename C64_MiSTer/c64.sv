@@ -2258,8 +2258,6 @@ video_sync sync
 // When the core is paused (OSD freeze), vblank from video_sync stops pulsing,
 // which kills the debug overlay and UART. Using the raw VIC vsync ensures
 // debug infrastructure always runs.
-// Note: MGL loading kills UART regardless (ARM-side issue, not FPGA).
-// Use direct deploy + mbc load_rom instead of MGL.
 reg dbg_vblank;
 always @(posedge clk_sys) begin
 	reg [1:0] vsync_sr;

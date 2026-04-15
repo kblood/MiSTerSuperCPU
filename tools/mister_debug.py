@@ -150,7 +150,6 @@ def cmd_load_prg(args):
     """Upload a PRG file to MiSTer and inject it into the running C64 core.
 
     Uses mbc load_rom to inject the PRG without reloading the core.
-    This preserves UART, overlay, and turbo mode (MGL loading kills these).
 
     The core must already be running (via deploy). If not, deploy is done first.
     After injection, the PRG is in RAM but not auto-run. Use SYS 2061 for
