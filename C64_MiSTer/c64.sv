@@ -21,7 +21,23 @@
 //  You should have received a copy of the GNU General Public License along
 //  with this program; if not, write to the Free Software Foundation, Inc.,
 //  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-//============================================================================ 
+//============================================================================
+
+// ---------------------------------------------------------------------------
+// DEBUG_ENABLE compile-time gate.
+// Default: debug build (all instrumentation active). The build script
+// (build_c64.ps1 -Release / -Debug) injects `DEBUG_ENABLE=1` as a Verilog
+// macro via the QSF; `ifndef` guards this so a manual `define` in the QSF
+// always wins. If neither is set (e.g. standalone analysis), this `define
+// keeps the debug build active so existing workflows keep working.
+//
+// IMPORTANT: this macro and the VHDL `DEBUG_ENABLE` generic on
+// fpga64_sid_iec MUST stay in sync. The build script patches both from the
+// same source. Half-gated = phantom signals in the release build.
+// ---------------------------------------------------------------------------
+`ifndef DEBUG_ENABLE
+`define DEBUG_ENABLE 1
+`endif
 
 module emu
 (
@@ -753,6 +769,10 @@ wire  [7:0] reu_reg_last_dout;
 // CPU writes the desired page (0..3) to $DF1F. Writes to $DF1F pass
 // through reu.v's falling-edge cs but $1F is outside reu.v's register
 // range (0..10) so reu.v ignores it.
+// DEBUG_ENABLE=0 gates this entire paged-view block out. The mux cases that
+// reference trace_entry_view / trace_p_view are also in the same `ifdef, so
+// no orphan references remain.
+`ifdef DEBUG_ENABLE
 reg [1:0] bug_page;
 initial bug_page = 2'b00;
 always @(posedge clk_sys) begin
@@ -791,6 +811,7 @@ always @(*) begin
 		endcase
 	end
 end
+`endif // DEBUG_ENABLE
 
 reg [7:0] reu_reg_mux;
 always @(*) begin
@@ -804,6 +825,7 @@ always @(*) begin
 		6:  reu_reg_mux = reu_reg_addr_ram[23:16];
 		7:  reu_reg_mux = reu_reg_length[7:0];
 		8:  reu_reg_mux = reu_reg_length[15:8];
+`ifdef DEBUG_ENABLE
 		// Diagnostic: ioctl transfer stats
 		9:  reu_reg_mux = reu_ioctl_cnt[7:0];   // $DF09: ioctl byte count low
 		10: reu_reg_mux = reu_ioctl_cnt[15:8];  // $DF0A: ioctl byte count mid
@@ -1071,6 +1093,7 @@ always @(*) begin
 		253: reu_reg_mux = dbg_wr1_addr_hi;       // $DFFD first write addr hi
 		254: reu_reg_mux = dbg_wr1_data;          // $DFFE first write data
 		255: reu_reg_mux = dbg_wr2_data;          // $DFFF second write data
+`endif // DEBUG_ENABLE
 		default: reu_reg_mux = 8'hFF;
 	endcase
 end
@@ -2365,10 +2388,14 @@ end
 
 assign HDMI_FREEZE = freeze;
 
-// Debug overlay: renders CPU state as hex in top border
+// Debug overlay: renders CPU state as hex in top border.
+// DEBUG_ENABLE=0 removes the overlay module + all its `dbg_*` readers.
+// In release mode ovl_active is tied to 0 so the video mixer bypasses the
+// overlay entirely, and the r/g/b channels pass through unchanged.
 wire       ovl_active;
 wire [7:0] ovl_r, ovl_g, ovl_b;
 
+`ifdef DEBUG_ENABLE
 debug_overlay debug_ovl
 (
 	.clk(clk_sys),
@@ -2415,17 +2442,28 @@ debug_overlay debug_ovl
 	.overlay_g(ovl_g),
 	.overlay_b(ovl_b)
 );
+`else
+// Release: overlay disabled, video passthrough.
+assign ovl_active = 1'b0;
+assign ovl_r      = 8'h00;
+assign ovl_g      = 8'h00;
+assign ovl_b      = 8'h00;
+`endif
 
 wire [7:0] r_ovl = ovl_active ? ovl_r : r;
 wire [7:0] g_ovl = ovl_active ? ovl_g : g;
 wire [7:0] b_ovl = ovl_active ? ovl_b : b;
 
-// Debug UART: streams CPU state as ASCII hex lines at each vblank
+// Debug UART: streams CPU state as ASCII hex lines at each vblank.
+// DEBUG_ENABLE=0 removes the formatter + serializer; UART_TXD keeps the
+// existing functional UART path (the UART override block below is also
+// guarded so it can't force dbg_uart_tx).
 wire       dbg_uart_tx;
 wire       dbg_uart_busy;
 wire [7:0] dbg_uart_data;
 wire       dbg_uart_send;
 
+`ifdef DEBUG_ENABLE
 debug_uart_fmt debug_fmt
 (
 	.clk(clk_sys),
@@ -2468,6 +2506,13 @@ debug_uart_tx #(.CLK_FREQ(32000000), .BAUD(115200)) debug_tx
 	.tx(dbg_uart_tx),
 	.busy(dbg_uart_busy)
 );
+`else
+// Release: debug UART disabled, tx held idle-high (TTL serial idle state).
+assign dbg_uart_tx   = 1'b1;
+assign dbg_uart_busy = 1'b0;
+assign dbg_uart_data = 8'h00;
+assign dbg_uart_send = 1'b0;
+`endif
 
 video_mixer #(.GAMMA(1)) video_mixer
 (
@@ -2757,10 +2802,12 @@ always_comb begin
 		pb_i[5:0] = {!joyD_c64[6:4], !joyC_c64[6:4], pb_o[7] ? ~joyC_c64[3:0] : ~joyD_c64[3:0]};
 	end
 
+`ifdef DEBUG_ENABLE
 	// Debug UART override: when enabled, takes over UART_TXD for debug output
 	if (dbg_uart_en) begin
 		UART_TXD = dbg_uart_tx;
 	end
+`endif
 end
 
 wire uart_int = ~status[33];

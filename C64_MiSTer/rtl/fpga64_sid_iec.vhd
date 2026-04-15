@@ -41,6 +41,16 @@ use IEEE.numeric_std.all;
 -- -----------------------------------------------------------------------
 
 entity fpga64_sid_iec is
+generic(
+	-- Wraps all debug-only RTL (crash trace ring buffer, SuperRAM read-path
+	-- latches, $0801 wipe trigger, dbg_bug_buf packing) behind a single
+	-- compile-time gate. Matches the Verilog `DEBUG_ENABLE macro in c64.sv.
+	-- Release builds (DEBUG_ENABLE=false) tie all debug outputs to zero and
+	-- let synthesis remove the unused storage, recovering ~1.5-2.5k ALMs and
+	-- restoring positive clk32 setup slack. DO NOT use separate values on
+	-- the two sides — the build script keeps them in sync.
+	DEBUG_ENABLE : boolean := true
+);
 port(
 	clk32       : in  std_logic;
 	reset_n     : in  std_logic;
@@ -1829,30 +1839,42 @@ dbg_cpu_pbr  <= dbg_pbr_816 when supercpu_en = '1' else x"00";
 dbg_cpu_dbr  <= dbg_dbr_816 when supercpu_en = '1' else x"00";
 
 -- SuperRAM read-path diagnostics exposed to c64.sv
-dbg_srr_count      <= dbg_srr_count_r;
-dbg_srr_data       <= dbg_srr_data_r;
-dbg_srr_addr_hi    <= dbg_srr_addr_hi_r;
-dbg_srr_cache_bank <= dbg_srr_cache_bank_r;
-dbg_srr_addr_lo    <= dbg_srr_addr_lo_r;
-dbg_srr_addr_mid   <= dbg_srr_addr_mid_r;
+-- DEBUG_ENABLE=false ties them to zero; synthesis removes the latch process.
+gen_srr_debug: if DEBUG_ENABLE generate
+	dbg_srr_count      <= dbg_srr_count_r;
+	dbg_srr_data       <= dbg_srr_data_r;
+	dbg_srr_addr_hi    <= dbg_srr_addr_hi_r;
+	dbg_srr_cache_bank <= dbg_srr_cache_bank_r;
+	dbg_srr_addr_lo    <= dbg_srr_addr_lo_r;
+	dbg_srr_addr_mid   <= dbg_srr_addr_mid_r;
 
--- SuperRAM read-path capture: latch addr_hi_816/cache_cpu_bank/sdram_superram
--- at the exact moment the CPU receives a SuperRAM read byte on cpuDi. The
--- latch condition mirrors the cpuDi mux gate so only real reads are counted.
--- Readable via $DFE9-$DFEF: count/data/addr_hi/cache_bank/addr_lo/addr_mid.
-process(clk32)
-begin
-	if rising_edge(clk32) then
-		if enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0' then
-			dbg_srr_count_r      <= dbg_srr_count_r + 1;
-			dbg_srr_data_r       <= sdram_superram;
-			dbg_srr_addr_hi_r    <= addr_hi_816;
-			dbg_srr_cache_bank_r <= cache_cpu_bank;
-			dbg_srr_addr_lo_r    <= cpuAddr_pre(7 downto 0);
-			dbg_srr_addr_mid_r   <= cpuAddr_pre(15 downto 8);
+	-- SuperRAM read-path capture: latch addr_hi_816/cache_cpu_bank/sdram_superram
+	-- at the exact moment the CPU receives a SuperRAM read byte on cpuDi. The
+	-- latch condition mirrors the cpuDi mux gate so only real reads are counted.
+	-- Readable via $DFE9-$DFEF: count/data/addr_hi/cache_bank/addr_lo/addr_mid.
+	process(clk32)
+	begin
+		if rising_edge(clk32) then
+			if enableCpu = '1' and superram_in_pipeline = '1' and cpuWe_pre = '0' then
+				dbg_srr_count_r      <= dbg_srr_count_r + 1;
+				dbg_srr_data_r       <= sdram_superram;
+				dbg_srr_addr_hi_r    <= addr_hi_816;
+				dbg_srr_cache_bank_r <= cache_cpu_bank;
+				dbg_srr_addr_lo_r    <= cpuAddr_pre(7 downto 0);
+				dbg_srr_addr_mid_r   <= cpuAddr_pre(15 downto 8);
+			end if;
 		end if;
-	end if;
-end process;
+	end process;
+end generate;
+
+gen_srr_release: if not DEBUG_ENABLE generate
+	dbg_srr_count      <= (others => '0');
+	dbg_srr_data       <= (others => '0');
+	dbg_srr_addr_hi    <= (others => '0');
+	dbg_srr_cache_bank <= (others => '0');
+	dbg_srr_addr_lo    <= (others => '0');
+	dbg_srr_addr_mid   <= (others => '0');
+end generate;
 
 -- Crash trace capture process.
 -- Free-running ring buffer of (PC, PBR, IR) tuples, one entry per instruction.
@@ -1871,79 +1893,92 @@ end process;
 -- the C64 reset line) to boot BASIC, from which a reader PRG can dump the
 -- trace via $DF20-$DFA0. Power-on initialization is handled by the VHDL
 -- signal defaults. Once frozen, the trace stays frozen until cold boot.
-process(clk32)
-begin
-	if rising_edge(clk32) then
-		-- Register the BRK-in-game detect independently of enableCpu_816 gating
-		-- so the freeze path has a short, single-cycle-slack-friendly input.
-		if enableCpu_816 = '1' and dbg_pbr_816 /= x"00" and dbg_ir_816 = x"00" then
-			brk_detect_r <= '1';
-		end if;
+--
+-- DEBUG_ENABLE=false gates the process + packing out entirely and ties
+-- dbg_bug_buf to zero. Trace signals (bug_*, trace_prev_*) remain declared
+-- at architecture scope but are undriven; the synthesizer removes them.
+gen_trace_debug: if DEBUG_ENABLE generate
+	process(clk32)
+	begin
+		if rising_edge(clk32) then
+			-- Register the BRK-in-game detect independently of enableCpu_816 gating
+			-- so the freeze path has a short, single-cycle-slack-friendly input.
+			if enableCpu_816 = '1' and dbg_pbr_816 /= x"00" and dbg_ir_816 = x"00" then
+				brk_detect_r <= '1';
+			end if;
 
-		-- Unconditional freeze-on-BRK: one FF → one FF path, no gates.
-		-- Outside the `if supercpu_en='1' and bug_frozen='0'` gate so the
-		-- assignment's critical path stays at a single clk32 cycle even when
-		-- fitter placement is tight.
-		if brk_detect_r = '1' then
-			bug_frozen <= '1';
-		end if;
+			-- Unconditional freeze-on-BRK: one FF → one FF path, no gates.
+			-- Outside the `if supercpu_en='1' and bug_frozen='0'` gate so the
+			-- assignment's critical path stays at a single clk32 cycle even when
+			-- fitter placement is tight.
+			if brk_detect_r = '1' then
+				bug_frozen <= '1';
+			end if;
 
-		if supercpu_en = '1' and bug_frozen = '0' then
-			if enableCpu_816 = '1' then
-				-- Track previous values for transition detection (always update).
-				trace_prev_pc  <= dbg_pc_816;
-				trace_prev_pbr <= dbg_pbr_816;
-				trace_prev_ir  <= dbg_ir_816;
-				trace_prev_p   <= dbg_p_816;
+			if supercpu_en = '1' and bug_frozen = '0' then
+				if enableCpu_816 = '1' then
+					-- Track previous values for transition detection (always update).
+					trace_prev_pc  <= dbg_pc_816;
+					trace_prev_pbr <= dbg_pbr_816;
+					trace_prev_ir  <= dbg_ir_816;
+					trace_prev_p   <= dbg_p_816;
 
-				-- Mark Doom as "running" once bank $2D is seen — this gates the
-				-- X-flag transition trigger so we don't catch any pre-Doom
-				-- emulation-mode X=1 state during the C64 KERNAL boot path.
-				if dbg_pbr_816 = x"2D" then
-					seen_bank_2d <= '1';
-				end if;
+					-- Mark Doom as "running" once bank $2D is seen — this gates the
+					-- X-flag transition trigger so we don't catch any pre-Doom
+					-- emulation-mode X=1 state during the C64 KERNAL boot path.
+					if dbg_pbr_816 = x"2D" then
+						seen_bank_2d <= '1';
+					end if;
 
-				-- Free-run capture on every IR change (one entry per instruction
-				-- instead of per byte-fetch — doubles effective history depth).
-				if dbg_ir_816 /= trace_prev_ir then
-					bug_pc(to_integer(bug_wp))     <= dbg_pc_816;
-					bug_pbr(to_integer(bug_wp))    <= dbg_pbr_816;
-					bug_ir_buf(to_integer(bug_wp)) <= dbg_ir_816;
-					bug_p(to_integer(bug_wp))      <= dbg_p_816;
-					bug_wp <= bug_wp + 1;
-				end if;
+					-- Free-run capture on every IR change (one entry per instruction
+					-- instead of per byte-fetch — doubles effective history depth).
+					if dbg_ir_816 /= trace_prev_ir then
+						bug_pc(to_integer(bug_wp))     <= dbg_pc_816;
+						bug_pbr(to_integer(bug_wp))    <= dbg_pbr_816;
+						bug_ir_buf(to_integer(bug_wp)) <= dbg_ir_816;
+						bug_p(to_integer(bug_wp))      <= dbg_p_816;
+						bug_wp <= bug_wp + 1;
+					end if;
 
-				-- Secondary trigger: freeze on the FIRST X=0→X=1 transition
-				-- seen after Doom (bank $2D) has run.
-				if seen_bank_2d = '1'
-				   and dbg_p_816(4) = '1'
-				   and trace_prev_p(4) = '0' then
-					bug_frozen <= '1';
+					-- Secondary trigger: freeze on the FIRST X=0→X=1 transition
+					-- seen after Doom (bank $2D) has run.
+					if seen_bank_2d = '1'
+					   and dbg_p_816(4) = '1'
+					   and trace_prev_p(4) = '0' then
+						bug_frozen <= '1';
+					end if;
 				end if;
 			end if;
 		end if;
-	end if;
-end process;
+	end process;
 
--- Pack the buffer into the wide output port (LSB first).
--- byte 0 = status: bit0=frozen, bits[7:1]=write_pos[6:0].
--- Each entry occupies 4 bytes: PC_lo, PC_hi, PBR, IR. 128 entries = 512 bytes.
--- P region: 128 × 1 byte = 128 bytes at bits 4104..5127.
--- Total: 1 + 512 + 128 = 641 bytes = 5128 bits.
-dbg_bug_buf(7 downto 0) <=
-	std_logic_vector(bug_wp) & bug_frozen;
+	-- Pack the buffer into the wide output port (LSB first).
+	-- byte 0 = status: bit0=frozen, bits[7:1]=write_pos[6:0].
+	-- Each entry occupies 4 bytes: PC_lo, PC_hi, PBR, IR. 128 entries = 512 bytes.
+	-- P region: 128 × 1 byte = 128 bytes at bits 4104..5127.
+	-- Total: 1 + 512 + 128 = 641 bytes = 5128 bits.
+	dbg_bug_buf(7 downto 0) <=
+		std_logic_vector(bug_wp) & bug_frozen;
 
-trace_pack: for i in 0 to TRACE_DEPTH-1 generate
-	dbg_bug_buf( 8 + i*32 +  7 downto  8 + i*32 +  0) <= std_logic_vector(bug_pc(i)(7 downto 0));
-	dbg_bug_buf( 8 + i*32 + 15 downto  8 + i*32 +  8) <= std_logic_vector(bug_pc(i)(15 downto 8));
-	dbg_bug_buf( 8 + i*32 + 23 downto  8 + i*32 + 16) <= std_logic_vector(bug_pbr(i));
-	dbg_bug_buf( 8 + i*32 + 31 downto  8 + i*32 + 24) <= std_logic_vector(bug_ir_buf(i));
+	trace_pack: for i in 0 to TRACE_DEPTH-1 generate
+		dbg_bug_buf( 8 + i*32 +  7 downto  8 + i*32 +  0) <= std_logic_vector(bug_pc(i)(7 downto 0));
+		dbg_bug_buf( 8 + i*32 + 15 downto  8 + i*32 +  8) <= std_logic_vector(bug_pc(i)(15 downto 8));
+		dbg_bug_buf( 8 + i*32 + 23 downto  8 + i*32 + 16) <= std_logic_vector(bug_pbr(i));
+		dbg_bug_buf( 8 + i*32 + 31 downto  8 + i*32 + 24) <= std_logic_vector(bug_ir_buf(i));
+	end generate;
+
+	-- P register bytes appended after the 128 4-byte entries. Layout:
+	-- bits 4104..5127 = 128 × P byte (P region starts at 8 + 128*32 = 4104).
+	trace_pack_p: for i in 0 to TRACE_DEPTH-1 generate
+		dbg_bug_buf(4104 + i*8 + 7 downto 4104 + i*8) <= std_logic_vector(bug_p(i));
+	end generate;
 end generate;
 
--- P register bytes appended after the 128 4-byte entries. Layout:
--- bits 4104..5127 = 128 × P byte (P region starts at 8 + 128*32 = 4104).
-trace_pack_p: for i in 0 to TRACE_DEPTH-1 generate
-	dbg_bug_buf(4104 + i*8 + 7 downto 4104 + i*8) <= std_logic_vector(bug_p(i));
+gen_trace_release: if not DEBUG_ENABLE generate
+	-- Release build: no trace capture, no packing. Tie the wide output port
+	-- to zero so downstream logic has a stable constant driver; synthesis
+	-- removes the unused trace_* / bug_* storage.
+	dbg_bug_buf <= (others => '0');
 end generate;
 
 -- Expose native IRQ vector value for UART debug
@@ -1954,108 +1989,136 @@ dbg_native_irq_vec <= std_logic_vector(scpu_native_vec(13)) & std_logic_vector(s
 -- R (cia1_pb): cpuAddr(7:0) at the moment that highest bank was first entered.
 -- Interpretation: K:F8 R:FC = CPU successfully entered bank $F8 at $00FC (JML worked).
 --                 K:00 R:00 = CPU never left bank $00 (JML failed or wrong reset vector).
-process(clk32)
-begin
-	if rising_edge(clk32) then
-		if reset = '1' or (supercpu_en = '1' and supercpu_en_prev = '0') then
-			dbg_cia1_pa_r <= x"00";
-			dbg_cia1_pb_r <= x"00";
-		elsif enableCpu_816 = '1' and supercpu_en = '1' then
-			if addr_hi_816 > dbg_cia1_pa_r then
-				dbg_cia1_pa_r <= addr_hi_816;       -- sticky max bank
-				dbg_cia1_pb_r <= cpuAddr(7 downto 0); -- address when max bank was entered
+gen_cia1_dbg_debug: if DEBUG_ENABLE generate
+	process(clk32)
+	begin
+		if rising_edge(clk32) then
+			if reset = '1' or (supercpu_en = '1' and supercpu_en_prev = '0') then
+				dbg_cia1_pa_r <= x"00";
+				dbg_cia1_pb_r <= x"00";
+			elsif enableCpu_816 = '1' and supercpu_en = '1' then
+				if addr_hi_816 > dbg_cia1_pa_r then
+					dbg_cia1_pa_r <= addr_hi_816;       -- sticky max bank
+					dbg_cia1_pb_r <= cpuAddr(7 downto 0); -- address when max bank was entered
+				end if;
 			end if;
 		end if;
-	end if;
-end process;
-dbg_cia1_pa <= dbg_cia1_pa_r;
-dbg_cia1_pb <= dbg_cia1_pb_r;
+	end process;
+	dbg_cia1_pa <= dbg_cia1_pa_r;
+	dbg_cia1_pb <= dbg_cia1_pb_r;
+end generate;
+
+gen_cia1_dbg_release: if not DEBUG_ENABLE generate
+	dbg_cia1_pa <= (others => '0');
+	dbg_cia1_pb <= (others => '0');
+end generate;
 
 -- Screen-RAM write detector: latch addr/data/opcode/PC whenever CPU writes to $0400-$07FF.
 -- Used to distinguish CPU-driven screen updates from non-CPU (read-side/timing) artifacts.
-process(clk32)
-begin
-	if rising_edge(clk32) then
-		if reset = '1' then
-			dbg_scr_wr_addr_r <= (others => '0');
-			dbg_scr_wr_pc_r   <= (others => '0');
-			dbg_scr_wr_data_r <= (others => '0');
-			dbg_scr_wr_ir_r   <= (others => '0');
-			dbg_scr_wr_bank_r <= (others => '0');
-			dbg_scr_wr_arm_r  <= '0';
-			dbg_scr_wr_arm_ctr <= (others => '0');
-			dbg_scr_zero_hit_r <= '0';
-		elsif supercpu_en = '0' then
-			dbg_scr_wr_bank_r <= (others => '0');
-			dbg_scr_wr_arm_r  <= '0';
-			dbg_scr_wr_arm_ctr <= (others => '0');
-			dbg_scr_zero_hit_r <= '0';
-		elsif dbg_scr_wr_arm_r = '0' then
-			dbg_scr_wr_arm_ctr <= dbg_scr_wr_arm_ctr + 1;
-			if dbg_scr_wr_arm_ctr = to_unsigned(31999999, dbg_scr_wr_arm_ctr'length) then
-				dbg_scr_wr_arm_r <= '1';
-			end if;
-		elsif supercpu_en = '1' and cpuWe = '1' and sysCycle >= CYCLE_CPU0
-		      and cpuAddr(15 downto 10) = "000001" then
-			-- STICKY $00 capture: first zero-write to screen RAM locks the display.
-			-- Once triggered, dbg_scr_zero_hit_r='1' freezes the capture registers
-			-- so we can see where/how the $00 (@ artifact) was written.
-			if cpuDo = x"00" and dbg_scr_zero_hit_r = '0' then
-				dbg_scr_wr_addr_r <= cpuAddr;
-				dbg_scr_wr_pc_r   <= dbg_pc_816;
-				dbg_scr_wr_data_r <= cpuDo;
-				dbg_scr_wr_ir_r   <= dbg_ir_816;
-				dbg_scr_wr_bank_r <= addr_hi_816;
-				dbg_scr_zero_hit_r <= '1';
-			elsif dbg_scr_zero_hit_r = '0' then
-				-- Rolling capture: filter ALL cursor-blink writes (PC=$EA20, any address).
-				-- Previous filter was too narrow (only $04F0); cursor moves around.
-				if dbg_pc_816 /= x"EA20" then
+gen_scr_debug: if DEBUG_ENABLE generate
+	process(clk32)
+	begin
+		if rising_edge(clk32) then
+			if reset = '1' then
+				dbg_scr_wr_addr_r <= (others => '0');
+				dbg_scr_wr_pc_r   <= (others => '0');
+				dbg_scr_wr_data_r <= (others => '0');
+				dbg_scr_wr_ir_r   <= (others => '0');
+				dbg_scr_wr_bank_r <= (others => '0');
+				dbg_scr_wr_arm_r  <= '0';
+				dbg_scr_wr_arm_ctr <= (others => '0');
+				dbg_scr_zero_hit_r <= '0';
+			elsif supercpu_en = '0' then
+				dbg_scr_wr_bank_r <= (others => '0');
+				dbg_scr_wr_arm_r  <= '0';
+				dbg_scr_wr_arm_ctr <= (others => '0');
+				dbg_scr_zero_hit_r <= '0';
+			elsif dbg_scr_wr_arm_r = '0' then
+				dbg_scr_wr_arm_ctr <= dbg_scr_wr_arm_ctr + 1;
+				if dbg_scr_wr_arm_ctr = to_unsigned(31999999, dbg_scr_wr_arm_ctr'length) then
+					dbg_scr_wr_arm_r <= '1';
+				end if;
+			elsif supercpu_en = '1' and cpuWe = '1' and sysCycle >= CYCLE_CPU0
+			      and cpuAddr(15 downto 10) = "000001" then
+				-- STICKY $00 capture: first zero-write to screen RAM locks the display.
+				-- Once triggered, dbg_scr_zero_hit_r='1' freezes the capture registers
+				-- so we can see where/how the $00 (@ artifact) was written.
+				if cpuDo = x"00" and dbg_scr_zero_hit_r = '0' then
 					dbg_scr_wr_addr_r <= cpuAddr;
 					dbg_scr_wr_pc_r   <= dbg_pc_816;
 					dbg_scr_wr_data_r <= cpuDo;
 					dbg_scr_wr_ir_r   <= dbg_ir_816;
 					dbg_scr_wr_bank_r <= addr_hi_816;
+					dbg_scr_zero_hit_r <= '1';
+				elsif dbg_scr_zero_hit_r = '0' then
+					-- Rolling capture: filter ALL cursor-blink writes (PC=$EA20, any address).
+					-- Previous filter was too narrow (only $04F0); cursor moves around.
+					if dbg_pc_816 /= x"EA20" then
+						dbg_scr_wr_addr_r <= cpuAddr;
+						dbg_scr_wr_pc_r   <= dbg_pc_816;
+						dbg_scr_wr_data_r <= cpuDo;
+						dbg_scr_wr_ir_r   <= dbg_ir_816;
+						dbg_scr_wr_bank_r <= addr_hi_816;
+					end if;
 				end if;
 			end if;
 		end if;
-	end if;
-end process;
-dbg_scr_wr_addr <= dbg_scr_wr_addr_r;
-dbg_scr_wr_pc   <= dbg_scr_wr_pc_r;
-dbg_scr_wr_data <= dbg_scr_wr_data_r;
-dbg_scr_wr_ir   <= dbg_scr_wr_ir_r;
-dbg_scr_zero_hit <= dbg_scr_zero_hit_r;
-dbg_scr_wr_bank <= dbg_scr_wr_bank_r;
-dbg_scr_arm <= dbg_scr_wr_arm_r;
+	end process;
+	dbg_scr_wr_addr <= dbg_scr_wr_addr_r;
+	dbg_scr_wr_pc   <= dbg_scr_wr_pc_r;
+	dbg_scr_wr_data <= dbg_scr_wr_data_r;
+	dbg_scr_wr_ir   <= dbg_scr_wr_ir_r;
+	dbg_scr_zero_hit <= dbg_scr_zero_hit_r;
+	dbg_scr_wr_bank <= dbg_scr_wr_bank_r;
+	dbg_scr_arm <= dbg_scr_wr_arm_r;
+end generate;
+
+gen_scr_release: if not DEBUG_ENABLE generate
+	dbg_scr_wr_addr  <= (others => '0');
+	dbg_scr_wr_pc    <= (others => '0');
+	dbg_scr_wr_data  <= (others => '0');
+	dbg_scr_wr_ir    <= (others => '0');
+	dbg_scr_zero_hit <= '0';
+	dbg_scr_wr_bank  <= (others => '0');
+	dbg_scr_arm      <= '0';
+end generate;
 
 -- $0801 write PC trap: captures PC/IR/data on every CPU write at $000801
 -- while dbg_0801_trap_en='1'. Lets us find which BASIC/KERNAL routine is
 -- wiping our PRG byte after an ioctl PRG load.
-process(clk32)
-begin
-	if rising_edge(clk32) then
-		if reset = '1' or dbg_0801_trap_en = '0' then
-			-- Reset when the window closes (download or meminit active) so each
-			-- window starts counting fresh. Avoids accumulating from initial
-			-- boot-NEW writes that happen before any PRG load.
-			dbg_0801_pc_r   <= (others => '0');
-			dbg_0801_ir_r   <= (others => '0');
-			dbg_0801_data_r <= (others => '0');
-			dbg_0801_cnt_r  <= (others => '0');
-		elsif cpuWe = '1' and sysCycle >= CYCLE_CPU0
-		      and cpuAddr = x"0801" and addr_hi_816 = x"00" then
-			dbg_0801_pc_r   <= dbg_pc_816;
-			dbg_0801_ir_r   <= dbg_ir_816;
-			dbg_0801_data_r <= cpuDo;
-			dbg_0801_cnt_r  <= dbg_0801_cnt_r + 1;
+gen_0801_trap_debug: if DEBUG_ENABLE generate
+	process(clk32)
+	begin
+		if rising_edge(clk32) then
+			if reset = '1' or dbg_0801_trap_en = '0' then
+				-- Reset when the window closes (download or meminit active) so each
+				-- window starts counting fresh. Avoids accumulating from initial
+				-- boot-NEW writes that happen before any PRG load.
+				dbg_0801_pc_r   <= (others => '0');
+				dbg_0801_ir_r   <= (others => '0');
+				dbg_0801_data_r <= (others => '0');
+				dbg_0801_cnt_r  <= (others => '0');
+			elsif cpuWe = '1' and sysCycle >= CYCLE_CPU0
+			      and cpuAddr = x"0801" and addr_hi_816 = x"00" then
+				dbg_0801_pc_r   <= dbg_pc_816;
+				dbg_0801_ir_r   <= dbg_ir_816;
+				dbg_0801_data_r <= cpuDo;
+				dbg_0801_cnt_r  <= dbg_0801_cnt_r + 1;
+			end if;
 		end if;
-	end if;
-end process;
-dbg_0801_pc       <= dbg_0801_pc_r;
-dbg_0801_ir       <= dbg_0801_ir_r;
-dbg_0801_data_out <= dbg_0801_data_r;
-dbg_0801_cnt      <= dbg_0801_cnt_r;
+	end process;
+	dbg_0801_pc       <= dbg_0801_pc_r;
+	dbg_0801_ir       <= dbg_0801_ir_r;
+	dbg_0801_data_out <= dbg_0801_data_r;
+	dbg_0801_cnt      <= dbg_0801_cnt_r;
+end generate;
+
+gen_0801_trap_release: if not DEBUG_ENABLE generate
+	dbg_0801_pc       <= (others => '0');
+	dbg_0801_ir       <= (others => '0');
+	dbg_0801_data_out <= (others => '0');
+	dbg_0801_cnt      <= (others => '0');
+end generate;
 
 -- VIC c-access capture: detect when VIC receives $00 screen code during badline.
 --
@@ -2073,6 +2136,7 @@ dbg_0801_cnt      <= dbg_0801_cnt_r;
 --   (14)    = aec at VIC2 (should be '1')
 --   (13:8)  = vicDi(5 downto 0) at VIC2 (c-access data from SDRAM)
 --   (7:0)   = systemAddr(7 downto 0) at CPUC (verify SDRAM got correct addr)
+gen_vic_debug: if DEBUG_ENABLE generate
 process(clk32)
 begin
 	if rising_edge(clk32) then
@@ -2207,6 +2271,23 @@ dbg_vic_cpuf_zero_cnt <= dbg_vic_cpuf_zero_cnt_r;
 dbg_vic_cpue_live_zero_cnt <= dbg_vic_cpue_live_zero_cnt_r;
 dbg_vic_cpue_hold_zero_cnt <= dbg_vic_cpue_hold_zero_cnt_r;
 dbg_vic_cpue_mismatch_cnt <= dbg_vic_cpue_mismatch_cnt_r;
+end generate;
+
+gen_vic_release: if not DEBUG_ENABLE generate
+	dbg_vic_zero_hit  <= '0';
+	dbg_vic_zero_addr <= (others => '0');
+	dbg_vic_zero_cpu  <= (others => '0');
+	dbg_vic_zero_sysaddr <= (others => '0');
+	dbg_vic_wr_match <= '0';
+	dbg_vic_wr_pc    <= (others => '0');
+	dbg_vic_prearm_cnt <= (others => '0');
+	dbg_vic_hit_cnt    <= (others => '0');
+	dbg_vic_mode       <= (others => '0');
+	dbg_vic_cpuf_zero_cnt <= (others => '0');
+	dbg_vic_cpue_live_zero_cnt <= (others => '0');
+	dbg_vic_cpue_hold_zero_cnt <= (others => '0');
+	dbg_vic_cpue_mismatch_cnt  <= (others => '0');
+end generate;
 
 -- $D07E ROM-visibility switch.
 -- Kickstart writes $00 to $D07E at $80F7 to expose C64 KERNAL at $E000-$FFFF.
