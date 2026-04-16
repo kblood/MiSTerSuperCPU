@@ -2105,6 +2105,8 @@ fpga64_sid_iec fpga64
 	.c64rom_addr(ioctl_addr[13:0]),
 	.c64rom_data(ioctl_data),
 	.c64rom_wr(load_rom && !ioctl_addr[16:14] && ioctl_download && ioctl_wr),
+	.bram_probe_addr(16'h0000),
+	.bram_probe_data(),
 
 	.cass_write(cass_write),
 	.cass_motor(cass_motor),

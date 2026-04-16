@@ -28,7 +28,11 @@ port (
 
 	-- Port B: VIC-II (read only)
 	b_addr    : in  unsigned(15 downto 0);
-	b_dout    : out unsigned(7 downto 0)
+	b_dout    : out unsigned(7 downto 0);
+
+	-- Debug probe: asynchronous read for simulation/diagnostics.
+	probe_addr : in  unsigned(15 downto 0) := (others => '0');
+	probe_dout : out unsigned(7 downto 0)
 );
 end c64_ram64k;
 
@@ -65,5 +69,8 @@ begin
 			b_dout <= unsigned(ram(to_integer(b_addr)));
 		end if;
 	end process;
+
+	-- Simulation/debug-only combinational probe.
+	probe_dout <= unsigned(ram(to_integer(probe_addr)));
 
 end rtl;

@@ -1,12 +1,18 @@
 # Verilator Desktop Harness Plan
 
-Status: PLAN — not yet implemented.
+Status: PARTIALLY IMPLEMENTED (2026-04-15).
 Goal: Run the MiSTer C64 SuperCPU core on the developer PC as a
-near-real-time software emulator, compiled from the real RTL via a
-Yosys + GHDL-plugin toolchain that translates VHDL → Yosys IR →
-Verilog → Verilator → C++ → native binary. Target: 30–60% real-time
-on a modern laptop, i.e. a playable C64 running the real FPGA core
-with SDL video + keyboard + audio.
+desktop software emulator, compiled from the real RTL via a VHDL →
+Verilog → Verilator → C++ flow. The original plan targeted
+Yosys + GHDL-plugin (`VHDL -> Yosys IR -> Verilog`), but the working
+MVP path in this repo currently uses `ghdl --synth --out=verilog`
+with `GHDL_BACKEND=gcc`, followed by Verilator.
+
+Current result: `sim/verilator_c64/` now builds and runs in WSL2
+Ubuntu, boots far enough for the CPU to execute KERNAL code, supports
+host-driven ROM streaming, host-driven PRG injection, optional SDL2
+video, FST tracing, and accurate bank-$00 BRAM screen probing.
+It is not yet a polished or real-time-playable desktop C64.
 
 ## Why this would be valuable
 
@@ -50,26 +56,48 @@ harder because the core is VHDL-heavy while most Verilator-friendly
 MiSTer cores are Verilog-native.
 
 Relevant upstream:
-- **Yosys** — open-source RTL synthesis, includes a Verilog frontend
-  and can emit Verilog from its internal IR
-- **ghdl-yosys-plugin** — bridges GHDL (VHDL) into Yosys's IR, so
-  Yosys can ingest VHDL alongside Verilog
-- **Verilator** — translates Verilog to high-speed C++ simulation
+- **GHDL** — used here both for simulation and for the current working
+  RTL-to-Verilog synthesis step (`--synth --out=verilog`)
+- **Yosys** — still useful for experimentation, but not the current
+  working path for this harness
+- **ghdl-yosys-plugin** — attempted first; presently fails on this
+  design in the Ubuntu-packaged toolchain
+- **Verilator** — translates synthesized Verilog to high-speed C++ simulation
 
-The chain: `VHDL -> GHDL -> ghdl-yosys-plugin -> Yosys IR -> write_verilog -> Verilator -> C++`.
+Current working chain: `VHDL -> GHDL synth -> Verilog -> Verilator -> C++`.
 
 ## Scope
 
 **In scope (MVP):**
-- `fpga64_sid_iec.vhd` + all its Verilog/SV children compiled to a
+- `fpga64_sid_iec.vhd` compiled through a reduced wrapper into a
   single Verilated binary
-- Behavioral SDRAM backing store (reuse `sim/common/memory_models/simple_sdram_model.vhd` ported to C++ if needed, or model inline)
+- Behavioral SDRAM backing store (currently reusing
+  `sim/common/memory_models/simple_sdram_model.vhd` with a reduced
+  default size of 256 KiB for tractable synthesis)
 - ioctl-style PRG loader fed from command-line arg
-- Real KERNAL/BASIC/CHARGEN ROMs loaded at startup from `sim/common/roms/`
-- SDL2 video window mapping the VIC-II 504×312 frame buffer with
-  the standard C64 palette
-- SDL2 keyboard mapping to the CIA1 matrix
-- SDL2 audio out from SID (or silent stub if SID port is painful)
+- Real KERNAL/BASIC ROM loaded at startup from host-side `.mif` or
+  raw 16KB ROM input
+- SDL2 video window support in the host executable
+- Headless execution plus FST tracing
+- Accurate bank-$00 BRAM probing for screen RAM inspection
+
+**Implemented now:**
+- `sim/verilator_c64/Makefile`
+- `sim/verilator_c64/verilator_c64_top.vhd`
+- `sim/verilator_c64/host/main.cpp`
+- WSL2 Ubuntu toolchain install and working build
+- `make`, `make synth`, `make verilate`, `make run-headless`, `make run-sdl`
+- ROM streaming under reset
+- PRG injection (`--prg`)
+- BRAM screen dump from `$0400..$07E7`
+
+**Not implemented yet:**
+- real CIA/mos6526 integration (still stubbed)
+- real SID/audio pipeline (still stubbed/silent)
+- keyboard matrix injection from SDL
+- REU/cartridge/disk/tape integration
+- full-size SuperRAM/REU-scale SDRAM backing store
+- proof of BASIC `READY.` boot text on the desktop harness
 
 **Out of scope for MVP (add later if the core works):**
 - Disk drive (1541) emulation
@@ -85,13 +113,13 @@ The chain: `VHDL -> GHDL -> ghdl-yosys-plugin -> Yosys IR -> write_verilog -> Ve
 
 ### Required packages
 
-- **GHDL** ≥ 3.0 (already installed, used by `sim/p65c816_tb/`)
-- **Yosys** ≥ 0.30 with VHDL support
-- **ghdl-yosys-plugin** (built against the matching GHDL)
-- **Verilator** ≥ 5.0 (supports SystemVerilog well)
+Current working environment (verified in WSL2 Ubuntu on 2026-04-15):
+- **ghdl** + **ghdl-gcc**
+- **verilator**
 - **SDL2** dev headers
-- **C++17** compiler (clang or gcc)
-- **pkg-config**, **make**, **cmake** (for the host glue code)
+- **C++17** compiler (g++)
+- **pkg-config**, **make**
+- optional: **yosys** + **yosys-plugin-ghdl** for experimentation
 
 ### Install notes (Windows)
 
@@ -145,64 +173,51 @@ each iteration:
 
 ## Step-by-step implementation
 
-### Step 1 — Toolchain proof (1–2 hours)
+### Step 1 — Toolchain proof (completed)
 
-Install GHDL, Yosys + plugin, Verilator. Verify with a trivial test:
-take `sim/p65c816_tb/p65c816_tb.vhd` or similar, compile to Verilog
-via Yosys, then Verilate and run. This proves the toolchain is
-functional before we invest in the C64 top.
+WSL2 Ubuntu toolchain was installed and verified. The Yosys plugin loads,
+but the actual C64 design hits a plugin-side failure later in import.
+The harness therefore uses the GHDL synthesis path instead.
 
-### Step 2 — Verilator-analyze the real DUT (2–4 hours)
+### Step 2 — Synthesize the reduced wrapper to Verilog (completed, revised)
 
-Write the `flow/vhdl_to_verilog.ys` Yosys script:
+Instead of the original Yosys script path, the working flow now runs:
 
-```
-plugin -i ghdl
-ghdl --std=08 --ieee=synopsys -frelaxed \
-  C64_MiSTer/rtl/... ... fpga64_sid_iec.vhd -e fpga64_sid_iec
-write_verilog sim/verilator_c64/flow/fpga64_sid_iec.v
+```bash
+GHDL_BACKEND=gcc ghdl --synth --out=verilog --std=08 --ieee=synopsys -frelaxed ... -e verilator_c64_top
 ```
 
-Expected issues:
-- Same GHDL `--std=08` gotchas as the existing harness:
-  `fpga64_rgbcolor.vhd`, `cpu_6510.vhd`, `turbo_speed` case,
-  `preCycle` bounds. Reuse the same `build_staging/` patches.
-- Mixed-language instantiation: when `fpga64_sid_iec.vhd`
-  instantiates Verilog children (`mos6526.v`, `sid_top.sv`,
-  `reu.v`, `sdram.v`, `cartridge.v`), Yosys + ghdl plugin need
-  those sources added to the same session so elaboration binds.
-- `sys/*` dependencies: Yosys does not need the MiSTer framework,
-  we stub it at the harness level.
+Key implementation notes:
+- The staging patches from `sim/c64_reduced_harness/run_harness_v2.sh`
+  are still required and are applied by `sim/verilator_c64/flow/prepare_staging.sh`
+- CIA and SID remain stubbed in the current desktop MVP
+- Generated block comments are stripped before invoking Verilator,
+  because Verilator mistakes some GHDL-emitted comments for meta-comments
 
-### Step 3 — Verilate + link (4–8 hours)
+### Step 3 — Verilate + link (completed, revised)
 
-Run Verilator on the emitted `fpga64_sid_iec.v` with the DPI
-flag off, `-Wno-fatal`, `--trace` optional for debugging:
+The current Makefile runs Verilator against the synthesized
+`flow/generated/verilator_c64_top.v` and `host/main.cpp`.
 
-```
-verilator --cc --build -j 0 \
-  -Ifpga64_sid_iec.v \
-  --top-module fpga64_sid_iec \
-  host/main.cpp host/vic_display.cpp ...
-```
+Additional compatibility fixes that were required:
+- force Verilog-2001 parsing with `--language 1364-2001`
+  because GHDL emits identifiers such as `do`
+- strip GHDL source-location block comments before Verilator parsing
+- keep the current host as a single-file MVP (`host/main.cpp`)
+  rather than the more modular host layout proposed originally
 
-Expected issues:
-- `initial` blocks in Verilog children may not match Verilator's
-  expectations — fix with explicit resets
-- `logic` / `var` style differences between the ghdl-emitted Verilog
-  and the existing `mos6526.v` — resolve by normalizing to one
-  dialect
-- Unused clock / reset signals: stub in the host wrapper
+### Step 4 — Minimal boot (in progress)
 
-### Step 4 — Minimal boot (2–4 hours)
+Current state:
+- the binary builds and runs in WSL2
+- ROM bytes are streamed while reset is held active
+- CPU debug output advances into KERNAL code (`pc=$fd74`, `pc=$fd78` seen)
+- the harness can dump true bank-$00 BRAM screen RAM via a dedicated
+  BRAM probe path
 
-Goal: start the Verilated binary, load real ROMs, let the CPU come
-out of reset and boot to the READY prompt. Success criterion:
-capture the VIC-II frame buffer after ~500k cycles and check the
-expected KERNAL welcome text at $0400.
-
-This milestone is equivalent to Phase 4b's Scenario A but running
-thousands of times faster.
+Still missing for this milestone:
+- a confirmed BASIC `READY.` screen in the desktop harness
+- enough run fidelity/time to demonstrate stable boot text in screen RAM
 
 ### Step 5 — SDL frontend (4–8 hours)
 
@@ -280,17 +295,24 @@ problem, not a semantic one.
 
 ## Validation checklist
 
-MVP complete when:
+Current validation status (2026-04-15):
 
-- [ ] `make` in `sim/verilator_c64/` produces a native binary
-- [ ] Binary boots to the C64 READY prompt within 10 seconds
-  wallclock
+- [x] `make` in `sim/verilator_c64/` produces a native binary in WSL2
+- [ ] Binary boots to the C64 READY prompt within 10 seconds wallclock
 - [ ] Keyboard input echoes to the text screen
 - [ ] Audio output is audible (even if imperfect)
 - [ ] `--prg asterix.prg` loads and runs the game
-- [ ] `--prg test_addr0801.prg` round-trips cleanly (catches the
-  meminit regression class)
-- [ ] A differential run against a vanilla MiSTer C64 Verilator
-  build (if ever produced) diffs only on expected SuperCPU
-  registers
+- [x] `--prg test_addr0801.prg` path is wired and runs through the harness
+- [ ] `test_addr0801.prg` round-trips with a dedicated semantic check
+- [ ] A differential run against a vanilla MiSTer C64 Verilator build diffs only on expected SuperCPU registers
 - [ ] Wallclock performance ≥ 30% real-time on a modern laptop
+
+Practical MVP features currently available:
+- working WSL2 build flow
+- host-side ROM streaming from `.mif` or raw 16KB ROM blob
+- host-side PRG injection via ioctl-style path
+- headless execution
+- optional SDL2 video window
+- FST tracing
+- CPU debug logging
+- accurate bank-$00 BRAM screen probing
