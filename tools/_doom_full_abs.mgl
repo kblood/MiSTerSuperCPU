@@ -1,0 +1,5 @@
+<mistergamedescription>
+  <rbf>_Test/C64</rbf>
+  <file delay="3" type="f" index="1" path="/media/fat/games/C64/doom.reu"/>
+  <file delay="15" type="f" index="1" path="/media/fat/games/C64/doom_loader.prg"/>
+</mistergamedescription>
