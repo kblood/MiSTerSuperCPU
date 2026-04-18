@@ -118,7 +118,7 @@ Assembles SEI; CLC; XCE; JML $20:0000 at $C000.
 - Check VIC-II timing is not affected (demo compatibility)
 
 ## Verilator / Desktop Simulation Build Policy
-- SuperCPU-fork harness (`sim/verilator_c64/`) was **SHELVED 2026-04-18** and removed from the tree. See `docs/verilator_desktop_harness_plan.md` for why and for revival criteria. Do NOT recreate it on impulse; it only comes back if a bug survives >1 week of hardware + GHDL-bench debugging.
+- SuperCPU-fork harness (`sim/verilator_c64/`) was **SHELVED 2026-04-18** and removed from `master`. Preserved on branch `shelved/verilator-superfork` (tip `56756b6`) — check out or cherry-pick, do not rebuild from scratch. See `docs/verilator_desktop_harness_plan.md` for why and for revival criteria. Do NOT recreate it on impulse; it only comes back if a bug survives >1 week of hardware + GHDL-bench debugging.
 - Vanilla reference harness (`sim/verilator_c64_vanilla/`) is retained for possible differential testing. Builds there are still heavy CPU-bound jobs.
 - Prefer **incremental rebuilds**; do not `clean` unless necessary
 - Reuse existing `obj_dir/` outputs when only running/debugging the executable

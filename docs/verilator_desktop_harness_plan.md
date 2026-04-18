@@ -1,10 +1,14 @@
 # Verilator Desktop Harness Plan
 
 Status: **SHELVED 2026-04-18.** The SuperCPU-fork harness
-(`sim/verilator_c64/`) was deleted in this revision. The vanilla
-comparison harness (`sim/verilator_c64_vanilla/`) is retained as a
-reference — it boots to READY at ~4M half-cycles and can be revived
-if long-horizon differential testing becomes the critical path.
+(`sim/verilator_c64/`) was deleted from `master` in this revision
+but is preserved on the branch `shelved/verilator-superfork`
+(tip: commit `56756b6`). To revive, check out that branch or
+cherry-pick the commit — do not rebuild from memory. The vanilla
+comparison harness (`sim/verilator_c64_vanilla/`) is retained on
+`master` as a reference — it boots to READY at ~4M half-cycles and
+can be revived if long-horizon differential testing becomes the
+critical path.
 
 Why shelved (retrospective after ~3 days of work):
 - The SuperCPU-fork harness never produced a linked binary and
