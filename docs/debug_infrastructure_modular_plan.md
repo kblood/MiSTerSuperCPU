@@ -1,12 +1,73 @@
 # Debug Infrastructure Modularization Plan
 
-Status: IMPLEMENTED (2026-04-15) — pending merge from worktree
+Status: MODULAR SPLIT IMPLEMENTED (2026-04-18) on branch
+`feature/modular-debug-gates`. The single `DEBUG_ENABLE` gate from the
+2026-04-15 pass has been split into four independent per-category gates so
+specific debug toolkits can be enabled in isolation and the rest compile
+out. The master toggle is retained for backwards compatibility.
+
+## Macros (Verilog) / generics (VHDL)
+
+Set any of the per-category macros in `C64.qsf` (via
+`set_global_assignment -name VERILOG_MACRO "DBG_XXX=1"`) or via the
+`build_c64.ps1` flags below. Any subset may be defined.
+
+- `DBG_TRACE`       -- 128-entry crash trace ring buffer + bug_page view +
+                       $DF20-$DFA0 / $DFC9-$DFE8 read mux + BRK/$0801 wipe
+                       triggers. VHDL side: `DBG_TRACE` generic on
+                       `fpga64_sid_iec` (`gen_trace_debug`).
+- `DBG_UART`        -- `debug_uart_fmt` formatter + UART_TXD override.
+- `DBG_OVERLAY`     -- Video debug overlay module.
+- `DBG_BUS_CAPTURE` -- CIA1 / VIC / $0801 / screen-write / SuperRAM-read
+                       capture processes + their diagnostic mux reads.
+                       VHDL side: `DBG_BUS_CAPTURE` generic
+                       (`gen_srr_debug`, `gen_cia1_dbg_debug`,
+                       `gen_scr_debug`, `gen_0801_trap_debug`,
+                       `gen_vic_debug`).
+
+Master toggle `DEBUG_ENABLE` (set in the committed QSF by default): if
+defined, implies ALL four sub-gates are defined. Release builds set
+`DEBUG_RELEASE=1` (which suppresses the `ifndef`-default for
+`DEBUG_ENABLE` in `c64.sv`) and leave every sub-gate undefined, so all
+debug RTL compiles out.
+
+`DBG_TRACE` and `DBG_BUS_CAPTURE` are also passed to `fpga64_sid_iec` as
+integer generics via shadow localparams (`DBG_TRACE_PARAM` /
+`DBG_BUS_CAPTURE_PARAM`) on the instance. Half-gated (SV macro on, VHDL
+generic off, or vice versa) will dangle signal references -- keep the
+two sides in sync.
+
+## build_c64.ps1 flags
+
+- `-Debug`            : full debug (all four categories on). Default.
+- `-Release`          : emit `DEBUG_RELEASE=1`, all four off.
+- `-DbgTrace` / `-NoDbgTrace`         : include / exclude DBG_TRACE.
+- `-DbgUart`  / `-NoDbgUart`          : include / exclude DBG_UART.
+- `-DbgOverlay` / `-NoDbgOverlay`     : include / exclude DBG_OVERLAY.
+- `-DbgBusCapture` / `-NoDbgBusCapture` : include / exclude DBG_BUS_CAPTURE.
+
+Narrow build: if any `-Dbg*` / `-NoDbg*` flag is given without `-Debug`
+or `-Release`, the build starts from "nothing defined" and adds only the
+requested categories. With `-Debug`, starts from all-on and
+`-NoDbg*` subtracts.
+
+Original `DEBUG_ENABLE` 2026-04-15 context (preserved below for
+reference): expected payoff ~1,500-2,500 ALMs recovered, clk32 setup
+slack returns from -0.865 ns back to comfortably positive (+0.5 to
++1 ns), same functional behavior for gameplay. The modular split lets
+us validate each category's cost/benefit independently.
+
+---
+
+# Original single-toggle plan (2026-04-15, superseded by modular split)
+
+Status: IMPLEMENTED (2026-04-15) -- pending merge from worktree
 `.claude/worktrees/agent-aa69502c` (branch `worktree-agent-aa69502c`) and
 Quartus `-Release` build validation. See "Implementation notes" at the
 bottom of this file for what was actually wrapped and what wasn't.
 Owner: subagent run 2026-04-15 (aa69502c).
 Goal: Wrap all debug-only RTL behind a single `DEBUG_ENABLE` toggle so a
-release build synthesizes it away. Expected payoff: ~1,500–2,500 ALMs
+release build synthesizes it away. Expected payoff: ~1,500-2,500 ALMs
 recovered, clk32 setup slack returns from -0.865 ns back to comfortably
 positive (+0.5 to +1 ns), same functional behavior for gameplay.
 
