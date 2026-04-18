@@ -42,14 +42,26 @@ use IEEE.numeric_std.all;
 
 entity fpga64_sid_iec is
 generic(
-	-- Wraps all debug-only RTL (crash trace ring buffer, SuperRAM read-path
-	-- latches, $0801 wipe trigger, dbg_bug_buf packing) behind a single
-	-- compile-time gate. Matches the Verilog `DEBUG_ENABLE macro in c64.sv.
-	-- Release builds (DEBUG_ENABLE=false) tie all debug outputs to zero and
-	-- let synthesis remove the unused storage, recovering ~1.5-2.5k ALMs and
-	-- restoring positive clk32 setup slack. DO NOT use separate values on
-	-- the two sides — the build script keeps them in sync.
-	DEBUG_ENABLE : boolean := true
+	-- Modular debug category gates. 1 = include, 0 = compile out.
+	-- These map to Verilog macros DBG_TRACE / DBG_BUS_CAPTURE in c64.sv,
+	-- which passes them in via the instance parameter map (shadow
+	-- localparams DBG_TRACE_PARAM / DBG_BUS_CAPTURE_PARAM). Half-gated
+	-- (SV on, VHDL off) will dangle dbg_* port references. Keep the two
+	-- sides in sync.
+	--
+	-- DBG_TRACE       = 1 : enable 128-entry crash trace ring buffer +
+	--                       dbg_bug_buf packing (exposes via $DF20-$DFA0
+	--                       / $DFC9-$DFE8 in c64.sv). 0 ties dbg_bug_buf
+	--                       to zeros and removes the bug_* storage.
+	-- DBG_BUS_CAPTURE = 1 : enable CIA1/VIC/$0801/screen-write/SuperRAM
+	--                       read capture processes. 0 ties all dbg_* port
+	--                       outputs to zero so synthesis removes them.
+	--
+	-- Release build: set both to 0 (recovers ~1.5-2.5k ALMs, restores
+	-- positive clk32 setup slack). See
+	-- docs/debug_infrastructure_modular_plan.md.
+	DBG_TRACE       : integer := 1;
+	DBG_BUS_CAPTURE : integer := 1
 );
 port(
 	clk32       : in  std_logic;
@@ -1869,8 +1881,8 @@ dbg_cpu_pbr  <= dbg_pbr_816 when supercpu_en = '1' else x"00";
 dbg_cpu_dbr  <= dbg_dbr_816 when supercpu_en = '1' else x"00";
 
 -- SuperRAM read-path diagnostics exposed to c64.sv
--- DEBUG_ENABLE=false ties them to zero; synthesis removes the latch process.
-gen_srr_debug: if DEBUG_ENABLE generate
+-- DBG_BUS_CAPTURE=0 ties them to zero; synthesis removes the latch process.
+gen_srr_debug: if DBG_BUS_CAPTURE = 1 generate
 	dbg_srr_count      <= dbg_srr_count_r;
 	dbg_srr_data       <= dbg_srr_data_r;
 	dbg_srr_addr_hi    <= dbg_srr_addr_hi_r;
@@ -1897,7 +1909,7 @@ gen_srr_debug: if DEBUG_ENABLE generate
 	end process;
 end generate;
 
-gen_srr_release: if not DEBUG_ENABLE generate
+gen_srr_release: if DBG_BUS_CAPTURE = 0 generate
 	dbg_srr_count      <= (others => '0');
 	dbg_srr_data       <= (others => '0');
 	dbg_srr_addr_hi    <= (others => '0');
@@ -1927,10 +1939,10 @@ end generate;
 -- unfreezes and rewinds the ring buffer so the post-load instruction stream
 -- can be captured fresh.
 --
--- DEBUG_ENABLE=false gates the process + packing out entirely and ties
+-- DBG_TRACE=0 gates the process + packing out entirely and ties
 -- dbg_bug_buf to zero. Trace signals (bug_*, trace_prev_*) remain declared
 -- at architecture scope but are undriven; the synthesizer removes them.
-gen_trace_debug: if DEBUG_ENABLE generate
+gen_trace_debug: if DBG_TRACE = 1 generate
 	process(clk32)
 	begin
 		if rising_edge(clk32) then
@@ -2026,7 +2038,7 @@ gen_trace_debug: if DEBUG_ENABLE generate
 	end generate;
 end generate;
 
-gen_trace_release: if not DEBUG_ENABLE generate
+gen_trace_release: if DBG_TRACE = 0 generate
 	-- Release build: no trace capture, no packing. Tie the wide output port
 	-- to zero so downstream logic has a stable constant driver; synthesis
 	-- removes the unused trace_* / bug_* storage.
@@ -2041,7 +2053,7 @@ dbg_native_irq_vec <= std_logic_vector(scpu_native_vec(13)) & std_logic_vector(s
 -- R (cia1_pb): cpuAddr(7:0) at the moment that highest bank was first entered.
 -- Interpretation: K:F8 R:FC = CPU successfully entered bank $F8 at $00FC (JML worked).
 --                 K:00 R:00 = CPU never left bank $00 (JML failed or wrong reset vector).
-gen_cia1_dbg_debug: if DEBUG_ENABLE generate
+gen_cia1_dbg_debug: if DBG_BUS_CAPTURE = 1 generate
 	process(clk32)
 	begin
 		if rising_edge(clk32) then
@@ -2060,14 +2072,14 @@ gen_cia1_dbg_debug: if DEBUG_ENABLE generate
 	dbg_cia1_pb <= dbg_cia1_pb_r;
 end generate;
 
-gen_cia1_dbg_release: if not DEBUG_ENABLE generate
+gen_cia1_dbg_release: if DBG_BUS_CAPTURE = 0 generate
 	dbg_cia1_pa <= (others => '0');
 	dbg_cia1_pb <= (others => '0');
 end generate;
 
 -- Screen-RAM write detector: latch addr/data/opcode/PC whenever CPU writes to $0400-$07FF.
 -- Used to distinguish CPU-driven screen updates from non-CPU (read-side/timing) artifacts.
-gen_scr_debug: if DEBUG_ENABLE generate
+gen_scr_debug: if DBG_BUS_CAPTURE = 1 generate
 	process(clk32)
 	begin
 		if rising_edge(clk32) then
@@ -2125,7 +2137,7 @@ gen_scr_debug: if DEBUG_ENABLE generate
 	dbg_scr_arm <= dbg_scr_wr_arm_r;
 end generate;
 
-gen_scr_release: if not DEBUG_ENABLE generate
+gen_scr_release: if DBG_BUS_CAPTURE = 0 generate
 	dbg_scr_wr_addr  <= (others => '0');
 	dbg_scr_wr_pc    <= (others => '0');
 	dbg_scr_wr_data  <= (others => '0');
@@ -2138,7 +2150,7 @@ end generate;
 -- $0801 write PC trap: captures PC/IR/data on every CPU write at $000801
 -- while dbg_0801_trap_en='1'. Lets us find which BASIC/KERNAL routine is
 -- wiping our PRG byte after an ioctl PRG load.
-gen_0801_trap_debug: if DEBUG_ENABLE generate
+gen_0801_trap_debug: if DBG_BUS_CAPTURE = 1 generate
 	process(clk32)
 	begin
 		if rising_edge(clk32) then
@@ -2165,7 +2177,7 @@ gen_0801_trap_debug: if DEBUG_ENABLE generate
 	dbg_0801_cnt      <= dbg_0801_cnt_r;
 end generate;
 
-gen_0801_trap_release: if not DEBUG_ENABLE generate
+gen_0801_trap_release: if DBG_BUS_CAPTURE = 0 generate
 	dbg_0801_pc       <= (others => '0');
 	dbg_0801_ir       <= (others => '0');
 	dbg_0801_data_out <= (others => '0');
@@ -2188,7 +2200,7 @@ end generate;
 --   (14)    = aec at VIC2 (should be '1')
 --   (13:8)  = vicDi(5 downto 0) at VIC2 (c-access data from SDRAM)
 --   (7:0)   = systemAddr(7 downto 0) at CPUC (verify SDRAM got correct addr)
-gen_vic_debug: if DEBUG_ENABLE generate
+gen_vic_debug: if DBG_BUS_CAPTURE = 1 generate
 process(clk32)
 begin
 	if rising_edge(clk32) then
@@ -2325,7 +2337,7 @@ dbg_vic_cpue_hold_zero_cnt <= dbg_vic_cpue_hold_zero_cnt_r;
 dbg_vic_cpue_mismatch_cnt <= dbg_vic_cpue_mismatch_cnt_r;
 end generate;
 
-gen_vic_release: if not DEBUG_ENABLE generate
+gen_vic_release: if DBG_BUS_CAPTURE = 0 generate
 	dbg_vic_zero_hit  <= '0';
 	dbg_vic_zero_addr <= (others => '0');
 	dbg_vic_zero_cpu  <= (others => '0');

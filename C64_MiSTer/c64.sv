@@ -24,19 +24,48 @@
 //============================================================================
 
 // ---------------------------------------------------------------------------
-// DEBUG_ENABLE compile-time gate.
-// Default: debug build (all instrumentation active). The build script
-// (build_c64.ps1 -Release / -Debug) injects `DEBUG_ENABLE=1` as a Verilog
-// macro via the QSF; `ifndef` guards this so a manual `define` in the QSF
-// always wins. If neither is set (e.g. standalone analysis), this `define
-// keeps the debug build active so existing workflows keep working.
+// Debug gating: modular compile-time categories. See
+// docs/debug_infrastructure_modular_plan.md for rationale.
 //
-// IMPORTANT: this macro and the VHDL `DEBUG_ENABLE` generic on
-// fpga64_sid_iec MUST stay in sync. The build script patches both from the
-// same source. Half-gated = phantom signals in the release build.
+// Individual gates (define any subset from the QSF):
+//   DBG_TRACE         -- 128-entry crash trace ring buffer + $DF20-$DFA0
+//                        / $DFC9-$DFE8 read mux + bug_page view +
+//                        BRK/0801 wipe triggers
+//   DBG_UART          -- debug_uart_fmt formatter + UART_TXD override
+//   DBG_OVERLAY       -- video debug overlay module
+//   DBG_BUS_CAPTURE   -- CIA1/VIC/$0801/screen-write/SuperRAM-read capture
+//                        processes + their diagnostic register mux reads
+//
+// Master toggle:
+//   DEBUG_ENABLE  -- if defined (the default), implies all of the above.
+//                    Release builds leave DEBUG_ENABLE AND all per-category
+//                    macros undefined (equivalently, define DEBUG_RELEASE=1)
+//                    so everything compiles out.
+//
+// IMPORTANT: DBG_TRACE and DBG_BUS_CAPTURE are also passed to
+// fpga64_sid_iec as integer generics (see the instance parameter map
+// later in this file). Half-gated (SV on, VHDL off) will dangle signal
+// references. Keep the two sides in sync.
 // ---------------------------------------------------------------------------
 `ifndef DEBUG_ENABLE
-`define DEBUG_ENABLE 1
+  `ifndef DEBUG_RELEASE
+    `define DEBUG_ENABLE 1
+  `endif
+`endif
+
+`ifdef DEBUG_ENABLE
+  `ifndef DBG_TRACE
+    `define DBG_TRACE 1
+  `endif
+  `ifndef DBG_UART
+    `define DBG_UART 1
+  `endif
+  `ifndef DBG_OVERLAY
+    `define DBG_OVERLAY 1
+  `endif
+  `ifndef DBG_BUS_CAPTURE
+    `define DBG_BUS_CAPTURE 1
+  `endif
 `endif
 
 module emu
@@ -769,10 +798,10 @@ wire  [7:0] reu_reg_last_dout;
 // CPU writes the desired page (0..3) to $DF1F. Writes to $DF1F pass
 // through reu.v's falling-edge cs but $1F is outside reu.v's register
 // range (0..10) so reu.v ignores it.
-// DEBUG_ENABLE=0 gates this entire paged-view block out. The mux cases that
-// reference trace_entry_view / trace_p_view are also in the same `ifdef, so
+// DBG_TRACE=0 gates this entire paged-view block out. The mux cases that
+// reference trace_entry_view / trace_p_view are also under DBG_TRACE, so
 // no orphan references remain.
-`ifdef DEBUG_ENABLE
+`ifdef DBG_TRACE
 reg [1:0] bug_page;
 initial bug_page = 2'b00;
 always @(posedge clk_sys) begin
@@ -811,7 +840,7 @@ always @(*) begin
 		endcase
 	end
 end
-`endif // DEBUG_ENABLE
+`endif // DBG_TRACE
 
 reg [7:0] reu_reg_mux;
 always @(*) begin
@@ -825,7 +854,7 @@ always @(*) begin
 		6:  reu_reg_mux = reu_reg_addr_ram[23:16];
 		7:  reu_reg_mux = reu_reg_length[7:0];
 		8:  reu_reg_mux = reu_reg_length[15:8];
-`ifdef DEBUG_ENABLE
+`ifdef DBG_BUS_CAPTURE
 		// Diagnostic: ioctl transfer stats
 		9:  reu_reg_mux = reu_ioctl_cnt[7:0];   // $DF09: ioctl byte count low
 		10: reu_reg_mux = reu_ioctl_cnt[15:8];  // $DF0A: ioctl byte count mid
@@ -859,6 +888,8 @@ always @(*) begin
 		//   (current page, select page via write to $DF1F)
 		// $DFC9..$DFE8: 32 P bytes for the current page
 		// 128 entries total → 4 pages. Write 0/1/2/3 to $DF1F to pick.
+`endif // DBG_BUS_CAPTURE
+`ifdef DBG_TRACE
 		32: reu_reg_mux = dbg_bug_buf[7:0];  // $DF20 status
 		// Entry  0: $DF21..$DF24
 		33:  reu_reg_mux = trace_entry_view[ 0][ 7: 0];
@@ -989,6 +1020,8 @@ always @(*) begin
 		158: reu_reg_mux = trace_entry_view[31][15: 8];
 		159: reu_reg_mux = trace_entry_view[31][23:16];
 		160: reu_reg_mux = trace_entry_view[31][31:24];
+`endif // DBG_TRACE
+`ifdef DBG_BUS_CAPTURE
 		// REU FETCH diagnostics (loader.prg debugging)
 		161: reu_reg_mux = reu_reg_cmd_count[7:0];        // $DFA1
 		162: reu_reg_mux = reu_reg_cmd_count[15:8];       // $DFA2
@@ -1034,7 +1067,9 @@ always @(*) begin
 		198: reu_reg_mux = dbg_iof_we_at_raw_rise_cnt[7:0];  // $DFC6 iof_we_latched=1 at cs rise
 		199: reu_reg_mux = dbg_iof_we_at_raw_rise_cnt[15:8]; // $DFC7
 		200: reu_reg_mux = {7'b0, dbg_iof_we_at_raw_rise};   // $DFC8 sticky last value
-		// Crash trace ring buffer — P byte region for current page ($DFC9..$DFE8)
+`endif // DBG_BUS_CAPTURE
+`ifdef DBG_TRACE
+		// Crash trace ring buffer -- P byte region for current page ($DFC9..$DFE8)
 		201: reu_reg_mux = trace_p_view[ 0];  // $DFC9
 		202: reu_reg_mux = trace_p_view[ 1];
 		203: reu_reg_mux = trace_p_view[ 2];
@@ -1067,6 +1102,8 @@ always @(*) begin
 		230: reu_reg_mux = trace_p_view[29];
 		231: reu_reg_mux = trace_p_view[30];
 		232: reu_reg_mux = trace_p_view[31];  // $DFE8
+`endif // DBG_TRACE
+`ifdef DBG_BUS_CAPTURE
 		// SuperRAM read-path diagnostics (see fpga64_sid_iec.vhd dbg_srr_* latches)
 		233: reu_reg_mux = dbg_srr_count[7:0];   // $DFE9 total SuperRAM reads lo
 		234: reu_reg_mux = dbg_srr_count[15:8];  // $DFEA total SuperRAM reads hi
@@ -1093,7 +1130,7 @@ always @(*) begin
 		253: reu_reg_mux = dbg_wr1_addr_hi;       // $DFFD first write addr hi
 		254: reu_reg_mux = dbg_inj_fall_cnt;      // $DFFE inj_meminit falling edges
 		255: reu_reg_mux = dbg_strk_cnt;          // $DFFF start_strk pulses (RUN-type-ahead fires)
-`endif // DEBUG_ENABLE
+`endif // DBG_BUS_CAPTURE
 		default: reu_reg_mux = 8'hFF;
 	endcase
 end
@@ -1927,7 +1964,24 @@ wire  [7:0] dbg_srr_cache_bank;
 wire  [7:0] dbg_srr_addr_lo;
 wire  [7:0] dbg_srr_addr_mid;
 
-fpga64_sid_iec fpga64
+// Shadow parameters: Verilog macros -> integer generics for VHDL passing.
+// fpga64_sid_iec.vhd has matching DBG_TRACE / DBG_BUS_CAPTURE integer
+// generics; keep these in sync (half-gated = dangling signals).
+`ifdef DBG_TRACE
+  localparam DBG_TRACE_PARAM = 1;
+`else
+  localparam DBG_TRACE_PARAM = 0;
+`endif
+`ifdef DBG_BUS_CAPTURE
+  localparam DBG_BUS_CAPTURE_PARAM = 1;
+`else
+  localparam DBG_BUS_CAPTURE_PARAM = 0;
+`endif
+
+fpga64_sid_iec #(
+	.DBG_TRACE       (DBG_TRACE_PARAM),
+	.DBG_BUS_CAPTURE (DBG_BUS_CAPTURE_PARAM)
+) fpga64
 (
 	.clk32(clk_sys),
 	.reset_n(reset_n),
@@ -2391,13 +2445,13 @@ end
 assign HDMI_FREEZE = freeze;
 
 // Debug overlay: renders CPU state as hex in top border.
-// DEBUG_ENABLE=0 removes the overlay module + all its `dbg_*` readers.
+// DBG_OVERLAY=0 removes the overlay module + all its `dbg_*` readers.
 // In release mode ovl_active is tied to 0 so the video mixer bypasses the
 // overlay entirely, and the r/g/b channels pass through unchanged.
 wire       ovl_active;
 wire [7:0] ovl_r, ovl_g, ovl_b;
 
-`ifdef DEBUG_ENABLE
+`ifdef DBG_OVERLAY
 debug_overlay debug_ovl
 (
 	.clk(clk_sys),
@@ -2445,7 +2499,7 @@ debug_overlay debug_ovl
 	.overlay_b(ovl_b)
 );
 `else
-// Release: overlay disabled, video passthrough.
+// DBG_OVERLAY=0: overlay disabled, video passthrough.
 assign ovl_active = 1'b0;
 assign ovl_r      = 8'h00;
 assign ovl_g      = 8'h00;
@@ -2457,7 +2511,7 @@ wire [7:0] g_ovl = ovl_active ? ovl_g : g;
 wire [7:0] b_ovl = ovl_active ? ovl_b : b;
 
 // Debug UART: streams CPU state as ASCII hex lines at each vblank.
-// DEBUG_ENABLE=0 removes the formatter + serializer; UART_TXD keeps the
+// DBG_UART=0 removes the formatter + serializer; UART_TXD keeps the
 // existing functional UART path (the UART override block below is also
 // guarded so it can't force dbg_uart_tx).
 wire       dbg_uart_tx;
@@ -2465,7 +2519,7 @@ wire       dbg_uart_busy;
 wire [7:0] dbg_uart_data;
 wire       dbg_uart_send;
 
-`ifdef DEBUG_ENABLE
+`ifdef DBG_UART
 debug_uart_fmt debug_fmt
 (
 	.clk(clk_sys),
@@ -2509,7 +2563,7 @@ debug_uart_tx #(.CLK_FREQ(32000000), .BAUD(115200)) debug_tx
 	.busy(dbg_uart_busy)
 );
 `else
-// Release: debug UART disabled, tx held idle-high (TTL serial idle state).
+// DBG_UART=0: debug UART disabled, tx held idle-high (TTL serial idle state).
 assign dbg_uart_tx   = 1'b1;
 assign dbg_uart_busy = 1'b0;
 assign dbg_uart_data = 8'h00;
@@ -2804,7 +2858,7 @@ always_comb begin
 		pb_i[5:0] = {!joyD_c64[6:4], !joyC_c64[6:4], pb_o[7] ? ~joyC_c64[3:0] : ~joyD_c64[3:0]};
 	end
 
-`ifdef DEBUG_ENABLE
+`ifdef DBG_UART
 	// Debug UART override: when enabled, takes over UART_TXD for debug output
 	if (dbg_uart_en) begin
 		UART_TXD = dbg_uart_tx;
