@@ -1,18 +1,47 @@
 # Verilator Desktop Harness Plan
 
-Status: PARTIALLY IMPLEMENTED (2026-04-15).
-Goal: Run the MiSTer C64 SuperCPU core on the developer PC as a
-desktop software emulator, compiled from the real RTL via a VHDL →
-Verilog → Verilator → C++ flow. The original plan targeted
-Yosys + GHDL-plugin (`VHDL -> Yosys IR -> Verilog`), but the working
-MVP path in this repo currently uses `ghdl --synth --out=verilog`
-with `GHDL_BACKEND=gcc`, followed by Verilator.
+Status: **SHELVED 2026-04-18.** The SuperCPU-fork harness
+(`sim/verilator_c64/`) was deleted in this revision. The vanilla
+comparison harness (`sim/verilator_c64_vanilla/`) is retained as a
+reference — it boots to READY at ~4M half-cycles and can be revived
+if long-horizon differential testing becomes the critical path.
 
-Current result: `sim/verilator_c64/` now builds and runs in WSL2
-Ubuntu, boots far enough for the CPU to execute KERNAL code, supports
-host-driven ROM streaming, host-driven PRG injection, optional SDL2
-video, FST tracing, and accurate bank-$00 BRAM screen probing.
-It is not yet a polished or real-time-playable desktop C64.
+Why shelved (retrospective after ~3 days of work):
+- The SuperCPU-fork harness never produced a linked binary and
+  therefore never caught a single fork bug. All post-plan fixes
+  (REU falling-edge, trace ring buffer 128, MGL PRG loading,
+  meminit pulse) came from hardware + UART + GHDL benches.
+- The current critical-path bugs (Doom X-flag, bank-$2D, REU +
+  SuperRAM interactions) require REU, 16 MB SDRAM, and real CIA
+  timing — none of which are in the harness. Adding them was
+  another days-to-weeks of work with no guarantee of payback.
+- Build cost (heavy, CPU-bound, regenerates on wrapper/RTL edits)
+  undercut the "fast iteration" premise the plan was built on.
+  A MiSTer deploy + UART round-trip is ~2 min, comparable to an
+  incremental Verilator rebuild once the wrapper changes.
+
+Previous goal (kept for historical reference): run the MiSTer C64
+SuperCPU core on the developer PC as a desktop software emulator,
+compiled from the real RTL via a VHDL → Verilog → Verilator → C++
+flow. The original plan targeted Yosys + GHDL-plugin; the working
+MVP path used `ghdl --synth --out=verilog` with `GHDL_BACKEND=gcc`,
+followed by Verilator.
+
+What survived: `sim/verilator_c64_vanilla/` with simulation-only
+power-up RAM init modes (`off`, `zero`, `vice`), reset-hold until
+prefill completes, and screenshot/text-screen PPM export. It is
+not a polished or real-time-playable desktop C64.
+
+Build policy note (still applies to the vanilla harness): full
+Verilator builds are heavy, CPU-bound jobs. Rebuild only when the
+harness is actually being used, and prefer incremental over clean
+rebuilds.
+
+Revival criteria (if this ever comes back): a SuperCPU-fork bug
+survives >1 week of hardware + GHDL-bench debugging, OR
+differential vanilla-vs-fork diffing becomes the cheapest path.
+At that point, budget it explicitly as a fixed-duration spike
+("one week, then kill or commit") rather than open-ended work.
 
 ## Why this would be valuable
 
@@ -85,14 +114,17 @@ Current working chain: `VHDL -> GHDL synth -> Verilog -> Verilator -> C++`.
 - `sim/verilator_c64/Makefile`
 - `sim/verilator_c64/verilator_c64_top.vhd`
 - `sim/verilator_c64/host/main.cpp`
+- `sim/verilator_c64_vanilla/` comparison harness with real T65 path
 - WSL2 Ubuntu toolchain install and working build
 - `make`, `make synth`, `make verilate`, `make run-headless`, `make run-sdl`
 - ROM streaming under reset
 - PRG injection (`--prg`)
 - BRAM screen dump from `$0400..$07E7`
+- vanilla-harness power-up RAM init modes (`--powerup-init off|zero|vice`)
+- wrapper-level reset-vs-powerup split: internal reset stays asserted until RAM prefill completes
 
 **Not implemented yet:**
-- real CIA/mos6526 integration (still stubbed)
+- real CIA/mos6526 integration in the SuperCPU harness (the vanilla harness now swaps in real CIA RTL post-synth)
 - real SID/audio pipeline (still stubbed/silent)
 - keyboard matrix injection from SDL
 - REU/cartridge/disk/tape integration
@@ -209,15 +241,23 @@ Additional compatibility fixes that were required:
 ### Step 4 — Minimal boot (in progress)
 
 Current state:
-- the binary builds and runs in WSL2
+- the binaries build and run in WSL2
 - ROM bytes are streamed while reset is held active
+- the vanilla harness now performs an optional simulation-only bank-$00 RAM prefill before releasing internal reset
 - CPU debug output advances into KERNAL code (`pc=$fd74`, `pc=$fd78` seen)
 - the harness can dump true bank-$00 BRAM screen RAM via a dedicated
   BRAM probe path
 
+Latest result on the vanilla harness after adding VICE-style deterministic RAM init:
+- bank-$00 screen RAM is no longer forced to all-zero when `--powerup-init vice` is used
+- longer inspection showed the machine is still in the KERNAL cold-start RAM test during the previously-reported 180k/300k runs; zero-page `$C2` advances page-by-page exactly as expected for the ROM RAM-test loop at `$FD50-$FD8D`
+- therefore, those short runs were **not long enough** to judge whether BASIC boot succeeds; lack of `READY.` there was primarily a run-length / performance issue, not yet proof of a new logic blocker
+- transient screen changes during these runs are from the RAM test touching `$0400` page contents, not from real screen editor initialization
+
 Still missing for this milestone:
 - a confirmed BASIC `READY.` screen in the desktop harness
-- enough run fidelity/time to demonstrate stable boot text in screen RAM
+- enough simulated run length / execution speed to get through cold-start RAM test in practical wallclock time
+- stronger 6510 observability (the current vanilla debug address is a CPU bus address, not a true PC)
 
 ### Step 5 — SDL frontend (4–8 hours)
 

@@ -99,6 +99,10 @@ SYS49152
 ```
 Assembles SEI; CLC; XCE; JML $20:0000 at $C000.
 
+## Operator Preferences
+- The user prefers autonomous execution during debugging/implementation work: do not stop to ask for confirmation when there is a reasonable next step. Continue with the best next action, validate it, and document it.
+- Still surface major risks/assumptions in status updates, but default to action rather than asking what to do next.
+
 ## Code Conventions
 - VHDL signals: lowercase with underscores (e.g., cpu_data_out)
 - VHDL entities: PascalCase (e.g., T65, VIC_II)
@@ -112,6 +116,15 @@ Assembles SEI; CLC; XCE; JML $20:0000 at $C000.
 - Run Lorenz CPU test suite (all tests must pass for 6510 mode)
 - For 65C816: verify emulation mode boots normally, then test native mode
 - Check VIC-II timing is not affected (demo compatibility)
+
+## Verilator / Desktop Simulation Build Policy
+- SuperCPU-fork harness (`sim/verilator_c64/`) was **SHELVED 2026-04-18** and removed from the tree. See `docs/verilator_desktop_harness_plan.md` for why and for revival criteria. Do NOT recreate it on impulse; it only comes back if a bug survives >1 week of hardware + GHDL-bench debugging.
+- Vanilla reference harness (`sim/verilator_c64_vanilla/`) is retained for possible differential testing. Builds there are still heavy CPU-bound jobs.
+- Prefer **incremental rebuilds**; do not `clean` unless necessary
+- Reuse existing `obj_dir/` outputs when only running/debugging the executable
+- Before launching a heavy build, check whether the binary already exists and whether the edited files actually require regeneration
+- Default workflow if the vanilla harness is actually in use: edit -> rebuild -> run -> inspect -> document findings. Otherwise leave it alone.
+- **Primary debug loops**: GHDL benches (`sim/p65c816_tb/`, `sim/prg_loader_tb/`, `sim/c64_reduced_harness/`) for CPU-class bugs, and MiSTer hardware + UART for system-level bugs. These have produced every actual fix in the fork.
 
 ## Critical Constraints
 - FPGA resource budget: the Cyclone V is already ~72% utilized (30,300 ALMs)
