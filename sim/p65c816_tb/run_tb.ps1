@@ -50,7 +50,10 @@ $sources = @(
     (Join-Path $repoRoot 'C64_MiSTer\rtl\cpu_65c816.vhd'),
     (Join-Path $scriptDir 'p65c816_lda_long_tb.vhd'),
     (Join-Path $scriptDir 'cpu_65c816_lda_long_tb.vhd'),
-    (Join-Path $scriptDir 'p65c816_rep_tb.vhd')
+    (Join-Path $scriptDir 'p65c816_rep_tb.vhd'),
+    (Join-Path $scriptDir 'p65c816_native_switch_tb.vhd'),
+    (Join-Path $scriptDir 'cpu_65c816_native_switch_tb.vhd'),
+    (Join-Path $scriptDir 'p65c816_xflag_bank_transition_tb.vhd')
 )
 
 foreach ($s in $sources) {
@@ -79,6 +82,18 @@ try {
     Write-Host "==> Elaborate (REP bench)" -ForegroundColor Cyan
     & $ghdl -e @ghdlFlags p65c816_rep_tb
     if ($LASTEXITCODE -ne 0) { throw "ghdl -e (REP bench) failed" }
+
+    Write-Host "==> Elaborate (native-switch bare bench)" -ForegroundColor Cyan
+    & $ghdl -e @ghdlFlags p65c816_native_switch_tb
+    if ($LASTEXITCODE -ne 0) { throw "ghdl -e (native-switch bare bench) failed" }
+
+    Write-Host "==> Elaborate (native-switch wrapper bench)" -ForegroundColor Cyan
+    & $ghdl -e @ghdlFlags cpu_65c816_native_switch_tb
+    if ($LASTEXITCODE -ne 0) { throw "ghdl -e (native-switch wrapper bench) failed" }
+
+    Write-Host "==> Elaborate (xflag bank-transition bench)" -ForegroundColor Cyan
+    & $ghdl -e @ghdlFlags p65c816_xflag_bank_transition_tb
+    if ($LASTEXITCODE -ne 0) { throw "ghdl -e (xflag bank-transition bench) failed" }
 
     Write-Host "==> Run bare-core bench (stop-time=$StopTime)" -ForegroundColor Cyan
     $bareLogPath  = Join-Path $workDir $LogFile
@@ -116,14 +131,56 @@ try {
         Write-Warning "REP ghdl -r exited $rcRep"
     }
 
+    Write-Host "==> Run native-switch bare bench (stop-time=$StopTime)" -ForegroundColor Cyan
+    $nsBareLogPath  = Join-Path $workDir 'native_switch.log'
+    $nsBareWavePath = Join-Path $workDir 'native_switch.ghw'
+    & $ghdl -r @ghdlFlags p65c816_native_switch_tb `
+        --wave=$nsBareWavePath `
+        --stop-time=$StopTime `
+        2>&1 | Tee-Object -FilePath $nsBareLogPath
+    $rcNsBare = $LASTEXITCODE
+    if ($rcNsBare -ne 0) {
+        Write-Warning "native-switch bare ghdl -r exited $rcNsBare"
+    }
+
+    Write-Host "==> Run native-switch wrapper bench (stop-time=$StopTime)" -ForegroundColor Cyan
+    $nsWrapLogPath  = Join-Path $workDir 'native_switch_wrapper.log'
+    $nsWrapWavePath = Join-Path $workDir 'native_switch_wrapper.ghw'
+    & $ghdl -r @ghdlFlags cpu_65c816_native_switch_tb `
+        --wave=$nsWrapWavePath `
+        --stop-time=$StopTime `
+        2>&1 | Tee-Object -FilePath $nsWrapLogPath
+    $rcNsWrap = $LASTEXITCODE
+    if ($rcNsWrap -ne 0) {
+        Write-Warning "native-switch wrapper ghdl -r exited $rcNsWrap"
+    }
+
+    Write-Host "==> Run xflag bank-transition bench (stop-time=$StopTime)" -ForegroundColor Cyan
+    $xfLogPath  = Join-Path $workDir 'xflag_bank_transition.log'
+    $xfWavePath = Join-Path $workDir 'xflag_bank_transition.ghw'
+    & $ghdl -r @ghdlFlags p65c816_xflag_bank_transition_tb `
+        --wave=$xfWavePath `
+        --stop-time=$StopTime `
+        2>&1 | Tee-Object -FilePath $xfLogPath
+    $rcXflag = $LASTEXITCODE
+    if ($rcXflag -ne 0) {
+        Write-Warning "xflag bank-transition ghdl -r exited $rcXflag"
+    }
+
     Write-Host ""
-    Write-Host "bare-core log:  $bareLogPath"
-    Write-Host "bare-core wave: $bareWavePath"
-    Write-Host "wrapper   log:  $wrapLogPath"
-    Write-Host "wrapper   wave: $wrapWavePath"
-    Write-Host "REP       log:  $repLogPath"
-    Write-Host "REP       wave: $repWavePath"
-    if ($rcBare -ne 0 -or $rcWrap -ne 0 -or $rcRep -ne 0) { exit 1 } else { exit 0 }
+    Write-Host "bare-core log:           $bareLogPath"
+    Write-Host "bare-core wave:          $bareWavePath"
+    Write-Host "wrapper log:             $wrapLogPath"
+    Write-Host "wrapper wave:            $wrapWavePath"
+    Write-Host "REP log:                 $repLogPath"
+    Write-Host "REP wave:                $repWavePath"
+    Write-Host "native-switch bare log:  $nsBareLogPath"
+    Write-Host "native-switch bare wave: $nsBareWavePath"
+    Write-Host "native-switch wrap log:  $nsWrapLogPath"
+    Write-Host "native-switch wrap wave: $nsWrapWavePath"
+    Write-Host "xflag log:               $xfLogPath"
+    Write-Host "xflag wave:              $xfWavePath"
+    if ($rcBare -ne 0 -or $rcWrap -ne 0 -or $rcRep -ne 0 -or $rcNsBare -ne 0 -or $rcNsWrap -ne 0 -or $rcXflag -ne 0) { exit 1 } else { exit 0 }
 } finally {
     Pop-Location
 }
