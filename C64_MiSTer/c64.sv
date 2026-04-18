@@ -528,7 +528,52 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(1)) hps_io
 	.ioctl_wait(ioctl_req_wr|ioctl_req_rd|reset_wait)
 );
 
-wire reu_by_ext = (ioctl_file_ext == ".REU" || ioctl_file_ext == ".reu");
+// PRG vs REU classification for MGL-pipe index=1 loads.
+//
+// Background: MGL `<file index="1">` entries arrive with `ioctl_index == 1`
+// regardless of whether the file is a PRG or a .REU image. The only signal
+// that differentiates them is the file extension carried in `ioctl_file_ext`.
+//
+// Problem observed 2026-04-18: during a MGL PRG load on the SuperCPU fork,
+// `ioctl_file_ext` is ".REU" (stale or mid-update) AT the rising edge of
+// `ioctl_download`. The wire `reu_by_ext` is thus 1 when bytes start
+// arriving, so `load_prg` is 0 and `load_reu` is 0 (because ioctl_index
+// lags slightly and reads as 0 for a few cycles too). PRG bytes get
+// DROPPED on the floor → BASIC has no program → auto-RUN types R-U-N-Enter
+// at an empty $0801 with no visible effect.
+//
+// Fix (v2, 2026-04-18): Latch the classification at the FIRST ioctl_wr
+// pulse of the download. By the time the first data byte writes (hps_io
+// FIO_FILE_TX_DAT), both FIO_FILE_INFO and FIO_FILE_INDEX have been
+// transmitted and settled — the HPS protocol sequences INFO→INDEX→TX→DAT
+// strictly. Default: treat as PRG (reu_by_ext=0) until proven .REU.
+//
+// Clearing: on the FALLING edge of ioctl_download we reset the latches so
+// the next download starts fresh. We do NOT touch ioctl_file_ext itself
+// (it lives in sys/hps_io and we must not modify sys/).
+wire reu_by_ext_comb = (ioctl_file_ext == ".REU" || ioctl_file_ext == ".reu");
+reg  reu_by_ext_latched = 1'b0;
+reg  load_class_captured = 1'b0;  // '1' once we've captured the real class
+reg  old_download_for_ext = 1'b0;
+always @(posedge clk_sys) begin
+    old_download_for_ext <= ioctl_download;
+    // Capture at first ioctl_wr pulse of download — guaranteed after
+    // FIO_FILE_INFO in the HPS protocol stream, so ioctl_file_ext is
+    // definitively the current file's extension.
+    if (ioctl_download && ioctl_wr && !load_class_captured) begin
+        reu_by_ext_latched <= reu_by_ext_comb;
+        load_class_captured <= 1'b1;
+    end
+    // Reset at the end of the download.
+    if (old_download_for_ext & ~ioctl_download) begin
+        load_class_captured <= 1'b0;
+        reu_by_ext_latched <= 1'b0;
+    end
+end
+wire reu_by_ext = reu_by_ext_latched;
+// load_prg: valid during download once class is captured, or pre-capture
+// default (assume PRG for index=1 so rising-edge reset/header handler work).
+// Once class_captured, reu_by_ext is authoritative.
 wire load_prg   = ioctl_index == 'h01 && !reu_by_ext;
 wire load_crt   = ioctl_index == 'h41 || ioctl_index == 5;
 wire load_reu   = ioctl_index == 'h81                          // F1 pos2 (OSD file browser)
@@ -537,6 +582,28 @@ wire load_tap   = ioctl_index == 'hC1;
 wire load_flt   = ioctl_index == 7;
 wire load_rom   = ioctl_index == 8;
 wire load_c1581 = ioctl_index == 9;
+
+// Auto-run diagnostic counters (readable via $DF00 reg mux: $DFC0-$DFC7)
+reg  [7:0] dbg_any_dl_cnt       = 0;   // any ioctl_download rising edge
+reg  [7:0] dbg_idx_at_dl        = 0;   // ioctl_index value at rising edge
+reg [15:0] dbg_ext_at_dl_hi     = 0;   // ioctl_file_ext[31:16] at rising edge
+reg [15:0] dbg_ext_at_dl_lo     = 0;   // ioctl_file_ext[15:0]  at rising edge
+reg  [7:0] dbg_classify_cnt     = 0;   // class capture fires
+reg  [7:0] dbg_reu_by_ext_cap   = 0;   // {7'd0, reu_by_ext_comb at capture}
+reg  [7:0] dbg_idx_at_capture   = 0;   // ioctl_index value at class capture
+always @(posedge clk_sys) begin
+    if (~old_download_for_ext & ioctl_download) begin
+        dbg_any_dl_cnt   <= dbg_any_dl_cnt + 1'b1;
+        dbg_idx_at_dl    <= ioctl_index[7:0];
+        dbg_ext_at_dl_hi <= ioctl_file_ext[31:16];
+        dbg_ext_at_dl_lo <= ioctl_file_ext[15:0];
+    end
+    if (ioctl_download && ioctl_wr && !load_class_captured) begin
+        dbg_classify_cnt   <= dbg_classify_cnt + 1'b1;
+        dbg_reu_by_ext_cap <= {7'd0, reu_by_ext_comb};
+        dbg_idx_at_capture <= ioctl_index[7:0];
+    end
+end
 
 wire game;
 wire exrom;
@@ -1076,14 +1143,15 @@ always @(*) begin
 		238: reu_reg_mux = dbg_srr_addr_lo;      // $DFEE cpuAddr_pre[7:0]  at last read
 		239: reu_reg_mux = dbg_srr_addr_mid;     // $DFEF cpuAddr_pre[15:8] at last read
 		// PRG load diagnostics
-		240: reu_reg_mux = dbg_prg_dl_cnt;        // $DFF0 PRG download starts
+		240: reu_reg_mux = dbg_prg_dl_cnt;        // $DFF0 PRG download starts (load_prg rising)
 		241: reu_reg_mux = dbg_inj_rise_cnt;      // $DFF1 inj_meminit rising edges
-		242: reu_reg_mux = dbg_0801_pc[7:0];      // $DFF2 PC lo of last CPU write @ $0801
-		243: reu_reg_mux = dbg_0801_pc[15:8];     // $DFF3 PC hi
-		244: reu_reg_mux = dbg_0801_cnt_sv;       // $DFF4 CPU writes at $0801 (post-dl)
-		245: reu_reg_mux = dbg_0801_data_sv;      // $DFF5 last CPU-written byte at $0801
-		246: reu_reg_mux = dbg_sdram_0801_cnt;    // $DFF6 SDRAM-iface writes at $0801
-		247: reu_reg_mux = dbg_sdram_0801_data;   // $DFF7 last SDRAM-iface data at $0801
+		// Auto-RUN diagnostic set (added 2026-04-18 for MGL PRG auto-RUN debug)
+		242: reu_reg_mux = dbg_any_dl_cnt;        // $DFF2 ANY ioctl_download rising edges
+		243: reu_reg_mux = dbg_idx_at_dl;         // $DFF3 ioctl_index at rising edge of download
+		244: reu_reg_mux = dbg_classify_cnt;      // $DFF4 class capture firings
+		245: reu_reg_mux = {7'd0, dbg_reu_by_ext_cap[0]}; // $DFF5 reu_by_ext_comb captured value
+		246: reu_reg_mux = dbg_ext_at_dl_hi[15:8];// $DFF6 file_ext byte0 at dl edge ('.' if ".REU")
+		247: reu_reg_mux = dbg_ext_at_dl_hi[7:0]; // $DFF7 file_ext byte1 at dl edge ('R' if ".REU", 'P' if ".PRG")
 		// Per-PRG download trace (resets on PRG download rising edge)
 		248: reu_reg_mux = dbg_req_set_cnt[7:0];  // $DFF8 req_set_cnt lo
 		249: reu_reg_mux = dbg_req_set_cnt[15:8]; // $DFF9 req_set_cnt hi
