@@ -15,16 +15,35 @@
     Run analysis and elaboration only (no fitting/routing/bitstream).
 
 .PARAMETER Debug
-    Build with DEBUG_ENABLE=1 (all instrumentation active — crash trace ring
-    buffer, debug overlay, UART debug stream, REU/SuperRAM diagnostic counters).
-    This is the default and matches the committed source state.
+    Build with DEBUG_ENABLE=1 (all instrumentation active -- crash trace
+    ring buffer, debug overlay, UART debug stream, REU/SuperRAM diagnostic
+    counters). This is the default and matches the committed source state.
 
 .PARAMETER Release
-    Build with DEBUG_ENABLE=0. Gates out all debug-only RTL, recovering
-    ~1500-2500 ALMs and restoring positive clk32 setup slack. Use for timing
-    stress tests or a shipping core. Before invoking Quartus, this flag
-    patches the QSF VERILOG_MACRO and the VHDL DEBUG_ENABLE generic default
-    in fpga64_sid_iec.vhd; the originals are restored on exit via try/finally.
+    Build with DEBUG_RELEASE=1 and no per-category gates defined. Removes
+    all debug-only RTL, recovering ~1500-2500 ALMs and restoring positive
+    clk32 setup slack. Use for timing stress tests or a shipping core.
+    The QSF VERILOG_MACRO line is patched to "DEBUG_RELEASE=1" for the
+    build and restored on exit via try/finally.
+
+.PARAMETER DbgTrace / -NoDbgTrace
+    Include (or exclude) the 128-entry crash trace ring buffer + $DF20-$DFA0
+    / $DFC9-$DFE8 read mux + bug_page view + BRK/$0801 wipe triggers.
+
+.PARAMETER DbgUart / -NoDbgUart
+    Include (or exclude) the UART debug formatter + UART_TXD override.
+
+.PARAMETER DbgOverlay / -NoDbgOverlay
+    Include (or exclude) the video debug overlay module.
+
+.PARAMETER DbgBusCapture / -NoDbgBusCapture
+    Include (or exclude) the CIA1/VIC/$0801/screen-write/SuperRAM-read
+    capture processes + their diagnostic register mux reads.
+
+    Semantics: if any -Dbg* / -NoDbg* flag is given and neither -Debug
+    nor -Release is specified, the build starts from "nothing defined"
+    and adds only the requested categories. -Debug starts from all-on
+    and lets -NoDbg* subtract. -Release forces all off.
 
 .PARAMETER QuartusPath
     Override the Quartus install path inside WSL.
@@ -47,12 +66,15 @@
     Default path: C:\intelFPGA_lite\17.0\quartus\bin64 (or set $env:QUARTUS_WIN_BIN).
 
 .EXAMPLE
-    .\build_c64.ps1                       # debug build (default)
-    .\build_c64.ps1 -Release              # release build (DEBUG_ENABLE=0)
+    .\build_c64.ps1                       # debug build (default = all categories)
+    .\build_c64.ps1 -Release              # release build (all debug gated out)
     .\build_c64.ps1 -Clean
     .\build_c64.ps1 -SyntaxOnly
     .\build_c64.ps1 -Program              # build then auto-program via USB Blaster
     .\build_c64.ps1 -Release -Clean       # clean release build
+    .\build_c64.ps1 -DbgUart              # narrow: only UART + formatter active
+    .\build_c64.ps1 -DbgTrace -DbgUart    # narrow: trace buffer + UART only
+    .\build_c64.ps1 -Debug -NoDbgOverlay  # everything except the video overlay
     .\build_c64.ps1 -QuartusPath "/home/user/intelFPGA_lite/17.0/quartus/bin"
     .\build_c64.ps1 -UseWindowsQuartus
 #>
@@ -63,6 +85,16 @@ param(
     [switch]$Program,
     [switch]$Debug,
     [switch]$Release,
+    # Per-category modular debug gates (see c64.sv header + docs/
+    # debug_infrastructure_modular_plan.md).
+    [switch]$DbgTrace,
+    [switch]$NoDbgTrace,
+    [switch]$DbgUart,
+    [switch]$NoDbgUart,
+    [switch]$DbgOverlay,
+    [switch]$NoDbgOverlay,
+    [switch]$DbgBusCapture,
+    [switch]$NoDbgBusCapture,
     [string]$QuartusPath = "",
     [switch]$UseWindowsQuartus,
     [string]$QuartusWinBin = "",
@@ -74,20 +106,75 @@ $ProjectRoot = $PSScriptRoot
 $CoreDir = Join-Path $ProjectRoot "C64_MiSTer"
 $RepoUrl = "https://github.com/MiSTer-devel/C64_MiSTer.git"
 
-# --- DEBUG_ENABLE flavor selection ---
+# --- Debug flavor selection (modular per-category gates) ---
 if ($Debug -and $Release) {
     Write-Host "ERROR: -Debug and -Release are mutually exclusive." -ForegroundColor Red
     exit 1
 }
-# Default (neither specified) = debug. Preserves existing workflow.
-$DebugEnable = $true
-if ($Release) { $DebugEnable = $false }
-$DebugEnableInt = if ($DebugEnable) { 1 } else { 0 }
-$DebugEnableVhdl = if ($DebugEnable) { "true" } else { "false" }
-$BuildFlavor = if ($DebugEnable) { "DEBUG (instrumented)" } else { "RELEASE (DEBUG_ENABLE=0)" }
+
+# Detect whether any narrow -Dbg*/-NoDbg* flag was passed. If so, and
+# neither -Debug nor -Release was explicitly chosen, start from the
+# "nothing defined" baseline and add only the requested categories.
+$HasNarrowFlag = $DbgTrace -or $NoDbgTrace `
+              -or $DbgUart -or $NoDbgUart `
+              -or $DbgOverlay -or $NoDbgOverlay `
+              -or $DbgBusCapture -or $NoDbgBusCapture
+
+# Per-category state. Semantics:
+#   $Release        -> all four OFF, add DEBUG_RELEASE=1 macro
+#   $Debug          -> all four ON (then -NoDbg* flags subtract)
+#   no flavor, but -Dbg* narrow flags present -> all four OFF, narrows add
+#   no flavor, no narrow flags -> all four ON (current default)
+if ($Release) {
+    $CatTrace = $false; $CatUart = $false; $CatOverlay = $false; $CatBusCapture = $false
+    $Flavor   = "RELEASE (all debug gated out)"
+} elseif ($Debug -or (-not $HasNarrowFlag)) {
+    $CatTrace = $true;  $CatUart = $true;  $CatOverlay = $true;  $CatBusCapture = $true
+    $Flavor   = if ($Debug) { "DEBUG (all categories)" } else { "DEBUG (default, all categories)" }
+} else {
+    # Narrow build: start from nothing.
+    $CatTrace = $false; $CatUart = $false; $CatOverlay = $false; $CatBusCapture = $false
+    $Flavor   = "NARROW (selective debug)"
+}
+
+# Apply per-category overrides (both when -Debug is set and when narrow).
+if ($DbgTrace)        { $CatTrace       = $true  }
+if ($NoDbgTrace)      { $CatTrace       = $false }
+if ($DbgUart)         { $CatUart        = $true  }
+if ($NoDbgUart)       { $CatUart        = $false }
+if ($DbgOverlay)      { $CatOverlay     = $true  }
+if ($NoDbgOverlay)    { $CatOverlay     = $false }
+if ($DbgBusCapture)   { $CatBusCapture  = $true  }
+if ($NoDbgBusCapture) { $CatBusCapture  = $false }
+
+# Decide master-toggle vs. per-category form:
+#   - Release: emit DEBUG_RELEASE=1 so the c64.sv ifndef-default stays off
+#   - All four on (and -Release not set): emit DEBUG_ENABLE=1 (preserves
+#     behaviour of prior builds + provides a single master macro in the QSF)
+#   - Any other combination: emit individual DBG_* macros, no master
+$AllOn = $CatTrace -and $CatUart -and $CatOverlay -and $CatBusCapture
+$AllOff = -not ($CatTrace -or $CatUart -or $CatOverlay -or $CatBusCapture)
+
+$MacroSet = @()
+if ($Release -or $AllOff) {
+    $MacroSet += "DEBUG_RELEASE=1"
+} elseif ($AllOn) {
+    $MacroSet += "DEBUG_ENABLE=1"
+} else {
+    if ($CatTrace)       { $MacroSet += "DBG_TRACE=1" }
+    if ($CatUart)        { $MacroSet += "DBG_UART=1" }
+    if ($CatOverlay)     { $MacroSet += "DBG_OVERLAY=1" }
+    if ($CatBusCapture)  { $MacroSet += "DBG_BUS_CAPTURE=1" }
+}
+
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Yellow
-Write-Host "  Build flavor: $BuildFlavor" -ForegroundColor Yellow
+Write-Host "  Build flavor: $Flavor" -ForegroundColor Yellow
+Write-Host "    DBG_TRACE       = $CatTrace"
+Write-Host "    DBG_UART        = $CatUart"
+Write-Host "    DBG_OVERLAY     = $CatOverlay"
+Write-Host "    DBG_BUS_CAPTURE = $CatBusCapture"
+Write-Host "    QSF macros      : $($MacroSet -join ', ')"
 Write-Host "================================================================" -ForegroundColor Yellow
 
 function Write-Step($msg) {
@@ -237,76 +324,96 @@ if ($Clean) {
     }
 }
 
-# --- Patch DEBUG_ENABLE in QSF + VHDL ---
-# Snapshot the original contents BEFORE modification so we can restore them
+# --- Patch modular debug macros in QSF ---
+# Snapshot the original QSF BEFORE modification so we can restore it
 # on exit (success, failure, or Ctrl-C). The build script is the single
-# source of truth for which flavor is being built — users should not edit
-# the QSF or VHDL generic default directly.
+# source of truth for which macro set is in effect -- users should not
+# hand-edit the QSF VERILOG_MACRO line. The VHDL generic defaults are NO
+# LONGER patched (and would be ineffective anyway): DBG_TRACE and
+# DBG_BUS_CAPTURE are forwarded into fpga64_sid_iec via the SV instance
+# parameter map driven by Verilog macros.
 
 $QsfPath    = Join-Path $CoreDir "C64.qsf"
-$VhdlPath   = Join-Path $CoreDir "rtl\fpga64_sid_iec.vhd"
 $QsfOrig    = $null
-$VhdlOrig   = $null
 $Patched    = $false
 
-function Patch-DebugEnable {
-    param([bool]$Enable)
+function Patch-DebugMacros {
+    param([string[]]$Macros)
 
-    if (-not (Test-Path $QsfPath))  { throw "Cannot find QSF: $QsfPath" }
-    if (-not (Test-Path $VhdlPath)) { throw "Cannot find VHDL: $VhdlPath" }
+    if (-not (Test-Path $QsfPath)) { throw "Cannot find QSF: $QsfPath" }
 
-    $script:QsfOrig  = [System.IO.File]::ReadAllText($QsfPath)
-    $script:VhdlOrig = [System.IO.File]::ReadAllText($VhdlPath)
+    $script:QsfOrig = [System.IO.File]::ReadAllText($QsfPath)
 
-    $macroVal = if ($Enable) { "1" } else { "0" }
-    $vhdlVal  = if ($Enable) { "true" } else { "false" }
-
-    # QSF: patch the VERILOG_MACRO DEBUG_ENABLE line.
-    $qsfNew = $script:QsfOrig -replace `
-        '(set_global_assignment\s+-name\s+VERILOG_MACRO\s+"DEBUG_ENABLE=)[01](")', `
-        ('${1}' + $macroVal + '${2}')
-    if ($qsfNew -eq $script:QsfOrig) {
-        throw "QSF patch failed: VERILOG_MACRO DEBUG_ENABLE line not found in $QsfPath"
+    # Replace every existing VERILOG_MACRO line that defines DEBUG_ENABLE /
+    # DEBUG_RELEASE / DBG_TRACE / DBG_UART / DBG_OVERLAY / DBG_BUS_CAPTURE
+    # with a canonical block built from $Macros. Any other VERILOG_MACRO
+    # lines (functional macros) are preserved untouched.
+    $lines = $script:QsfOrig -split "`r?`n"
+    $debugNames = @('DEBUG_ENABLE','DEBUG_RELEASE','DBG_TRACE','DBG_UART','DBG_OVERLAY','DBG_BUS_CAPTURE')
+    $filtered = @()
+    $replaced = $false
+    foreach ($ln in $lines) {
+        $isDebugMacro = $false
+        if ($ln -match 'set_global_assignment\s+-name\s+VERILOG_MACRO\s+"([A-Za-z_]+)=') {
+            if ($debugNames -contains $Matches[1]) { $isDebugMacro = $true }
+        }
+        if ($isDebugMacro) {
+            if (-not $replaced) {
+                # Emit the new block at the location of the first removed line
+                foreach ($m in $Macros) {
+                    $filtered += ('set_global_assignment -name VERILOG_MACRO "' + $m + '"')
+                }
+                $replaced = $true
+            }
+            # drop the old line either way
+        } else {
+            $filtered += $ln
+        }
     }
 
-    # VHDL: patch the DEBUG_ENABLE generic default value.
-    $vhdlNew = $script:VhdlOrig -replace `
-        '(DEBUG_ENABLE\s*:\s*boolean\s*:=\s*)(true|false)', `
-        ('${1}' + $vhdlVal)
-    if ($vhdlNew -eq $script:VhdlOrig) {
-        throw "VHDL patch failed: DEBUG_ENABLE generic default not found in $VhdlPath"
+    if (-not $replaced) {
+        # No existing debug macro line in the QSF: append the new block at the end.
+        foreach ($m in $Macros) {
+            $filtered += ('set_global_assignment -name VERILOG_MACRO "' + $m + '"')
+        }
     }
 
-    [System.IO.File]::WriteAllText($QsfPath,  $qsfNew)
-    [System.IO.File]::WriteAllText($VhdlPath, $vhdlNew)
+    $qsfNew = ($filtered -join [Environment]::NewLine)
+    # Preserve trailing newline if original had one.
+    if ($script:QsfOrig.EndsWith("`n") -and -not $qsfNew.EndsWith([Environment]::NewLine)) {
+        $qsfNew += [Environment]::NewLine
+    }
+
+    [System.IO.File]::WriteAllText($QsfPath, $qsfNew)
     $script:Patched = $true
 
-    Write-Host "  Patched QSF:  VERILOG_MACRO DEBUG_ENABLE=$macroVal" -ForegroundColor Gray
-    Write-Host "  Patched VHDL: DEBUG_ENABLE generic default = $vhdlVal" -ForegroundColor Gray
+    foreach ($m in $Macros) {
+        Write-Host "  Patched QSF:  VERILOG_MACRO $m" -ForegroundColor Gray
+    }
+    if ($Macros.Count -eq 0) {
+        Write-Host "  Patched QSF:  (no debug macros defined)" -ForegroundColor Gray
+    }
 }
 
-function Restore-DebugEnable {
+function Restore-DebugMacros {
     if (-not $script:Patched) { return }
     if ($null -ne $script:QsfOrig) {
-        [System.IO.File]::WriteAllText($QsfPath,  $script:QsfOrig)
-    }
-    if ($null -ne $script:VhdlOrig) {
-        [System.IO.File]::WriteAllText($VhdlPath, $script:VhdlOrig)
+        [System.IO.File]::WriteAllText($QsfPath, $script:QsfOrig)
     }
     $script:Patched = $false
-    Write-Host "  Restored original QSF + VHDL (DEBUG_ENABLE pair)" -ForegroundColor Gray
+    Write-Host "  Restored original QSF (debug macros)" -ForegroundColor Gray
 }
 
 # Guarantee restoration even if the shell is killed by Ctrl-C while Quartus
 # is running. PowerShell's trap covers CancelKeyPress.
 $null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -SupportEvent -Action {
     if ($script:Patched) {
-        try { Restore-DebugEnable } catch { }
+        try { Restore-DebugMacros } catch { }
     }
 }
 
-Write-Step "Patching DEBUG_ENABLE = $DebugEnableInt ($DebugEnableVhdl)"
-Patch-DebugEnable -Enable $DebugEnable
+Write-Step "Patching debug macros: $($MacroSet -join ' ')"
+Patch-DebugMacros -Macros $MacroSet
 
 # --- Build ---
 
@@ -361,7 +468,7 @@ if ($UseWindowsQuartus) {
 }
 
 } finally {
-    Restore-DebugEnable
+    Restore-DebugMacros
 }
 
 $elapsed = (Get-Date) - $startTime
