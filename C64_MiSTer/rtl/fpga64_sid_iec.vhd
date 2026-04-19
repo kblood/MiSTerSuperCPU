@@ -270,10 +270,6 @@ port(
 	c64rom_data : in  std_logic_vector(7 downto 0);
 	c64rom_wr   : in  std_logic;
 
-	-- Debug BRAM probe: bank-$00 64KB BRAM readback for simulation/desktop harnesses.
-	bram_probe_addr : in  unsigned(15 downto 0) := (others => '0');
-	bram_probe_data : out unsigned(7 downto 0);
-
 	cass_motor  : out std_logic;
 	cass_write  : out std_logic;
 	cass_sense  : in  std_logic;
@@ -1642,10 +1638,7 @@ port map (
 	a_we   => bram_port_a_we,
 	-- Port B: VIC-II (read only)
 	b_addr => systemAddr,
-	b_dout => bram_vic_do,
-	-- Debug probe
-	probe_addr => bram_probe_addr,
-	probe_dout => bram_probe_data
+	b_dout => bram_vic_do
 );
 
 -- BRAM write enable: CPU writes + SDRAM read fill + cache hit fill
