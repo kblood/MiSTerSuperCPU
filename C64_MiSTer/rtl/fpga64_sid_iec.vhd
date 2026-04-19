@@ -103,6 +103,13 @@ port(
 	io_bram_we   : in std_logic := '0';
 	io_bram_addr : in unsigned(15 downto 0) := (others => '0');
 	io_bram_din  : in unsigned(7 downto 0)  := (others => '0');
+	-- PRG auto-RUN link override: during a short window right after meminit
+	-- completes, intercept CPU reads of bank $00 $0801/$0802 and return the
+	-- PRG link bytes. This wins the race against any BASIC cold-init code
+	-- (NEW, CLR, etc) that may still zero those bytes after our ioctl walk.
+	autorun_override : in std_logic := '0';
+	autorun_link_lo  : in unsigned(7 downto 0) := (others => '0');
+	autorun_link_hi  : in unsigned(7 downto 0) := (others => '0');
 	-- $0801 write PC trap (post-download): captures PC/IR of CPU writes at $0801
 	dbg_0801_trap_en : in std_logic := '0'; -- active when ioctl_download=0 && !inj_meminit
 	dbg_0801_pc      : out unsigned(15 downto 0);
@@ -986,7 +993,11 @@ scpu_rom_stub_data <= scpu_native_vec(0)  when cpuAddr_pre(7 downto 0) = x"00" e
                       scpu_native_vec(13) when cpuAddr_pre(7 downto 0) = x"EF" else
                       x"00";
 
-cpuDi <= io_data when (iof_detect = '1' and cpuWe_pre = '0') else
+cpuDi <= autorun_link_lo when (autorun_override = '1' and cpuWe_pre = '0'
+                                and addr_hi_816 = x"00" and cpuAddr_pre = x"0801") else
+         autorun_link_hi when (autorun_override = '1' and cpuWe_pre = '0'
+                                and addr_hi_816 = x"00" and cpuAddr_pre = x"0802") else
+         io_data when (iof_detect = '1' and cpuWe_pre = '0') else
          scpu_rom_stub_data when (scpu_rom_stub_active = '1') else
          bram_do  when (bram_hit_d1 = '1') else
          cache_di when (cache_hit_d1 = '1' and scpu_rom_overlay = '0') else
@@ -1332,12 +1343,14 @@ end process;
 -- CPU enable gating: only active CPU receives clock enable pulses
 -- This prevents bus contention when switching between 6510 and 65C816
 -- -----------------------------------------------------------------------
--- T65 gets BRAM acceleration (when enabled) or cache acceleration.
--- BRAM hit (bram_hit_d1): 1-cycle suppress for always-RAM, 2-cycle for ROM regions.
--- Cache hit (cache_hit_d1) has 1-cycle suppress — used for SuperRAM or non-BRAM mode.
--- SDRAM enables (enableCpu) are OR'd in for SDRAM-path accesses.
--- Guards (not cpu_cyc_s, not enableCpu) prevent double-enables during SDRAM pipeline.
-enableCpu_6510 <= (bram_hit_d1 or (cache_hit_d1 and turbo_en) or (enableCpu and not dma_active))
+-- T65 enable:
+-- SuperCPU OFF → match vanilla MiSTer C64 exactly (`enableCpu and not
+--   dma_active`). Extra BRAM/cache-hit enables introduced unexpected
+--   T65 advances that break auto-RUN keyboard injection and crash
+--   games like Asterix to PC=$01B9 in the 6510 path. The SuperCPU
+--   fork's cache/BRAM acceleration is for the 65C816 only.
+-- SuperCPU ON → T65 is held in reset anyway; drive enable to '0'.
+enableCpu_6510 <= (enableCpu and not dma_active)
                   when supercpu_en = '0' else '0';
 -- SuperCPU (P65C816): BRAM acceleration + SDRAM path.
 -- BRAM hit covers 32KB ($0000-$7FFF) always + 28KB ($8000-$FFFF excl I/O) in native mode.
