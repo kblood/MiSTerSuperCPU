@@ -53,7 +53,8 @@ $sources = @(
     (Join-Path $scriptDir 'p65c816_rep_tb.vhd'),
     (Join-Path $scriptDir 'p65c816_native_switch_tb.vhd'),
     (Join-Path $scriptDir 'cpu_65c816_native_switch_tb.vhd'),
-    (Join-Path $scriptDir 'p65c816_xflag_bank_transition_tb.vhd')
+    (Join-Path $scriptDir 'p65c816_xflag_bank_transition_tb.vhd'),
+    (Join-Path $scriptDir 'p65c816_copy_loop_tb.vhd')
 )
 
 foreach ($s in $sources) {
@@ -94,6 +95,10 @@ try {
     Write-Host "==> Elaborate (xflag bank-transition bench)" -ForegroundColor Cyan
     & $ghdl -e @ghdlFlags p65c816_xflag_bank_transition_tb
     if ($LASTEXITCODE -ne 0) { throw "ghdl -e (xflag bank-transition bench) failed" }
+
+    Write-Host "==> Elaborate (copy-loop bench)" -ForegroundColor Cyan
+    & $ghdl -e @ghdlFlags p65c816_copy_loop_tb
+    if ($LASTEXITCODE -ne 0) { throw "ghdl -e (copy-loop bench) failed" }
 
     Write-Host "==> Run bare-core bench (stop-time=$StopTime)" -ForegroundColor Cyan
     $bareLogPath  = Join-Path $workDir $LogFile
@@ -165,6 +170,18 @@ try {
     $rcXflag = $LASTEXITCODE
     if ($rcXflag -ne 0) {
         Write-Warning "xflag bank-transition ghdl -r exited $rcXflag"
+    }
+
+    Write-Host "==> Run copy-loop bench (stop-time=$StopTime)" -ForegroundColor Cyan
+    $clLogPath  = Join-Path $workDir 'copy_loop.log'
+    $clWavePath = Join-Path $workDir 'copy_loop.ghw'
+    & $ghdl -r @ghdlFlags p65c816_copy_loop_tb `
+        --wave=$clWavePath `
+        --stop-time=$StopTime `
+        2>&1 | Tee-Object -FilePath $clLogPath
+    $rcCopy = $LASTEXITCODE
+    if ($rcCopy -ne 0) {
+        Write-Warning "copy-loop ghdl -r exited $rcCopy"
     }
 
     Write-Host ""

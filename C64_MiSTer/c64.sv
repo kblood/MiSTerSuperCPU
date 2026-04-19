@@ -445,9 +445,16 @@ always @(posedge clk_sys) begin
 		reset_counter <= 100000;
 	end
 	else if(~old_download & ioctl_download & load_prg & ~status[50]) begin
+		// PRG-download reset handling, conditional on SuperCPU mode:
+		// - SuperCPU ON: skip CPU reset. Vanilla's ~8us reset re-enters
+		//   KERNAL RAMTAS which on 65C816-in-emu-mode hangs indefinitely.
+		//   (project_superfork_ramtas_stuck_on_prg_reset.md) The already
+		//   running BASIC hits $FFCF on its own and clears reset_wait.
+		// - SuperCPU OFF: issue the vanilla reset pulse so auto-RUN works
+		//   identically to upstream (6510 T65 handles RAMTAS fine).
 		do_erase <= 1;
 		reset_wait <= 1;
-		reset_counter <= 255;
+		if (~supercpu_enable) reset_counter <= 255;
 	end
 	else if (ioctl_download & (load_crt | load_rom)) begin
 		do_erase <= 1;
@@ -457,6 +464,10 @@ always @(posedge clk_sys) begin
 	else if (erasing) force_erase <= 0;
 	else if (!reset_counter) begin
 		do_erase <= 0;
+		// $FFCF (KERNAL CHRIN) — BASIC calls this to fetch first keyboard
+		// byte at READY prompt. Fires AFTER cold-init NEW, AFTER READY
+		// prints. Vanilla MGL auto-RUN works with this trigger; a prior
+		// $A480 experiment broke Asterix (OOM under BASIC CLR).
 		if(reset_wait && c64_addr == 'hFFCF) reset_wait <= 0;
 	end
 	else begin
@@ -1183,19 +1194,19 @@ always @(*) begin
 		240: reu_reg_mux = dbg_prg_dl_cnt;        // $DFF0 PRG download starts (load_prg rising)
 		241: reu_reg_mux = dbg_inj_rise_cnt;      // $DFF1 inj_meminit rising edges
 		// Auto-RUN diagnostic set (added 2026-04-18 for MGL PRG auto-RUN debug)
-		242: reu_reg_mux = dbg_any_dl_cnt;        // $DFF2 ANY ioctl_download rising edges
-		243: reu_reg_mux = dbg_idx_at_dl;         // $DFF3 ioctl_index at rising edge of download
+		242: reu_reg_mux = dbg_cpu_wr_0801_pc_lo; // $DFF2 PC-near-first-$0801-write lo
+		243: reu_reg_mux = dbg_cpu_wr_0801_pc_hi; // $DFF3 PC-near-first-$0801-write hi
 		244: reu_reg_mux = dbg_classify_cnt;      // $DFF4 class capture firings
 		245: reu_reg_mux = {7'd0, dbg_reu_by_ext_cap[0]}; // $DFF5 reu_by_ext_comb captured value
-		246: reu_reg_mux = dbg_ext_at_dl_hi[15:8];// $DFF6 file_ext byte0 at dl edge ('.' if ".REU")
-		247: reu_reg_mux = dbg_ext_at_dl_hi[7:0]; // $DFF7 file_ext byte1 at dl edge ('R' if ".REU", 'P' if ".PRG")
+		246: reu_reg_mux = prg_link_lo;           // $DFF6 PRG header byte 2 (link lo, captured at ioctl_addr==2)
+		247: reu_reg_mux = prg_link_hi;           // $DFF7 PRG header byte 3 (link hi, captured at ioctl_addr==3)
 		// Per-PRG download trace (resets on PRG download rising edge)
 		248: reu_reg_mux = dbg_req_set_cnt[7:0];  // $DFF8 req_set_cnt lo
 		249: reu_reg_mux = dbg_req_set_cnt[15:8]; // $DFF9 req_set_cnt hi
 		250: reu_reg_mux = dbg_req_cons_cnt[7:0]; // $DFFA req_cons_cnt lo
 		251: reu_reg_mux = dbg_req_cons_cnt[15:8];// $DFFB req_cons_cnt hi
-		252: reu_reg_mux = dbg_wr1_addr_lo;       // $DFFC first write addr lo
-		253: reu_reg_mux = dbg_wr1_addr_hi;       // $DFFD first write addr hi
+		252: reu_reg_mux = dbg_cpu_wr_0801_cnt;   // $DFFC CPU writes to $0801 post-download (BASIC NEW?)
+		253: reu_reg_mux = dbg_cpu_wr_0801_data;  // $DFFD last byte CPU wrote to $0801
 		254: reu_reg_mux = dbg_inj_fall_cnt;      // $DFFE inj_meminit falling edges
 		255: reu_reg_mux = dbg_strk_cnt;          // $DFFF start_strk pulses (RUN-type-ahead fires)
 `endif // DBG_BUS_CAPTURE
@@ -1246,6 +1257,16 @@ reg        force_erase;
 reg        erasing;
 
 reg        inj_meminit = 0;
+// Armed on PRG download falling edge; inj_meminit fires once reset_wait
+// has also cleared ($A474 = post-BASIC-cold-NEW). Decouples the meminit
+// trigger from the ioctl edge so HPS-side streaming quirks (wait-ignore)
+// can't leave inj_meminit firing during BASIC boot and getting clobbered.
+reg        inj_pending = 0;
+
+// Captured PRG link bytes (first 2 data bytes → $0801/$0802), written back
+// during inj_meminit to survive any BASIC NEW that ran during the download.
+reg  [7:0] prg_link_lo = 0;
+reg  [7:0] prg_link_hi = 0;
 
 // PRG load diagnostic counters (accessible via $DFF0-$DFF7)
 reg  [7:0] dbg_prg_dl_cnt = 0;        // PRG downloads started (ioctl_download rising + load_prg)
@@ -1276,6 +1297,40 @@ reg  [7:0] dbg_0802_data = 0; // data written at $0802 (last)
 // the CPU is overwriting what io_cycle just wrote.
 reg  [7:0] dbg_cpu_wr_0801_cnt = 0;
 reg  [7:0] dbg_cpu_wr_0801_data = 0;  // last CPU-written byte at $0801
+// PC snapshot at first post-meminit CPU write to $0801. Captures c64_addr
+// from the previous clk32 cycle, which for typical 6510 STA abs is the
+// operand-high fetch PC — close enough to identify the writing routine.
+reg  [7:0] dbg_cpu_wr_0801_pc_lo = 0;
+reg  [7:0] dbg_cpu_wr_0801_pc_hi = 0;
+reg [15:0] prev_c64_addr = 0;
+// inj_end — the post-download BASIC end-of-program address. Hoisted to
+// module scope (was local to the ioctl always block) so Quartus infers a
+// plain module-level FF — the local-reg variant was landing at $0803
+// instead of the real ~$BC14 for Asterix, causing VARTAB/ARYTAB/etc.
+// to be set to empty-program values.
+reg [15:0] inj_end = 0;
+
+// RELINK retry mechanism — after the initial inj_meminit walk ends and
+// start_strk fires to type "RUN<ENTER>", BASIC's cold-init NEW ($A644)
+// already wiped $0801/$0802 back to zero, and observation shows *further*
+// CPU writes of zero land there before the typed RUN makes BASIC read
+// the link bytes. To race those writes we re-fire the walk's last two
+// writes ($0801=prg_link_lo, $0802=prg_link_hi) a bunch of times over
+// the next ~160 ms, via mini-walks that start at ioctl_load_addr=$801
+// and terminate the usual way at $803. start_strk is gated so it only
+// pulses on the INITIAL walk's falling edge, not on relink walks.
+reg  [5:0] relink_retry = 0;        // remaining mini-walks
+reg [20:0] relink_wait  = 0;        // clk32 countdown between relinks
+reg        is_relink_walk = 0;      // 1 while a mini-walk is in flight
+reg        old_is_relink_walk = 0;  // registered for edge detection
+reg        strk_fired_once = 0;     // gate: RUN-keystrokes fire ONCE per PRG dl
+
+// Auto-RUN data-path override: for a few seconds after start_strk fires,
+// force CPU reads of bank-$00 $0801/$0802 to return prg_link_lo/hi even
+// if BASIC cold-init / NEW is still writing zeros there. Wins the race
+// regardless of who's writing RAM. 3 s at clk_sys=32 MHz = 96M cycles.
+reg [26:0] autorun_timer = 0;   // 27-bit, up to ~134M cycles (~4.2 s)
+wire       autorun_override_active = |autorun_timer;
 
 wire       io_cycle;
 reg        io_cycle_ce;
@@ -1300,7 +1355,6 @@ always @(posedge clk_sys) begin
 	reg        io_cycleD;
 	reg        old_st0 = 0;
 	reg        old_meminit;
-	reg [15:0] inj_end;
 	reg  [7:0] inj_meminit_data;
 	reg  [2:0] rd_cyc;
 	reg        ioctl_rd_en;
@@ -1437,6 +1491,8 @@ always @(posedge clk_sys) begin
 			// Load address high-byte
 			else if (ioctl_addr == 1) begin ioctl_load_addr[15:8] <= ioctl_data; inj_end[15:8] <= ioctl_data; end
 			else begin
+				if (ioctl_addr == 2) prg_link_lo <= ioctl_data;
+				if (ioctl_addr == 3) prg_link_hi <= ioctl_data;
 				ioctl_req_wr <= 1;
 				inj_end <= inj_end + 1'b1;
 				dbg_req_set_cnt <= dbg_req_set_cnt + 1'b1;
@@ -1528,17 +1584,48 @@ always @(posedge clk_sys) begin
 	// Firing on rising edge (vanilla behavior) is wrong for SCPU because it
 	// races the PRG header processing and leaves BASIC pointers pointing
 	// at garbage.
+	// HEAD-compatible immediate fire on download falling edge (no reset_wait
+	// gate). Adding a !reset_wait gate races BASIC cold-init NEW on some
+	// paths — vanilla's working flow fires meminit immediately once the
+	// download bytes have landed, regardless of CHRIN/$FFCF timing.
 	if (old_download & ~ioctl_download && load_prg && !inj_meminit) begin
 		inj_meminit <= 1;
 		ioctl_load_addr <= 0;
 		dbg_inj_rise_cnt <= dbg_inj_rise_cnt + 1'b1;
 	end
 
+	// RELINK: arm retry counter at INITIAL meminit end (not mini-walks),
+	// then periodically fire mini-walks starting at $801 that re-write
+	// $0801/$0802 = prg_link_lo/hi. old_is_relink_walk (registered below)
+	// edge-detects initial-walk end vs mini-walk end correctly — by the
+	// cycle after meminit falls, is_relink_walk has already been reset
+	// to 0, so using it directly would re-arm on every mini-walk end too.
+	old_is_relink_walk <= is_relink_walk;
+	if (old_meminit & ~inj_meminit & ~old_is_relink_walk) begin
+		relink_retry <= 6'd0;              // DISABLED (was 32)
+		relink_wait  <= 21'd0;
+	end
+	if (relink_retry > 0 && !inj_meminit && !ioctl_req_wr) begin
+		if (relink_wait > 0)
+			relink_wait <= relink_wait - 1'b1;
+		else begin
+			// Fire mini-walk: start at $801, walk hits $801/$802 cases
+			// then terminates at $803. is_relink_walk tells start_strk
+			// gate to NOT pulse again.
+			inj_meminit    <= 1;
+			ioctl_load_addr <= 'h801;
+			is_relink_walk <= 1;
+			relink_retry   <= relink_retry - 1'b1;
+			relink_wait    <= 21'd160_000;
+		end
+	end
+
 	if (inj_meminit) begin
 		if (!ioctl_req_wr) begin
-			// check if done with ZP walk
+			// check if done with ZP walk (vanilla behavior: stop at $100)
 			if (ioctl_load_addr == 'h100) begin
-				inj_meminit <= 0;
+				inj_meminit    <= 0;
+				is_relink_walk <= 0;
 			end
 			else begin
 				ioctl_req_wr <= 1;
@@ -1546,23 +1633,19 @@ always @(posedge clk_sys) begin
 				// Initialize BASIC pointers to simulate the BASIC LOAD command
 				case(ioctl_load_addr)
 					// TXT (2B-2C)
-					// Set these two bytes to $01, $08 just as they would be on reset (the BASIC LOAD command does not alter these)
 					'h2B: inj_meminit_data <= 'h01;
 					'h2C: inj_meminit_data <= 'h08;
 
 					// SAVE_START (AC-AD)
-					// Set these two bytes to zero just as they would be on reset (the BASIC LOAD command does not alter these)
 					'hAC, 'hAD: inj_meminit_data <= 'h00;
 
 					// VAR (2D-2E), ARY (2F-30), STR (31-32), LOAD_END (AE-AF)
-					// Set these just as they would be with the BASIC LOAD command (essentially they are all set to the load end address)
 					'h2D, 'h2F, 'h31, 'hAE: inj_meminit_data <= inj_end[7:0];
 					'h2E, 'h30, 'h32, 'hAF: inj_meminit_data <= inj_end[15:8];
 
 					default: begin
 						ioctl_req_wr <= 0;
-
-						// advance the address
+						// advance
 						ioctl_load_addr <= ioctl_load_addr + 1'b1;
 					end
 				endcase
@@ -1571,7 +1654,25 @@ always @(posedge clk_sys) begin
 	end
 
 	old_meminit <= inj_meminit;
-	start_strk  <= old_meminit & ~inj_meminit;
+	// start_strk fires ONCE per PRG download — only on the INITIAL walk's
+	// falling edge, not on any of the relink mini-walks that follow. Use
+	// old_is_relink_walk (same rationale as in the arm-relink block).
+	start_strk  <= old_meminit & ~inj_meminit & ~old_is_relink_walk & ~strk_fired_once;
+	if (old_meminit & ~inj_meminit & ~old_is_relink_walk & ~strk_fired_once)
+		strk_fired_once <= 1;
+	if (~old_download & ioctl_download && load_prg)
+		strk_fired_once <= 0;
+
+	// Auto-RUN override DISABLED — vanilla auto-RUN works without it, so
+	// keep the wiring dormant. Flip the literal back to 96_000_000 to
+	// re-enable the 3-second data-path intercept if a future regression
+	// puts us back into the zeroed-$0801 race.
+	if (~old_download & ioctl_download && load_prg)
+		autorun_timer <= 0;
+	else if (old_meminit & ~inj_meminit & ~old_is_relink_walk & ~strk_fired_once)
+		autorun_timer <= 27'd0;           // DISABLED (was 96_000_000)
+	else if (|autorun_timer)
+		autorun_timer <= autorun_timer - 1'b1;
 	// Hold BRAM/cache invalid throughout the ioctl download and the following
 	// inj_meminit zero-page init. A 1-cycle pulse after meminit was not enough:
 	// BRAM retained KERNAL RAMTAS zeros at $0801+ because ioctl writes only hit
@@ -1587,9 +1688,21 @@ always @(posedge clk_sys) begin
 	end
 	// CPU-side $0801 write trap — count CPU writes at $0801 after download+meminit
 	// so we can tell if BASIC/KERNAL is overwriting the PRG byte.
-	if (!ioctl_download && !inj_meminit && ram_we && c64_addr == 16'h0801) begin
+	// Use dbg_cpu_addr/dbg_cpu_we (direct CPU signals) rather than the
+	// bus-muxed c64_addr/ram_we, which can reflect VIC/REU/IO accesses
+	// and wash out the PC hint.
+	if (!dbg_cpu_we && dbg_cpu_addr != 16'h0801)
+		prev_c64_addr <= dbg_cpu_addr;     // last-read CPU addr (≈ nearby PC)
+	if (!ioctl_download && !inj_meminit && dbg_cpu_we && dbg_cpu_addr == 16'h0801) begin
 		dbg_cpu_wr_0801_cnt  <= dbg_cpu_wr_0801_cnt + 1'b1;
 		dbg_cpu_wr_0801_data <= c64_data_out;
+		// Snapshot PC only on FIRST write. prev_c64_addr is the most
+		// recent non-$0801 read address — for STA abs that's the
+		// operand-hi fetch (PC+2), close enough to identify the routine.
+		if (dbg_cpu_wr_0801_cnt == 0) begin
+			dbg_cpu_wr_0801_pc_lo <= prev_c64_addr[7:0];
+			dbg_cpu_wr_0801_pc_hi <= prev_c64_addr[15:8];
+		end
 	end
 	
 	old_st0 <= status[17];
@@ -1887,9 +2000,11 @@ reg        dbg_wr_pending = 0;    // write test pending
 reg [24:0] dbg_wr_addr = 0;      // address to write
 reg  [7:0] dbg_wr_data = 0;      // data to write
 
-// SuperCPU always enabled.
-wire        supercpu_enable = 1'b1;
-wire        scpu_rom_opt    = 1'b1;
+// SuperCPU enable: OSD toggle (status[82]). Lets us diagnose
+// whether a regression is in the SuperCPU path or our broader
+// modifications to the 6510 bus/cache/BRAM plumbing.
+wire        supercpu_enable = status[82];
+wire        scpu_rom_opt    = status[82];
 wire        supercpu_emul;                  // '1' = 65C816 in 6502 emulation mode
 wire        supercpu_cycle;                 // '1' during CPU SDRAM access slot
 wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16)
@@ -2068,6 +2183,9 @@ fpga64_sid_iec #(
 	.io_bram_we(io_bram_we_pulse),
 	.io_bram_addr(io_cycle_addr[15:0]),
 	.io_bram_din(io_cycle_data),
+	.autorun_override(autorun_override_active),
+	.autorun_link_lo(prg_link_lo),
+	.autorun_link_hi(prg_link_hi),
 	.dbg_0801_trap_en(~ioctl_download & ~inj_meminit),
 	.dbg_0801_pc(dbg_0801_pc),
 	.dbg_0801_ir(dbg_0801_ir),
