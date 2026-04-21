@@ -371,10 +371,27 @@ begin
 							SP(15 downto 8) <= x"01";
 							SP(7 downto 0) <= X(7 downto 0);
 						end if;
-					when "110"=> 
-						SP <= std_logic_vector(unsigned(SP) + 1);
-					when "111" => 
-						SP <= std_logic_vector(unsigned(SP) - 1);
+					when "110"=>
+						-- 2026-04-20: match VICE reg_emul=1 stack wrap within page $01.
+						-- Previously unguarded full-16-bit inc caused SP to underflow into
+						-- zero page in emulation mode when opcodes $2B/$6B/$AB (PLD/RTL/PLB)
+						-- were fetched from 6502 unofficial-opcode byte positions, clobbering
+						-- zp $2F and hanging Asterix-class decompressors.
+						if EF = '0' then
+							SP <= std_logic_vector(unsigned(SP) + 1);
+						else
+							SP(15 downto 8) <= x"01";
+							SP(7 downto 0)  <= std_logic_vector(unsigned(SP(7 downto 0)) + 1);
+						end if;
+					when "111" =>
+						-- Same emu-mode SP-wrap fix for $0B/$22/$62/$D4/$F4/$FC
+						-- (PHD/JSR long/PER/PEI/PEA/JSR (abs,X)).
+						if EF = '0' then
+							SP <= std_logic_vector(unsigned(SP) - 1);
+						else
+							SP(15 downto 8) <= x"01";
+							SP(7 downto 0)  <= std_logic_vector(unsigned(SP(7 downto 0)) - 1);
+						end if;
 					when others => null;
 				end case;
 			end if; 
