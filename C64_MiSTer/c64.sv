@@ -2139,6 +2139,7 @@ wire        dbg_cpu_cyc;
 wire  [7:0] dbg_diag;
 wire [5127:0] dbg_bug_buf;  // 641 bytes: status + 128×(PC16,PBR8,IR8) + 128×P8
 wire [15:0] dbg_native_irq_vec;  // native IRQ vector ($FFEE/$FFEF)
+wire [15:0] dbg_irq_nmi_count;   // [15:8]=NMI edge count, [7:0]=IRQ edge count
 // SuperRAM read-path diagnostic latches (exposed at $DFE9-$DFEF)
 wire [15:0] dbg_srr_count;
 wire  [7:0] dbg_srr_data;
@@ -2239,6 +2240,7 @@ fpga64_sid_iec #(
 	.dbg_srr_cache_bank(dbg_srr_cache_bank),
 	.dbg_srr_addr_lo(dbg_srr_addr_lo),
 	.dbg_srr_addr_mid(dbg_srr_addr_mid),
+	.dbg_irq_nmi_count(dbg_irq_nmi_count),
 
 	.ps2_key(key),
 	.kbd_reset((~reset_n & ~status[1]) | reset_keys),
@@ -2528,27 +2530,18 @@ always @(posedge clk_sys) begin
 	dbg_vblank <= vsync_sr[0] & ~vsync_sr[1]; // rising edge of vsync
 end
 
-// Crash diagnostic: capture PBR at first unexpected bank transition.
-// Arms when PBR=$20 (Doom entry). Latches the DESTINATION PBR when it
-// first goes to something outside {$00, $20, $2D}.
-// Doom uses $87-$8B for DATA (STA [$dp],Y), but PBR stays $20/$2D.
-// If PBR itself goes to $80+ or other unexpected bank, that's the crash.
-// Continuously track last address in Doom code banks ($20-$2D, $80).
-// W: shows last_doom_addr, L: shows last_doom_bank.
-// These update live and freeze naturally when CPU crashes (never returns to Doom code).
-// Also track last addr when PBR != $00 (catches subroutine/data banks).
-reg [15:0] last_doom_addr = 16'h0000;
+// 2026-04-21 Asterix SCPU-ON phase-2 re-entry probe: IRQ/NMI edge counters
+// sourced from fpga64_sid_iec.vhd. W[15:8] = NMI count, W[7:0] = IRQ count.
+// L = still the last READ value at $002D (src ptr low byte) for continuity.
+// Counters wrap 8-bit and rearm after reset. Non-zero deltas while Asterix
+// is hung = interrupt fired into corrupted relocated-RAM vector.
+wire [15:0] last_doom_addr = dbg_irq_nmi_count;
 reg  [7:0] last_doom_bank = 8'h00;
 always @(posedge clk_sys) begin
 	if (~reset_n) begin
-		last_doom_addr <= 16'h0000;
 		last_doom_bank <= 8'h00;
 	end else if (dbg_cpu_en) begin
-		// Track last address in any non-$00 bank (covers all Doom code + subroutines)
-		if (dbg_cpu_pbr != 8'h00) begin
-			last_doom_addr <= dbg_cpu_addr;
-			last_doom_bank <= dbg_cpu_pbr;
-		end
+		if (~dbg_cpu_we && dbg_cpu_addr == 16'h002D) last_doom_bank <= c64_data_in;
 	end
 end
 

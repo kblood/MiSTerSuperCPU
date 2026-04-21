@@ -180,6 +180,11 @@ port(
 	dbg_srr_cache_bank : out unsigned(7 downto 0);
 	dbg_srr_addr_lo    : out unsigned(7 downto 0);
 	dbg_srr_addr_mid   : out unsigned(7 downto 0);
+	-- IRQ/NMI edge counter (2026-04-21 Asterix SCPU-ON phase-2 re-entry probe).
+	-- [15:8] counts falling edges of NMI input to 65C816, [7:0] counts falling
+	-- edges of IRQ input. Both wrap free. Non-zero increments under SCPU-ON
+	-- while Asterix is hung = interrupt firing into corrupted vector.
+	dbg_irq_nmi_count  : out std_logic_vector(15 downto 0);
 
 	-- VGA/SCART interface
 	vic_variant : in  std_logic_vector(1 downto 0);
@@ -356,6 +361,13 @@ signal cpuDo_816    : unsigned(7 downto 0);
 signal cpuWe_816    : std_logic;
 signal cpuIO_816    : unsigned(7 downto 0);
 signal nmi_ack_816  : std_logic;
+-- IRQ/NMI edge counters (Asterix SCPU-ON probe)
+signal irq_to_816_n     : std_logic;
+signal nmi_to_816_n     : std_logic;
+signal irq_to_816_n_r   : std_logic := '1';
+signal nmi_to_816_n_r   : std_logic := '1';
+signal irq_edge_count   : unsigned(7 downto 0) := (others => '0');
+signal nmi_edge_count   : unsigned(7 downto 0) := (others => '0');
 signal addr_hi_816  : unsigned(7 downto 0);
 signal emu_mode_816 : std_logic;
 -- $D07E ROM-visibility register.
@@ -1407,14 +1419,38 @@ port map (
 -- -----------------------------------------------------------------------
 -- 65C816 CPU (active when supercpu_en = '1')
 -- -----------------------------------------------------------------------
+-- IRQ/NMI edge counters: sample what's actually presented to the 65C816.
+-- Count falling edges (active-low assertion). Free-running, visible in UART.
+irq_to_816_n <= irq_cia1 and irq_vic and irq_n and irq_ext_n;
+nmi_to_816_n <= irq_cia2 and nmi_n;
+process(clk32, reset_n)
+begin
+	if reset_n = '0' then
+		irq_to_816_n_r <= '1';
+		nmi_to_816_n_r <= '1';
+		irq_edge_count <= (others => '0');
+		nmi_edge_count <= (others => '0');
+	elsif rising_edge(clk32) then
+		irq_to_816_n_r <= irq_to_816_n;
+		nmi_to_816_n_r <= nmi_to_816_n;
+		if irq_to_816_n_r = '1' and irq_to_816_n = '0' then
+			irq_edge_count <= irq_edge_count + 1;
+		end if;
+		if nmi_to_816_n_r = '1' and nmi_to_816_n = '0' then
+			nmi_edge_count <= nmi_edge_count + 1;
+		end if;
+	end if;
+end process;
+dbg_irq_nmi_count <= std_logic_vector(nmi_edge_count) & std_logic_vector(irq_edge_count);
+
 cpu_816_inst: entity work.cpu_65c816
 port map (
 	clk => clk32,
 	reset => reset or not supercpu_en,
 	enable => enableCpu_816,
-	nmi_n => irq_cia2 and nmi_n,
+	nmi_n => nmi_to_816_n,
 	nmi_ack => nmi_ack_816,
-	irq_n => irq_cia1 and irq_vic and irq_n and irq_ext_n,
+	irq_n => irq_to_816_n,
 	rdy => baLoc,
 
 	di => cpuDi,
