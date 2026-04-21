@@ -181,7 +181,19 @@ begin
 					when "010" => AAL <= D_IN; SavedCarry <= '0';
 					when "011" => AAL <= NewPCWithOffset16(7 downto 0); SavedCarry <= '0';
 					when "100" => DL <= NewAAL(7 downto 0); SavedCarry <= NewAAL(8); 
-					when "101" => DL <= NewDL(7 downto 0); SavedCarry <= NewDL(8);
+					when "101" =>
+						-- 2026-04-21 Emulation-mode stack-relative wrap.
+						-- Gate SavedCarry at source (1-bit) instead of DH (8-bit) to
+						-- avoid the -4ns regression seen with AAHCtrl="110" guard.
+						-- VICE semantics: in emu mode stack-relative loc=(loc&0xff)|0x100
+						-- so SPL+op carry must NOT propagate into DH.
+						-- ABSCtrl="11" marks stack-relative ops; e6502='1' is emu mode.
+						DL <= NewDL(7 downto 0);
+						if e6502 = '1' and ABSCtrl = "11" then
+							SavedCarry <= '0';
+						else
+							SavedCarry <= NewDL(8);
+						end if;
 					when "111" => null;
 					when others => null;
 				end case;
