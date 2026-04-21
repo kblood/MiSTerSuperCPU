@@ -549,6 +549,7 @@ signal trace_prev_pbr : unsigned(7 downto 0)  := (others => '0');
 signal trace_prev_ir  : unsigned(7 downto 0)  := (others => '0');
 signal trace_prev_p   : unsigned(7 downto 0)  := (others => '0');
 signal seen_bank_2d   : std_logic := '0';
+signal seen_asterix_entry : std_logic := '0';
 signal cache_cpu_bank   : unsigned(7 downto 0);  -- bank for cache: $00 for T65, addr_hi_816 for SuperCPU
 signal cache_cpu_en     : std_logic;             -- enable for cache: from active CPU
 
@@ -2047,11 +2048,24 @@ gen_trace_debug: if DBG_TRACE = 1 generate
 					end if;
 				end if;
 
-				-- $0801 wipe trigger: freeze once the $0801 write trap has fired
-				-- (dbg_0801_cnt_r > 0 means CPU wrote $0801 post-download). The
-				-- trap already filters cpuWe/cpuAddr/bank so we just consume its
-				-- registered output to keep the bug_frozen set path short.
-				if dbg_0801_cnt_r /= x"00" then
+				-- 2026-04-21 Asterix SCPU-ON wild-PC trigger. Legit Asterix PCs
+				-- (PBR=$00): $0100-$01FF dispatcher, $0800-$08FF relocator,
+				-- $4800-$FFFF relocated game. Freeze on first PC transition
+				-- OUT of these ranges while staying in PBR=$00, gated by
+				-- seen_asterix_entry so the trigger only arms after Asterix
+				-- has started (avoids BASIC/KERNAL boot false-fires).
+				if enableCpu_816 = '1' and dbg_pbr_816 = x"00"
+				   and dbg_pc_816 = x"0820" then
+					seen_asterix_entry <= '1';
+				end if;
+				if seen_asterix_entry = '1'
+				   and dbg_pbr_816 = x"00" and trace_prev_pbr = x"00"
+				   and (trace_prev_pc(15 downto 8) = x"01"
+				     or trace_prev_pc(15 downto 8) = x"08"
+				     or trace_prev_pc(15 downto 11) >= "01001")  -- prev PC in legit
+				   and not (dbg_pc_816(15 downto 8) = x"01"
+				         or dbg_pc_816(15 downto 8) = x"08"
+				         or dbg_pc_816(15 downto 11) >= "01001") then
 					bug_frozen <= '1';
 				end if;
 			end if;
