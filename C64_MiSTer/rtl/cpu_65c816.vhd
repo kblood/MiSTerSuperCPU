@@ -112,6 +112,15 @@ accessIO <= '1' when localA(23 downto 1) = "00000000000000000000000" else '0';
 	            else ioDir when localA(0) = '0'
 	            else currentIO;
 
+	-- 2026-04-21 Asterix SCPU-ON fix: currentIO MUST be combinational so
+	-- the $01 memory-map update takes effect the same cycle as the write
+	-- completes. The prior registered version introduced a 1-clk32 latency;
+	-- under turbo (CPU cycle = 1 clk32) that meant the instruction AFTER
+	-- `INC $01` executed with the stale memory map. Asterix's $0122 helper
+	-- does `INC $01 / STA $D020 / DEC $01` expecting immediate I/O
+	-- visibility, so the STA landed on RAM instead of VIC and the
+	-- decompressor hung. cpu_6510.vhd has the same latency but T65 runs at
+	-- 1MHz with 32-clk32-per-CPU-cycle gaps, masking the problem there.
 	process(clk)
 	begin
 		if rising_edge(clk) then
@@ -125,15 +134,14 @@ accessIO <= '1' when localA(23 downto 1) = "00000000000000000000000" else '0';
 				end if;
 			end if;
 
-			currentIO <= (ioData and ioDir) or (std_logic_vector(diIO) and not ioDir);
-
 			if reset = '1' then
 				ioDir <= (others => '0');
 				ioData <= (others => '1');
-				currentIO <= "00111111";
 			end if;
 		end if;
 	end process;
+
+	currentIO <= (ioData and ioDir) or (std_logic_vector(diIO) and not ioDir);
 
 	-- NMI acknowledge: detect when CPU reads NMI vector (VPB low)
 	-- VPB goes low for ALL vectors; check address to distinguish NMI:
