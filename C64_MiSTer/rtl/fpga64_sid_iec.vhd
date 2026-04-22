@@ -1442,7 +1442,14 @@ begin
 		end if;
 	end if;
 end process;
-dbg_irq_nmi_count <= std_logic_vector(nmi_edge_count) & std_logic_vector(irq_edge_count);
+-- 2026-04-21 Asterix hang diagnostic: expose live PC in the dbg_irq_nmi_count
+-- field so the UART W: line shows the current CPU PC each frame. IRQ/NMI
+-- counter probe already ruled interrupts out (W:001B stable during hang);
+-- we need PC to see where the hang loop actually is.  Previously the A:
+-- field was assumed to be PC but it is the address bus (dbg_cpu_addr), so
+-- we had no live PC signal in UART.  Repurposing W: gives us that signal
+-- with no added port plumbing.
+dbg_irq_nmi_count <= std_logic_vector(dbg_pc_816);
 
 cpu_816_inst: entity work.cpu_65c816
 port map (
@@ -2048,24 +2055,24 @@ gen_trace_debug: if DBG_TRACE = 1 generate
 					end if;
 				end if;
 
-				-- 2026-04-21 Asterix SCPU-ON wild-PC trigger. Legit Asterix PCs
-				-- (PBR=$00): $0100-$01FF dispatcher, $0800-$08FF relocator,
-				-- $4800-$FFFF relocated game. Freeze on first PC transition
-				-- OUT of these ranges while staying in PBR=$00, gated by
-				-- seen_asterix_entry so the trigger only arms after Asterix
-				-- has started (avoids BASIC/KERNAL boot false-fires).
+				-- 2026-04-22 Asterix SCPU-ON hang trigger v7: CLI transition.
+				-- Post SR-emu-wrap fix (commit 6edec4c), SP drain is resolved
+				-- and PC reaches $805D-$80AE real game logic (SBC/CMP/ADC
+				-- arithmetic, JSR $3C0B, RTS). But I flag stays 1 across the
+				-- entire 30s UART capture (`uart_asterix_post_srfix_2026-04-22.log`)
+				-- so VIC raster IRQ never fires and the title bitmap is not
+				-- blitted to screen. Re-enable v4 CLI-transition trigger
+				-- (I=1 -> I=0 via CLI / PLP / RTI with pushed P.I=0) to test
+				-- whether the SR fix unblocked CLI (it may have) or CLI is
+				-- still unreached (if trigger never fires again).
 				if enableCpu_816 = '1' and dbg_pbr_816 = x"00"
-				   and dbg_pc_816 = x"0820" then
+				   and dbg_pc_816(15 downto 8) = x"08" then
 					seen_asterix_entry <= '1';
 				end if;
 				if seen_asterix_entry = '1'
-				   and dbg_pbr_816 = x"00" and trace_prev_pbr = x"00"
-				   and (trace_prev_pc(15 downto 8) = x"01"
-				     or trace_prev_pc(15 downto 8) = x"08"
-				     or trace_prev_pc(15 downto 11) >= "01001")  -- prev PC in legit
-				   and not (dbg_pc_816(15 downto 8) = x"01"
-				         or dbg_pc_816(15 downto 8) = x"08"
-				         or dbg_pc_816(15 downto 11) >= "01001") then
+				   and enableCpu_816 = '1'
+				   and dbg_p_816(2) = '0'
+				   and trace_prev_p(2) = '1' then
 					bug_frozen <= '1';
 				end if;
 			end if;
