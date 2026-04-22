@@ -1714,12 +1714,24 @@ port map (
 -- T65 has no phantom cycles, so the gate is always '1' in T65 mode.
 bram_valid_cycle <= (vda_816 or vpa_816) when supercpu_en = '1' else '1';
 
+-- 2026-04-22: fix turbo-mode CPU write-through hole.
+-- Old gate required (enableCpu='1' OR bram_hit_d1='1') for CPU writes.
+-- In SuperCPU turbo, enableCpu<='0' when CPU advances via BRAM/cache hits
+-- (see cache/BRAM pipeline cancel below). bram_hit_d1 requires
+-- cpuWe_pre='0', so it was '0' during writes. Net effect: every turbo
+-- write to bank-$00 BRAM was silently dropped. Snooping $0100 proved
+-- it: CPU wrote varying bytes but a follow-up read returned $36 forever.
+-- Asterix dispatcher-page self-mod (STA $0118 to patch JMP target) never
+-- landed so the dispatcher ran forever. GHDL Asterix bench passed only
+-- because its flat-RAM harness has no turbo gating. Fix: commit CPU
+-- writes on any valid CPU bus cycle (bram_valid_cycle already excludes
+-- phantom VDA=0/VPA=0 cycles).
 bram_we <= '1' when bram64k_en = '1'
                 and cache_cpu_bank = x"00"
                 and bram_valid_cycle = '1'
                 and (
-                    -- CPU write: store write data to BRAM
-                    (cpuWe_pre = '1' and (enableCpu = '1' or bram_hit_d1 = '1'))
+                    -- CPU write: commit on any valid CPU cycle.
+                    cpuWe_pre = '1'
                     -- SDRAM read fill: store cpuDi_raw to BRAM
                     -- Guard: cpuHasBus ensures buslogic resolved for CPU, not VIC
                     or (cpuWe_pre = '0' and enableCpu = '1' and cpuHasBus = '1')
