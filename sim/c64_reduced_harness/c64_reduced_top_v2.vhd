@@ -70,6 +70,11 @@ entity c64_reduced_top_v2 is
         probe_addr : in  unsigned(23 downto 0);
         probe_data : out std_logic_vector(7 downto 0);
 
+        -- Bench-side probe: synchronous byte read from BRAM (c64_ram64k Port C).
+        -- probe_addr(15:0) drives the BRAM address; bram_probe_data is the
+        -- clocked readback (1-cycle latency).
+        bram_probe_data : out std_logic_vector(7 downto 0);
+
         -- CPU observability (from the REAL dbg_* outputs of fpga64_sid_iec)
         dbg_pc       : out unsigned(15 downto 0);
         dbg_pbr      : out unsigned(7 downto 0);
@@ -170,6 +175,7 @@ architecture rtl of c64_reduced_top_v2 is
     signal sdram_re   : std_logic := '0';
     signal sdram_dout : std_logic_vector(7 downto 0);
     signal sdram_probe_dout : std_logic_vector(7 downto 0);
+    signal bram_probe_dout_s : unsigned(7 downto 0);
 
 begin
 
@@ -365,6 +371,7 @@ begin
     sdram_data_lo  <= unsigned(sdram_dout);
 
     probe_data <= sdram_probe_dout;
+    bram_probe_data <= std_logic_vector(bram_probe_dout_s);
 
     ------------------------------------------------------------------
     -- DUT: the REAL fpga64_sid_iec
@@ -555,7 +562,10 @@ begin
             cass_motor  => open,
             cass_write  => open,
             cass_sense  => '1',
-            cass_read   => '1'
+            cass_read   => '1',
+
+            bram_probe_addr => probe_addr(15 downto 0),
+            bram_probe_dout => bram_probe_dout_s
         );
 
     ------------------------------------------------------------------
