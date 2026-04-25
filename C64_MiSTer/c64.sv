@@ -957,9 +957,9 @@ always @(*) begin
 		// Diagnostic: SDRAM readback after REU upload
 		27: reu_reg_mux = reu_rb_data;                 // $DF1B: readback byte 0 from REU_ADDR
 		28: reu_reg_mux = {5'b0, reu_rb_done, reu_rb_active, reu_rb_pending}; // $DF1C: status
-		29: reu_reg_mux = {7'b0, dbg_wr_pending};  // $DF1D: write test pending (reads as 0/1)
-		30: reu_reg_mux = {6'b0, dbg_iowr_nonzero_bankhi, dbg_bi_seen};  // $DF1E: b0=bi_seen, b1=bankhi_nonzero
-		31: reu_reg_mux = dbg_iowr_bankhi_val;                           // $DF1F: captured [23:16] byte on first out-of-bank0 write
+		29: reu_reg_mux = peek_addr[7:0];   // $DF1D: peek_addr lo (was dbg_wr_pending)
+		30: reu_reg_mux = peek_addr[15:8];  // $DF1E: peek_addr mid (was dbg_bi_seen/bankhi)
+		31: reu_reg_mux = peek_addr[23:16]; // $DF1F: peek_addr hi  (was dbg_iowr_bankhi_val)
 		// Crash trace ring buffer (expanded to 128 entries, 2026-04-13)
 		// $DF20: status = {wp[6:0], frozen}
 		// $DF21..$DFA0: 32 entries × 4 bytes = (PC_lo, PC_hi, PBR, IR) each
@@ -1368,30 +1368,61 @@ always @(posedge clk_sys) begin
 		reu_rb_pending <= 1;
 		reu_rb_done <= 0;
 		reu_rb_data <= 8'hEE;
+		reu_rb_addr <= REU_ADDR + 25'h20000;  // bank $02:$0000
+	end
+	// v69: PRG readback — arm AFTER inj_meminit completes, not at download-fall.
+	// inj_meminit walks ZP addresses 0..$FF via repeated ioctl_req_wr=1 pulses,
+	// which blocks the reu_rb_pending service branch (gated on !ioctl_req_wr).
+	// Arming on inj_meminit's FALLING edge guarantees ioctl_req_wr is stable 0.
+	// Latch prg_dl_seen during download; at inj_meminit fall, arm readback.
+	if (ioctl_download && load_prg) prg_dl_seen <= 1;
+	old_inj_meminit_rb <= inj_meminit;
+	if (old_inj_meminit_rb & ~inj_meminit & prg_dl_seen) begin
+		reu_rb_pending <= 1;
+		reu_rb_done <= 0;
+		reu_rb_data <= 8'hEE;
+		reu_rb_addr <= 25'h0008B94;  // asterix.prg byte at phase-1 pass-52 src
+		prg_dl_seen <= 0;
+		dbg_prg_rb_arm_cnt <= dbg_prg_rb_arm_cnt + 1'b1;
 	end
 
-	// POKE-triggered SDRAM write test: detect writes to $DF1D/$DF1E
-	// IOF_raw = IOF without io_enable gating, dbg_cpu_we = cpuWe_pre
-	// Write to bank $02 addr $0000/$0001 in SDRAM (= REU offset $020000/$020001)
-	// so LDA long $020000/$020001 can verify via SuperRAM CPU path.
+	// POKE-triggered SDRAM peek register (replaces dbg_wr SDRAM-write-test).
+	// $DF1D/$DF1E/$DF1F latch the 24-bit peek address; $DF1F write also
+	// triggers an SDRAM readback into reu_rb_data ($DF1B) and arms
+	// auto-rearm (so the byte refreshes every io_cycle slot until reset).
 	if (IOF_raw && dbg_cpu_we && dbg_cpu_addr[7:0] == 8'h1D) begin
-		// POKE $DF1D,val → write val to SDRAM bank $02:$0000
-		dbg_wr_pending <= 1;
-		dbg_wr_addr <= REU_ADDR + 25'h20000;  // 25'h1020000
-		dbg_wr_data <= c64_data_out;
+		peek_addr[7:0] <= c64_data_out;
 	end
 	if (IOF_raw && dbg_cpu_we && dbg_cpu_addr[7:0] == 8'h1E) begin
-		// POKE $DF1E,val → write val to SDRAM bank $02:$0001
-		dbg_wr_pending <= 1;
-		dbg_wr_addr <= REU_ADDR + 25'h20001;  // 25'h1020001
-		dbg_wr_data <= c64_data_out;
+		peek_addr[15:8] <= c64_data_out;
 	end
-	// REU readback: capture SDRAM data (3 io_cycle phases after read)
-	reu_rb_cyc <= {reu_rb_cyc[1:0], io_cycle & reu_rb_active};
-	if (reu_rb_cyc[2] && !reu_rb_done) begin
+	if (IOF_raw && dbg_cpu_we && dbg_cpu_addr[7:0] == 8'h1F) begin
+		peek_addr[23:16] <= c64_data_out;
+		// Arm SDRAM readback: bit24=0 for bank $00, bit24=1 for bank $01+
+		reu_rb_pending <= 1;
+		reu_rb_done <= 0;
+		reu_rb_addr <= {(c64_data_out != 8'h00), c64_data_out, peek_addr[15:0]};
+		peek_armed <= 1'b1;
+	end
+	// v71: SDRAM readback capture — widened shift register 3→8 bits.
+	// v70 showed capture firing but sdram_data = $EE (unchanged). Root cause:
+	// CAS-2 read needs 5 clk_sys from ce rising to dout_r update; old [2] fires
+	// at 3 clk_sys (too early). Capture at [7] gives 8 clk_sys, safe margin.
+	reu_rb_cyc <= {reu_rb_cyc[6:0], io_cycle & reu_rb_active};
+	if (reu_rb_cyc[7] && !reu_rb_done) begin
 		reu_rb_data <= sdram_data;
 		reu_rb_done <= 1;
 		reu_rb_active <= 0;
+		dbg_prg_rb_cap_cnt <= dbg_prg_rb_cap_cnt + 1'b1;  // v70: capture diagnostic
+		// Peek auto-rearm: once armed by $DF1F write, keep refreshing the
+		// byte at peek_addr indefinitely (so UART W: shows live contents).
+		if (peek_armed) begin
+			peek_data <= sdram_data;
+			peek_seq  <= peek_seq + 1'b1;
+			reu_rb_pending <= 1;
+			reu_rb_done <= 0;
+			reu_rb_addr <= {(peek_addr[23:16] != 8'h00), peek_addr[23:0]};
+		end
 	end
 	
 	io_bram_we_pulse <= 0;  // default: clear pulse each clock
@@ -1457,11 +1488,12 @@ always @(posedge clk_sys) begin
 			reu_rb_pending <= 1;
 			reu_rb_done <= 0;
 			reu_rb_data <= 8'hEE;
+			reu_rb_addr <= dbg_wr_addr;  // read back what we just wrote
 		end
 
 		// SDRAM readback: schedule a read from bank $02:$0000 after write or REU download
 		if (reu_rb_pending && !ioctl_req_wr && !ioctl_req_rd && !dbg_wr_pending) begin
-			io_cycle_addr <= REU_ADDR + 25'h20000;  // bank $02:$0000
+			io_cycle_addr <= reu_rb_addr;  // generic readback target
 			io_cycle_we <= 0;           // read, not write
 			reu_rb_pending <= 0;
 			reu_rb_active <= 1;
@@ -1914,7 +1946,14 @@ reg [7:0]  dbg_iowr_bankhi_val = 0;   // capture the offending [23:16] byte
 // never reached SDRAM even though io_cycle consume fired.
 reg  [7:0] dbg_sdram_0801_cnt = 0;
 reg  [7:0] dbg_sdram_0801_data = 0;
+// v66 probe: count io_cycle writes that actually landed at bank $00, pages
+// $80..$8E during ioctl_download. Expected = 3840 ($0F00). If less, writes
+// were silently dropped on the io_cycle→sdram path for this page range.
+reg [15:0] dbg_dl_wr_80_8E = 0;
+reg        old_download_wr = 0;
 always @(posedge clk_sys) begin
+    old_download_wr <= ioctl_download;
+    if (~old_download_wr & ioctl_download) dbg_dl_wr_80_8E <= 0;
     if (io_cycle && io_cycle_ce && io_cycle_we && !cart_mem_req) begin
         dbg_iowr_count <= dbg_iowr_count + 1'd1;
         dbg_iowr_first_addr <= io_cycle_addr;
@@ -1927,6 +1966,11 @@ always @(posedge clk_sys) begin
             dbg_sdram_0801_cnt  <= dbg_sdram_0801_cnt + 1'b1;
             dbg_sdram_0801_data <= io_cycle_data;
         end
+        if (ioctl_download
+            && io_cycle_addr[24:16] == 9'h000
+            && io_cycle_addr[15:8] >= 8'h80
+            && io_cycle_addr[15:8] <= 8'h8E)
+            dbg_dl_wr_80_8E <= dbg_dl_wr_80_8E + 1'b1;
     end
     if (bram_inval_hold) dbg_bi_seen <= 1;
 end
@@ -1987,9 +2031,17 @@ end
 // logic (reu_rb_cyc, reu_rb_data, reu_rb_done) lives here.
 reg        reu_rb_pending = 0;    // readback pending (set here, cleared in io_cycle block)
 reg        reu_rb_active = 0;     // readback in progress (set in io_cycle block)
-reg  [2:0] reu_rb_cyc = 0;       // shift register: wait 3 io_cycle phases for data
+reg  [7:0] reu_rb_cyc = 0;       // v71: widened 3→8 — capture at [7] = ~8 clk_sys after io_cycle rising to allow full SDRAM CAS-2 read cycle (5 cycles) plus margin
 reg  [7:0] reu_rb_data = 8'hEE;  // captured SDRAM data (sentinel $EE = not yet read)
 reg        reu_rb_done = 0;       // readback complete
+reg [24:0] reu_rb_addr = 25'h1020000; // target address for readback (default = REU bank $02:$0000)
+reg        prg_dl_seen = 0;       // v68: latched while ioctl_download&&load_prg
+reg  [7:0] dbg_prg_rb_arm_cnt = 0; // v68: count of times PRG readback was armed
+reg        old_inj_meminit_rb = 0; // v69: edge detector for inj_meminit falling edge
+reg  [7:0] dbg_prg_rb_cap_cnt = 0; // v70: count of times capture branch fired after PRG arm
+reg  [7:0] sniff_8B94         = 8'hAA; // v72: sdram_data 5 clk after cart_ce rising + addr match
+reg  [5:0] sniff_match_pipe   = 6'd0;  // v72: 6-stage delay for cart_ce→sdram_data
+reg        last_cart_ce_sn    = 0;     // v72: cart_ce rising-edge detector
 
 // ---- POKE-triggered SDRAM write test ----
 // POKE $DF1D,value → write value to REU_ADDR via io_cycle (tests write path)
@@ -1999,6 +2051,25 @@ reg        reu_rb_done = 0;       // readback complete
 reg        dbg_wr_pending = 0;    // write test pending
 reg [24:0] dbg_wr_addr = 0;      // address to write
 reg  [7:0] dbg_wr_data = 0;      // data to write
+
+// ---- POKE-triggered SDRAM peek register (2026-04-25) ----
+// Repurposes $DF1D/$DF1E/$DF1F write path (the dbg_wr SDRAM-write-test slot)
+// as a 24-bit address latch + readback trigger. Reads the SDRAM byte at any
+// 24-bit address into reu_rb_data ($DF1B). Also rebroadcasts the byte +
+// a sequence counter into the UART W: field so we can observe contents
+// while the CPU is hung (CPU pokes can't run, but pre-armed peek can).
+//
+// Sequence (BASIC):
+//   POKE $DF1D, lo : POKE $DF1E, mid : POKE $DF1F, hi   ' arm
+//   ... (peek auto-rearms after each capture, ~every io_cycle slot)
+//   PEEK($DF1B) returns the byte; UART W: shows {peek_seq, peek_data}
+//
+// peek_addr[23:16]==0 → bank $00 (BRAM/SDRAM bank-$00 mirror)
+// peek_addr[23:16]!=0 → SuperRAM/REU bank N at offset peek_addr[15:0]
+reg [23:0] peek_addr  = 24'h000000; // 24-bit peek target (bank+offset)
+reg  [7:0] peek_seq   =  8'hA5;      // cold-boot marker: W:[15:8]=$A5 confirms new RBF actually loaded
+reg        peek_armed =  1'b0;        // set on $DF1F write; gates auto-rearm
+reg  [7:0] peek_data  =  8'h5A;      // cold-boot marker: W:[7:0]=$5A confirms new RBF actually loaded
 
 // SuperCPU enable: OSD toggle (status[82]). Lets us diagnose
 // whether a regression is in the SuperCPU path or our broader
@@ -2038,6 +2109,18 @@ wire [24:0] scpu_superram_addr = {1'b1, supercpu_bank, dbg_cpu_addr};
 // when supercpu_bank retains a non-$00 value from the last CPU instruction.
 // NOTE: scpu_sdram_addr MUST be combinational — registering it introduces
 // a 1-cycle latency that causes stale addresses when BRAM hits fire at CPUB.
+// v72: CPU-side sniffer for SDRAM reads at $008B94. Captures sdram_data
+// 5 clk_sys after cart_ce rising with matching scpu_sdram_addr, bypassing
+// the flaky io_cycle readback path. If CPU ever reads $008B94 during
+// Asterix phase-1 pass 52, we latch SDRAM's output.
+always @(posedge clk_sys) begin
+    last_cart_ce_sn <= cart_ce;
+    sniff_match_pipe <= {sniff_match_pipe[4:0],
+        (cart_ce & ~last_cart_ce_sn & ~cart_we & ~io_cycle
+         & (scpu_sdram_addr == 25'h0008B94))};
+    if (sniff_match_pipe[5]) sniff_8B94 <= sdram_data;
+end
+
 wire [24:0] scpu_sdram_addr = (supercpu_enable && cpu_has_bus && (supercpu_bank != 8'h00))
                                ? scpu_superram_addr
                                : cart_addr;
@@ -2530,20 +2613,15 @@ always @(posedge clk_sys) begin
 	dbg_vblank <= vsync_sr[0] & ~vsync_sr[1]; // rising edge of vsync
 end
 
-// 2026-04-21 Asterix SCPU-ON phase-2 re-entry probe: IRQ/NMI edge counters
-// sourced from fpga64_sid_iec.vhd. W[15:8] = NMI count, W[7:0] = IRQ count.
-// L = still the last READ value at $002D (src ptr low byte) for continuity.
-// Counters wrap 8-bit and rearm after reset. Non-zero deltas while Asterix
-// is hung = interrupt fired into corrupted relocated-RAM vector.
-wire [15:0] last_doom_addr = dbg_irq_nmi_count;
-reg  [7:0] last_doom_bank = 8'h00;
-always @(posedge clk_sys) begin
-	if (~reset_n) begin
-		last_doom_bank <= 8'h00;
-	end else if (dbg_cpu_en) begin
-		if (~dbg_cpu_we && dbg_cpu_addr == 16'h002D) last_doom_bank <= c64_data_in;
-	end
-end
+// 2026-04-25: W: field repurposed for peek register output.
+// W[15:8] = peek_seq (8-bit sequence counter, increments per readback completion)
+// W[7:0]  = peek_data (live SDRAM byte at peek_addr, refreshed every io_cycle slot)
+// To use: pre-arm via POKE $DF1D/$DF1E/$DF1F (lo/mid/hi), then watch UART W:.
+// peek_seq advances → readbacks are firing; static W → arm did not stick or
+// io_cycle is starved. Default peek_addr=0 reads bank $00 zero page (innocuous).
+wire [15:0] last_doom_addr = {peek_seq, peek_data};
+wire [15:0] _req_mismatch  = dbg_req_set_cnt - dbg_req_cons_cnt;
+wire  [7:0] last_doom_bank = _req_mismatch[7:0];
 
 reg hq2x160;
 always @(posedge clk_sys) begin
