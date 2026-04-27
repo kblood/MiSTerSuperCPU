@@ -445,16 +445,14 @@ always @(posedge clk_sys) begin
 		reset_counter <= 100000;
 	end
 	else if(~old_download & ioctl_download & load_prg & ~status[50]) begin
-		// PRG-download reset handling, conditional on SuperCPU mode:
-		// - SuperCPU ON: skip CPU reset. Vanilla's ~8us reset re-enters
-		//   KERNAL RAMTAS which on 65C816-in-emu-mode hangs indefinitely.
-		//   (project_superfork_ramtas_stuck_on_prg_reset.md) The already
-		//   running BASIC hits $FFCF on its own and clears reset_wait.
-		// - SuperCPU OFF: issue the vanilla reset pulse so auto-RUN works
-		//   identically to upstream (6510 T65 handles RAMTAS fine).
+		// 2026-04-27: vanilla 6510 mode uses ~8μs (255 cycles) reset pulse
+		// for PRG-load. The 65C816 needs a longer reset to fully clear
+		// internal state — 255 cycles caused RAMTAS to re-loop at $FD6E-FD86
+		// on the second boot (verified via UART F:0003-F:0016 stuck pattern).
+		// Use 100000 cycles (~3ms) for SCPU mode to match cold-boot reset.
 		do_erase <= 1;
 		reset_wait <= 1;
-		if (~supercpu_enable) reset_counter <= 255;
+		reset_counter <= supercpu_enable ? 100000 : 255;
 	end
 	else if (ioctl_download & (load_crt | load_rom)) begin
 		do_erase <= 1;
@@ -1620,6 +1618,10 @@ always @(posedge clk_sys) begin
 	// gate). Adding a !reset_wait gate races BASIC cold-init NEW on some
 	// paths — vanilla's working flow fires meminit immediately once the
 	// download bytes have landed, regardless of CHRIN/$FFCF timing.
+	// HEAD behavior: fire inj_meminit immediately on PRG-download fall.
+	// 2026-04-27 attempt to gate on !reset_wait broke KERNAL boot (CPU stuck
+	// at $FF5F). Reverted. Relying on relink_retry below to re-fire walks
+	// after BASIC NEW would otherwise wipe link bytes.
 	if (old_download & ~ioctl_download && load_prg && !inj_meminit) begin
 		inj_meminit <= 1;
 		ioctl_load_addr <= 0;
@@ -1634,8 +1636,9 @@ always @(posedge clk_sys) begin
 	// to 0, so using it directly would re-arm on every mini-walk end too.
 	old_is_relink_walk <= is_relink_walk;
 	if (old_meminit & ~inj_meminit & ~old_is_relink_walk) begin
-		relink_retry <= 6'd0;              // DISABLED (was 32)
-		relink_wait  <= 21'd0;
+		relink_retry <= 6'd32;             // 2026-04-27: re-enabled for SCPU
+		relink_wait  <= 21'd160_000;       // ~5ms gap before first relink
+
 	end
 	if (relink_retry > 0 && !inj_meminit && !ioctl_req_wr) begin
 		if (relink_wait > 0)
