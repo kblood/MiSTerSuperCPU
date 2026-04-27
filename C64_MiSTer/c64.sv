@@ -2083,9 +2083,11 @@ wire        supercpu_enable = status[82];
 // bram_hit_native for $8000-$FFFF and forces upper-half reads through
 // buslogic→SDRAM. The overlay GHDL bench (p65c816_asterix_overlay_tb.vhd)
 // reproduces Asterix's $C003 hang when $C000-$FEFF reads are stale.
-// Default rom_opt='0' so overlay starts off; SCPU-aware software can still
-// arm the kickstart ROM via $D07E.
-wire        scpu_rom_opt    = 1'b0;
+// 2026-04-28: split into its own OSD bit (status[86] = "SCPU Kickstart ROM").
+// Defaults Off; gated by supercpu_enable so 6510 mode is unaffected. The
+// SCPU-aware $D07E arming path still works at runtime — this OSD bit just
+// controls cold-boot overlay state.
+wire        scpu_rom_opt    = status[86] & supercpu_enable;
 wire        supercpu_emul;                  // '1' = 65C816 in 6502 emulation mode
 wire        supercpu_cycle;                 // '1' during CPU SDRAM access slot
 wire  [7:0] supercpu_bank;                  // current bank byte (A23-A16)

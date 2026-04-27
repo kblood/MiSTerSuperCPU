@@ -196,10 +196,15 @@ begin
 	                    and flush_active = '0'
 	               else '0';
 
-	-- Write hits DISABLED: write buffer drain is not implemented, so absorbed
-	-- writes never reach SDRAM. VIC-II reads SDRAM and misses screen writes.
-	-- All writes go through the normal SDRAM path; invalidate_wr handles
-	-- cache coherency by clearing the valid bit on write.
+	-- 2026-04-28: Write hits stay DISABLED. Re-enable attempt (v159) booted to
+	-- a black screen on hardware — vanilla BASIC failed cold-boot, K=$FC
+	-- crashing in ROM area. The 16-entry FIFO + wb_drain_active path looks
+	-- right in sim ($C000 pagetest passes both SDRAM and BRAM), but on
+	-- hardware the CPU advances on cache_hit before bram_we / systemWe /
+	-- ram64k Port A capture the original cpuWe pulse cleanly. Diagnosing
+	-- needs a CPU-write reduced-harness scenario, not just an IOCTL bench.
+	-- Keep cacheable_wr=0 until that lands; invalidate_wr below preserves
+	-- read-side coherency on every CPU write.
 	cacheable_wr <= '0';
 
 	-- Write invalidation: when CPU writes to ANY cacheable address, invalidate

@@ -52,9 +52,22 @@ core itself is well-validated by GHDL benches.
    - **Bank $01** routed to SuperRAM/SDRAM instead of SRAM shadow (real HW: 64 KB
      SRAM with KERNAL/BASIC/CHARGEN copies)
    - **WriteSmart optimization** ($D074-$D077, $D0B3) — STUB, no effect
-   - **Write buffer drain** — `cacheable_wr=0`, FIFO infrastructure dormant
+   - **Write buffer drain** — `cacheable_wr=0`, FIFO infrastructure dormant.
+     2026-04-28 v159 attempt to flip `cacheable_wr <= '1'` on bank $00 with
+     `wb_full_i` backpressure built cleanly (ALMs 86 %, timing met) but
+     boot-failed on hardware: vanilla BASIC went to a black screen with the
+     CPU crashing in bank `$FC`. The cache absorbs the write and `cache_hit`
+     fires `enableCpu` next cycle, but the timing relationship between
+     `cpuWe_pre`, `bram_we`, and `c64_ram64k`'s Port A clocks loses the
+     write before BRAM captures it. Reverted in v160. Future fix needs a
+     CPU-write reduced-harness scenario (the IOCTL pagetest can't reproduce
+     this) before the next attempt.
    - **DOS extension** ($D0BE/$D0BF), **bootmap ROM** ($F0-$FF) — MISSING/STUB
    - **$D078** — REPURPOSED for cache flush; real HW = SIMM config
+   - **$D086 OSD bit (SCPU Kickstart ROM)** wired 2026-04-28 (commit pending):
+     `scpu_rom_opt = status[86] & supercpu_enable`. Default Off; previously
+     hardcoded to `1'b0` on the diagnostic path. Lets users opt back into the
+     kickstart-ROM overlay without rebuilding the bitstream.
 
 **Recent corrections to this doc** (since prior version):
    - **$D200-$D3FF I/O hole RAM** — promoted from MISSING to DONE; was
