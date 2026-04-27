@@ -2230,6 +2230,7 @@ wire        dbg_cache_hit_d1;
 wire        dbg_enable_cpu_t65;
 wire        dbg_cpu_cyc;
 wire  [7:0] dbg_diag;
+wire        dbg_irq_vic_n;          // 2026-04-27: real VIC irq_n (active-low)
 wire [5127:0] dbg_bug_buf;  // 641 bytes: status + 128×(PC16,PBR8,IR8) + 128×P8
 wire [15:0] dbg_native_irq_vec;  // native IRQ vector ($FFEE/$FFEF)
 wire [15:0] dbg_irq_nmi_count;   // [15:8]=NMI edge count, [7:0]=IRQ edge count
@@ -2325,6 +2326,7 @@ fpga64_sid_iec #(
 	.dbg_enable_cpu_t65(dbg_enable_cpu_t65),
 	.dbg_cpu_cyc(dbg_cpu_cyc),
 	.dbg_diag(dbg_diag),
+	.dbg_irq_vic_n(dbg_irq_vic_n),
 	.dbg_bug_buf(dbg_bug_buf),
 	.dbg_native_irq_vec(dbg_native_irq_vec),
 	.dbg_srr_count(dbg_srr_count),
@@ -2810,7 +2812,7 @@ debug_uart_fmt debug_fmt
 	.cpu_cyc_pulse(dbg_cpu_cyc),
 	.native_irq_vec(last_doom_addr),   // W:xxxx = last addr when PBR!=00 (freezes at crash)
 	.crash_bank(last_doom_bank),       // L:xx = last bank when PBR!=00 (freezes at crash)
-	.vic_irq(~dbg_diag[7]),  // dbg_diag[7] = NOT_irq_vic, invert for active-high
+	.vic_irq(~dbg_irq_vic_n),  // 2026-04-27: real VIC irq_n; dbg_diag[7] is dma_active, not VIC IRQ
 	.trace_buf(dbg_bug_buf),           // 641-byte crash trace ring buffer (128 entries × 5 bytes + status)
 	.tx_data(dbg_uart_data),
 	.tx_send(dbg_uart_send),

@@ -162,6 +162,10 @@ port(
 	dbg_enable_cpu_t65 : out std_logic;
 	dbg_cpu_cyc        : out std_logic;
 	dbg_diag           : out unsigned(7 downto 0);
+	-- 2026-04-27: real VIC IRQ line (active-low). dbg_diag[7] historically held
+	-- this bit but is now dma_active; the formatter input vic_irq must be wired
+	-- to this dedicated port to correctly drive UART position 75 `!`/`.`.
+	dbg_irq_vic_n      : out std_logic;
 	-- Crash trace ring buffer (128 entries, 5 bytes each: PC_lo, PC_hi, PBR, IR, P)
 	-- Packed layout (LSB first):
 	--   [7:0]       = status: bit0=frozen, bits[7:1]=write_pos[6:0]
@@ -1936,6 +1940,7 @@ dbg_cpu_cyc        <= cpu_cyc; -- count cpu_cyc pulses per frame
 -- bit7=dma_active (was 0)
 dbg_diag <= dma_active & enableCpu & cache_hit & scpu_rom_overlay & iec_slow_mode
             & scpu_speed_1mhz & scpu_rom_vis & turbo_en;
+dbg_irq_vic_n <= irq_vic;
 dbg_cpu_sp   <= dbg_sp_816 when supercpu_en = '1' else x"0000";
 dbg_cpu_p    <= dbg_p_816  when supercpu_en = '1' else x"00";
 dbg_cpu_ir   <= dbg_ir_816 when supercpu_en = '1' else x"00";

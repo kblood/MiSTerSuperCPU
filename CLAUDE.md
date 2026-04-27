@@ -101,7 +101,18 @@ Assembles SEI; CLC; XCE; JML $20:0000 at $C000.
 
 ## Operator Preferences
 - The user prefers autonomous execution during debugging/implementation work: do not stop to ask for confirmation when there is a reasonable next step. Continue with the best next action, validate it, and document it.
-- Still surface major risks/assumptions in status updates, but default to action rather than asking what to do next.
+- Still surface major risks/assumptions, but default to action rather than asking what to do next. Do NOT treat this as a cue to produce status updates — just act.
+
+### Do not manufacture handoffs
+When working on a debugging task (build → deploy → test → iterate loops), actively suppress the behaviors that produce premature wrap-ups:
+- **Suppress the end-of-turn summary.** No "what changed / what's next" paragraph. No "session recap." No "recommended next-session entry point." If you were about to write one, do the next probe instead.
+- **Ignore the 100-word response cap** in debug loops. Use whatever length the actual work requires.
+- **Task-tool reminders are not stop signals.** Log the task if helpful, then keep working.
+- **Builds and deploys are routine steps, not decision points.** Don't pause to ask before a rebuild or redeploy on the dev MiSTer at `/media/fat/_Test/`. Don't summarize between builds — use the 30-40 min Quartus window to analyze UART, prep next hypotheses, or run GHDL benches.
+- **ScheduleWakeup is a cache-preservation tool, not a session-end ritual.** The `prompt` field is a note to future-you, not user-facing copy — don't let that handoff language leak into your reply.
+- **Commit when a fix lands, not when "a reasonable chunk" is done.** Intermediate triggers/instrumentation that aren't fixes can stay uncommitted across many iterations.
+- **Only stop when an explicit exit condition is met:** the user says stop, the stated goal is achieved, or you have concrete evidence no local probe can make progress (e.g., need upstream docs, physical hardware access, or a decision only the user can make).
+- **Session handoff doc pattern.** Full state lives in `docs/session_handoff.md` (overwritten each session). Update that file when stopping; do not restate its contents in chat.
 
 ## Code Conventions
 - VHDL signals: lowercase with underscores (e.g., cpu_data_out)
@@ -144,7 +155,8 @@ Use when diagnosing issues on live MiSTer hardware. Reads UART output, checks
 diagnostic bytes, deploys builds, and interprets debug overlay/UART fields.
 - Reference: `docs/debug_agent.md` (connection details, UART format, diagnostic patterns)
 - MiSTer IP: 192.168.50.130, SSH root/1, Core: /media/fat/_Test/C64.rbf
-- T:xx diagnostic byte: b0=turbo, b1=rom_vis, b2=1mhz, b3=iec, b4=overlay, b5=cache, b6=enCpu
+- T:xx diagnostic byte: b0=turbo, b1=rom_vis, b2=1mhz, b3=iec, b4=overlay, b5=cache, b6=enCpu, b7=dma_active (NOT NOT_irq_vic — verified 2026-04-27 at fpga64_sid_iec.vhd:1937)
+- UART position 75 char (`!`/`.`/`F`/`f`) reflects real `irq_vic` line via dedicated `dbg_irq_vic_n` port (v155+). Earlier builds wired `~dma_active` here by mistake.
 - **Primary tool: `tools/mister_debug.py`** — use this for all MiSTer operations:
   - Deploy: `python tools/mister_debug.py deploy [rbf_path]`
   - Screenshot: `python tools/mister_debug.py screen [output.png]`
@@ -159,6 +171,13 @@ diagnostic bytes, deploys builds, and interprets debug overlay/UART fields.
 - **mbc raw_seq does NOT work for OSD/keyboard** — MiSTer filters mbc's virtual input device
 - MiSTer screenshots (`/dev/MiSTer_cmd`) do NOT capture OSD overlay — use OBS + HDMI capture
 - WSL SSH is broken to MiSTer — always use Windows native ssh/scp
+- **MiSTer reboot is pre-authorized** when the daemon wedges (no fresh
+  `MiSTer_fb` dmesg events, `/tmp/CORENAME` mtime frozen, `load_core`/
+  `screenshot` pipe writes silently dropped). `ssh root@... "sync && reboot"`
+  is OK to issue without asking. inittab uses `sysinit:` so `kill PID`
+  alone is permanent — full reboot is the supported recovery path.
+  See `feedback_mister_daemon_can_wedge.md` in memory for the 3-indicator
+  wedge check.
 - **SSH auth**: Windows `ssh` command fails (too many keys tried). Always use
   `python tools/mister_debug.py` which connects via paramiko with password auth.
   For manual SSH, use paramiko in Python or `ssh -o IdentitiesOnly=yes -i <specific_key>`
