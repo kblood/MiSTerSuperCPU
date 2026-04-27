@@ -121,20 +121,25 @@ $HasNarrowFlag = $DbgTrace -or $NoDbgTrace `
               -or $DbgBusCapture -or $NoDbgBusCapture
 
 # Per-category state. Semantics:
-#   $Release        -> all four OFF, add DEBUG_RELEASE=1 macro
-#   $Debug          -> all four ON (then -NoDbg* flags subtract)
-#   no flavor, but -Dbg* narrow flags present -> all four OFF, narrows add
-#   no flavor, no narrow flags -> all four ON (current default)
+#   $Release        -> build C64_release revision (DEBUG_RELEASE=1 baked into
+#                      that revision's .qsf; no macro patching needed)
+#   $Debug          -> build C64 revision, all four ON (then -NoDbg* subtract)
+#   no flavor, but -Dbg* narrow flags present -> C64 revision, all four OFF,
+#                      narrows add
+#   no flavor, no narrow flags -> C64 revision, all four ON (current default)
 if ($Release) {
     $CatTrace = $false; $CatUart = $false; $CatOverlay = $false; $CatBusCapture = $false
-    $Flavor   = "RELEASE (all debug gated out)"
+    $Flavor   = "RELEASE (revision C64_release, all debug gated out)"
+    $Revision = "C64_release"
 } elseif ($Debug -or (-not $HasNarrowFlag)) {
     $CatTrace = $true;  $CatUart = $true;  $CatOverlay = $true;  $CatBusCapture = $true
-    $Flavor   = if ($Debug) { "DEBUG (all categories)" } else { "DEBUG (default, all categories)" }
+    $Flavor   = if ($Debug) { "DEBUG (revision C64, all categories)" } else { "DEBUG (revision C64, default, all categories)" }
+    $Revision = "C64"
 } else {
     # Narrow build: start from nothing.
     $CatTrace = $false; $CatUart = $false; $CatOverlay = $false; $CatBusCapture = $false
-    $Flavor   = "NARROW (selective debug)"
+    $Flavor   = "NARROW (revision C64, selective debug)"
+    $Revision = "C64"
 }
 
 # Apply per-category overrides (both when -Debug is set and when narrow).
@@ -412,8 +417,16 @@ $null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -SupportEvent 
     }
 }
 
-Write-Step "Patching debug macros: $($MacroSet -join ' ')"
-Patch-DebugMacros -Macros $MacroSet
+if ($Release) {
+    # Release revision has DEBUG_RELEASE=1 baked into C64_release.qsf —
+    # no macro patching needed. The C64.qsf (debug revision) is left
+    # untouched, so other terminals running debug builds stay consistent.
+    Write-Host ""
+    Write-Host "  Revision ${Revision}: using C64_release.qsf (no QSF patching)" -ForegroundColor Gray
+} else {
+    Write-Step "Patching debug macros: $($MacroSet -join ' ')"
+    Patch-DebugMacros -Macros $MacroSet
+}
 
 # --- Build ---
 
@@ -424,11 +437,11 @@ try {
 if ($UseWindowsQuartus) {
     $quartusSh = Join-Path $QuartusWinBin "quartus_sh.exe"
     if ($SyntaxOnly) {
-        Write-Step "Running syntax check (analysis & elaboration only)"
-        $cmdDisplay = "$quartusSh --flow analysis_and_elaboration C64"
+        Write-Step "Running syntax check (analysis & elaboration, revision $Revision)"
+        $cmdDisplay = "$quartusSh --flow analysis_and_elaboration C64 -c $Revision"
     } else {
-        Write-Step "Running full compilation"
-        $cmdDisplay = "$quartusSh --flow compile C64"
+        Write-Step "Running full compilation (revision $Revision)"
+        $cmdDisplay = "$quartusSh --flow compile C64 -c $Revision"
     }
 
     Write-Host "  Working directory: $CoreDir"
@@ -438,9 +451,9 @@ if ($UseWindowsQuartus) {
     Push-Location $CoreDir
     try {
         if ($SyntaxOnly) {
-            & $quartusSh --flow analysis_and_elaboration C64
+            & $quartusSh --flow analysis_and_elaboration C64 -c $Revision
         } else {
-            & $quartusSh --flow compile C64
+            & $quartusSh --flow compile C64 -c $Revision
         }
         $exitCode = $LASTEXITCODE
     } finally {
@@ -449,13 +462,13 @@ if ($UseWindowsQuartus) {
 } else {
     $wslCorePath = Get-WSLPath $CoreDir
     if ($SyntaxOnly) {
-        Write-Step "Running syntax check (analysis & elaboration only)"
-        $buildCmd = "cd '$wslCorePath' && $QuartusPath/quartus_sh --flow analysis_and_elaboration C64 2>&1"
-        $cmdDisplay = "quartus_sh --flow analysis_and_elaboration C64"
+        Write-Step "Running syntax check (analysis & elaboration, revision $Revision)"
+        $buildCmd = "cd '$wslCorePath' && $QuartusPath/quartus_sh --flow analysis_and_elaboration C64 -c $Revision 2>&1"
+        $cmdDisplay = "quartus_sh --flow analysis_and_elaboration C64 -c $Revision"
     } else {
-        Write-Step "Running full compilation"
-        $buildCmd = "cd '$wslCorePath' && $QuartusPath/quartus_sh --flow compile C64 2>&1"
-        $cmdDisplay = "quartus_sh --flow compile C64"
+        Write-Step "Running full compilation (revision $Revision)"
+        $buildCmd = "cd '$wslCorePath' && $QuartusPath/quartus_sh --flow compile C64 -c $Revision 2>&1"
+        $cmdDisplay = "quartus_sh --flow compile C64 -c $Revision"
     }
 
     Write-Host "  Working directory: $wslCorePath"
@@ -488,7 +501,8 @@ if ($SyntaxOnly) {
         exit $exitCode
     }
 } else {
-    $rbfPath = Join-Path $CoreDir "output_files\C64.rbf"
+    # Quartus prefixes output files with the revision name.
+    $rbfPath = Join-Path $CoreDir "output_files\${Revision}.rbf"
 
     if ($exitCode -eq 0 -and (Test-Path $rbfPath)) {
         $rbfSize = [math]::Round((Get-Item $rbfPath).Length / 1MB, 2)
@@ -497,7 +511,9 @@ if ($SyntaxOnly) {
         Write-Host "  Elapsed: $($elapsed.ToString('mm\:ss'))" -ForegroundColor Green
         Write-Host "  Output:  $rbfPath ($rbfSize MB)" -ForegroundColor Green
 
-        # Copy RBF to project root for easy access
+        # Copy RBF to project root as C64.rbf (deployment target expects this
+        # name). Both revisions land at the same destination — deploy whichever
+        # was built last.
         $destRbf = Join-Path $ProjectRoot "C64.rbf"
         Copy-Item $rbfPath $destRbf -Force
         Write-Host "  Copied:  $destRbf" -ForegroundColor Green
@@ -507,7 +523,7 @@ if ($SyntaxOnly) {
             Write-Step "Programming FPGA via USB Blaster"
             $winQBin = if ($env:QUARTUS_WIN_BIN) { $env:QUARTUS_WIN_BIN } else { "C:\intelFPGA_lite\17.0\quartus\bin64" }
             $pgm = Join-Path $winQBin "quartus_pgm.exe"
-            $sof = Join-Path $CoreDir "output_files\C64.sof"
+            $sof = Join-Path $CoreDir "output_files\${Revision}.sof"
             if (-not (Test-Path $pgm)) {
                 Write-Host "  WARNING: quartus_pgm.exe not found at $winQBin" -ForegroundColor Yellow
                 Write-Host "  Set `$env:QUARTUS_WIN_BIN to your Quartus bin64 directory." -ForegroundColor Yellow
@@ -525,7 +541,7 @@ if ($SyntaxOnly) {
         }
 
         # Show resource usage summary from fit report
-        $fitSummary = Join-Path $CoreDir "output_files\C64.fit.summary"
+        $fitSummary = Join-Path $CoreDir "output_files\${Revision}.fit.summary"
         if (Test-Path $fitSummary) {
             Write-Host ""
             Write-Host "  Resource Summary:" -ForegroundColor Cyan
