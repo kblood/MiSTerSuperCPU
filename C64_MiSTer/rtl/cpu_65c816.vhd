@@ -45,6 +45,9 @@ entity cpu_65c816 is
 		dbg_ir        : out unsigned(7 downto 0);
 		dbg_pbr       : out unsigned(7 downto 0);
 		dbg_dbr       : out unsigned(7 downto 0);
+		dbg_x         : out unsigned(15 downto 0);
+		dbg_y         : out unsigned(15 downto 0);
+		dbg_d         : out unsigned(15 downto 0);
 		dbg_state     : out unsigned(3 downto 0)
 	);
 end cpu_65c816;
@@ -64,6 +67,9 @@ architecture rtl of cpu_65c816 is
 	signal localIR    : std_logic_vector(7 downto 0);
 	signal localPBR   : std_logic_vector(7 downto 0);
 	signal localDBR   : std_logic_vector(7 downto 0);
+	signal localX     : std_logic_vector(15 downto 0);
+	signal localY     : std_logic_vector(15 downto 0);
+	signal localD     : std_logic_vector(15 downto 0);
 	signal localSTATE : std_logic_vector(3 downto 0);
 
 	signal currentIO  : std_logic_vector(7 downto 0);
@@ -102,6 +108,9 @@ begin
 		DBG_IR  => localIR,
 		DBG_PBR => localPBR,
 		DBG_DBR => localDBR,
+		DBG_X   => localX,
+		DBG_Y   => localY,
+		DBG_D   => localD,
 		DBG_STATE => localSTATE
 	);
 
@@ -180,6 +189,9 @@ accessIO <= '1' when localA(23 downto 1) = "00000000000000000000000" else '0';
 	dbg_ir <= unsigned(localIR);
 	dbg_pbr <= unsigned(localPBR);
 	dbg_dbr <= unsigned(localDBR);
+	dbg_x   <= unsigned(localX);
+	dbg_y   <= unsigned(localY);
+	dbg_d   <= unsigned(localD);
 	dbg_state <= unsigned(localSTATE);
 
 end architecture;

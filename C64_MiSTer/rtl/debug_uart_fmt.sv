@@ -55,6 +55,12 @@ module debug_uart_fmt (
 	//   [5127:4104] 128 × P byte — one per entry, appended
 	input [5127:0] trace_buf,
 
+	// 2026-04-26 v131: independent bug_frozen path (bypasses trace_buf packing).
+	// 8 builds of triggers all failed to fire trace_buf[0]; this direct port
+	// is wired straight from the VHDL bug_frozen register so we can verify
+	// whether the trigger logic is latching at all on hardware.
+	input          bug_frozen_direct,
+
 	// UART TX interface
 	output reg [7:0] tx_data,
 	output reg       tx_send,
@@ -82,6 +88,9 @@ reg [19:0] lat_en_cnt;
 reg [15:0] lat_irq_vec;
 reg  [7:0] lat_crash_bank;
 reg        lat_vic_irq;
+// v131 direct bug_frozen latch — independent of trace_buf path
+reg        lat_frozen_direct;
+reg        seen_frozen_direct;  // sticky: ever saw direct frozen this run
 
 // Crash trace stream: one entry per vblank when trace is frozen.
 // trace_idx cycles 0..127 through the ring buffer after freeze trips.
@@ -509,7 +518,21 @@ always @(*) begin
 		7'd72: line_char = ":";
 		7'd73: line_char = hex_char(lat_crash_bank[7:4]);
 		7'd74: line_char = hex_char(lat_crash_bank[3:0]);
-		7'd75: line_char = lat_vic_irq ? "!" : ".";
+		// v142 (post-smoking-gun): restore 4-state encoder.
+		// Smoking-gun '@' build (v141 / md5 d1dc4ec) confirmed source
+		// changes propagate to bitstream — prior session's "X" symptom
+		// was 100% from a wedged MiSTer daemon running stale bitstream
+		// from before 20:25, not a build/synthesis issue.
+		// Position 75 character key:
+		//   '#' = direct-frozen NOW + VIC IRQ
+		//   'F' = direct-frozen NOW, no VIC IRQ
+		//   'f' = direct-frozen ever happened (sticky), currently 0
+		//   '!' = VIC IRQ, never saw direct-frozen
+		//   '.' = neither
+		7'd75: line_char = lat_frozen_direct
+		                       ? (lat_vic_irq ? "#" : "F")
+		                       : (seen_frozen_direct ? "f"
+		                          : (lat_vic_irq ? "!" : "."));
 		7'd76: line_char = lat_frozen ? " " : 8'h0A;  // continue when frozen
 		// Trace extension (only reached when lat_frozen=1)
 		7'd77: line_char = "T";
@@ -561,6 +584,8 @@ always @(posedge clk) begin
 		lat_trace_idx   <= 0;
 		lat_trace_entry <= 0;
 		lat_trace_p     <= 0;
+		lat_frozen_direct  <= 0;
+		seen_frozen_direct <= 0;
 	end
 	else begin
 		vblank_r <= vblank;
@@ -594,6 +619,10 @@ always @(posedge clk) begin
 			lat_irq_vec <= native_irq_vec;
 			lat_crash_bank <= crash_bank;
 			lat_vic_irq <= vic_irq;
+			// v131: latch direct path; seen_frozen_direct is sticky once set
+			lat_frozen_direct <= bug_frozen_direct;
+			if (bug_frozen_direct)
+				seen_frozen_direct <= 1'b1;
 			frame_cnt  <= frame_cnt + 1'b1;
 			ch_cnt     <= 0;
 			en_cnt     <= 0;

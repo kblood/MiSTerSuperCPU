@@ -2625,13 +2625,13 @@ always @(posedge clk_sys) begin
 	dbg_vblank <= vsync_sr[0] & ~vsync_sr[1]; // rising edge of vsync
 end
 
-// 2026-04-25: W: field repurposed for peek register output.
-// W[15:8] = peek_seq (8-bit sequence counter, increments per readback completion)
-// W[7:0]  = peek_data (live SDRAM byte at peek_addr, refreshed every io_cycle slot)
-// To use: pre-arm via POKE $DF1D/$DF1E/$DF1F (lo/mid/hi), then watch UART W:.
-// peek_seq advances → readbacks are firing; static W → arm did not stick or
-// io_cycle is starved. Default peek_addr=0 reads bank $00 zero page (innocuous).
-wire [15:0] last_doom_addr = {peek_seq, peek_data};
+// 2026-04-27 v158: W: field shows MAX PC ever observed at PBR=$00 under SCPU.
+// dbg_irq_nmi_count is driven by dbg_max_pc_r in fpga64_sid_iec.vhd. A monotonic
+// max latches the highest PC seen since reset, so a single UART frame tells us
+// whether Asterix decompressor ever escapes the dispatcher page (max > $01FF
+// means handler 4/7 returned at least once; max > $CB00 means decomp finished
+// and game entry ran).
+wire [15:0] last_doom_addr = dbg_irq_nmi_count;
 wire [15:0] _req_mismatch  = dbg_req_set_cnt - dbg_req_cons_cnt;
 wire  [7:0] last_doom_bank = _req_mismatch[7:0];
 

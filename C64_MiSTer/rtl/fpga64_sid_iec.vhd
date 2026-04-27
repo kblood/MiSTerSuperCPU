@@ -406,6 +406,11 @@ signal dbg_p_816    : unsigned(7 downto 0);
 signal dbg_ir_816   : unsigned(7 downto 0);
 signal dbg_pbr_816  : unsigned(7 downto 0);
 signal dbg_dbr_816  : unsigned(7 downto 0);
+-- v157 Asterix-progress probe: max PC ever observed at SCPU PBR=$00. If
+-- Asterix decompressor ever exits handler 0 ($01A8) and JMPs to $CB00 then
+-- this latches a $CBxx (or higher) value. Stays >$01xx if any code outside
+-- the dispatcher ran, so we can tell handler-4-hung from handler-4-dense.
+signal dbg_max_pc_r : unsigned(15 downto 0) := (others => '0');
 
 -- 6510 CPU signals (renamed from _pre for MUX clarity)
 signal cpuAddr_6510 : unsigned(15 downto 0);
@@ -1446,14 +1451,22 @@ begin
 		end if;
 	end if;
 end process;
--- 2026-04-21 Asterix hang diagnostic: expose live PC in the dbg_irq_nmi_count
--- field so the UART W: line shows the current CPU PC each frame. IRQ/NMI
--- counter probe already ruled interrupts out (W:001B stable during hang);
--- we need PC to see where the hang loop actually is.  Previously the A:
--- field was assumed to be PC but it is the address bus (dbg_cpu_addr), so
--- we had no live PC signal in UART.  Repurposing W: gives us that signal
--- with no added port plumbing.
-dbg_irq_nmi_count <= std_logic_vector(dbg_pc_816);
+-- 2026-04-27 v157: route MAX-PC-ever-seen-at-PBR=$00 to W: instead of live
+-- PC. v156 captures showed PC dense in $015C-$0172 (handler 4 inner loop)
+-- but couldn't tell if decompressor was making progress or truly stuck.
+-- Sticky max latches the highest PC we ever reach so a single UART frame
+-- reveals whether code ever escaped the dispatcher page.
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if reset = '1' or supercpu_en = '0' then
+			dbg_max_pc_r <= (others => '0');
+		elsif dbg_pbr_816 = x"00" and dbg_pc_816 > dbg_max_pc_r then
+			dbg_max_pc_r <= dbg_pc_816;
+		end if;
+	end if;
+end process;
+dbg_irq_nmi_count <= std_logic_vector(dbg_max_pc_r);
 
 cpu_816_inst: entity work.cpu_65c816
 port map (

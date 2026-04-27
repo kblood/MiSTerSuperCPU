@@ -30,6 +30,9 @@ entity P65C816 is
 		  DBG_IR	: out std_logic_vector(7 downto 0);
 		  DBG_PBR	: out std_logic_vector(7 downto 0);
 		  DBG_DBR	: out std_logic_vector(7 downto 0);
+		  DBG_X	: out std_logic_vector(15 downto 0);
+		  DBG_Y	: out std_logic_vector(15 downto 0);
+		  DBG_D	: out std_logic_vector(15 downto 0);
 		  DBG_STATE	: out std_logic_vector(3 downto 0)
     );
 end P65C816;
@@ -273,6 +276,9 @@ begin
 	DBG_IR <= IR;
 	DBG_PBR <= PBR;
 	DBG_DBR <= DBR;
+	DBG_X  <= X;
+	DBG_Y  <= Y;
+	DBG_D  <= D;
 	DBG_STATE <= std_logic_vector(STATE);
 
 	process(CLK, RST_N)
