@@ -16,6 +16,8 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
+use work.c64_ram64k_pkg.all;
+
 entity c64_ram64k is
 port (
 	clk       : in  std_logic;
@@ -36,7 +38,8 @@ architecture rtl of c64_ram64k is
 
 	-- 64KB storage: 65536 x 8 bits = 524,288 bits
 	-- Quartus infers M10K blocks for this array.
-	type ram_t is array(0 to 65535) of std_logic_vector(7 downto 0);
+	-- ram_t now lives in work.c64_ram64k_pkg so sim benches can reach
+	-- this variable via VHDL-2008 external names with matching type.
 	shared variable ram : ram_t;
 
 	-- v157 attempt to drop "no_rw_check" produced -8.5ns slack on clk64

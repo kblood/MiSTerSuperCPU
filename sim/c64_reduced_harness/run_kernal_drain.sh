@@ -105,6 +105,7 @@ SOURCES=(
     "${RTL}/spram.vhd"
     "${RTL}/dprom.vhd"
     "${RTL}/bram_valid.vhd"
+    "${RTL}/c64_ram64k_pkg.vhd"
     "${RTL}/c64_ram64k.vhd"
     "${RTL}/cpu_cache.vhd"
     "${RTL}/fpga64_keyboard.vhd"

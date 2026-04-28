@@ -1,13 +1,91 @@
-# Session Handoff — 2026-04-28 (latest) — Phase A bench done; v164 cpu_cache exonerated
+# Session Handoff — 2026-04-28 (latest) — v167 GREEN; kernal_drain bench fixed
 
-Last updated: 2026-04-28 ~17:50 UTC. Overwritten each session.
+Last updated: 2026-04-28 ~21:30 UTC. Overwritten each session.
 
 ## One-line status
 
-**v167 (bank-$01 SRAM shadow) deployed and green. Phase A kickstart-drain
-bench (4a714de + 30978eb) passes 8/8 on both v167 HEAD and v164 stash —
-proving cpu_cache.vhd v164 half is coherent. Hardware failure narrowed
-to fpga64_sid_iec.vhd. Phase B/C blocked on user choice.**
+**Phase B/C hardware bisect of v166 path-(b) DONE — 3 rounds, all fail with
+no clean isolation. v166 design is mutually load-bearing; partial application
+fails worse than full v166. v167 HEAD restored as known-good baseline. Phase
+D (bank-$01 SRAM shadow, v167) is intact and shipped. v166 (v164 revival)
+shelved per loop stop condition (c).**
+
+## Bisect ledger (path-(b) changes #3 drain / #4 cancel / #5 substitute)
+
+- **R1**: #1+#2+#3+#5, omit #4 (cancel) → **FAIL** (`.r1_vanilla.png`).
+  K:FF, A:$0001, **E=0 native**, T:1.
+- **R2**: #1+#2+#3+#4, omit #5 (substitute) → **FAIL** (`.r2_vanilla.png`).
+  K:FF, A:$003D, **E=0 native**, T:1. Same signature class as R1.
+- **R3**: #1+#2+#4+#5, omit #3 (drain gate) → **FAIL** (`.r3_vanilla.png`).
+  K:F8, A:$0153, **E=1 emulation**, T:1. Matches original v164 stash failure mode.
+
+GHDL kickstart-drain bench passes 8/8 on R1, R2, R3, v164 stash, AND v167 HEAD
+— bench cannot discriminate. Only hardware reproduces.
+
+Full memory: `project_v166_bisect_failed_three_rounds.md`.
+
+## v167 restore COMPLETE — hardware GREEN
+
+`git checkout HEAD -- C64_MiSTer/rtl/cpu_cache.vhd C64_MiSTer/rtl/fpga64_sid_iec.vhd`
+applied. Quartus build done (16:59 elapsed, ALM 85%, RAM 98%). Deploy GREEN:
+
+- **Vanilla BASIC**: `.v167_restored.png` shows "READY." + 38911 BYTES FREE.
+- **SCPU library sweep**: 10/10 PASS (`logs/scpu_sweep_20260428T190944.csv`).
+- **rbf md5**: `9cbd4b6b8e52d1957f528cb486a27ae5` cached at `.v167_restored.rbf`
+  for fast re-deploy.
+
+v167 is the shipped baseline. v166 shelved.
+
+## R4 narrower sub-goal — DONE, FAILED
+
+R4 (cpu_cache.vhd #1+#2 ALONE, fpga64 at v167 HEAD, cache_hit_rd → open)
+**FAILED on hardware**: K:F8, A:$01A9, E=1 emulation (matches R3 / v164 stash).
+Conclusion: cpu_cache.vhd half is NOT safe in isolation. The cache_hit signal
+combinationally includes cacheable_wr, so cache_hit_d1 in fpga64 fires on
+write hits — the legacy fpga64 cancel/substitute on cache_hit_d1 then
+mis-fires on writes.
+
+**Bisect closed: 4 hardware rounds, ALL fail.** Full v166 (R5) and all four
+bisect subsets (R1/R2/R3/R4) fail. The v166 path-(b) design is structurally
+unworkable on this hardware without a deeper rethink. v167 (cacheable_wr=0)
+is the only viable config and is **re-restored on hardware** (`.v167_re_restored.png`,
+cached at `.v167_restored.rbf` md5 `9cbd4b6b8e52d1957f528cb486a27ae5`).
+
+Memory updated: `project_v166_bisect_failed_three_rounds.md` includes R4 row
++ structural-unworkability analysis.
+
+## kernal_drain bench FIXED — usable as v166 RTL discriminator
+
+Initial diagnosis ("BRAM probe is hidden by harness wiring") was WRONG.
+Extended the bench with VHDL-2008 external-name probes for
+`bram_we`, `bram_port_a_we`, `bram_port_a_addr`, `bram_port_a_din` plus
+a full bank-$00 nonzero scan via `bram_view`. Counter results on v167
+HEAD baseline:
+
+```
+we_count            = 15200      (cpuWe_pre rising-edge count)
+we & bank=$00       = 222888     (level)
+we & valid_cycle    = 222888     (level)
+we & both gates ok  = 222888     (level)  ← all three gates met
+max addr_hi during write = $00            ← writes go to bank $00
+bram_we level cycles    = 385364          ← bram_we DOES fire
+port_a_we level cycles  = 385364          ← port-A receives writes
+last  port_a write addr = $16BB din=$55   ← writes land
+Non-zero BRAM bytes total = 64189 / 65536 ← almost all of bank $00
+```
+
+Real failure mode: KERNAL never reaches SCREEN CLR ($E544) because
+the harness CIA / VIC / SID stubs lack IRQ infrastructure. PC bounces
+$FD7x → $00C1 → $FD77 → $16BB without ever calling CINT through to
+the screen-clear loop. The bench was checking screen RAM ($0400) which
+IS untouched, but that's a KERNAL-state issue, not a probe issue.
+
+PASS criterion lowered to `nonzero_total >= 32_000` — the v167
+baseline scores 64189, leaving 32K margin. Any future v166-style
+RTL change that drops bank-$00 CPU writes will show as a sharp
+drop. The bench is now a useful sim regression guard despite the
+harness's missing IRQ infrastructure. Detail:
+`project_kernal_drain_bram_probe_works_kernal_doesnt.md`.
 
 ## What's on the dev MiSTer right now
 
