@@ -26,6 +26,8 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+use std.textio.all;
+use ieee.std_logic_textio.all;
 
 use work.prg_loader_pkg.all;
 
@@ -379,6 +381,66 @@ begin
         else
             report "c64_reduced_harness_tb_v2: PASS" severity note;
             wait;
+        end if;
+    end process;
+
+    ------------------------------------------------------------------
+    -- System-level PC trace dumper for VICE diff (task #17).
+    -- Mirrors the format used by sim/p65c816_tb/p65c816_asterix_full_tb.vhd:
+    --   <seq>:<pbr>:<pc>:<ir>:<p>:<sp>
+    -- Emits one line per instruction-fetch (dbg_pc transition).
+    --
+    -- Today the bench doesn't run asterix.prg, so the trace is dominated by
+    -- KERNAL/BASIC fetches — useful as a smoke test that the dumper format
+    -- is correct. To use this for real Asterix system-level diffing, an
+    -- Asterix-loading bench (planned) would inject asterix.prg via the
+    -- existing IOCTL pipeline + autorun_test extension and wire dbg_pc /
+    -- dbg_ir / dbg_p / dbg_addr from the same fpga64_sid_iec dbg ports.
+    ------------------------------------------------------------------
+    trace_proc: process(clk)
+        file trace_file : text;
+        variable L         : line;
+        variable opened    : boolean := false;
+        variable seq       : integer := 0;
+        variable pc_prev   : unsigned(15 downto 0) := (others => '1');
+        variable pbr_prev  : unsigned(7 downto 0)  := (others => '1');
+        constant TRACE_MAX_ENTRIES : integer := 200000;
+        constant TRACE_FILE_PATH   : string  := "ours_system_trace.txt";
+    begin
+        if rising_edge(clk) then
+            if not opened then
+                file_open(trace_file, TRACE_FILE_PATH, write_mode);
+                write(L, string'("TRACE_START system reduced_harness_tb_v2"));
+                writeline(trace_file, L);
+                opened := true;
+            end if;
+
+            -- Capture PC transitions while reset deasserted. Format-matches
+            -- p65c816_asterix_full_tb's bare-CPU dumper so vice_diff.py
+            -- can compare the two side by side once asterix-via-system runs.
+            if reset = '0' and seq < TRACE_MAX_ENTRIES
+               and (dbg_pc /= pc_prev or dbg_pbr /= pbr_prev) then
+                write(L, integer'image(seq));
+                write(L, string'(":"));
+                write(L, to_hstring(std_logic_vector(dbg_pbr)));
+                write(L, string'(":"));
+                write(L, to_hstring(std_logic_vector(dbg_pc)));
+                write(L, string'(":"));
+                write(L, to_hstring(std_logic_vector(dbg_ir)));
+                write(L, string'(":"));
+                write(L, to_hstring(std_logic_vector(dbg_p)));
+                write(L, string'(":01FF"));  -- SP not exposed; placeholder
+                writeline(trace_file, L);
+                seq       := seq + 1;
+                pc_prev   := dbg_pc;
+                pbr_prev  := dbg_pbr;
+            end if;
+
+            if seq = TRACE_MAX_ENTRIES then
+                write(L, string'("TRACE_TRUNCATED"));
+                writeline(trace_file, L);
+                seq := seq + 1;
+            end if;
         end if;
     end process;
 
