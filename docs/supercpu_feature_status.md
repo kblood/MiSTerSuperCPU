@@ -62,10 +62,13 @@ core itself is well-validated by GHDL benches.
      pipeline cancel during CPUA-CPUD; `enableCpu_816`'s substitute path
      is gated `not at_cpucd`, so the substitute mis-fires exactly when
      `wb_drain_active` hijacks `ramAddr/ramDout/ramWE`. The CPUC slot
-     loses both the new SDRAM write and the BRAM mirror. Next attempt
-     must either (a) suppress `wb_drain_active` for one cycle after a
-     fresh push, or (b) defer cache absorption to CPUE-CPU9 (outside
-     the at_cpucd window).
+     loses both the new SDRAM write and the BRAM mirror. Detailed
+     path-(b) design with concrete RTL diff in memory file
+     `project_v164_writebuf_path_b_design.md`: split `cache_hit_rd`
+     from write-hit; gate cancel/drain/`enableCpu_816`-substitute on
+     `cache_hit_rd_d1` only; gate `cacheable_wr` push by `cpu_en` (the
+     missing piece v159/v161 each lacked → multi-cycle FIFO duplicates).
+     Hardware-review-gated; not committed.
    - **DOS extension** ($D0BE/$D0BF), **bootmap ROM** ($F0-$FF) — MISSING/STUB
    - **$D078** — REPURPOSED for cache flush; real HW = SIMM/DMA status.
      `$D078` *read* now decodes to `$00` (SCPU-mode + scpu_regs_enabled,
