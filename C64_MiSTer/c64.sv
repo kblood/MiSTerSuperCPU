@@ -1322,6 +1322,14 @@ reg [20:0] relink_wait  = 0;        // clk32 countdown between relinks
 reg        is_relink_walk = 0;      // 1 while a mini-walk is in flight
 reg        old_is_relink_walk = 0;  // registered for edge detection
 reg        strk_fired_once = 0;     // gate: RUN-keystrokes fire ONCE per PRG dl
+// 2026-04-28 — start_strk pulse must fire while reset_n=1 so the upstream
+// `act` keystroke state machine (line ~1786) doesn't immediately clear act
+// via `if(~reset_n) act <= 0`. MGL initial-startup PRG loads stream fast
+// enough through the HPS pipe that inj_meminit ends BEFORE the 100000-cycle
+// PRG-load reset clears — the legacy direct-pulse path lost the keystroke
+// chain. start_strk_pending latches the firing condition; the actual pulse
+// is gated on reset_n so it deferred until after the reset window.
+reg        start_strk_pending = 0;
 
 // Auto-RUN data-path override: for a few seconds after start_strk fires,
 // force CPU reads of bank-$00 $0801/$0802 to return prg_link_lo/hi even
@@ -1692,11 +1700,20 @@ always @(posedge clk_sys) begin
 	// start_strk fires ONCE per PRG download — only on the INITIAL walk's
 	// falling edge, not on any of the relink mini-walks that follow. Use
 	// old_is_relink_walk (same rationale as in the arm-relink block).
-	start_strk  <= old_meminit & ~inj_meminit & ~old_is_relink_walk & ~strk_fired_once;
+	// Deferred firing: arm pending on the same condition the legacy code
+	// pulsed, then fire start_strk only when reset_n=1. Fixes MGL fast-pipe
+	// PRG loads where inj_meminit completed inside the reset window.
 	if (old_meminit & ~inj_meminit & ~old_is_relink_walk & ~strk_fired_once)
-		strk_fired_once <= 1;
-	if (~old_download & ioctl_download && load_prg)
-		strk_fired_once <= 0;
+		start_strk_pending <= 1;
+	start_strk <= start_strk_pending & reset_n;
+	if (start_strk_pending & reset_n) begin
+		start_strk_pending <= 0;
+		strk_fired_once    <= 1;
+	end
+	if (~old_download & ioctl_download && load_prg) begin
+		strk_fired_once    <= 0;
+		start_strk_pending <= 0;
+	end
 
 	// Auto-RUN override DISABLED — vanilla auto-RUN works without it, so
 	// keep the wiring dormant. Flip the literal back to 96_000_000 to
