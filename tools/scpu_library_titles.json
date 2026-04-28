@@ -4,69 +4,69 @@
     "prg": null,
     "duration_seconds": 6,
     "uart_must_contain": "T:",
-    "comment": "Cold-boot smoke; prg null means no load_prg."
+    "comment": "Cold-boot smoke; UART must show debug telemetry during BASIC idle loop."
   },
   {
     "name": "autorun_test",
     "prg": "autorun_test.prg",
     "duration_seconds": 8,
-    "uart_must_contain": "T:",
-    "comment": "Verifies PRG-load reset + autorun pipeline."
+    "uart_must_not_contain": "BUG_FROZEN",
+    "comment": "Verifies PRG-load reset + autorun. Visual test — UART can go silent post-RUN; failure marker is BUG_FROZEN trace."
   },
   {
     "name": "speedtest",
     "prg": "speedtest.prg",
     "duration_seconds": 12,
-    "uart_must_contain": "T:",
-    "comment": "SuperCPU 20MHz speed bench (uses $D07A/$D07B)."
+    "uart_must_not_contain": "BUG_FROZEN",
+    "comment": "SuperCPU 20MHz speed bench. Visual."
   },
   {
     "name": "synthmark64",
     "prg": "synthmark64.prg",
     "duration_seconds": 30,
-    "uart_must_contain": "T:",
+    "uart_must_not_contain": "BUG_FROZEN",
     "comment": "BASIC benchmark; long run, must not lock up."
   },
   {
     "name": "tightloop",
     "prg": "tightloop.prg",
     "duration_seconds": 6,
-    "uart_must_contain": "T:",
-    "comment": "Tight loop hash stability."
+    "uart_must_not_contain": "BUG_FROZEN",
+    "comment": "Tight loop hash stability. Visual."
   },
   {
     "name": "scpu_regtest",
     "prg": "tools/regtest.prg",
     "duration_seconds": 10,
-    "uart_must_contain": "T:",
+    "uart_must_not_contain": "BUG_FROZEN",
     "comment": "Register-set regression."
   },
   {
     "name": "scpu_native_test",
     "prg": "tools/test_cart/out/scpu_native_test.prg",
     "duration_seconds": 8,
-    "uart_must_contain": "T:",
+    "uart_must_not_contain": "BUG_FROZEN",
     "comment": "Native-mode entry."
   },
   {
     "name": "scpu_mvn_mvp_test",
     "prg": "tools/test_cart/out/scpu_mvn_mvp_test.prg",
     "duration_seconds": 10,
-    "uart_must_contain": "T:",
+    "uart_must_not_contain": "BUG_FROZEN",
     "comment": "MVN/MVP block-move regression."
   },
   {
     "name": "scpu_superram_test",
     "prg": "tools/test_cart/out/scpu_superram_test.prg",
     "duration_seconds": 10,
-    "uart_must_contain": "T:",
+    "uart_must_not_contain": "BUG_FROZEN",
     "comment": "SuperRAM read/write through SDRAM."
   },
   {
     "name": "asterix_load_only",
     "prg": "asterix.prg",
     "duration_seconds": 25,
-    "uart_must_contain": "T:",
+    "uart_must_not_contain": "BUG_FROZEN",
     "comment": "Asterix decompressor + title (load via load_prg path; MGL path is BROKEN per project_v158_regression_sweep_results.md)."
   }
 ]

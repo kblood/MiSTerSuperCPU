@@ -65,12 +65,22 @@ def run(cmd: list[str], timeout: float | None = None) -> subprocess.CompletedPro
 
 
 def reset_mister() -> bool:
-    """Soft reset via MiSTer F12 / status pulse. Best-effort."""
+    """Hard reset by re-deploying the core. Some PRGs leave the system in
+    a state where the debug-UART formatter goes silent (e.g. Asterix
+    title screen idle loop) — re-flashing the rbf gives every title a
+    cold-boot baseline."""
+    rbf = REPO / "C64_MiSTer" / "output_files" / "C64.rbf"
+    if not rbf.exists():
+        cp = run([sys.executable, str(MISTER_DEBUG), "status"], timeout=15)
+        return cp.returncode == 0
     cp = run(
-        ["python", str(MISTER_DEBUG), "status"],
-        timeout=15,
+        [sys.executable, str(MISTER_DEBUG), "deploy", str(rbf)],
+        timeout=120,
     )
-    return cp.returncode == 0
+    if cp.returncode != 0:
+        return False
+    time.sleep(3)
+    return True
 
 
 def load_prg(prg_path: pathlib.Path) -> bool:
@@ -132,8 +142,15 @@ def main() -> int:
         return 3
 
     rows: list[dict] = []
-    for t in titles:
+    for idx, t in enumerate(titles):
         print(f"\n--- {t['name']} ---")
+        # Cold-boot the system before each title so a previously loaded
+        # PRG can't leave UART silent for the next test.
+        if idx > 0:
+            if not reset_mister():
+                rows.append({"name": t["name"], "verdict": "FAIL",
+                             "reason": "reset_mister failed", "uart_bytes": 0})
+                continue
 
         prg_field = t.get("prg")
         if prg_field is None:
