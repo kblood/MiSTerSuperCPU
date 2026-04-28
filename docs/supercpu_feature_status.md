@@ -51,7 +51,10 @@ core itself is well-validated by GHDL benches.
 3. **Spec gaps** (architecture / performance):
    - **Bank $01** routed to SuperRAM/SDRAM instead of SRAM shadow (real HW: 64 KB
      SRAM with KERNAL/BASIC/CHARGEN copies)
-   - **WriteSmart optimization** ($D074-$D077, $D0B3) — STUB, no effect
+   - **WriteSmart optimization** ($D074-$D077, $D0B3) — STUB-COMPLETE.
+     $D074-$D077 writes update `scpu_optim_mode`; $D0B4 / $D0BC / $D0B3
+     reads decode (last added 2026-04-28). Mirror enforcement requires
+     bank-$01 SRAM rearchitecture and stays gated until then.
    - **Write buffer drain** — `cacheable_wr=0`, FIFO infrastructure dormant.
      v159 (ungated) and v161 (gated on the new `wb_enable=supercpu_en`
      cache port) both built clean (ALMs 85-86 %, timing met) but black-

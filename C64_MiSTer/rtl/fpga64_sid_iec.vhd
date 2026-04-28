@@ -1034,6 +1034,10 @@ cpuDi <= autorun_link_lo when (autorun_override = '1' and cpuWe_pre = '0'
          -- $D0B8: bit7=software 1MHz, bit6=combined 1MHz (sw OR sys)
          (scpu_speed_1mhz & (scpu_speed_1mhz or scpu_sys_1mhz) & "000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B8" and scpu_regs_enabled = '1') else
          ("000000" & scpu_optim_mode) when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B4" and scpu_regs_enabled = '1') else
+         -- $D0B3: optimization-mode flags secondary (VICE returns $00, software-compat stub).
+         -- Real CMD docs leave $D0B3 reserved/open-bus; software detection routines
+         -- read it to confirm SuperCPU presence — returning $00 matches xscpu64.
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B3" and scpu_regs_enabled = '1') else
          -- $D0B5: bit7=JiffyDOS(0), bit6=speed switch (VICE-verified)
          ("0" & scpu_speed_1mhz & "000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B5" and scpu_regs_enabled = '1') else
          -- $D0B6: bit7=emulation mode (1=6502 emu, 0=native 65816)

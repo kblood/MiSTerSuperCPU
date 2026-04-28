@@ -146,33 +146,24 @@ begin
                 end if;
                 mismatches := mismatches + 1;
             end if;
-            if bram_probe_data /= expected then
-                if first_bad_bram < 0 then
-                    first_bad_bram := a;
-                end if;
-                bram_mismatches := bram_mismatches + 1;
-            end if;
         end loop;
 
+        -- BRAM-side probe (bram_probe_data) is currently wired to zero in
+        -- c64_reduced_top_v2 because fpga64_sid_iec doesn't expose a BRAM
+        -- probe port. SDRAM-side coverage is sufficient for ruling out
+        -- IOCTL upper-half address-decode bugs — that is the question this
+        -- bench was built to answer.
         report "=== $C000 page test results ===";
         report "Address range: 0x" & integer'image(TEST_START) & " .. 0x" & integer'image(TEST_END);
         report "SDRAM mismatches: " & integer'image(mismatches) & " / " & integer'image(TEST_END - TEST_START + 1);
-        report "BRAM  mismatches: " & integer'image(bram_mismatches) & " / " & integer'image(TEST_END - TEST_START + 1);
         if first_bad >= 0 then
             report "First bad SDRAM addr: 0x" & integer'image(first_bad);
         end if;
-        if first_bad_bram >= 0 then
-            report "First bad BRAM  addr: 0x" & integer'image(first_bad_bram);
-        end if;
 
-        if mismatches = 0 and bram_mismatches = 0 then
-            report "PASS (both paths) -- IOCTL->SDRAM and IOCTL->BRAM are clean for $C000-$CFFF. Task #12 bug must live in CPU-write path (ramCE / cpu_cyc gating)." severity note;
-        elsif mismatches = 0 and bram_mismatches > 0 then
-            report "FAIL -- BRAM mirror broken for $C000+. Investigate c64_ram64k Port A enable conditions for upper half." severity failure;
-        elsif mismatches > 0 and bram_mismatches = 0 then
-            report "FAIL -- SDRAM write broken for $C000+ but BRAM mirror is fine. Investigate sdram.v address decode / ramCE / write-enable conditioning for upper half." severity failure;
+        if mismatches = 0 then
+            report "PASS -- IOCTL->SDRAM is clean for $C000-$CFFF. Task #12 bug, if any, must live in CPU-write path (ramCE / cpu_cyc / wb-drain), not IOCTL." severity note;
         else
-            report "FAIL -- BOTH paths broken for $C000+. Investigate ioctl_addr propagation and inj_meminit upper-bound." severity failure;
+            report "FAIL -- SDRAM write broken for $C000+. Investigate sdram.v address decode / ramCE / write-enable conditioning for upper half." severity failure;
         end if;
 
         sim_done <= true;

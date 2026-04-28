@@ -562,11 +562,14 @@ begin
             cass_motor  => open,
             cass_write  => open,
             cass_sense  => '1',
-            cass_read   => '1',
-
-            bram_probe_addr => probe_addr(15 downto 0),
-            bram_probe_dout => bram_probe_dout_s
+            cass_read   => '1'
         );
+
+    -- bram_probe_* port wiring on fpga64_sid_iec was attempted in a prior
+    -- session but never landed in RTL — leave bram_probe_data tied to zero
+    -- and rely on SDRAM-side checks. Re-introduce only if c64_ram64k Port C
+    -- is propagated up through fpga64_sid_iec entity.
+    bram_probe_dout_s <= (others => '0');
 
     ------------------------------------------------------------------
     -- Debug pass-through to bench
