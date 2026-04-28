@@ -1,14 +1,17 @@
-# Session Handoff — 2026-04-29 — v168/v169 + Tasks #25, M10K R3
+# Session Handoff — 2026-04-29 — v169 shipped (M10K R3) + Task #25
 
-Last updated: 2026-04-29 ~00:25 UTC. Overwritten each session.
+Last updated: 2026-04-29 ~01:20 UTC. Overwritten each session.
 
 ## One-line status
 
-**v167 still shipped baseline. Loop ran for 3 tasks: (#1) Asterix MGL
-autorun — v168 attempted, FAILED (start_strk timing was wrong layer);
-(#25) BRAM probe wiring — DONE (commit 82bd475); (#3 = M10K R3) cache
-8KB→4KB — committed (4275388), v169 build in progress for hardware
-validation.**
+**v169 is the new shipped baseline (cache 4KB, ALM 79 %, RAM 98 %).
+Loop ran for 3 tasks: (#1) Asterix MGL autorun — v168 attempted,
+FAILED (start_strk timing was wrong layer; PRG-load reset masked by
+cold-boot RESET is the real bug); (#25) BRAM probe wiring — DONE
+(commit 82bd475); (#3 = M10K R3) cache 8KB→4KB — VALIDATED on
+hardware (commit 4275388, v169). Surprise: cache halving freed ALMs
+not M10K blocks — Quartus had packed cache into minimum-size blocks
+already.**
 
 ## Recent commits (top of master)
 
@@ -68,28 +71,38 @@ Sim regressions still PASS:
 
 Memory: `project_task25_bram_probe_wiring.md`.
 
-### Task #3 — M10K R3 cache shrink (status: COMMITTED, BUILDING)
+### Task #3 — M10K R3 cache shrink (status: VALIDATED ON HARDWARE)
 
-Commit 4275388. `C64_MiSTer/rtl/cpu_cache.vhd`:
-- 1024 → 512 lines (8KB → 4KB).
-- Tag width 11→12 bits (now `bank(8) & addr(15:12)`).
-- Line index `addr(11:3)`.
-- All array bounds, signal widths, flush terminal compare updated.
+Commit 4275388. v169 build 2026-04-29 01:07:31. md5
+`631729e1a24a5bf46436ad555dfd47e5` cached at `.v169_built.rbf`.
 
-Sim regressions PASS at HEAD: kickstart_drain 8/8, kernal_drain
-64189/65536, harness_v2 84/84. v169 Quartus build in progress
-(background task `bispvpvfu`, log `.v169_build.log`). Expected
-RAM utilisation: 98 % → ~96 %; ALM ~85 %; rbf size unchanged.
+Hardware results:
+- Vanilla BASIC: GREEN (`.v169_vanilla.png`).
+- Sweep: 10/10 PASS (`logs/scpu_sweep_20260429T011706.csv`).
+- bank01_sram_tb: 10/10 PASS (sim regression).
+- Resource: ALM 85 % → **79 %** (-2264 ALMs). RAM 540/553 = 98 %
+  **UNCHANGED** (Quartus packing already minimised block count;
+  halving the 8KB cache did NOT free M10K blocks).
 
-Memory: `project_m10k_r3_cache_shrink.md`.
+Surprise: the m10k_reclaim_plan predicted ~4 M10K blocks freed; the
+actual win is in ALMs, not M10K. Future M10K reclaim plans must
+target bigger arrays or eliminate whole consumers.
+
+Memory: `project_m10k_r3_cache_shrink.md` (updated with hardware
+results and corrected expectations).
 
 ## What's on the dev MiSTer right now
 
-- `/media/fat/_Test/C64.rbf` = v168 (8713403, md5
-  `8ba431fd2192799d14e0260913129473`). Vanilla GREEN, sweep 10/10.
+- `/media/fat/_Test/C64.rbf` = **v169** (4275388 + 8713403, md5
+  `631729e1a24a5bf46436ad555dfd47e5`). Vanilla GREEN, sweep 10/10.
+  ALM 79 %, RAM 98 %.
+- v168 cached at `.v168_built.rbf` md5
+  `8ba431fd2192799d14e0260913129473` (start_strk fix only,
+  superseded).
 - v167 cached at `.v167_restored.rbf` md5
-  `9cbd4b6b8e52d1957f528cb486a27ae5` for fast revert if v169 fails.
-- v168 cached at `.v168_built.rbf`.
+  `9cbd4b6b8e52d1957f528cb486a27ae5` (pre-v168/v169, for fast
+  revert if regression appears).
+- v169 cached at `.v169_built.rbf`.
 
 ## Open task graph (post-loop)
 
