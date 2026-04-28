@@ -96,6 +96,10 @@ architecture sim of c64_kernal_drain_tb is
     signal status_rom_found  : std_logic;
     signal status_rom_src    : std_logic_vector(7 downto 0);
 
+    -- Liveness probe: enableCpu_816 pulse count
+    signal dbg_en_count_s    : unsigned(31 downto 0);
+    signal dbg_diag_out_s    : unsigned(7 downto 0);
+
     signal sim_done : boolean := false;
 
     -- CPU activity counters: confirm CPU is actually executing
@@ -182,7 +186,9 @@ begin
             status_inj_end    => status_inj_end,
             status_bram_inval => status_bram_inval,
             status_rom_found  => status_rom_found,
-            status_rom_src    => status_rom_src
+            status_rom_src    => status_rom_src,
+            dbg_en_count      => dbg_en_count_s,
+            dbg_diag_out      => dbg_diag_out_s
         );
 
     ------------------------------------------------------------------
@@ -254,7 +260,17 @@ begin
                    & ":" & to_hstring(std_logic_vector(dbg_addr))
                    & "  IR=$" & to_hstring(std_logic_vector(dbg_ir));
             report "we_count=" & integer'image(we_event_count)
-                   & " addr_change_count=" & integer'image(addr_change_count);
+                   & " addr_change_count=" & integer'image(addr_change_count)
+                   & " enableCpu_816_pulses=" & integer'image(to_integer(dbg_en_count_s));
+            -- dbg_diag bit map:
+            --   7=dma_active 6=enableCpu 5=cache_hit 4=scpu_rom_overlay
+            --   3=iec_slow_mode 2=scpu_speed_1mhz 1=scpu_rom_vis 0=turbo_en
+            report "dbg_diag=$" & to_hstring(std_logic_vector(dbg_diag_out_s))
+                   & "  dma_active=" & std_logic'image(dbg_diag_out_s(7))
+                   & " enableCpu=" & std_logic'image(dbg_diag_out_s(6))
+                   & " cache_hit=" & std_logic'image(dbg_diag_out_s(5))
+                   & " scpu_rom_vis=" & std_logic'image(dbg_diag_out_s(1))
+                   & " turbo_en=" & std_logic'image(dbg_diag_out_s(0));
             -- Quick probe at $0400 so we can see screen-clear progression
             a24 := x"00" & to_unsigned(16#0400#, 16);
             probe_byte(clk, probe_addr, probe_data, a24, rb);

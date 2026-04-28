@@ -84,6 +84,16 @@ entity c64_reduced_top_v2 is
         dbg_data_in  : out std_logic_vector(7 downto 0);
         dbg_we       : out std_logic;
 
+        -- Liveness counters (added 2026-04-28 to debug PC=$0000 wedge):
+        -- count rising-edge pulses on enableCpu_816 since reset_n release.
+        -- If this stays 0, the CPU never gets a clock-enable tick → wedge.
+        dbg_en_count   : out unsigned(31 downto 0);
+
+        -- Latched dbg_diag (snapshot of dma_active/enableCpu/cache_hit/
+        -- scpu_rom_overlay/iec_slow_mode/scpu_speed_1mhz/scpu_rom_vis/turbo_en)
+        -- — useful for one-shot inspection of the SCPU pipeline state.
+        dbg_diag_out   : out unsigned(7 downto 0);
+
         -- Loader status
         status_inj_busy  : out std_logic;
         status_inj_end   : out unsigned(15 downto 0);
@@ -179,7 +189,13 @@ architecture rtl of c64_reduced_top_v2 is
 
 begin
 
-    reset_n <= not reset;
+    -- Hold the DUT in reset until the ROM loader has finished filling the
+    -- kernel_c64 dprom. Otherwise the 65C816 reads its $00:$FFFC reset
+    -- vector from a still-empty dprom, jumps to $0000, and spins on BRK
+    -- forever (PC=$0000, IR=$00, we_count=0). Bench-side `reset` drives
+    -- our internal sequencer; reset_n to the DUT only goes high after
+    -- rom_load_state=2 (load complete).
+    reset_n <= '1' when reset = '0' and rom_load_state = 2 else '0';
 
     ------------------------------------------------------------------
     -- ROM loading: on first cycle out of reset, walk through all 16KB
@@ -464,7 +480,7 @@ begin
             dbg_cache_hit_d1   => open,
             dbg_enable_cpu_t65 => open,
             dbg_cpu_cyc        => open,
-            dbg_diag           => open,
+            dbg_diag           => dbg_diag_out,
             dbg_bug_buf        => open,
             dbg_native_irq_vec => open,
             dbg_srr_count      => open,
@@ -581,6 +597,20 @@ begin
     dbg_addr    <= dbg_cpu_addr_s;
     dbg_data_in <= std_logic_vector(dbg_cpu_data_s);
     dbg_we      <= dbg_cpu_we_s;
+
+    -- enableCpu_816 pulse counter
+    en_count_proc : process(clk32)
+        variable cnt : unsigned(31 downto 0) := (others => '0');
+    begin
+        if rising_edge(clk32) then
+            if reset = '1' then
+                cnt := (others => '0');
+            elsif dbg_cpu_en_s = '1' then
+                cnt := cnt + 1;
+            end if;
+            dbg_en_count <= cnt;
+        end if;
+    end process;
 
     status_inj_busy   <= inj_meminit;
     status_inj_end    <= inj_end_sig;

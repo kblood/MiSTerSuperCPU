@@ -38,6 +38,18 @@ mkdir -p "${WORK_DIR}" "${STAGE}"
 # ---- Stage + patch fpga64_sid_iec.vhd (same patches as run_harness_v2)
 cp -f "${RTL}/fpga64_sid_iec.vhd" "${STAGE}/fpga64_sid_iec.vhd"
 sed -i 's|when "11" => turbo_m <= "000"; -- 1x (C64 speed)|when "11" => turbo_m <= "000"; -- 1x (C64 speed)\n\t\t\t\t\t\t\twhen others => turbo_m <= "000";|' "${STAGE}/fpga64_sid_iec.vhd"
+
+# Patch #3 (sim-only): force initial values on signals that depend on each other
+# for boot. In synth, Quartus zero-inits these; in GHDL they stay 'U' forever
+# and the rfsh_cycle = "00" gate that sets sysEnable never fires, leaving
+# sysCycle stuck at CYCLE_EXT4 and the CPU never enabled. Without this, the
+# 65C816 wedges at PC=$0000 (verified 2026-04-28).
+sed -i \
+    -e 's|^signal sysEnable    : std_logic;|signal sysEnable    : std_logic := '\''0'\'';|' \
+    -e 's|^signal rfsh_cycle   : unsigned(1 downto 0);|signal rfsh_cycle   : unsigned(1 downto 0) := "00";|' \
+    -e 's|^signal dma_active   : std_logic;|signal dma_active   : std_logic := '\''0'\'';|' \
+    -e 's|^signal turbo_en     : std_logic;|signal turbo_en     : std_logic := '\''0'\'';|' \
+    "${STAGE}/fpga64_sid_iec.vhd"
 python3 - "${STAGE}/fpga64_sid_iec.vhd" <<'PY'
 import sys
 p = sys.argv[1]
