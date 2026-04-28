@@ -2133,6 +2133,11 @@ always @(posedge clk_sys) begin
     if (sniff_match_pipe[5]) sniff_8B94 <= sdram_data;
 end
 
+// Phase D (v167): bank $01 reads are intercepted by the bank01_sram dprom
+// in fpga64_buslogic.vhd; SDRAM writes for bank $01 still flow as before
+// (harmless mirror — minimises blast radius for the first deploy). If
+// later profiling shows SDRAM bandwidth contention, gate cart_we off for
+// bank $01 access here.
 wire [24:0] scpu_sdram_addr = (supercpu_enable && cpu_has_bus && (supercpu_bank != 8'h00))
                                ? scpu_superram_addr
                                : cart_addr;

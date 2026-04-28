@@ -133,6 +133,13 @@ architecture rtl of fpga64_buslogic is
 	signal scpu_sysram_cs   : std_logic;
 	signal scpu_sysram_data : std_logic_vector(7 downto 0);
 
+	-- Phase D (v167): bank-$01 SRAM shadow. Real CMD SuperCPU has 128KB SRAM
+	-- covering banks $00 + $01. We already have bank $00 via c64_ram64k.
+	-- This dprom covers bank $01 so SuperRAM can start at bank $02 (real-HW
+	-- layout). Costs ~13 M10K blocks of the ~52 freed by M10K R1.
+	signal bank01_sram_q : std_logic_vector(7 downto 0);
+	signal bank01_cs     : std_logic;
+
 	-- C64 I/O is only accessible from bank $00.
 	-- In SuperCPU mode, bank $01-$FF accesses bypass I/O (they target SuperRAM).
 	-- Without this gate the kickstart's MVN block moves to bank $01 would
@@ -190,6 +197,29 @@ begin
 		rdaddress => std_logic_vector(cpuAddr),
 		q => scpuRomData
 	);
+
+	-- Phase D bank-$01 SRAM shadow (64KB). No INIT_FILE → zero-initialised.
+	-- Quartus infers ~13 M10K blocks for this dual-port 8-bit-wide RAM.
+	-- bank01_cs gates writes; reads happen unconditionally (output muxed in
+	-- dataToCpu process below).
+	bank01_sram: entity work.dprom
+	generic map ("", 16)
+	port map
+	(
+		wrclock   => clk,
+		rdclock   => clk,
+
+		wren      => bank01_cs and cpuWe,
+		data      => std_logic_vector(cpuData),
+		wraddress => std_logic_vector(cpuAddr),
+
+		rdaddress => std_logic_vector(cpuAddr),
+		q         => bank01_sram_q
+	);
+
+	-- Bank $01 select: SuperCPU mode + bank byte = $01.
+	-- ROM bank check ($F8) is mutually exclusive with $01.
+	bank01_cs <= '1' when supercpu_en = '1' and supercpu_bank = x"01" else '0';
 
 	-- romData mux: cs_romLoc reads ($E000-$FFFF in bank $00).
 	-- When SuperCPU ROM is active AND visible (supercpu_rom_vis='1'), serve scpuRomData.
@@ -274,6 +304,7 @@ begin
 			  cs_cia1Loc, cs_cia2Loc, lastVicData,
 			  cs_ioELoc, cs_ioFLoc, scpu_rom_en, scpu_sysram_cs, scpu_sysram_data, scpu_io_en,
 			  scpuRomData, supercpu_rom_vis, supercpu_en, supercpu_bank,
+			  bank01_cs, bank01_sram_q,
 			  io_rom, io_ext, io_data)
 	begin
 		-- If no hardware is addressed the bus is floating.
@@ -284,9 +315,14 @@ begin
 			-- Use scpuRomData directly, NOT romData, so that the $D07E ROM-visibility
 			-- switch (supercpu_rom_vis) cannot hide the kickstart code at bank $F8.
 			dataToCpu <= unsigned(scpuRomData);
+		elsif bank01_cs = '1' then
+			-- Phase D: bank $01 served from on-chip SRAM dprom (real-HW parity).
+			-- This branch precedes the generic non-bank-$00 ramData fall-through
+			-- so SDRAM is bypassed for bank-$01 reads.
+			dataToCpu <= unsigned(bank01_sram_q);
 		elsif supercpu_en = '1' and supercpu_bank /= x"00" then
-			-- SuperCPU non-bank-$00: all reads return SDRAM data (SuperRAM).
-			-- scpu_rom_en has already handled ROM bank $F8; remaining banks $01-$EF, $F0-$F7, $F9-$FF
+			-- SuperCPU non-bank-$00 (excluding bank $01 above): SDRAM SuperRAM.
+			-- scpu_rom_en has already handled ROM bank $F8; remaining banks $02-$EF, $F0-$F7, $F9-$FF
 			-- are SuperRAM where every address is plain RAM, no C64 I/O/ROM decode.
 			dataToCpu <= ramData;
 		elsif scpu_sysram_cs = '1' then
