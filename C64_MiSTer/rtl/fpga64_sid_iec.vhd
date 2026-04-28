@@ -459,10 +459,8 @@ signal phantom_enable        : std_logic := '0'; -- fast path for VDA=0,VPA=0 cy
 
 -- BRAM CPU cache signals (retained for cache path, active when bram64k not used)
 signal cache_hit     : std_logic;
-signal cache_hit_rd  : std_logic;            -- v164: read-only hit (gates cancel/drain/enableCpu_816 substitute)
 signal cache_di      : unsigned(7 downto 0);
 signal cache_hit_d1  : std_logic := '0';
-signal cache_hit_rd_d1 : std_logic := '0';   -- v164: registered read-only hit pipeline
 signal cache_same_line : std_logic;
 signal cache_flush   : std_logic;
 signal cache_flush_sw : std_logic := '0';  -- software-triggered flush via $D078
@@ -1412,12 +1410,8 @@ io_slowdown <= '1' when cpuAddr_pre(15 downto 12) = x"D"
                      and vda_816 = '1'
                else '0';
 
--- v164 path-(b): substitute uses cache_hit_rd_d1 (read-only) so write hits
--- do not falsely advance the CPU mid-CPUC. Write hits absorb into the FIFO
--- via cpu_cache.vhd; the CPU still advances via the legacy `enableCpu and
--- not dma_active` term that fires at CPUE.
 enableCpu_816  <= ((bram_hit_d1 and turbo_en and not at_cpucd and not io_slowdown) or
-                   (cache_hit_rd_d1 and turbo_en and not at_cpucd and not io_slowdown) or
+                   (cache_hit_d1 and turbo_en and not at_cpucd and not io_slowdown) or
                    (phantom_enable and turbo_en and not at_cpucd) or
                    (enableCpu and not dma_active))
                   when supercpu_en = '1' else '0';
@@ -1554,7 +1548,6 @@ port map (
 	cpu_do    => cpuDo_pre,
 	cache_di  => cache_di,
 	cache_hit => cache_hit,
-	cache_hit_rd => cache_hit_rd,
 	fill_data => cache_fill_data,
 	fill_we   => cache_fill_we,
 	fill_addr => cpuAddr_pre,
@@ -1644,76 +1637,54 @@ cache_fill_we <= enableCpu and not wb_drain_active and not cpuWe_pre
 -- and the SDRAM data becomes stale. Block cache_hit_d1 while either pipeline
 -- stage is non-zero so the CPU waits for the SDRAM path.
 process(clk32)
-	variable hit_d1_v    : std_logic;
-	variable hit_rd_d1_v : std_logic;
 begin
 	if rising_edge(clk32) then
 		if cache_hit_d1 = '1' then
 			-- Suppress for 1 cycle after cache hit (M10K read latency for new line).
-			hit_d1_v    := '0';
-			hit_rd_d1_v := '0';
+			-- Wide cache lines (64-bit) make same-line data available immediately
+			-- via the byte-select MUX, but skipping suppress crashes the CPU.
+			-- Root cause: likely a timing race between combinational cache_di and
+			-- the CPU's registered data latch. Needs simulation or SignalTap to
+			-- diagnose. The wide line infrastructure remains for future use.
+			cache_hit_d1 <= '0';
 		elsif (sysCycle >= CYCLE_DMA0 and sysCycle <= CYCLE_VIC3) then
 			-- Block cache hits during DMA/VIC slots (bus masters need SDRAM).
-			hit_d1_v    := '0';
-			hit_rd_d1_v := '0';
+			cache_hit_d1 <= '0';
 		elsif (sysCycle >= CYCLE_CPU0 and cpu_cyc = '0')
 		   or (sysCycle >= CYCLE_CPU0 and wb_drain_active = '1') then
 			-- CPU phase: evaluate cache hit (original behavior).
 			-- Suppress for writes: writes MUST go through SDRAM (enableCpu) so
 			-- that both SDRAM and BRAM receive the data.
-			hit_d1_v := cache_hit and not dma_active and baLoc
-			            and bram_valid_cycle
-			            and not cpuWe_pre
-			            and not scpu_speed_1mhz
-			            and not scpu_sys_1mhz
-			            and not scpu_rom_overlay
-			            and not iec_slow_mode
-			            and not cpu_cyc_s(0)
-			            and not cpu_cyc_s(1)
-			            and not superram_enable_delay
-			            and not enableCpu;
-			hit_rd_d1_v := cache_hit_rd and not dma_active and baLoc
-			               and bram_valid_cycle
-			               and not cpuWe_pre
-			               and not scpu_speed_1mhz
-			               and not scpu_sys_1mhz
-			               and not scpu_rom_overlay
-			               and not iec_slow_mode
-			               and not cpu_cyc_s(0)
-			               and not cpu_cyc_s(1)
-			               and not superram_enable_delay
-			               and not enableCpu;
+			cache_hit_d1 <= cache_hit and not dma_active and baLoc
+			                and bram_valid_cycle
+			                and not cpuWe_pre
+			                and not scpu_speed_1mhz
+			                and not scpu_sys_1mhz
+			                and not scpu_rom_overlay
+			                and not iec_slow_mode
+			                and not cpu_cyc_s(0)
+			                and not cpu_cyc_s(1)
+			                and not superram_enable_delay
+			                and not enableCpu;
 		elsif (sysCycle <= CYCLE_EXT3 or (sysCycle >= CYCLE_EXT4 and sysCycle <= CYCLE_EXT7))
 		  and turbo_en = '1' then
 			-- EXT phase: allow cache hits during EXT slots for turbo acceleration.
-			hit_d1_v := cache_hit and not dma_active and baLoc
-			            and bram_valid_cycle
-			            and not cpuWe_pre
-			            and not scpu_speed_1mhz
-			            and not scpu_sys_1mhz
-			            and not scpu_rom_overlay
-			            and not iec_slow_mode
-			            and not cpu_cyc_s(0)
-			            and not cpu_cyc_s(1)
-			            and not superram_enable_delay
-			            and not enableCpu;
-			hit_rd_d1_v := cache_hit_rd and not dma_active and baLoc
-			               and bram_valid_cycle
-			               and not cpuWe_pre
-			               and not scpu_speed_1mhz
-			               and not scpu_sys_1mhz
-			               and not scpu_rom_overlay
-			               and not iec_slow_mode
-			               and not cpu_cyc_s(0)
-			               and not cpu_cyc_s(1)
-			               and not superram_enable_delay
-			               and not enableCpu;
+			-- These 8 slots are unused by other bus masters (VIC, DMA) and give
+			-- up to 8 extra cache hit opportunities per rotation.
+			cache_hit_d1 <= cache_hit and not dma_active and baLoc
+			                and bram_valid_cycle
+			                and not cpuWe_pre
+			                and not scpu_speed_1mhz
+			                and not scpu_sys_1mhz
+			                and not scpu_rom_overlay
+			                and not iec_slow_mode
+			                and not cpu_cyc_s(0)
+			                and not cpu_cyc_s(1)
+			                and not superram_enable_delay
+			                and not enableCpu;
 		else
-			hit_d1_v    := '0';
-			hit_rd_d1_v := '0';
+			cache_hit_d1 <= '0';
 		end if;
-		cache_hit_d1    <= hit_d1_v;
-		cache_hit_rd_d1 <= hit_rd_d1_v;
 	end if;
 end process;
 
@@ -2636,17 +2607,16 @@ begin
 end process;
 
 -- Write buffer drain: steal CPU SDRAM slots when the CPU can run from cache.
--- Condition: buffer has entries AND current CPU access is a *read* cache hit
--- (so SDRAM slot is redundant) AND we're in a CPU SDRAM slot AND not during
--- DMA. v164 path-(b): use `cache_hit_rd` (read-only) instead of `cache_hit`,
--- so write hits no longer hijack the CPUC slot - writes fall through to the
--- legacy `systemWe` path while the FIFO push happens in cpu_cache.vhd. Drain
--- only fires on read hits where the SDRAM slot is genuinely free.
+-- Condition: buffer has entries AND current CPU read is a cache hit (so SDRAM
+-- slot is redundant) AND we're in a CPU SDRAM slot AND not during DMA.
+-- During drain: ramAddr/ramDout carry wb_addr/wb_data, ramWE='1' for the write.
+-- enableCpu is suppressed (SDRAM doing write, not read — no valid CPU data).
+-- The CPU still advances via cache_hit_d1 during this and adjacent slots.
 -- Gate drain on bank $00 only: the write-back buffer stores 16-bit addresses
 -- (no bank byte). Draining during non-bank-$00 cycles would override ramAddr
 -- with a 16-bit wb_addr, bypassing the scpu_superram_addr calculation in c64.sv
 -- and sending the write to the wrong SDRAM region (bank $00 instead of SuperRAM).
-wb_drain_active <= '1' when wb_pending = '1' and cache_hit_rd = '1'
+wb_drain_active <= '1' when wb_pending = '1' and cache_hit = '1'
                             and cpu_cyc = '1' and dma_active = '0'
                             and cache_cpu_bank = x"00"
                   else '0';
@@ -2695,12 +2665,8 @@ begin
 		-- stale (wrong address). Cancel the pipeline to prevent delivering
 		-- stale data via enableCpu. This allows cache/BRAM to fire freely
 		-- without being blocked by the SDRAM pipeline guards.
-		-- v164 path-(b): cancel only on READ hits (cache_hit_rd_d1).
-		-- Write hits no longer cancel enableCpu - the CPU's STA needs the
-		-- CPUC SDRAM slot to commit the write via systemAddr/systemWe while
-		-- the FIFO push happens in cpu_cache.vhd in parallel.
-		if (cache_hit_rd_d1 = '1' or bram_hit_d1 = '1' or phantom_enable = '1') and turbo_en = '1' then
-			-- Cache/BRAM/phantom READ hit advanced the CPU: cancel pending SDRAM pipeline
+		if (cache_hit_d1 = '1' or bram_hit_d1 = '1' or phantom_enable = '1') and turbo_en = '1' then
+			-- Cache/BRAM/phantom hit advanced the CPU: cancel pending SDRAM pipeline
 			cpu_cyc_s <= "00";
 			enableCpu <= '0';
 			superram_enable_delay <= '0';
