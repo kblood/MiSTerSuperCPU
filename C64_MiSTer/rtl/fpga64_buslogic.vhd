@@ -94,15 +94,11 @@ end fpga64_buslogic;
 architecture rtl of fpga64_buslogic is
 	signal charData       : std_logic_vector(7 downto 0);
 	signal charData_std   : std_logic_vector(7 downto 0);
-	signal charData_jap   : std_logic_vector(7 downto 0);
 	signal romData        : std_logic_vector(7 downto 0);
 	signal romData_c64    : std_logic_vector(7 downto 0);
-	signal romData_c64std : std_logic_vector(7 downto 0);
-	signal romData_c64gs  : std_logic_vector(7 downto 0);
-	signal romData_c64jap : std_logic_vector(7 downto 0);
-	signal c64gs_ena      : std_logic := '0';
-	signal c64std_ena     : std_logic := '0';
-	signal c64jap_ena     : std_logic := '0';
+	-- M10K R1 (2026-04-28): kernel_c64gs/c64std/c64jap dproms + chargen_j
+	-- removed; bios selector logic dropped. Reclaims ~26-39 M10K blocks
+	-- (95% → ~75-80%) to make headroom for bank-$01 SRAM shadow.
 
 	signal cs_CharLoc     : std_logic;
 	signal cs_romLoc      : std_logic;
@@ -160,27 +156,12 @@ begin
 		q => charData_std
 	);
 
-	chargen_j: entity work.dprom
-	generic map ("rtl/roms/chargenj.mif", 12)
-	port map
-	(
-		wrclock => clk,
-		rdclock => clk,
-
-		rdaddress => std_logic_vector(currentAddr(11 downto 0)),
-		q => charData_jap
-	);
-
-	kernel_c64gs: entity work.dprom
-	generic map ("rtl/roms/std_C64GS.mif", 14)
-	port map
-	(
-		wrclock => clk,
-		rdclock => clk,
-
-		rdaddress => std_logic_vector(cpuAddr(14) & cpuAddr(12 downto 0)),
-		q => romData_c64gs
-	);
+	-- M10K R1 (2026-04-28): chargen_j + kernel_c64gs dropped. The bios
+	-- selector originally chose between four (gs/c64/std/jap) KERNAL ROMs
+	-- and two chargen ROMs. SCPU dev only needs JiffyDOS + std chargen,
+	-- so the four unused dproms are removed to reclaim ~26-39 M10K blocks.
+	-- bios input port retained for entity-signature compatibility but
+	-- has no effect on KERNAL/chargen choice.
 
 	kernel_c64: entity work.dprom
 	generic map ("rtl/roms/dol_C64.mif", 14)
@@ -197,27 +178,7 @@ begin
 		q => romData_c64
 	);
 
-	kernel_c64std: entity work.dprom
-	generic map ("rtl/roms/std_C64.mif", 14)
-	port map
-	(
-		wrclock => clk,
-		rdclock => clk,
-
-		rdaddress => std_logic_vector(cpuAddr(14) & cpuAddr(12 downto 0)),
-		q => romData_c64std
-	);
-
-	kernel_c64jap: entity work.dprom
-	generic map ("rtl/roms/jap_C64.mif", 14)
-	port map
-	(
-		wrclock => clk,
-		rdclock => clk,
-
-		rdaddress => std_logic_vector(cpuAddr(14) & cpuAddr(12 downto 0)),
-		q => romData_c64jap
-	);
+	-- M10K R1: kernel_c64std + kernel_c64jap dproms dropped.
 
 	scpu_rom: entity work.dprom
 	generic map ("rtl/roms/scpu64.mif", 16)
@@ -236,12 +197,10 @@ begin
 	-- revealed here so that "LDA $FFFC" in the kickstart reads $FCE2 (C64 KERNAL
 	-- reset vector) instead of $FC90, allowing RTL to boot the KERNAL.
 	romData <= scpuRomData    when supercpu_en = '1' and supercpu_rom = '1' and supercpu_rom_vis = '1' else
-				  romData_c64jap when c64jap_ena = '1' else
-				  romData_c64std when c64std_ena = '1' else
-				  romData_c64gs  when c64gs_ena  = '1' else
 				  romData_c64;
 
-	charData <= charData_jap when c64jap_ena = '1' else charData_std;
+	-- M10K R1: collapsed mux — only JiffyDOS romData_c64 + std chargen.
+	charData <= charData_std;
 
 	-- SuperCPU ROM bank mapping:
 	-- Bank $F8 only: the 64KB dprom holds the kickstart ROM image at bank $F8.
@@ -303,16 +262,8 @@ begin
 		end if;
 	end process;
 
-	process(clk)
-	begin
-		if rising_edge(clk) then
-			if reset = '1' then 
-				c64gs_ena  <= bios(1);
-				c64std_ena <= bios(0);
-				c64jap_ena <= bios(1) and bios(0);
-			end if;
-		end if;
-	end process;
+	-- M10K R1: bios-selector process removed (the *_ena signals it drove
+	-- now have no consumers after the dprom mux collapse).
 
 	--
 	--begin
