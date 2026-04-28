@@ -45,7 +45,8 @@ port (
 
 	-- Cache output (active 1 cycle after address presented)
 	cache_di  : out unsigned(7 downto 0);  -- data to CPU from cache
-	cache_hit : out std_logic;             -- combinational: tag match + byte valid (read) or WB not full (write)
+	cache_hit : out std_logic;             -- combinational: read-hit OR write-absorb
+	cache_hit_rd : out std_logic;          -- v164: combinational: READ-only hit (gates SDRAM cancel + drain + enableCpu_816 substitute)
 
 	-- Fill interface (from SDRAM read-back)
 	fill_data : in  unsigned(7 downto 0);  -- SDRAM data byte
@@ -134,6 +135,7 @@ architecture rtl of cpu_cache is
 	signal invalidate_wr : std_logic;  -- non-bank-$00 write: invalidate cached line
 	signal tag_match     : std_logic;
 	signal byte_valid    : std_logic;
+	signal cache_hit_rd_i : std_logic;  -- v164: internal copy of cache_hit_rd (out port can't be read)
 
 	-- ── Flush state machine ─────────────────────────────────────────
 	signal flush_active  : std_logic := '0';
@@ -197,27 +199,26 @@ begin
 	                    and flush_active = '0'
 	               else '0';
 
-	-- 2026-04-28: Write hits stay DISABLED. Two attempts to flip on:
-	--   v159: `cacheable_wr <= '1' when ... wb_full='0'` (no SCPU gate).
-	--         Black-screened vanilla BASIC.
-	--   v161: same gated on `wb_enable=supercpu_en`. Also black-screened
-	--         (default OSD has SCPU on, so the gate didn't change anything
-	--         for the failing case).
-	-- Both attempts hand `cache_hit=1` to the SDRAM-pipeline cancel logic
-	-- in fpga64_sid_iec.vhd, which in turn suppresses `enableCpu` and
-	-- `cpu_cyc_s` for one cycle. `enableCpu_816` does include
-	-- `cache_hit_d1` as a substitute, but it is gated by `not at_cpucd`,
-	-- so the substitute mis-fires during CPUA-CPUD — exactly the slot
-	-- where `wb_drain_active` also hijacks `ramAddr/ramDout/ramWE`. Net
-	-- effect: the CPU's CPUC SDRAM write slot is consumed by the drain
-	-- and the new write neither lands in `c64_ram64k` nor in the FIFO's
-	-- intended `wb_addr`. KERNAL boot loses critical RAM init writes.
-	-- Next attempt must either: (a) suppress wb_drain_active for one
-	-- cycle after a fresh push so the new write goes through systemAddr
-	-- normally, or (b) defer cache_hit absorption to CPUE-CPU9 (outside
-	-- the at_cpucd window) so the cancel doesn't race the write.
-	-- The `wb_enable` port is preserved so this gate stays per-mode-controlled.
-	cacheable_wr <= '0';
+	-- v164 path (b) (2026-04-28): single-cycle FIFO push gated by `cpu_en`
+	-- pulse. Two coupled fixes vs v159/v161 (both black-screened):
+	--  1. `cpu_en` gate prevents multi-cycle pushes when the CPU holds
+	--     `cpu_we = '1'` for several `clk32` cycles per write instruction.
+	--     v159/v161 lacked this and pushed the same (addr,data) into the
+	--     FIFO N times, corrupting drain order.
+	--  2. `cache_hit_rd` (separate output) keeps the SDRAM-pipeline cancel
+	--     and `wb_drain_active` gated on read hits only - write hits no
+	--     longer cancel the CPU's forward progress.
+	-- Companion changes in fpga64_sid_iec.vhd: cancel + enableCpu_816
+	-- substitute switched to cache_hit_rd_d1 (v164 path-(b) full design).
+	-- See memory file `project_v164_writebuf_path_b_design.md`.
+	cacheable_wr <= '1' when enable = '1'
+	                      and wb_enable = '1'
+	                      and cacheable_addr = '1'
+	                      and cpu_we = '1'
+	                      and cpu_en = '1'
+	                      and flush_active = '0'
+	                      and wb_full_i = '0'
+	                else '0';
 
 	-- Write invalidation: when CPU writes to ANY cacheable address, invalidate
 	-- the cached byte if the tag matches. This covers both bank-$00 writes
@@ -239,7 +240,13 @@ begin
 	-- ── Cache hit (combinational) ───────────────────────────────────
 	-- Read hit: tag match + byte valid (data available from BRAM next cycle)
 	-- Write hit: write buffer can absorb (CPU doesn't wait for SDRAM)
-	cache_hit  <= (cacheable_rd and tag_match and byte_valid) or cacheable_wr;
+	-- v164 split: `cache_hit_rd` carries read-only-hit semantics so the SDRAM
+	-- pipeline cancel + wb_drain_active fire on reads only; `cache_hit` keeps
+	-- the original meaning so the cpuDi byte mux + tag/valid update still see
+	-- both flavours.
+	cache_hit_rd_i <= cacheable_rd and tag_match and byte_valid;
+	cache_hit_rd   <= cache_hit_rd_i;
+	cache_hit      <= cache_hit_rd_i or cacheable_wr;
 
 	-- ── Data BRAM (8 parallel M10K banks — read + write) ────────────
 	-- Read port: all 8 banks read simultaneously, producing 64-bit line word.
