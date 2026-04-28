@@ -67,7 +67,12 @@ core itself is well-validated by GHDL benches.
      fresh push, or (b) defer cache absorption to CPUE-CPU9 (outside
      the at_cpucd window).
    - **DOS extension** ($D0BE/$D0BF), **bootmap ROM** ($F0-$FF) — MISSING/STUB
-   - **$D078** — REPURPOSED for cache flush; real HW = SIMM config
+   - **$D078** — REPURPOSED for cache flush; real HW = SIMM/DMA status.
+     `$D078` *read* now decodes to `$00` (SCPU-mode + scpu_regs_enabled,
+     v163) so software polling DMA-busy bit 7 doesn't hang on VIC mirror
+     garbage. Cache-flush write semantics unchanged. Full audit:
+     memory `project_d078_unrepurpose_audit.md`. Future Step 2 = move
+     cache flush off `$D078`, gated on multi-program demand.
    - **$D086 OSD bit (SCPU Kickstart ROM)** wired 2026-04-28 (commit pending):
      `scpu_rom_opt = status[86] & supercpu_enable`. Default Off; previously
      hardcoded to `1'b0` on the diagnostic path. Lets users opt back into the

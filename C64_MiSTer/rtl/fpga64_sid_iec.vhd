@@ -1038,6 +1038,14 @@ cpuDi <= autorun_link_lo when (autorun_override = '1' and cpuWe_pre = '0'
          -- Real CMD docs leave $D0B3 reserved/open-bus; software detection routines
          -- read it to confirm SuperCPU presence — returning $00 matches xscpu64.
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B3" and scpu_regs_enabled = '1') else
+         -- $D078 read = $00. Real CMD SuperCPU $D078 read = SIMM/DMA status
+         -- with bit 7 = "busy" (0 in steady state). Our impl uses $D078 *write*
+         -- as a cache-flush trigger and never had a *read* decode — reads fell
+         -- through to the VIC mirror, returning whatever VIC sprite/control
+         -- register lives at $D008-ish. Polling demos (e.g. `SCPU KICKS !/DMA`)
+         -- hung in `BPL self` waiting for bit 7 to clear. Returning $00 unblocks
+         -- the poll. See memory: project_d078_unrepurpose_audit.md.
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"078" and scpu_regs_enabled = '1') else
          -- $D0B5: bit7=JiffyDOS(0), bit6=speed switch (VICE-verified)
          ("0" & scpu_speed_1mhz & "000000") when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B5" and scpu_regs_enabled = '1') else
          -- $D0B6: bit7=emulation mode (1=6502 emu, 0=native 65816)
