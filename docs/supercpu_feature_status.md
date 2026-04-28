@@ -405,7 +405,7 @@ which probably won't fit in M10K budget.
 | PRG loader bench | DONE | `sim/prg_loader_tb/` | ioctl PRG inject path. |
 | Verilator vanilla | DONE-shelved | `sim/verilator_c64_vanilla/` | Reference comparison only. |
 | Verilator SuperCPU fork | SHELVED | branch `shelved/verilator-superfork` | Removed 2026-04-18. |
-| **VICE PC-trace diff harness** | MISSING | — | See `docs/roadmap.md`. Highest-leverage planned addition. |
+| **VICE PC-trace diff harness** | DONE | `tools/vice_diff/` | Validated 2026-04-28: 200K-line PC match between VICE xscpu64 and our bare-CPU GHDL bench on Asterix phase-2 decompressor (`vice_diff.py --pc-only --align`). System-level dumper (reduced harness) also wired; needs asterix payload injection to reach $0852 — deferred. |
 
 ---
 
@@ -434,15 +434,17 @@ Assembles `SEI; CLC; XCE; JML $20:0000`.
 
 See `docs/roadmap.md` for the dependency-ordered three-lane plan. Headline:
 
-1. **P0 — Build-cache propagation** (blocks everything that needs hardware verification)
-2. **Asterix root-cause** (unblocks compatibility lane)
-3. **VICE PC-trace diff harness** (unblocks future bugs in 2-min iterations vs 30-min)
-4. **$D200-$D3FF I/O hole RAM** (small, high value, sim-testable now)
-5. **Doom re-verify** (resolves bug 2.2 ambiguity)
-6. **Bank $01 SRAM shadow** (correctness, M10K-constrained, ~3-5 days)
-7. **Phase B: write buffer drain + WriteSmart** (performance, ~5-10 days, gated on Asterix/Doom stable)
-8. **DOS extension $D0BE/$D0BF** (low priority)
-9. **Automated regression suite** (`make regress` on test cores)
+1. ~~P0 — Build-cache propagation~~ DONE (task #4)
+2. ~~Asterix root-cause~~ DONE — c64_ram64k RAW-hazard bypass (commit b267455 2026-04-27)
+3. ~~VICE PC-trace diff harness~~ DONE (task #17, validated 200K-line match 2026-04-28)
+4. ~~$D200-$D3FF I/O hole RAM~~ DONE (task #3)
+5. **Doom re-verify** (task #15, resolves bug 2.2 ambiguity — pending hardware)
+6. **M10K reclaim R1** (task #20, gate KERNAL dproms — biggest single block-saving win, prerequisite for #7)
+7. **Bank $01 SRAM shadow** (correctness, M10K-constrained, ~3-5 days, blocked on #6/#20)
+8. **Phase B: write buffer drain + WriteSmart** (task #6, in_progress — v164 path-(b) Quartus build running, smoke matrix #22)
+9. **SCPU library compatibility sweep** (task #19, baseline run pending #22 deploy)
+10. **DOS extension $D0BE/$D0BF** (low priority)
+11. **Automated regression suite** (`make regress` on test cores)
 
 ---
 
