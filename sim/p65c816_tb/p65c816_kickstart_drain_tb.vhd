@@ -199,21 +199,27 @@ begin
             wait until rising_edge(clk);  -- cache_di stable here (M10K registered)
         end procedure;
 
-        -- Drain one entry from the write buffer
+        -- Drain one entry from the write buffer. wb_ack must be asserted
+        -- BEFORE the wait so it's stable at the next rising edge sample.
+        -- Initial pattern (assert AFTER wait) caused phantom S_A5 failures
+        -- on v164 stash because the pop didn't fire until one cycle later
+        -- and the wb_pending check raced ahead.
         procedure drain_one is
         begin
-            wait until rising_edge(clk);
             wb_ack <= '1';
             wait until rising_edge(clk);
             wb_ack <= '0';
+            wait until rising_edge(clk);
         end procedure;
 
     begin
-        -- Reset
+        -- Reset, then wait long enough for the cache flush sweep
+        -- (~1024 cycles in cpu_cache.vhd) to fully settle. cpu_cache_v164_tb
+        -- uses tick(1100) for the same reason.
         reset <= '1';
-        tick(clk, 5);
+        tick(clk, 8);
         reset <= '0';
-        tick(clk, 5);
+        tick(clk, 1100);
 
         report "=== Scenario A: bank-$00 read during wb_drain window ===";
 
