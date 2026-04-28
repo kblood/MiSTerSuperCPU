@@ -47,12 +47,21 @@ Verified post-deploy:
 
 ## Open work
 
-* **Task #6** — write-buffer drain enable. Diagnose the boot-fail mode
-  before re-enabling. The cache absorbs the write and `cache_hit` fires
-  `enableCpu` next cycle, but `bram_we` and `c64_ram64k` Port A may not
-  capture the original `cpuWe_pre` pulse cleanly under the new timing.
-  Need a CPU-write reduced-harness scenario (the IOCTL pagetest can't
-  reproduce this) before next attempt.
+* **Task #6** — write-buffer drain enable. Two attempts (v159 ungated,
+  v161 SCPU-gated via the new `wb_enable` cache port wired to
+  `supercpu_en`) both black-screened on hardware. v162 keeps the
+  `wb_enable` scaffolding but holds `cacheable_wr <= '0'`. Diagnostic
+  comment in `cpu_cache.vhd` records the cancel-vs-drain race:
+  `cache_hit_d1` fires the SDRAM-pipeline cancel during CPUA-CPUD,
+  `enableCpu_816`'s `cache_hit_d1` substitute is gated `not at_cpucd`
+  (so the substitute mis-fires in exactly that window), and
+  `wb_drain_active` simultaneously hijacks `ramAddr/ramDout/ramWE`.
+  The CPUC SDRAM write slot is consumed by the drain and the new
+  write neither lands in `c64_ram64k` nor in the FIFO's intended
+  `wb_addr`. Next attempt must either suppress `wb_drain_active` for
+  one cycle after a fresh push so the new write goes through
+  `systemAddr` normally, or defer cache absorption to CPUE-CPU9
+  (outside the at_cpucd window).
 
 * **Task #12** — IOCTL path is clean for `$C000+`. Bug, if any, lives in
   CPU-write path. Task #6's drain mechanism may already mitigate it for

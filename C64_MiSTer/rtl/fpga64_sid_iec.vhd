@@ -1546,6 +1546,7 @@ port map (
 	wb_ack     => wb_ack,
 	flush     => cache_flush,
 	cpu_en    => cache_cpu_en,
+	wb_enable => supercpu_en,
 	same_line => cache_same_line,
 	dbg_flush_active => cache_flush_active,
 	dbg_tag_match    => cache_tag_match

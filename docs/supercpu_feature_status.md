@@ -53,15 +53,16 @@ core itself is well-validated by GHDL benches.
      SRAM with KERNAL/BASIC/CHARGEN copies)
    - **WriteSmart optimization** ($D074-$D077, $D0B3) — STUB, no effect
    - **Write buffer drain** — `cacheable_wr=0`, FIFO infrastructure dormant.
-     2026-04-28 v159 attempt to flip `cacheable_wr <= '1'` on bank $00 with
-     `wb_full_i` backpressure built cleanly (ALMs 86 %, timing met) but
-     boot-failed on hardware: vanilla BASIC went to a black screen with the
-     CPU crashing in bank `$FC`. The cache absorbs the write and `cache_hit`
-     fires `enableCpu` next cycle, but the timing relationship between
-     `cpuWe_pre`, `bram_we`, and `c64_ram64k`'s Port A clocks loses the
-     write before BRAM captures it. Reverted in v160. Future fix needs a
-     CPU-write reduced-harness scenario (the IOCTL pagetest can't reproduce
-     this) before the next attempt.
+     v159 (ungated) and v161 (gated on the new `wb_enable=supercpu_en`
+     cache port) both built clean (ALMs 85-86 %, timing met) but black-
+     screened on hardware. Root cause: `cache_hit_d1` fires the SDRAM-
+     pipeline cancel during CPUA-CPUD; `enableCpu_816`'s substitute path
+     is gated `not at_cpucd`, so the substitute mis-fires exactly when
+     `wb_drain_active` hijacks `ramAddr/ramDout/ramWE`. The CPUC slot
+     loses both the new SDRAM write and the BRAM mirror. Next attempt
+     must either (a) suppress `wb_drain_active` for one cycle after a
+     fresh push, or (b) defer cache absorption to CPUE-CPU9 (outside
+     the at_cpucd window).
    - **DOS extension** ($D0BE/$D0BF), **bootmap ROM** ($F0-$FF) — MISSING/STUB
    - **$D078** — REPURPOSED for cache flush; real HW = SIMM config
    - **$D086 OSD bit (SCPU Kickstart ROM)** wired 2026-04-28 (commit pending):

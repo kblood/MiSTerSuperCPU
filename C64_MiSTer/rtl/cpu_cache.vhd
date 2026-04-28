@@ -62,6 +62,7 @@ port (
 	-- Control
 	flush     : in  std_logic;             -- invalidate entire cache
 	cpu_en    : in  std_logic;             -- CPU clock enable (1-cycle pulse when CPU steps)
+	wb_enable : in  std_logic;             -- master enable for write-buffer absorption (cacheable_wr)
 
 	-- Same-line detection (wide cache line optimization)
 	same_line : out std_logic;             -- current access is same cache line as previous hit
@@ -196,15 +197,26 @@ begin
 	                    and flush_active = '0'
 	               else '0';
 
-	-- 2026-04-28: Write hits stay DISABLED. Re-enable attempt (v159) booted to
-	-- a black screen on hardware — vanilla BASIC failed cold-boot, K=$FC
-	-- crashing in ROM area. The 16-entry FIFO + wb_drain_active path looks
-	-- right in sim ($C000 pagetest passes both SDRAM and BRAM), but on
-	-- hardware the CPU advances on cache_hit before bram_we / systemWe /
-	-- ram64k Port A capture the original cpuWe pulse cleanly. Diagnosing
-	-- needs a CPU-write reduced-harness scenario, not just an IOCTL bench.
-	-- Keep cacheable_wr=0 until that lands; invalidate_wr below preserves
-	-- read-side coherency on every CPU write.
+	-- 2026-04-28: Write hits stay DISABLED. Two attempts to flip on:
+	--   v159: `cacheable_wr <= '1' when ... wb_full='0'` (no SCPU gate).
+	--         Black-screened vanilla BASIC.
+	--   v161: same gated on `wb_enable=supercpu_en`. Also black-screened
+	--         (default OSD has SCPU on, so the gate didn't change anything
+	--         for the failing case).
+	-- Both attempts hand `cache_hit=1` to the SDRAM-pipeline cancel logic
+	-- in fpga64_sid_iec.vhd, which in turn suppresses `enableCpu` and
+	-- `cpu_cyc_s` for one cycle. `enableCpu_816` does include
+	-- `cache_hit_d1` as a substitute, but it is gated by `not at_cpucd`,
+	-- so the substitute mis-fires during CPUA-CPUD — exactly the slot
+	-- where `wb_drain_active` also hijacks `ramAddr/ramDout/ramWE`. Net
+	-- effect: the CPU's CPUC SDRAM write slot is consumed by the drain
+	-- and the new write neither lands in `c64_ram64k` nor in the FIFO's
+	-- intended `wb_addr`. KERNAL boot loses critical RAM init writes.
+	-- Next attempt must either: (a) suppress wb_drain_active for one
+	-- cycle after a fresh push so the new write goes through systemAddr
+	-- normally, or (b) defer cache_hit absorption to CPUE-CPU9 (outside
+	-- the at_cpucd window) so the cancel doesn't race the write.
+	-- The `wb_enable` port is preserved so this gate stays per-mode-controlled.
 	cacheable_wr <= '0';
 
 	-- Write invalidation: when CPU writes to ANY cacheable address, invalidate
