@@ -1,4 +1,4 @@
--- cpu_cache.vhd — 8KB direct-mapped BRAM cache for CPU acceleration
+-- cpu_cache.vhd — 4KB direct-mapped BRAM cache for CPU acceleration
 --
 -- Sits between the CPU and the SDRAM path. On a hit, provides data in 1 cycle
 -- (combinational tag check via MLAB + registered M10K data read). On a miss,
@@ -10,19 +10,19 @@
 -- pushing addr+data to the write buffer. The write buffer drains to SDRAM
 -- during freed CPU slots when the CPU runs from cache.
 --
--- Organization:
---   1024 lines x 8 bytes = 8KB data (M10K block RAM)
---   1024 tags x 11 bits  = tag storage (MLAB / distributed RAM)
---   1024 x 8 valid bits  = per-byte valid (separate MLAB array)
+-- Organization (M10K R3 — halved from 8KB to free ~4 M10K blocks):
+--   512 lines x 8 bytes = 4KB data (M10K block RAM)
+--   512 tags x 12 bits  = tag storage (MLAB / distributed RAM)
+--   512 x 8 valid bits  = per-byte valid (separate MLAB array)
 --   16-entry write buffer = register-based FIFO (addr16 + data8)
 --
 -- Address mapping (24-bit physical address):
---   [23:16] = bank byte     } together form the 11-bit tag
---   [15:13] = addr high     }
---   [12:3]  = 10-bit line index (1024 lines)
+--   [23:16] = bank byte     } together form the 12-bit tag
+--   [15:12] = addr high     }
+--   [11:3]  = 9-bit line index (512 lines)
 --   [2:0]   = 3-bit byte offset within line
 --
--- Flush uses a counter (1024 cycles = 32us) instead of bulk write,
+-- Flush uses a counter (512 cycles = 16us) instead of bulk write,
 -- allowing Quartus to infer MLAB for tag/valid storage.
 --
 -- I/O space ($D000-$DFFF in bank $00) is never cached.
@@ -76,24 +76,24 @@ end cpu_cache;
 architecture rtl of cpu_cache is
 
 	-- ── Tag storage (MLAB — combinational read) ─────────────────────
-	-- 11-bit tag: bank(8) & addr(15:13)(3) = 11 bits
+	-- 12-bit tag: bank(8) & addr(15:12)(4) = 12 bits
 	-- Flat array for clean MLAB inference (no records).
-	type tag_array_t is array(0 to 1023) of unsigned(10 downto 0);
+	type tag_array_t is array(0 to 511) of unsigned(11 downto 0);
 	signal tag_mem : tag_array_t;
 	attribute ramstyle : string;
 	attribute ramstyle of tag_mem : signal is "MLAB, no_rw_check";
 
 	-- ── Valid-bit storage (MLAB — combinational read) ───────────────
 	-- 8 valid bits per line, stored as std_logic_vector(7 downto 0).
-	type valid_array_t is array(0 to 1023) of std_logic_vector(7 downto 0);
+	type valid_array_t is array(0 to 511) of std_logic_vector(7 downto 0);
 	signal valid_mem : valid_array_t;
 	attribute ramstyle of valid_mem : signal is "MLAB, no_rw_check";
 
-	-- ── Data storage (M10K — 8 parallel 1024x8 banks) ──────────────
-	-- 8 separate 1024x8 RAMs, one per byte lane. All read simultaneously
+	-- ── Data storage (M10K — 8 parallel 512x8 banks) ───────────────
+	-- 8 separate 512x8 RAMs, one per byte lane. All read simultaneously
 	-- to produce a 64-bit cache line word. Writes target only the specific
 	-- byte lane. This ensures clean M10K inference (no read-modify-write).
-	type bank_array_t is array(0 to 1023) of unsigned(7 downto 0);
+	type bank_array_t is array(0 to 511) of unsigned(7 downto 0);
 	shared variable data_bank0 : bank_array_t;
 	shared variable data_bank1 : bank_array_t;
 	shared variable data_bank2 : bank_array_t;
@@ -118,16 +118,16 @@ architecture rtl of cpu_cache is
 	signal wb_empty_i : std_logic;
 
 	-- ── Internal signals ────────────────────────────────────────────
-	signal line_index    : unsigned(9 downto 0);
+	signal line_index    : unsigned(8 downto 0);
 	signal byte_offset   : unsigned(2 downto 0);
-	signal expected_tag  : unsigned(10 downto 0);
+	signal expected_tag  : unsigned(11 downto 0);
 
 	signal cacheable_addr : std_logic; -- address is in cacheable space
 
 	-- ── Wide cache line signals ─────────────────────────────────────
 	signal line_word     : std_logic_vector(63 downto 0);  -- M10K output (registered)
-	signal prev_line     : unsigned(9 downto 0) := (others => '1'); -- previous read line
-	signal prev_tag      : unsigned(10 downto 0) := (others => '1'); -- previous read tag
+	signal prev_line     : unsigned(8 downto 0) := (others => '1'); -- previous read line
+	signal prev_tag      : unsigned(11 downto 0) := (others => '1'); -- previous read tag
 	signal same_line_i   : std_logic;  -- internal same-line flag
 	signal cacheable_rd  : std_logic;  -- read cacheability
 	signal cacheable_wr  : std_logic;  -- write cacheability
@@ -137,15 +137,15 @@ architecture rtl of cpu_cache is
 
 	-- ── Flush state machine ─────────────────────────────────────────
 	signal flush_active  : std_logic := '0';
-	signal flush_ctr     : unsigned(9 downto 0) := (others => '0');
+	signal flush_ctr     : unsigned(8 downto 0) := (others => '0');
 
 	-- ── CPU write capture (registered for BRAM write port) ──────────
 	signal cpu_wr_pending : std_logic := '0';
-	signal cpu_wr_addr    : unsigned(12 downto 0) := (others => '0');
+	signal cpu_wr_addr    : unsigned(11 downto 0) := (others => '0');
 	signal cpu_wr_data    : unsigned(7 downto 0) := (others => '0');
-	signal cpu_wr_line    : unsigned(9 downto 0) := (others => '0');
+	signal cpu_wr_line    : unsigned(8 downto 0) := (others => '0');
 	signal cpu_wr_off     : unsigned(2 downto 0) := (others => '0');
-	signal cpu_wr_tag     : unsigned(10 downto 0) := (others => '0');
+	signal cpu_wr_tag     : unsigned(11 downto 0) := (others => '0');
 
 begin
 
@@ -154,9 +154,9 @@ begin
 	dbg_tag_match    <= tag_match;
 
 	-- ── Address decomposition ───────────────────────────────────────
-	line_index   <= cpu_addr(12 downto 3);
+	line_index   <= cpu_addr(11 downto 3);
 	byte_offset  <= cpu_addr(2 downto 0);
-	expected_tag <= cpu_bank(7 downto 0) & cpu_addr(15 downto 13);
+	expected_tag <= cpu_bank(7 downto 0) & cpu_addr(15 downto 12);
 
 	-- ── Same-line detection (wide cache line optimization) ──────────
 	-- When the current access targets the same cache line as the previous
@@ -281,7 +281,7 @@ begin
 	-- Write port: write to the specific byte bank only (no read-modify-write).
 	-- CPU write takes priority over fill when both active.
 	process(clk)
-	variable wr_line : unsigned(9 downto 0);
+	variable wr_line : unsigned(8 downto 0);
 	variable wr_off  : unsigned(2 downto 0);
 	variable wr_data : unsigned(7 downto 0);
 	variable wr_en   : std_logic;
@@ -294,7 +294,7 @@ begin
 				wr_data := cpu_wr_data;
 				wr_en   := '1';
 			elsif fill_we = '1' and flush_active = '0' then
-				wr_line := fill_addr(12 downto 3);
+				wr_line := fill_addr(11 downto 3);
 				wr_off  := fill_addr(2 downto 0);
 				wr_data := fill_data;
 				wr_en   := '1';
@@ -318,9 +318,9 @@ begin
 
 	-- ── Tag/valid write logic + flush counter + write buffer ─────────
 	process(clk)
-	variable fill_line : unsigned(9 downto 0);
+	variable fill_line : unsigned(8 downto 0);
 	variable fill_off  : unsigned(2 downto 0);
-	variable ftag      : unsigned(10 downto 0);
+	variable ftag      : unsigned(11 downto 0);
 	variable new_valid : std_logic_vector(7 downto 0);
 	begin
 		if rising_edge(clk) then
@@ -341,7 +341,7 @@ begin
 				-- Clear valid bits for current flush counter entry
 				valid_mem(to_integer(flush_ctr)) <= (others => '0');
 
-				if flush_ctr = 1023 then
+				if flush_ctr = 511 then
 					flush_active <= '0';
 				else
 					flush_ctr <= flush_ctr + 1;
@@ -387,9 +387,9 @@ begin
 
 				elsif fill_we = '1' then
 					-- ── Fill logic: write SDRAM data into cache ──────
-					fill_line := fill_addr(12 downto 3);
+					fill_line := fill_addr(11 downto 3);
 					fill_off  := fill_addr(2 downto 0);
-					ftag      := fill_bank(7 downto 0) & fill_addr(15 downto 13);
+					ftag      := fill_bank(7 downto 0) & fill_addr(15 downto 12);
 
 					if tag_mem(to_integer(fill_line)) = ftag then
 						-- Same tag: just set the valid bit for this byte
