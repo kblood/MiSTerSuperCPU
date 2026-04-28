@@ -50,6 +50,7 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 use work.rom_loader_pkg.all;
+use work.c64_ram64k_pkg.all;  -- ram_t for the sim-only BRAM probe
 
 entity c64_reduced_top_v2 is
     generic (
@@ -581,11 +582,25 @@ begin
             cass_read   => '1'
         );
 
-    -- bram_probe_* port wiring on fpga64_sid_iec was attempted in a prior
-    -- session but never landed in RTL — leave bram_probe_data tied to zero
-    -- and rely on SDRAM-side checks. Re-introduce only if c64_ram64k Port C
-    -- is propagated up through fpga64_sid_iec entity.
-    bram_probe_dout_s <= (others => '0');
+    -- Task #25 — sim-only BRAM probe via VHDL-2008 external names.
+    -- We don't add a synthesisable Port C to c64_ram64k (an async probe
+    -- collapsed M10K inference, see project_bram64k_async_probe_breaks_fit.md).
+    -- Instead this top reads c64_ram64k.ram via an upward external-name alias
+    -- and re-exports the result through the bram_probe_data port, so future
+    -- benches can use the port without re-declaring their own external names.
+    --
+    -- Path encoding: '^' steps up to the bench architecture (which always
+    -- instantiates this top with label `dut`), then descends through the
+    -- fpga64_sid_iec instance (also `dut` inside this top) to ram64k_inst.
+    -- Convention requirement: every bench MUST use the instance label `dut`
+    -- for `entity work.c64_reduced_top_v2` so this path resolves.
+    bram_probe_proc : process
+        alias bram_view is
+            << variable ^.dut.dut.ram64k_inst.ram : ram_t >>;
+    begin
+        wait until rising_edge(clk32);
+        bram_probe_dout_s <= unsigned(bram_view(to_integer(probe_addr(15 downto 0))));
+    end process;
 
     ------------------------------------------------------------------
     -- Debug pass-through to bench
