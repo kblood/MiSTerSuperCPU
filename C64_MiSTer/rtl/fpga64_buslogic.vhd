@@ -378,13 +378,17 @@ begin
 	end process;
 
 	cs_ram <= cs_ramLoc or cs_romLLoc or cs_romHLoc or cs_UMAXromHLoc or cs_UMAXnomapLoc or cs_CharLoc or cs_romLoc;
-	cs_vic <= cs_vicLoc and io_enable;
-	cs_sid <= cs_sidLoc and io_enable;
-	cs_color <= cs_colorLoc and io_enable;
-	cs_cia1 <= cs_cia1Loc and io_enable;
-	cs_cia2 <= cs_cia2Loc and io_enable;
-	cs_ioE <= cs_ioELoc and io_enable;
-	cs_ioF <= cs_ioFLoc and io_enable;
+	-- Phase C step 4: gate C64 chip-selects with scpu_io_en so MVN/STA-long
+	-- accesses into bank /= $00 don't produce stray VIC/SID/CIA strobes. In
+	-- vanilla mode (supercpu_en='0') scpu_io_en is constant '1' and these
+	-- expressions reduce to the original `cs_X <= cs_XLoc and io_enable`.
+	cs_vic <= cs_vicLoc and io_enable and scpu_io_en;
+	cs_sid <= cs_sidLoc and io_enable and scpu_io_en;
+	cs_color <= cs_colorLoc and io_enable and scpu_io_en;
+	cs_cia1 <= cs_cia1Loc and io_enable and scpu_io_en;
+	cs_cia2 <= cs_cia2Loc and io_enable and scpu_io_en;
+	cs_ioE <= cs_ioELoc and io_enable and scpu_io_en;
+	cs_ioF <= cs_ioFLoc and io_enable and scpu_io_en;
 	cs_romL <= cs_romLLoc;
 	cs_romH <= cs_romHLoc;
 	cs_UMAXromH <= cs_UMAXromHLoc;
