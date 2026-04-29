@@ -1,0 +1,20 @@
+# debug.qip - layered debug overlay infrastructure
+#
+# Macro hierarchy (define in C64.qsf for default debug build, leave undef in
+# C64_release.qsf for vanilla bit-identical synth):
+#   DEBUG_ENABLE     master toggle (cascades to all DBG_* unless caller
+#                    has set finer gates explicitly)
+#   DEBUG_RELEASE    overrides everything OFF (set in C64_release.qsf)
+#   DBG_OVERLAY      pixel injection + renderer
+#   DBG_CAP_REU      $DFxx capture
+#   DBG_CAP_VIC_WR   $D018/$D016/$DD00 + raster capture
+#   DBG_CAP_CPU_STATE  PC / P / S / flags capture
+#   DBG_CAP_FRAME    frame counter
+#   DBG_LAYOUT       integer (1..N) selecting which fields render where
+#   DBG_UART         (reserved, not in scope this commit)
+#
+# When DBG_OVERLAY is undef, all renderer/format/capture wires reduce to
+# direct pass-throughs and synthesis collapses them.
+
+# Include search paths for `include "debug_pkg.svh"`
+set_global_assignment -name SEARCH_PATH rtl/debug
