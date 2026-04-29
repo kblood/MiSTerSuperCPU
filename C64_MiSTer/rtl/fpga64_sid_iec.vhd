@@ -158,7 +158,14 @@ port(
 	cass_motor  : out std_logic;
 	cass_write  : out std_logic;
 	cass_sense  : in  std_logic;
-	cass_read   : in  std_logic
+	cass_read   : in  std_logic;
+
+	-- SuperCPU integration (Phase A)
+	-- supercpu_en='0' (default) : T65 6510 path active, vanilla behavior.
+	-- supercpu_en='1'           : P65C816 active in emulation mode at reset.
+	supercpu_en   : in  std_logic := '0';
+	supercpu_bank : out std_logic_vector(7 downto 0);   -- bank byte (A23-A16); $00 when 6510 active
+	emu_mode_816  : out std_logic                       -- '1' = emulation mode (always '1' when 6510 active)
 );
 end fpga64_sid_iec;
 
@@ -219,6 +226,42 @@ signal cpuDi        : unsigned(7 downto 0);
 signal cpuDo        : unsigned(7 downto 0);
 signal cpuDo_pre    : unsigned(7 downto 0);
 signal cpuIO        : unsigned(7 downto 0);
+
+-- Per-CPU outputs for the dual-CPU mux (Phase A).
+-- Both CPUs are instantiated; only one gets enable pulses based on
+-- supercpu_en. Outputs are muxed into the existing cpuAddr_pre / cpuDo_pre /
+-- cpuWe_pre / cpuIO / nmi_ack signals so the rest of the system is unchanged.
+signal cpuAddr_6510 : unsigned(15 downto 0);
+signal cpuDo_6510   : unsigned(7 downto 0);
+signal cpuWe_6510   : std_logic;
+signal cpuIO_6510   : unsigned(7 downto 0);
+signal nmi_ack_6510 : std_logic;
+signal cpuAddr_816  : unsigned(15 downto 0);
+signal cpuDo_816    : unsigned(7 downto 0);
+signal cpuWe_816    : std_logic;
+signal cpuIO_816    : unsigned(7 downto 0);
+signal nmi_ack_816  : std_logic;
+signal addr_hi_816  : unsigned(7 downto 0);
+signal emu_mode_816_i : std_logic;
+signal vpa_816      : std_logic;  -- unused for now; reserved for future
+signal vda_816      : std_logic;  -- unused for now; reserved for future
+signal enableCpu_6510 : std_logic;
+signal enableCpu_816  : std_logic;
+
+-- ----------------------------------------------------------------------
+-- Phase B — SuperCPU $D07x / $D0Bx register file (lifted from master).
+-- All register state lives only when supercpu_en=1; vanilla 6510 mode
+-- is unaffected (the read mux clauses gate on supercpu_en).
+-- ----------------------------------------------------------------------
+signal supercpu_en_prev  : std_logic := '0';                            -- rising-edge detect on supercpu_en
+signal scpu_rom_vis      : std_logic := '1';                            -- '1' = SuperCPU ROM at $E000-$FFFF (Phase C uses)
+signal scpu_speed_1mhz   : std_logic := '0';                            -- $D07A=1, $D07B=0
+signal scpu_sys_1mhz     : std_logic := '0';                            -- $D072=1, $D073=0
+signal scpu_regs_enabled : std_logic := '1';                            -- $D07E enables, $D07F/$D07D disables
+signal scpu_hwenable     : std_logic := '0';                            -- ANY write to $D07E sets; $D07F/$D07D clears
+signal scpu_bootmap      : std_logic := '1';                            -- '1' at reset (EPROM at $8000-$FFFF)
+signal scpu_optim_mode   : unsigned(1 downto 0) := "11";                -- $D074-$D077 select; "11" = no optimization
+signal cpuDi_raw         : unsigned(7 downto 0);                        -- raw bus data; SuperCPU regs mux ahead of this
 signal io_data_i    : unsigned(7 downto 0);
 signal ioe_i        : std_logic;
 signal iof_i        : std_logic;
@@ -474,7 +517,7 @@ port map (
 
 	systemWe => systemWe,
 	systemAddr => systemAddr,
-	dataToCpu => cpuDi,
+	dataToCpu => cpuDi_raw,
 	dataToVic => vicDi,
 
 	io_enable => io_enable,
@@ -499,6 +542,114 @@ port map (
 IOE <= ioe_i;
 IOF <= iof_i;
 cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
+
+-- ----------------------------------------------------------------------
+-- Phase B — SuperCPU register read mux. Lifted from master, simplified
+-- (no scpu_native_vec / kickstart-overlay intercepts; those land in
+-- Phase C).
+--
+-- Real SuperCPU register behavior (c64-wiki.com/wiki/SuperCPU):
+--   $D072/$D073 = system 1MHz on/off
+--   $D074-$D077 = optimization mode triggers
+--   $D078       = SIMM/DMA status. Real HW returns bit7=busy (0 in steady
+--                 state). We return $00 — polling demos like SCPU KICKS!
+--                 hang on BPL otherwise.
+--   $D07A/$D07B = software speed triggers (1MHz / turbo)
+--   $D07E       = ROM-vis / hwenable strobe (any write enables regs)
+--   $D07F/$D07D = disable regs / clear hwenable
+--   $D0B0       = mode detect: $40 = SuperCPU v2 in C64 mode
+--   $D0B2       = bit7=hwenable, bit6=sys_1mhz
+--   $D0B3       = open-bus stub ($00, software-compat)
+--   $D0B4       = optimization mode flags
+--   $D0B5       = bit7=JiffyDOS(0), bit6=software speed
+--   $D0B6       = bit7=emulation mode (1=6502, 0=native)
+--   $D0B8       = bit7=sw 1MHz, bit6=combined 1MHz
+--   $D0BC       = computed: bits2:0 = optim_low(111)
+--
+-- All clauses gate on supercpu_en='1' AND addr_hi_816=$00 so they never
+-- intercept reads in 6510 mode or in non-zero banks.
+-- ----------------------------------------------------------------------
+cpuDi <= ("00000" & scpu_optim_mode & '1')
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC" and scpu_regs_enabled = '1') else
+         x"40"
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B0" and scpu_regs_enabled = '1') else
+         (scpu_hwenable & scpu_sys_1mhz & "000000")
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B2" and scpu_regs_enabled = '1') else
+         (scpu_speed_1mhz & (scpu_speed_1mhz or scpu_sys_1mhz) & "000000")
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B8" and scpu_regs_enabled = '1') else
+         ("000000" & scpu_optim_mode)
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B4" and scpu_regs_enabled = '1') else
+         x"00"
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B3" and scpu_regs_enabled = '1') else
+         x"00"
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"078" and scpu_regs_enabled = '1') else
+         ("0" & scpu_speed_1mhz & "000000")
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B5" and scpu_regs_enabled = '1') else
+         (emu_mode_816_i & "0000000")
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B6" and scpu_regs_enabled = '1') else
+         (scpu_rom_vis & "0000000")
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
+         cpuDi_raw;
+
+-- ----------------------------------------------------------------------
+-- Phase B — SuperCPU register write state machine. Lifted from master.
+-- All writes gated on supercpu_en='1' and addr_hi_816=$00.
+-- Reset (or rising edge of supercpu_en) initializes state.
+-- ----------------------------------------------------------------------
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		supercpu_en_prev <= supercpu_en;
+		if reset = '1' or (supercpu_en = '1' and supercpu_en_prev = '0') then
+			scpu_rom_vis      <= '1';
+			scpu_speed_1mhz   <= '0';
+			scpu_sys_1mhz     <= '0';
+			scpu_regs_enabled <= '1';
+			scpu_hwenable     <= '0';
+			scpu_bootmap      <= '1';
+			scpu_optim_mode   <= "11";
+		elsif supercpu_en = '1' and cpuWe = '1' and addr_hi_816 = x"00" then
+			-- $D072/$D073: system 1MHz (works even with regs disabled)
+			if cpuAddr = x"D072" then
+				scpu_sys_1mhz <= '1';
+			elsif cpuAddr = x"D073" then
+				scpu_sys_1mhz <= '0';
+			elsif cpuAddr = x"D07E" then
+				-- ANY write to $D07E = hwenable strobe (data irrelevant)
+				scpu_hwenable     <= '1';
+				scpu_regs_enabled <= '1';
+				-- bit7=ROM visibility (kickstart writes $00 to expose KERNAL)
+				scpu_rom_vis <= cpuDo(7);
+				if cpuDo(7) = '0' and scpu_rom_vis = '1' then
+					scpu_bootmap <= '0';   -- kickstart clearing rom_vis = bootmap done
+				end if;
+			elsif cpuAddr = x"D07F" or cpuAddr = x"D07D" then
+				scpu_hwenable     <= '0';
+				scpu_regs_enabled <= '0';
+			elsif cpuAddr = x"D07A" then
+				scpu_speed_1mhz <= '1';
+			elsif cpuAddr = x"D07B" or cpuAddr = x"D079" then
+				scpu_speed_1mhz <= '0';
+			elsif cpuAddr = x"D074" then
+				scpu_optim_mode <= "00";
+			elsif cpuAddr = x"D075" then
+				scpu_optim_mode <= "01";
+			elsif cpuAddr = x"D076" then
+				scpu_optim_mode <= "10";
+			elsif cpuAddr = x"D077" then
+				scpu_optim_mode <= "11";
+			end if;
+			-- Bootmap registers (require hwenable=1)
+			if scpu_hwenable = '1' then
+				if cpuAddr = x"D0B6" then
+					scpu_bootmap <= '0';
+				elsif cpuAddr = x"D0B7" then
+					scpu_bootmap <= '1';
+				end if;
+			end if;
+		end if;
+	end if;
+end process;
 
 process(clk32)
 begin
@@ -795,26 +946,79 @@ begin
 end process;
 
 -- -----------------------------------------------------------------------
--- 6510 CPU / DMA
+-- CPU / DMA  -  dual instance: T65-based 6510 (default) + P65C816 (SuperCPU)
 -- -----------------------------------------------------------------------
-cpu: entity work.cpu_6510
+-- Only the active CPU gets enable pulses. The inactive CPU still receives
+-- clk and reset but never advances. Outputs are muxed at cpuAddr_pre etc.
+enableCpu_6510 <= enableCpu and not dma_active and not supercpu_en;
+enableCpu_816  <= enableCpu and not dma_active and supercpu_en;
+
+cpu_6510_inst: entity work.cpu_6510
 port map (
 	clk => clk32,
 	reset => reset,
-	enable => enableCpu and not dma_active,
+	enable => enableCpu_6510,
 	nmi_n => irq_cia2 and nmi_n,
-	nmi_ack => nmi_ack,
+	nmi_ack => nmi_ack_6510,
 	irq_n => irq_cia1 and irq_vic and irq_n and irq_ext_n,
 	rdy => baLoc,
 
 	di => cpuDi,
-	addr => cpuAddr_pre,
-	do => cpuDo_pre,
-	we => cpuWe_pre,
+	addr => cpuAddr_6510,
+	do => cpuDo_6510,
+	we => cpuWe_6510,
 
-	diIO => cpuIO(7) & cpuIO(6) & cpuIO(5) & cass_sense & cpuIO(3) & "111",
-	doIO => cpuIO
+	diIO => cpuIO_6510(7) & cpuIO_6510(6) & cpuIO_6510(5) & cass_sense & cpuIO_6510(3) & "111",
+	doIO => cpuIO_6510
 );
+
+cpu_65c816_inst: entity work.cpu_65c816
+port map (
+	clk => clk32,
+	reset => reset,
+	enable => enableCpu_816,
+	nmi_n => irq_cia2 and nmi_n,
+	nmi_ack => nmi_ack_816,
+	irq_n => irq_cia1 and irq_vic and irq_n and irq_ext_n,
+	rdy => baLoc,
+
+	di => cpuDi,
+	addr => cpuAddr_816,
+	do => cpuDo_816,
+	we => cpuWe_816,
+
+	diIO => cpuIO_816(7) & cpuIO_816(6) & cpuIO_816(5) & cass_sense & cpuIO_816(3) & "111",
+	doIO => cpuIO_816,
+
+	addr_hi        => addr_hi_816,
+	emulation_mode => emu_mode_816_i,
+	vpa            => vpa_816,
+	vda            => vda_816,
+
+	dbg_pc    => open,
+	dbg_sp    => open,
+	dbg_p     => open,
+	dbg_ir    => open,
+	dbg_pbr   => open,
+	dbg_dbr   => open,
+	dbg_x     => open,
+	dbg_y     => open,
+	dbg_d     => open,
+	dbg_state => open
+);
+
+-- CPU-output mux: select active CPU's outputs.
+cpuAddr_pre <= cpuAddr_816  when supercpu_en = '1' else cpuAddr_6510;
+cpuDo_pre   <= cpuDo_816    when supercpu_en = '1' else cpuDo_6510;
+cpuWe_pre   <= cpuWe_816    when supercpu_en = '1' else cpuWe_6510;
+cpuIO       <= cpuIO_816    when supercpu_en = '1' else cpuIO_6510;
+nmi_ack     <= nmi_ack_816  when supercpu_en = '1' else nmi_ack_6510;
+
+-- Expose bank + emu_mode to the rest of the system. When 6510 is active,
+-- bank is forced to $00 and emu_mode='1' so downstream consumers always see
+-- a sane "emulation mode bank $00" view in the default configuration.
+supercpu_bank <= std_logic_vector(addr_hi_816)         when supercpu_en = '1' else x"00";
+emu_mode_816  <= emu_mode_816_i                        when supercpu_en = '1' else '1';
 
 cass_motor <= cpuIO(5);
 cass_write <= cpuIO(3);

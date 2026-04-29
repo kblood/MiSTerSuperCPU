@@ -81,14 +81,22 @@ architecture rtl of cpu_65c816 is
 	-- NMI edge detection for nmi_ack generation
 	signal nmi_n_prev : std_logic := '1';
 	signal nmi_active : std_logic := '0';
+
+	-- 6502 RDY semantic: halt CPU only on read cycles. P65C816's `EN <= RDY_IN
+	-- AND CE …` halts every cycle, which corrupts the bus during VIC-II
+	-- badline write stalls. Force RDY_IN=1 on writes (localWe='0' = write per
+	-- P65C816 convention). Verified on vanilla-cpu-swap commit cf49066.
+	signal rdy_gated  : std_logic;
 begin
+
+	rdy_gated <= rdy or not localWe;
 
 	cpu: entity work.P65C816
 	port map(
 		CLK     => clk,
 		RST_N   => not reset,
 		CE      => enable,
-		RDY_IN  => rdy,
+		RDY_IN  => rdy_gated,
 		NMI_N   => nmi_n,
 		IRQ_N   => irq_n,
 		ABORT_N => '1',
