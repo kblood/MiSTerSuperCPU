@@ -391,9 +391,14 @@ always @(posedge clk_sys) begin
 		reset_counter <= 100000;
 	end
 	else if(~old_download & ioctl_download & load_prg & ~status[50]) begin
+		// Phase D step 2: SCPU mode needs a longer reset pulse so the P65C816
+		// fully clears state and RAMTAS doesn't re-loop at $FD6E-FD86. Master
+		// fork verified 100000-cycle reset is required for SCPU launcher PRGs
+		// to auto-run cleanly. Vanilla mode keeps the original 255 — gated on
+		// supercpu_enable so bit-identical vanilla behavior is preserved.
 		do_erase <= 1;
 		reset_wait <= 1;
-		reset_counter <= 255;
+		reset_counter <= supercpu_enable ? 100000 : 255;
 	end
 	else if (ioctl_download & (load_crt | load_rom)) begin
 		do_erase <= 1;
