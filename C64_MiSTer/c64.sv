@@ -508,9 +508,19 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(1)) hps_io
 	.ioctl_wait(ioctl_req_wr|ioctl_req_rd|reset_wait)
 );
 
-wire load_prg   = ioctl_index == 'h01;
+// MGL `<file index="1">` arrives with ioctl_index=1 regardless of file
+// extension. Use ioctl_file_ext directly to discriminate PRG vs REU.
+// hps_io guarantees FILE_INFO settles ioctl_file_ext before the first
+// ioctl_wr pulse — so at byte 0 write (where REU_ADDR is set), this
+// comb signal is reliable. NOT latched: a latch fires AT the first
+// ioctl_wr edge, which makes the byte-0 write see the OLD latch value
+// (race), causing the .reu file to be mis-routed as PRG.
+wire reu_by_ext = (ioctl_file_ext == ".REU" || ioctl_file_ext == ".reu");
+
+wire load_prg   = ioctl_index == 'h01 && !reu_by_ext;
 wire load_crt   = ioctl_index == 'h41 || ioctl_index == 5;
-wire load_reu   = ioctl_index == 'h81;
+wire load_reu   = ioctl_index == 'h81
+               || (ioctl_index == 'h01 && reu_by_ext);
 wire load_tap   = ioctl_index == 'hC1;
 wire load_flt   = ioctl_index == 7;
 wire load_rom   = ioctl_index == 8;
