@@ -1,0 +1,8 @@
+logname "C:\\LLM\\C64\\MiSTerSuperCPU\\tools\\vice_c000_out.log"
+log on
+break exec cb00
+x
+m c000 c0ff
+m cb00 cb7f
+log off
+quit

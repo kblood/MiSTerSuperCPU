@@ -1,0 +1,9 @@
+logname "C:\\LLM\\C64\\MiSTerSuperCPU\\tools\\vice_chrout_out.log"
+log on
+break exec cb00
+x
+m ffd0 ffd4
+m ff48 ff4f
+m ea31 ea3f
+log off
+quit

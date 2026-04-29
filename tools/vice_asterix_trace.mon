@@ -1,0 +1,5 @@
+; Runs after -initbreak hits $0820 (Asterix entry)
+break $0852
+g
+chis 2000
+q

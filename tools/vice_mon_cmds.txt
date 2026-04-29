@@ -1,0 +1,5 @@
+log on
+bk $0100
+bk $CB00
+bk $80AB
+g
