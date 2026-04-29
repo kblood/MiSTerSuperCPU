@@ -1,27 +1,25 @@
 // debug_overlay_renderer.sv
 //
-// Pixel-rate overlay renderer that injects a small diagnostic box near
-// the top of the frame. Commit 3 paints a solid blue 110x27 box at
-// (X 4..113, Y 6..32) when the runtime visibility bit is set; commits
-// 4-6 add the 4x6 font cascade and per-cell character rendering.
+// Pixel-rate overlay renderer. Walks a 22-col x 4-row grid of 5x6 char
+// cells (4-px-wide glyph + 1-px right gap) at the top of the frame.
+// Each cell pulls a 6-bit glyph id from debug_overlay_format and looks
+// up the row pixels via debug_font_4x6.
 //
-// Pipeline:
-//   - Maintain internal H/V counters using rising edges of hsync/vsync.
-//     The C64 sync wires are in the clk32 domain but their pulses are
-//     many CLK_VIDEO cycles wide, so a one-stage edge detector on
-//     CLK_VIDEO is sufficient.
-//   - Compute "in_box" combinationally on H/V.
-//   - Pipeline (in_box, r/g/b passthrough) one cycle before the RGB mux
-//     so future commits can absorb font-lookup combinational delay.
+// Geometry:
+//   X 4..114 inclusive-low / exclusive-high  -> 110 px wide -> 22 cells * 5 px
+//   Y 6..30  inclusive-low / exclusive-high  -> 24 px tall  -> 4 cells * 6 px
 //
-// When `\`undef DBG_OVERLAY` (release build) the parent c64.sv selects
-// the passthrough branch and this module is never instantiated.
+// The pool/pool-binding is gated by DBG_OVERLAY in c64.sv (the parent
+// only instantiates this module when DBG_OVERLAY is set), so we don't
+// need a `\`ifdef inside the module body.
+
+`include "debug_pkg.svh"
 
 module debug_overlay_renderer #(
 	parameter int X_LO = 4,
-	parameter int X_HI = 113,   // exclusive: hits 110 px wide
+	parameter int X_HI = 114,   // exclusive (110 px = 22 * 5)
 	parameter int Y_LO = 6,
-	parameter int Y_HI = 32     // exclusive: hits 26 px tall
+	parameter int Y_HI = 30     // exclusive (24 px = 4 * 6)
 ) (
 	input  logic       clk_pix,    // CLK_VIDEO (= clk64)
 	input  logic       ce_pix,     // pixel enable
@@ -30,6 +28,10 @@ module debug_overlay_renderer #(
 	input  logic       vsync,      // C64 internal vsync (clk32 domain)
 
 	input  logic       visible,    // runtime show/hide (status[83])
+
+`ifdef DBG_OVERLAY
+	input  dbg_pool_t  pool,
+`endif
 
 	input  logic [7:0] r_in,
 	input  logic [7:0] g_in,
@@ -53,6 +55,8 @@ module debug_overlay_renderer #(
 	assign vs_rise = vsync & ~vs_d;
 
 	// ---- H/V counters -------------------------------------------------
+	// h_cnt advances on ce_pix and resets on hs_rise. v_cnt advances on
+	// hs_rise and resets on vs_rise.
 	logic [10:0] h_cnt;
 	logic [9:0]  v_cnt;
 
@@ -66,30 +70,93 @@ module debug_overlay_renderer #(
 		end
 	end
 
-	// ---- Box geometry -------------------------------------------------
-	wire in_box = visible
-	            & (h_cnt >= X_LO[10:0]) & (h_cnt < X_HI[10:0])
-	            & (v_cnt >= Y_LO[9:0])  & (v_cnt < Y_HI[9:0]);
+	// ---- Cell stepping ------------------------------------------------
+	// pix_x / pix_y are the sub-cell offsets; cell_x / cell_y identify
+	// which character cell we're inside. They're advanced with the
+	// pixel/scanline ticks and clamped to '0 outside the box.
+	logic [4:0] cell_x;        // 0..21
+	logic [2:0] pix_x;         // 0..4 (4 = right gap)
+	logic [1:0] cell_y;        // 0..3
+	logic [2:0] pix_y;         // 0..5
 
-	// ---- Single-stage pipeline before RGB mux -------------------------
-	logic       in_box_d;
+	wire in_box_x = (h_cnt >= X_LO[10:0]) & (h_cnt < X_HI[10:0]);
+	wire in_box_y = (v_cnt >= Y_LO[9:0])  & (v_cnt < Y_HI[9:0]);
+
+	always_ff @(posedge clk_pix) begin
+		if (hs_rise) begin
+			cell_x <= '0;
+			pix_x  <= '0;
+			if (vs_rise) begin
+				cell_y <= '0;
+				pix_y  <= '0;
+			end
+			else if (v_cnt + 10'd1 == Y_LO[9:0]) begin
+				cell_y <= '0;
+				pix_y  <= '0;
+			end
+			else if (v_cnt + 10'd1 > Y_LO[9:0] && v_cnt + 10'd1 < Y_HI[9:0]) begin
+				if (pix_y == 3'd5) begin
+					pix_y  <= '0;
+					cell_y <= cell_y + 2'd1;
+				end
+				else pix_y <= pix_y + 3'd1;
+			end
+		end
+		else if (ce_pix) begin
+			if (in_box_x) begin
+				if (pix_x == 3'd4) begin
+					pix_x  <= '0;
+					cell_x <= cell_x + 5'd1;
+				end
+				else pix_x <= pix_x + 3'd1;
+			end
+		end
+	end
+
+	// ---- Format + font lookups (combinational) ------------------------
+	wire [5:0] glyph_id;
+	wire [3:0] font_row;
+
+	debug_overlay_format u_fmt (
+`ifdef DBG_OVERLAY
+		.pool    (pool),
+`endif
+		.cell_x  (cell_x),
+		.cell_y  (cell_y),
+		.glyph_id(glyph_id)
+	);
+
+	debug_font_4x6 u_font (
+		.glyph (glyph_id),
+		.row   (pix_y),
+		.pixels(font_row)
+	);
+
+	// pix_x 0..3 select font columns (MSB = leftmost = pix_x==0); pix_x 4
+	// is the inter-cell gap and is always blank.
+	wire pixel_lit = visible & in_box_x & in_box_y & (pix_x < 3'd4)
+	               & font_row[3 - pix_x[1:0]];
+
+	// ---- One-stage pipeline before RGB mux ----------------------------
+	logic       lit_d;
 	logic [7:0] r_d, g_d, b_d;
 
 	always_ff @(posedge clk_pix) begin
 		if (ce_pix) begin
-			in_box_d <= in_box;
-			r_d      <= r_in;
-			g_d      <= g_in;
-			b_d      <= b_in;
+			lit_d <= pixel_lit;
+			r_d   <= r_in;
+			g_d   <= g_in;
+			b_d   <= b_in;
 		end
 	end
 
-	// Solid C64-blue test fill while bringing pixel injection up.
+	// Lit text uses a high-contrast yellow on transparent background.
+	// Background pixels passthrough.
 	always_comb begin
-		if (in_box_d) begin
-			r_out = 8'h35;
-			g_out = 8'h28;
-			b_out = 8'hB2;
+		if (lit_d) begin
+			r_out = 8'hFF;
+			g_out = 8'hF0;
+			b_out = 8'h40;
 		end
 		else begin
 			r_out = r_d;

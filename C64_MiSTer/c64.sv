@@ -1494,6 +1494,7 @@ debug_overlay_renderer u_dbg_overlay (
 	.hsync  (hsync),
 	.vsync  (vsync),
 	.visible(status[83]),
+	.pool   (dbg_pool),
 	.r_in   (r),
 	.g_in   (g),
 	.b_in   (b),
