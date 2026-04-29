@@ -63,14 +63,24 @@ architecture rtl of cpu_6510 is
 	signal ioData    : std_logic_vector(7 downto 0);
 
 	signal accessIO : std_logic;
+
+	signal rdy_gated : std_logic;  -- RDY only halts on reads (6502 semantic)
 begin
+
+	-- Real 6502 RDY semantic: RDY=0 halts the CPU only on READ cycles;
+	-- WRITE cycles complete regardless of RDY. T65 implements this
+	-- internally. P65C816's `EN <= RDY_IN AND CE …` halts on every cycle,
+	-- which corrupts the bus during VIC-II badline write-stalls.  Replicate
+	-- the 6502 semantic externally by forcing RDY_IN=1 on write cycles
+	-- (localWe='0' = write per P65C816 convention).
+	rdy_gated <= rdy or not localWe;
 
 	cpu : entity work.P65C816
 	port map (
 		CLK     => clk,
 		RST_N   => not reset,
 		CE      => enable,
-		RDY_IN  => rdy,
+		RDY_IN  => rdy_gated,
 		NMI_N   => nmi_n,
 		IRQ_N   => irq_n,
 		ABORT_N => '1',
@@ -85,7 +95,11 @@ begin
 	accessIO <= '1' when localA(15 downto 1) = X"000"&"000" else '0';
 
 	-- CPU-side data-in mux (matches vanilla cpu_6510.vhd):
-	--   write cycle      : feed back localDo (T65 convention, harmless on 65C816)
+	--   write cycle      : feed back localDo (T65 convention; load-bearing on
+	--                       P65C816 too — verified 2026-04-29: removing it
+	--                       made the boot banner show '7' chars row from
+	--                       leaked $0001 IO-port reads bleeding into screen
+	--                       writes)
 	--   normal read      : forward system di
 	--   IO port read $0000 : ioDir
 	--   IO port read $0001 : currentIO
