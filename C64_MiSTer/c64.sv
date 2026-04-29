@@ -21,7 +21,9 @@
 //  You should have received a copy of the GNU General Public License along
 //  with this program; if not, write to the Free Software Foundation, Inc.,
 //  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-//============================================================================ 
+//============================================================================
+
+`include "debug_pkg.svh"
 
 module emu
 (
@@ -1054,6 +1056,73 @@ wire        supercpu_enable = status[82];
 wire  [7:0] supercpu_bank;     // bank byte (A23-A16) from 65C816; $00 in 6510 mode
 wire        supercpu_emul;     // '1' = emulation mode (or 6510 active)
 wire        cpu_has_bus;       // '1' during CYCLE_CPU0..CPUF (Phase D mux gate)
+
+// ---------------------------------------------------------------------------
+// Layered debug overlay (rtl/debug/) - pool struct + capture stubs.
+// Only declared when DBG_OVERLAY is set; release builds collapse the tree.
+// status[83] = runtime show/hide toggle (visibility, not gating).
+// ---------------------------------------------------------------------------
+`ifdef DBG_OVERLAY
+dbg_pool_t dbg_pool;
+
+`ifdef DBG_CAP_REU
+cap_reu u_cap_reu (
+	.clk          (clk_sys),
+	.rst          (~reset_n),
+	.o_c64_addr   (dbg_pool.reu_c64_addr),
+	.o_reu_addr   (dbg_pool.reu_reu_addr),
+	.o_length     (dbg_pool.reu_length),
+	.o_cmd        (dbg_pool.reu_cmd),
+	.o_fetch_count(dbg_pool.reu_fetch_count)
+);
+`else
+assign dbg_pool.reu_c64_addr    = '0;
+assign dbg_pool.reu_reu_addr    = '0;
+assign dbg_pool.reu_length      = '0;
+assign dbg_pool.reu_cmd         = '0;
+assign dbg_pool.reu_fetch_count = '0;
+`endif
+
+`ifdef DBG_CAP_VIC_WR
+cap_vic_wr u_cap_vic_wr (
+	.clk     (clk_sys),
+	.rst     (~reset_n),
+	.o_d018  (dbg_pool.vic_d018),
+	.o_d016  (dbg_pool.vic_d016),
+	.o_dd00  (dbg_pool.vic_dd00),
+	.o_raster(dbg_pool.vic_raster)
+);
+`else
+assign dbg_pool.vic_d018   = '0;
+assign dbg_pool.vic_d016   = '0;
+assign dbg_pool.vic_dd00   = '0;
+assign dbg_pool.vic_raster = '0;
+`endif
+
+`ifdef DBG_CAP_CPU_STATE
+cap_cpu_state u_cap_cpu_state (
+	.clk    (clk_sys),
+	.rst    (~reset_n),
+	.o_pc   (dbg_pool.cpu_pc),
+	.o_p    (dbg_pool.cpu_p),
+	.o_flags(dbg_pool.cpu_flags)
+);
+`else
+assign dbg_pool.cpu_pc    = '0;
+assign dbg_pool.cpu_p     = '0;
+assign dbg_pool.cpu_flags = '0;
+`endif
+
+`ifdef DBG_CAP_FRAME
+cap_frame u_cap_frame (
+	.clk          (clk_sys),
+	.rst          (~reset_n),
+	.o_frame_count(dbg_pool.frame_count)
+);
+`else
+assign dbg_pool.frame_count = '0;
+`endif
+`endif // DBG_OVERLAY
 
 fpga64_sid_iec fpga64
 (

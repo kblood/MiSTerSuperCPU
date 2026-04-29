@@ -18,3 +18,9 @@
 
 # Include search paths for `include "debug_pkg.svh"`
 set_global_assignment -name SEARCH_PATH rtl/debug
+
+# Capture stubs (zero-emitting until commit 5).
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/capture/cap_reu.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/capture/cap_vic_wr.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/capture/cap_cpu_state.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/capture/cap_frame.sv
