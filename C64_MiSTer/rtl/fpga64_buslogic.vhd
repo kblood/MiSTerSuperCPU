@@ -49,11 +49,6 @@ entity fpga64_buslogic is
 		c64rom_data : in std_logic_vector(7 downto 0);
 		c64rom_wr   : in std_logic;
 
-		supercpu_en   : in std_logic;
-		supercpu_rom  : in std_logic;   -- '1' = SuperCPU kickstart ROM active
-		supercpu_rom_vis : in std_logic; -- '1' = SuperCPU ROM at $E000-$FFFF, '0' = C64 KERNAL
-		supercpu_bank : in std_logic_vector(7 downto 0);
-
 		cpuWe       : in std_logic;
 		cpuAddr     : in unsigned(15 downto 0);
 		cpuData     : in unsigned(7 downto 0);
@@ -82,7 +77,6 @@ entity fpga64_buslogic is
 		-- To catridge port
 		cs_ioE      : out std_logic;
 		cs_ioF      : out std_logic;
-		cs_ioF_raw  : out std_logic;  -- IOF without io_enable, for REU cpu_cs
 		cs_romL     : out std_logic;
 		cs_romH     : out std_logic;
 		cs_UMAXromH : out std_logic
@@ -94,11 +88,15 @@ end fpga64_buslogic;
 architecture rtl of fpga64_buslogic is
 	signal charData       : std_logic_vector(7 downto 0);
 	signal charData_std   : std_logic_vector(7 downto 0);
+	signal charData_jap   : std_logic_vector(7 downto 0);
 	signal romData        : std_logic_vector(7 downto 0);
 	signal romData_c64    : std_logic_vector(7 downto 0);
-	-- M10K R1 (2026-04-28): kernel_c64gs/c64std/c64jap dproms + chargen_j
-	-- removed; bios selector logic dropped. Reclaims ~26-39 M10K blocks
-	-- (95% → ~75-80%) to make headroom for bank-$01 SRAM shadow.
+	signal romData_c64std : std_logic_vector(7 downto 0);
+	signal romData_c64gs  : std_logic_vector(7 downto 0);
+	signal romData_c64jap : std_logic_vector(7 downto 0);
+	signal c64gs_ena      : std_logic := '0';
+	signal c64std_ena     : std_logic := '0';
+	signal c64jap_ena     : std_logic := '0';
 
 	signal cs_CharLoc     : std_logic;
 	signal cs_romLoc      : std_logic;
@@ -119,37 +117,6 @@ architecture rtl of fpga64_buslogic is
 	signal ultimax        : std_logic;
 
 	signal currentAddr    : unsigned(15 downto 0);
-	signal scpuRomData    : std_logic_vector(7 downto 0);
-	-- '1' when the 65C816 bank register points to SuperCPU ROM space.
-	-- Covers: full address range in banks $F0-$FF (the ROM banks), and
-	-- $8000-$9FFF in bank $00 (native-mode interrupt handlers live there).
-	signal scpu_rom_en    : std_logic;
-
-	-- SuperCPU system RAM: 512 bytes at bank $00, $D200-$D3FF.
-	-- Intercepts VIC-II mirror range to prevent register corruption when
-	-- the kickstart ROM writes its working variables to this area.
-	type scpu_sysram_t is array (0 to 511) of std_logic_vector(7 downto 0);
-	signal scpu_sysram      : scpu_sysram_t;
-	signal scpu_sysram_cs   : std_logic;
-	signal scpu_sysram_data : std_logic_vector(7 downto 0);
-
-	-- Phase D (v167): bank-$01 SRAM shadow. Real CMD SuperCPU has 128KB SRAM
-	-- covering banks $00 + $01. We already have bank $00 via c64_ram64k.
-	-- This dprom covers bank $01 so SuperRAM can start at bank $02 (real-HW
-	-- layout). Costs ~13 M10K blocks of the ~52 freed by M10K R1.
-	signal bank01_sram_q : std_logic_vector(7 downto 0);
-	signal bank01_cs     : std_logic;
-
-	-- C64 I/O is only accessible from bank $00.
-	-- In SuperCPU mode, bank $01-$FF accesses bypass I/O (they target SuperRAM).
-	-- Without this gate the kickstart's MVN block moves to bank $01 would
-	-- corrupt VIC-II/SID/CIA registers when they pass through $D000-$DFFF.
-	signal scpu_io_en : std_logic;
-
-	-- SYSRAM reset-sweep counter: clears the 512-byte SYSRAM after reset so
-	-- the kickstart always sees a cold-boot state and calls the C64 KERNAL.
-	signal sysram_rst_cnt  : unsigned(8 downto 0) := (others => '0');
-	signal sysram_rst_busy : std_logic := '0';
 	
 begin
 	chargen: entity work.dprom
@@ -163,12 +130,27 @@ begin
 		q => charData_std
 	);
 
-	-- M10K R1 (2026-04-28): chargen_j + kernel_c64gs dropped. The bios
-	-- selector originally chose between four (gs/c64/std/jap) KERNAL ROMs
-	-- and two chargen ROMs. SCPU dev only needs JiffyDOS + std chargen,
-	-- so the four unused dproms are removed to reclaim ~26-39 M10K blocks.
-	-- bios input port retained for entity-signature compatibility but
-	-- has no effect on KERNAL/chargen choice.
+	chargen_j: entity work.dprom
+	generic map ("rtl/roms/chargenj.mif", 12)
+	port map
+	(
+		wrclock => clk,
+		rdclock => clk,
+
+		rdaddress => std_logic_vector(currentAddr(11 downto 0)),
+		q => charData_jap
+	);
+
+	kernel_c64gs: entity work.dprom
+	generic map ("rtl/roms/std_C64GS.mif", 14)
+	port map
+	(
+		wrclock => clk,
+		rdclock => clk,
+
+		rdaddress => std_logic_vector(cpuAddr(14) & cpuAddr(12 downto 0)),
+		q => romData_c64gs
+	);
 
 	kernel_c64: entity work.dprom
 	generic map ("rtl/roms/dol_C64.mif", 14)
@@ -185,115 +167,45 @@ begin
 		q => romData_c64
 	);
 
-	-- M10K R1: kernel_c64std + kernel_c64jap dproms dropped.
-
-	scpu_rom: entity work.dprom
-	generic map ("rtl/roms/scpu64.mif", 16)
+	kernel_c64std: entity work.dprom
+	generic map ("rtl/roms/std_C64.mif", 14)
 	port map
 	(
 		wrclock => clk,
 		rdclock => clk,
 
-		rdaddress => std_logic_vector(cpuAddr),
-		q => scpuRomData
+		rdaddress => std_logic_vector(cpuAddr(14) & cpuAddr(12 downto 0)),
+		q => romData_c64std
 	);
 
-	-- Phase D bank-$01 SRAM shadow (64KB). No INIT_FILE → zero-initialised.
-	-- Quartus infers ~13 M10K blocks for this dual-port 8-bit-wide RAM.
-	-- bank01_cs gates writes; reads happen unconditionally (output muxed in
-	-- dataToCpu process below).
-	bank01_sram: entity work.dprom
-	generic map ("", 16)
+	kernel_c64jap: entity work.dprom
+	generic map ("rtl/roms/jap_C64.mif", 14)
 	port map
 	(
-		wrclock   => clk,
-		rdclock   => clk,
+		wrclock => clk,
+		rdclock => clk,
 
-		wren      => bank01_cs and cpuWe,
-		data      => std_logic_vector(cpuData),
-		wraddress => std_logic_vector(cpuAddr),
-
-		rdaddress => std_logic_vector(cpuAddr),
-		q         => bank01_sram_q
+		rdaddress => std_logic_vector(cpuAddr(14) & cpuAddr(12 downto 0)),
+		q => romData_c64jap
 	);
 
-	-- Bank $01 select: SuperCPU mode + bank byte = $01.
-	-- ROM bank check ($F8) is mutually exclusive with $01.
-	bank01_cs <= '1' when supercpu_en = '1' and supercpu_bank = x"01" else '0';
-
-	-- romData mux: cs_romLoc reads ($E000-$FFFF in bank $00).
-	-- When SuperCPU ROM is active AND visible (supercpu_rom_vis='1'), serve scpuRomData.
-	-- After the kickstart writes $00 to $D07E (supercpu_rom_vis='0'), the C64 KERNAL is
-	-- revealed here so that "LDA $FFFC" in the kickstart reads $FCE2 (C64 KERNAL
-	-- reset vector) instead of $FC90, allowing RTL to boot the KERNAL.
-	romData <= scpuRomData    when supercpu_en = '1' and supercpu_rom = '1' and supercpu_rom_vis = '1' else
+	romData <= romData_c64jap when c64jap_ena = '1' else
+				  romData_c64std when c64std_ena = '1' else
+				  romData_c64gs  when c64gs_ena  = '1' else
 				  romData_c64;
 
-	-- M10K R1: collapsed mux — only JiffyDOS romData_c64 + std chargen.
-	charData <= charData_std;
-
-	-- SuperCPU ROM bank mapping:
-	-- Bank $F8 only: the 64KB dprom holds the kickstart ROM image at bank $F8.
-	-- Other banks ($F0-$F7, $F9-$FF) are SuperRAM, NOT ROM.  The kickstart SIMM
-	-- detection reads bank $F6 expecting RAM; mapping all $F0+ to ROM made reads
-	-- return ROM data, failing SIMM detection and aborting boot (brown squares).
-	-- Bank $00, $8000-$9FFF: kickstart ROM replaces BASIC during initial boot ONLY.
-	-- Once the kickstart hides itself (supercpu_rom_vis='0'), BASIC ROM must be visible
-	-- again so the KERNAL/BASIC can run normally.
-	-- NOTE: $E000-$FFFF (KERNAL area) is NOT mapped here. VICE uses a separate
-	-- "bootmap" flag for that, and a kernal shadow SRAM for runtime. The native mode
-	-- vectors at $FFE4-$FFEF are served from the kernal shadow, not the EPROM.
-	scpu_rom_en <= '1' when supercpu_en = '1' and supercpu_rom = '1' and cpuWe = '0' and
-	                        (supercpu_bank = x"F8" or
-	                         (supercpu_bank = x"00" and cpuAddr(15 downto 13) = "100"
-	                          and supercpu_rom_vis = '1'))
-	               else '0';
-
-	-- SuperCPU system RAM: bank $00, $D200-$D3FF (512 bytes).
-	-- Prevents kickstart writes from corrupting VIC-II registers (VIC mirrors $D000-$D3FF).
-	-- cpuAddr(15:9) = "1101001" selects exactly $D200-$D3FF.
-	scpu_sysram_cs <= '1' when supercpu_en = '1' and supercpu_bank = x"00"
-	                            and cpuAddr(15 downto 9) = "1101001"
-	                  else '0';
-
-	-- I/O gate: C64 peripheral registers (VIC, SID, CIA, color, cartridge I/O) are
-	-- only mapped in bank $00.  In SuperCPU mode every other bank is pure RAM/ROM,
-	-- so all I/O chip-selects must be suppressed when the bank byte is not $00.
-	-- Without this, kickstart block-moves to bank $01–$EF write through $D000–$DFFF
-	-- and corrupt VIC-II / SID / CIA registers.
-	-- Only gate I/O when CPU has the bus AND bank is non-$00. During phantom cycles
-	-- (VDA=VPA=0) or when cpuHasBus='0', the bank byte may be invalid — keep I/O enabled
-	-- so REU DMA registers ($DF00) and other I/O remain accessible.
-	scpu_io_en <= '0' when supercpu_en = '1' and supercpu_bank /= x"00" and cpuHasBus = '1' else '1';
+	charData <= charData_jap when c64jap_ena = '1' else charData_std;
 
 	process(clk)
 	begin
 		if rising_edge(clk) then
-			-- On reset, sweep all 512 SYSRAM locations to $00 so the kickstart
-			-- always sees a "cold boot" state and performs a full init (calls KERNAL).
-			-- Without this, after the first boot the kickstart detects its working
-			-- variables in SYSRAM and takes a warm-boot path that skips KERNAL init,
-			-- leaving VIC-II uninitialised and the screen black.
-			if reset = '1' and sysram_rst_busy = '0' then
-				sysram_rst_busy <= '1';
-				sysram_rst_cnt  <= (others => '0');
-			elsif sysram_rst_busy = '1' then
-				scpu_sysram(to_integer(sysram_rst_cnt)) <= (others => '0');
-				if sysram_rst_cnt = 511 then
-					sysram_rst_busy <= '0';
-				else
-					sysram_rst_cnt <= sysram_rst_cnt + 1;
-				end if;
-			elsif scpu_sysram_cs = '1' and cpuWe = '1' then
-				scpu_sysram(to_integer(cpuAddr(8 downto 0))) <= std_logic_vector(cpuData);
+			if reset = '1' then 
+				c64gs_ena  <= bios(1);
+				c64std_ena <= bios(0);
+				c64jap_ena <= bios(1) and bios(0);
 			end if;
-			-- Registered read (same latency as dprom)
-			scpu_sysram_data <= scpu_sysram(to_integer(cpuAddr(8 downto 0)));
 		end if;
 	end process;
-
-	-- M10K R1: bios-selector process removed (the *_ena signals it drove
-	-- now have no consumers after the dprom mux collapse).
 
 	--
 	--begin
@@ -302,67 +214,46 @@ begin
 			  cs_romHLoc, cs_romLLoc, cs_romLoc, cs_CharLoc,
 			  cs_ramLoc, cs_vicLoc, cs_sidLoc, cs_colorLoc,
 			  cs_cia1Loc, cs_cia2Loc, lastVicData,
-			  cs_ioELoc, cs_ioFLoc, scpu_rom_en, scpu_sysram_cs, scpu_sysram_data, scpu_io_en,
-			  scpuRomData, supercpu_rom_vis, supercpu_en, supercpu_bank,
-			  bank01_cs, bank01_sram_q,
+			  cs_ioELoc, cs_ioFLoc,
 			  io_rom, io_ext, io_data)
 	begin
 		-- If no hardware is addressed the bus is floating.
 		-- It will contain the last data read by the VIC. (if a C64 is shielded correctly)
 		dataToCpu <= lastVicData;
-		if scpu_rom_en = '1' then
-			-- 65C816 bank $F8 or bank-0 $8000-$9FFF: serve SuperCPU ROM from dprom.
-			-- Use scpuRomData directly, NOT romData, so that the $D07E ROM-visibility
-			-- switch (supercpu_rom_vis) cannot hide the kickstart code at bank $F8.
-			dataToCpu <= unsigned(scpuRomData);
-		elsif bank01_cs = '1' then
-			-- Phase D: bank $01 served from on-chip SRAM dprom (real-HW parity).
-			-- This branch precedes the generic non-bank-$00 ramData fall-through
-			-- so SDRAM is bypassed for bank-$01 reads.
-			dataToCpu <= unsigned(bank01_sram_q);
-		elsif supercpu_en = '1' and supercpu_bank /= x"00" then
-			-- SuperCPU non-bank-$00 (excluding bank $01 above): SDRAM SuperRAM.
-			-- scpu_rom_en has already handled ROM bank $F8; remaining banks $02-$EF, $F0-$F7, $F9-$FF
-			-- are SuperRAM where every address is plain RAM, no C64 I/O/ROM decode.
-			dataToCpu <= ramData;
-		elsif scpu_sysram_cs = '1' then
-			-- SuperCPU system RAM at bank $00, $D200-$D3FF
-			dataToCpu <= unsigned(scpu_sysram_data);
-		elsif cs_CharLoc = '1' then	
+		if cs_CharLoc = '1' then	
 			dataToCpu <= unsigned(charData);
 		elsif cs_romLoc = '1' then	
 			dataToCpu <= unsigned(romData);
 		elsif cs_ramLoc = '1' then
 			dataToCpu <= ramData;
-		elsif cs_vicLoc = '1' and scpu_io_en = '1' then
+		elsif cs_vicLoc = '1' then
 			dataToCpu <= vicData;
-		elsif cs_sidLoc = '1' and scpu_io_en = '1' then
+		elsif cs_sidLoc = '1' then
 			dataToCpu <= sidData;
-		elsif cs_colorLoc = '1' and scpu_io_en = '1' then
+		elsif cs_colorLoc = '1' then
 			dataToCpu(3 downto 0) <= colorData;
-		elsif cs_cia1Loc = '1' and scpu_io_en = '1' then
+		elsif cs_cia1Loc = '1' then
 			dataToCpu <= cia1Data;
-		elsif cs_cia2Loc = '1' and scpu_io_en = '1' then
+		elsif cs_cia2Loc = '1' then
 			dataToCpu <= cia2Data;
 		elsif cs_romLLoc = '1' then
 			dataToCpu <= ramData;
 		elsif cs_romHLoc = '1' then
 			dataToCpu <= ramData;
-		elsif cs_ioELoc = '1' and scpu_io_en = '1' and io_rom = '1' then
+		elsif cs_ioELoc = '1' and io_rom = '1' then
 			dataToCpu <= ramData;
-		elsif cs_ioFLoc = '1' and scpu_io_en = '1' and io_rom = '1' then
+		elsif cs_ioFLoc = '1' and io_rom = '1' then
 			dataToCpu <= ramData;
-		elsif cs_ioELoc = '1' and scpu_io_en = '1' and io_ext = '1' then
+		elsif cs_ioELoc = '1' and io_ext = '1' then
 			dataToCpu <= io_data;
-		elsif cs_ioFLoc = '1' and scpu_io_en = '1' and io_ext = '1' then
+		elsif cs_ioFLoc = '1' and io_ext = '1' then
 			dataToCpu <= io_data;
 		end if;
 	end process;
 
 	ultimax <= exrom and (not game);
 
-	process(cpuHasBus, cpuAddr, ultimax, cpuWe, bankSwitch, exrom, game, aec, vicAddr,
-	        supercpu_en, supercpu_bank)
+	process(cpuHasBus, cpuAddr, ultimax, cpuWe, bankSwitch, exrom, game, aec, vicAddr)
 	begin
 		currentAddr <= (others => '1');
 		systemWe <= '0';
@@ -385,12 +276,6 @@ begin
 		if (cpuHasBus = '1') then
 			-- The 6502 CPU has the bus.					
 			currentAddr <= cpuAddr;
-			-- SuperCPU non-bank-$00: bypass entire C64 address decode.
-			-- Banks $01-$FF are pure SuperRAM (or ROM handled by scpu_rom_en elsewhere).
-			if supercpu_en = '1' and supercpu_bank /= x"00" then
-				cs_ramLoc <= '1';
-				systemWe  <= cpuWe;
-			else
 			case cpuAddr(15 downto 12) is
 			when X"E" | X"F" =>
 				if ultimax = '1' then
@@ -469,11 +354,13 @@ begin
 			end case;
 
 			systemWe <= cpuWe;
-			end if; -- end SuperCPU bank bypass / C64 address decode
 		else
-			-- The VIC-II owns the memory address path whenever cpuHasBus='0'.
-			-- Keep currentAddr on vicAddr unconditionally in this branch.
-			currentAddr <= vicAddr;
+			-- The VIC-II has the bus, but only when aec is asserted
+			if aec = '1' then
+				currentAddr <= vicAddr;
+			else
+				currentAddr <= cpuAddr;
+			end if;
 
 			if ultimax = '0' and vicAddr(14 downto 12)="001" then
 				vicCharLoc <= '1';
@@ -487,19 +374,13 @@ begin
 	end process;
 
 	cs_ram <= cs_ramLoc or cs_romLLoc or cs_romHLoc or cs_UMAXromHLoc or cs_UMAXnomapLoc or cs_CharLoc or cs_romLoc;
-	cs_vic   <= cs_vicLoc   and io_enable and not scpu_sysram_cs and scpu_io_en;
-	cs_sid   <= cs_sidLoc   and io_enable and scpu_io_en;
-	cs_color <= cs_colorLoc and io_enable and scpu_io_en;
-	cs_cia1  <= cs_cia1Loc  and io_enable and scpu_io_en;
-	cs_cia2  <= cs_cia2Loc  and io_enable and scpu_io_en;
-	cs_ioE   <= cs_ioELoc   and io_enable and scpu_io_en;
-	cs_ioF   <= cs_ioFLoc   and io_enable and scpu_io_en;
-	-- Raw IOF without io_enable gating — for REU cpu_cs.
-	-- P65C816 outputs (addr/we) lag enableCpu by 1 cycle. enableCpu
-	-- clears io_enable at cycle N, but the CPU's I/O write address appears
-	-- at cycle N+1 when io_enable is already '0'. The REU needs the raw
-	-- signal to detect $DF00-$DFFF writes from the 65C816.
-	cs_ioF_raw <= cs_ioFLoc and scpu_io_en;
+	cs_vic <= cs_vicLoc and io_enable;
+	cs_sid <= cs_sidLoc and io_enable;
+	cs_color <= cs_colorLoc and io_enable;
+	cs_cia1 <= cs_cia1Loc and io_enable;
+	cs_cia2 <= cs_cia2Loc and io_enable;
+	cs_ioE <= cs_ioELoc and io_enable;
+	cs_ioF <= cs_ioFLoc and io_enable;
 	cs_romL <= cs_romLLoc;
 	cs_romH <= cs_romHLoc;
 	cs_UMAXromH <= cs_UMAXromHLoc;
