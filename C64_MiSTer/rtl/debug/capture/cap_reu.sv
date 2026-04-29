@@ -1,13 +1,24 @@
 // cap_reu.sv
 //
-// Snapshot $DF00-$DF0A on $DF01 cmd write + maintain a FETCH execution
-// counter. Commit 2 wires this as a zero-emitting stub; commit 5 fills in
-// the real capture logic from the reu.v register set.
+// REU register snapshot. The reu module exposes live register state via
+// already-existing reg_addr_c64 / reg_addr_ram / reg_length / reg_cmd
+// outputs, and a reg_cmd_count counter. We forward those into the pool
+// directly -- no edge latching needed because the regs sit stable for
+// many CPU cycles after each cmd write, well long enough for the
+// renderer to sample.
 
 module cap_reu (
 	input  logic        clk,
 	input  logic        rst,
 
+	// Live REU register inputs (driven by reu instance in c64.sv)
+	input  logic [15:0] reu_reg_addr_c64,
+	input  logic [23:0] reu_reg_addr_ram,
+	input  logic [15:0] reu_reg_length,
+	input  logic  [7:0] reu_reg_cmd,
+	input  logic [15:0] reu_reg_cmd_count,
+
+	// Pool slice
 	output logic [15:0] o_c64_addr,
 	output logic [23:0] o_reu_addr,
 	output logic [15:0] o_length,
@@ -15,10 +26,10 @@ module cap_reu (
 	output logic [15:0] o_fetch_count
 );
 
-	assign o_c64_addr    = '0;
-	assign o_reu_addr    = '0;
-	assign o_length      = '0;
-	assign o_cmd         = '0;
-	assign o_fetch_count = '0;
+	assign o_c64_addr    = reu_reg_addr_c64;
+	assign o_reu_addr    = reu_reg_addr_ram;
+	assign o_length      = reu_reg_length;
+	assign o_cmd         = reu_reg_cmd;
+	assign o_fetch_count = reu_reg_cmd_count;
 
 endmodule

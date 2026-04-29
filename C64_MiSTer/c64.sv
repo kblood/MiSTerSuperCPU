@@ -625,6 +625,13 @@ wire        reu_irq;
 wire        reu_oe  = IOF && reu_cfg;
 wire  [1:0] reu_cfg = status[54:53];
 
+// Live REU register snapshots fed to the debug overlay's cap_reu module.
+wire  [7:0] reu_dbg_cmd;
+wire [15:0] reu_dbg_addr_c64;
+wire [23:0] reu_dbg_addr_ram;
+wire [15:0] reu_dbg_length;
+wire [15:0] reu_dbg_cmd_count;
+
 reu reu
 (
 	.clk(clk_sys),
@@ -644,13 +651,19 @@ reu reu
 	.ram_dout(reu_ram_dout),
 	.ram_din(sdram_data),
 	.ram_we(reu_ram_we),
-	
+
 	.cpu_addr(c64_addr),
 	.cpu_dout(c64_data_out),
 	.cpu_din(reu_dout),
 	.cpu_we(ram_we),
 	.cpu_cs(IOF),
-	
+
+	.reg_cmd      (reu_dbg_cmd),
+	.reg_addr_c64 (reu_dbg_addr_c64),
+	.reg_addr_ram (reu_dbg_addr_ram),
+	.reg_length   (reu_dbg_length),
+	.reg_cmd_count(reu_dbg_cmd_count),
+
 	.irq(reu_irq)
 );
 
@@ -1067,13 +1080,18 @@ dbg_pool_t dbg_pool;
 
 `ifdef DBG_CAP_REU
 cap_reu u_cap_reu (
-	.clk          (clk_sys),
-	.rst          (~reset_n),
-	.o_c64_addr   (dbg_pool.reu_c64_addr),
-	.o_reu_addr   (dbg_pool.reu_reu_addr),
-	.o_length     (dbg_pool.reu_length),
-	.o_cmd        (dbg_pool.reu_cmd),
-	.o_fetch_count(dbg_pool.reu_fetch_count)
+	.clk              (clk_sys),
+	.rst              (~reset_n),
+	.reu_reg_addr_c64 (reu_dbg_addr_c64),
+	.reu_reg_addr_ram (reu_dbg_addr_ram),
+	.reu_reg_length   (reu_dbg_length),
+	.reu_reg_cmd      (reu_dbg_cmd),
+	.reu_reg_cmd_count(reu_dbg_cmd_count),
+	.o_c64_addr       (dbg_pool.reu_c64_addr),
+	.o_reu_addr       (dbg_pool.reu_reu_addr),
+	.o_length         (dbg_pool.reu_length),
+	.o_cmd            (dbg_pool.reu_cmd),
+	.o_fetch_count    (dbg_pool.reu_fetch_count)
 );
 `else
 assign dbg_pool.reu_c64_addr    = '0;
@@ -1117,6 +1135,7 @@ assign dbg_pool.cpu_flags = '0;
 cap_frame u_cap_frame (
 	.clk          (clk_sys),
 	.rst          (~reset_n),
+	.vsync        (vsync),
 	.o_frame_count(dbg_pool.frame_count)
 );
 `else
