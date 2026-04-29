@@ -169,7 +169,16 @@ port(
 	-- Phase D: external SDRAM mux gates the SuperRAM SDRAM cycle on
 	-- cpu_has_bus so VIC-II reads (during VIC slots) never resolve to a
 	-- stale supercpu_bank value left over from the prior CPU instruction.
-	cpu_has_bus   : out std_logic                       -- '1' during CPU slots (CYCLE_CPU0..CPUF), '0' during VIC/DMA/EXT
+	cpu_has_bus   : out std_logic;                      -- '1' during CPU slots (CYCLE_CPU0..CPUF), '0' during VIC/DMA/EXT
+
+	-- Layered debug overlay port hops (rtl/debug/). Always-active outputs
+	-- driven from existing internal signals + small latches; the c64.sv
+	-- consumers gate them by DBG_CAP_* and discard them in release.
+	dbg_raster_line : out std_logic_vector(8 downto 0); -- VIC.debugY
+	dbg_d018        : out std_logic_vector(7 downto 0); -- last cpuDo to $D018
+	dbg_d016        : out std_logic_vector(7 downto 0); -- last cpuDo to $D016
+	dbg_dd00        : out std_logic_vector(7 downto 0); -- last cpuDo to $DD00
+	dbg_cpu_pc_24   : out std_logic_vector(23 downto 0) -- {PBR,PC} for SCPU, {x"00",PC} for T65 (uses cpuAddr_6510 as PC proxy)
 );
 end fpga64_sid_iec;
 
@@ -251,6 +260,14 @@ signal vpa_816      : std_logic;  -- unused for now; reserved for future
 signal vda_816      : std_logic;  -- unused for now; reserved for future
 signal enableCpu_6510 : std_logic;
 signal enableCpu_816  : std_logic;
+
+-- Layered debug overlay internal signals (rtl/debug/).
+signal dbg_d018_r     : std_logic_vector(7 downto 0) := (others => '0');
+signal dbg_d016_r     : std_logic_vector(7 downto 0) := (others => '0');
+signal dbg_dd00_r     : std_logic_vector(7 downto 0) := (others => '0');
+signal dbg_raster_y   : unsigned(8 downto 0);
+signal dbg_pc_816_i   : unsigned(15 downto 0);
+signal dbg_pbr_816_i  : unsigned(7 downto 0);
 
 -- ----------------------------------------------------------------------
 -- Phase B — SuperCPU $D07x / $D0Bx register file (lifted from master).
@@ -739,6 +756,8 @@ port map (
 	vsync => vSync,
 	colorIndex => vicColorIndex,
 
+	debugY => dbg_raster_y,
+
 	irq_n => irq_vic
 );
 
@@ -1005,11 +1024,11 @@ port map (
 	vpa            => vpa_816,
 	vda            => vda_816,
 
-	dbg_pc    => open,
+	dbg_pc    => dbg_pc_816_i,
 	dbg_sp    => open,
 	dbg_p     => open,
 	dbg_ir    => open,
-	dbg_pbr   => open,
+	dbg_pbr   => dbg_pbr_816_i,
 	dbg_dbr   => open,
 	dbg_x     => open,
 	dbg_y     => open,
@@ -1104,5 +1123,42 @@ port map (
 	mod_key => mod_key,
 	backwardsReadingEnabled => '1'
 );
+
+-- ----------------------------------------------------------------------
+-- Layered debug overlay register-write captures (rtl/debug/).
+-- Latches the CPU bus byte being written to $D018, $D016, $DD00.
+-- Driven from already-decoded cs_vic / cs_cia2 + cpuWe + cpuAddr; no
+-- bus snooping needed.
+-- ----------------------------------------------------------------------
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if reset = '1' then
+			dbg_d018_r <= (others => '0');
+			dbg_d016_r <= (others => '0');
+			dbg_dd00_r <= (others => '0');
+		else
+			if cs_vic = '1' and cpuWe = '1' then
+				if cpuAddr(5 downto 0) = "011000" then
+					dbg_d018_r <= std_logic_vector(cpuDo);
+				elsif cpuAddr(5 downto 0) = "010110" then
+					dbg_d016_r <= std_logic_vector(cpuDo);
+				end if;
+			end if;
+			if cs_cia2 = '1' and cpuWe = '1' and cpuAddr(3 downto 0) = "0000" then
+				dbg_dd00_r <= std_logic_vector(cpuDo);
+			end if;
+		end if;
+	end if;
+end process;
+
+dbg_d018        <= dbg_d018_r;
+dbg_d016        <= dbg_d016_r;
+dbg_dd00        <= dbg_dd00_r;
+dbg_raster_line <= std_logic_vector(dbg_raster_y);
+
+dbg_cpu_pc_24   <= std_logic_vector(dbg_pbr_816_i) & std_logic_vector(dbg_pc_816_i)
+                       when supercpu_en = '1'
+                       else x"00" & std_logic_vector(cpuAddr_6510);
 
 end architecture;

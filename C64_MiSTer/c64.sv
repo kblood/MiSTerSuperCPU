@@ -1070,6 +1070,13 @@ wire  [7:0] supercpu_bank;     // bank byte (A23-A16) from 65C816; $00 in 6510 m
 wire        supercpu_emul;     // '1' = emulation mode (or 6510 active)
 wire        cpu_has_bus;       // '1' during CYCLE_CPU0..CPUF (Phase D mux gate)
 
+// Layered debug overlay port hops out of fpga64_sid_iec.
+wire  [8:0] scpu_dbg_raster;
+wire  [7:0] scpu_dbg_d018;
+wire  [7:0] scpu_dbg_d016;
+wire  [7:0] scpu_dbg_dd00;
+wire [23:0] scpu_dbg_cpu_pc;
+
 // ---------------------------------------------------------------------------
 // Layered debug overlay (rtl/debug/) - pool struct + capture stubs.
 // Only declared when DBG_OVERLAY is set; release builds collapse the tree.
@@ -1103,12 +1110,16 @@ assign dbg_pool.reu_fetch_count = '0;
 
 `ifdef DBG_CAP_VIC_WR
 cap_vic_wr u_cap_vic_wr (
-	.clk     (clk_sys),
-	.rst     (~reset_n),
-	.o_d018  (dbg_pool.vic_d018),
-	.o_d016  (dbg_pool.vic_d016),
-	.o_dd00  (dbg_pool.vic_dd00),
-	.o_raster(dbg_pool.vic_raster)
+	.clk      (clk_sys),
+	.rst      (~reset_n),
+	.in_d018  (scpu_dbg_d018),
+	.in_d016  (scpu_dbg_d016),
+	.in_dd00  (scpu_dbg_dd00),
+	.in_raster(scpu_dbg_raster),
+	.o_d018   (dbg_pool.vic_d018),
+	.o_d016   (dbg_pool.vic_d016),
+	.o_dd00   (dbg_pool.vic_dd00),
+	.o_raster (dbg_pool.vic_raster)
 );
 `else
 assign dbg_pool.vic_d018   = '0;
@@ -1119,11 +1130,16 @@ assign dbg_pool.vic_raster = '0;
 
 `ifdef DBG_CAP_CPU_STATE
 cap_cpu_state u_cap_cpu_state (
-	.clk    (clk_sys),
-	.rst    (~reset_n),
-	.o_pc   (dbg_pool.cpu_pc),
-	.o_p    (dbg_pool.cpu_p),
-	.o_flags(dbg_pool.cpu_flags)
+	.clk           (clk_sys),
+	.rst           (~reset_n),
+	.in_pc         (scpu_dbg_cpu_pc),
+	.in_supercpu_en(supercpu_enable),
+	.in_emu_mode   (supercpu_emul),
+	.in_dma_active (1'b0),                 // top-level dma_active not exposed; placeholder
+	.in_ba         (1'b1),                 // ditto
+	.o_pc          (dbg_pool.cpu_pc),
+	.o_p           (dbg_pool.cpu_p),
+	.o_flags       (dbg_pool.cpu_flags)
 );
 `else
 assign dbg_pool.cpu_pc    = '0;
@@ -1258,7 +1274,13 @@ fpga64_sid_iec fpga64
 	.supercpu_en(supercpu_enable),
 	.supercpu_bank(supercpu_bank),
 	.emu_mode_816(supercpu_emul),
-	.cpu_has_bus(cpu_has_bus)
+	.cpu_has_bus(cpu_has_bus),
+
+	.dbg_raster_line(scpu_dbg_raster),
+	.dbg_d018       (scpu_dbg_d018),
+	.dbg_d016       (scpu_dbg_d016),
+	.dbg_dd00       (scpu_dbg_dd00),
+	.dbg_cpu_pc_24  (scpu_dbg_cpu_pc)
 );
 
 wire [7:0] mouse_x;
