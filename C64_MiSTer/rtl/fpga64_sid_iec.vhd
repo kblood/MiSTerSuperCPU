@@ -536,7 +536,13 @@ port map (
 
 	c64rom_addr => c64rom_addr,
 	c64rom_data => c64rom_data,
-	c64rom_wr => c64rom_wr
+	c64rom_wr => c64rom_wr,
+
+	-- Phase C: SuperCPU kickstart ROM + sysram + I/O gate
+	supercpu_en      => supercpu_en,
+	supercpu_rom     => '1',  -- always present on this branch (no compile-time strip)
+	supercpu_rom_vis => scpu_rom_vis,
+	supercpu_bank    => std_logic_vector(addr_hi_816)
 );
 
 IOE <= ioe_i;

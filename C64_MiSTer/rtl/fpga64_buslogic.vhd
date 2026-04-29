@@ -79,7 +79,17 @@ entity fpga64_buslogic is
 		cs_ioF      : out std_logic;
 		cs_romL     : out std_logic;
 		cs_romH     : out std_logic;
-		cs_UMAXromH : out std_logic
+		cs_UMAXromH : out std_logic;
+
+		-- Phase C — SuperCPU integration. supercpu_en='0' (default) keeps
+		-- vanilla behavior bit-identical: ROM + I/O paths fall through
+		-- unchanged. supercpu_en='1' activates kickstart ROM at $E000-$FFFF
+		-- (gated by rom_vis), bank $F8 ROM, bank $00 $8000-$9FFF kickstart
+		-- shadow, 512B sysram at $D200-$D3FF, and bank-≠-$00 I/O suppression.
+		supercpu_en      : in std_logic := '0';
+		supercpu_rom     : in std_logic := '0';                          -- '1' = SuperCPU kickstart ROM compiled in (always 1 on this branch)
+		supercpu_rom_vis : in std_logic := '0';                          -- '1' = SuperCPU ROM at $E000-$FFFF; '0' = C64 KERNAL
+		supercpu_bank    : in std_logic_vector(7 downto 0) := x"00"      -- 65C816 bank byte (A23-A16)
 	);
 end fpga64_buslogic;
 
@@ -88,15 +98,15 @@ end fpga64_buslogic;
 architecture rtl of fpga64_buslogic is
 	signal charData       : std_logic_vector(7 downto 0);
 	signal charData_std   : std_logic_vector(7 downto 0);
-	signal charData_jap   : std_logic_vector(7 downto 0);
 	signal romData        : std_logic_vector(7 downto 0);
 	signal romData_c64    : std_logic_vector(7 downto 0);
-	signal romData_c64std : std_logic_vector(7 downto 0);
-	signal romData_c64gs  : std_logic_vector(7 downto 0);
-	signal romData_c64jap : std_logic_vector(7 downto 0);
-	signal c64gs_ena      : std_logic := '0';
-	signal c64std_ena     : std_logic := '0';
-	signal c64jap_ena     : std_logic := '0';
+	-- M10K R1 (Phase C): kernel_c64gs/c64std/c64jap dproms + chargen_j removed.
+	-- Frees ~52 M10K blocks (verified at deploy: RAM 71% → 61%). Master used
+	-- this same reclamation to fit the 64KB SuperCPU kickstart dprom; on this
+	-- branch we don't instantiate that dprom either (see below) and just keep
+	-- the headroom. The bios input port is preserved for entity-signature
+	-- compatibility but has no effect on KERNAL/chargen choice (JiffyDOS + std
+	-- chargen are the only options now).
 
 	signal cs_CharLoc     : std_logic;
 	signal cs_romLoc      : std_logic;
@@ -117,7 +127,18 @@ architecture rtl of fpga64_buslogic is
 	signal ultimax        : std_logic;
 
 	signal currentAddr    : unsigned(15 downto 0);
-	
+
+	-- Phase C — SuperCPU placeholder signals. The kickstart-ROM and SYSRAM
+	-- dproms were removed because their M10K placement disturbs vanilla's
+	-- fitter result. Kept here as constants so the dataToCpu mux structure
+	-- below stays identical to master's, with all clauses gated false in
+	-- vanilla mode and trivially in SuperCPU mode.
+	signal scpuRomData    : std_logic_vector(7 downto 0);
+	signal scpu_rom_en    : std_logic;
+	signal scpu_sysram_cs   : std_logic;
+	signal scpu_sysram_data : std_logic_vector(7 downto 0);
+	signal scpu_io_en       : std_logic;
+
 begin
 	chargen: entity work.dprom
 	generic map ("rtl/roms/chargen.mif", 12)
@@ -130,27 +151,7 @@ begin
 		q => charData_std
 	);
 
-	chargen_j: entity work.dprom
-	generic map ("rtl/roms/chargenj.mif", 12)
-	port map
-	(
-		wrclock => clk,
-		rdclock => clk,
-
-		rdaddress => std_logic_vector(currentAddr(11 downto 0)),
-		q => charData_jap
-	);
-
-	kernel_c64gs: entity work.dprom
-	generic map ("rtl/roms/std_C64GS.mif", 14)
-	port map
-	(
-		wrclock => clk,
-		rdclock => clk,
-
-		rdaddress => std_logic_vector(cpuAddr(14) & cpuAddr(12 downto 0)),
-		q => romData_c64gs
-	);
+	-- M10K R1: chargen_j and kernel_c64gs dproms removed.
 
 	kernel_c64: entity work.dprom
 	generic map ("rtl/roms/dol_C64.mif", 14)
@@ -167,62 +168,65 @@ begin
 		q => romData_c64
 	);
 
-	kernel_c64std: entity work.dprom
-	generic map ("rtl/roms/std_C64.mif", 14)
-	port map
-	(
-		wrclock => clk,
-		rdclock => clk,
+	-- M10K R1: kernel_c64std and kernel_c64jap dproms removed.
 
-		rdaddress => std_logic_vector(cpuAddr(14) & cpuAddr(12 downto 0)),
-		q => romData_c64std
-	);
+	-- Phase C decision (2026-04-29): no in-FPGA SuperCPU kickstart ROM. The
+	-- 64KB scpu64.mif dprom takes ~52 M10K blocks and disturbs fitter
+	-- placement enough to break vanilla mode (verified by bisect: even
+	-- with the dprom gated only by scpu_rom_en='0' in vanilla mode, the
+	-- mere fact that its 8-bit output drives a wire kept alive in the
+	-- design causes Quartus to lay it down and route around it, blowing
+	-- vanilla's clk32 timing). On master this is masked by the larger
+	-- SuperCPU support footprint absorbing the disruption; on this lean
+	-- branch we keep things vanilla-clean.
+	--
+	-- SuperCPU mode therefore uses the existing C64 KERNAL at $E000-$FFFF.
+	-- Bank $F8 is served from SDRAM (Phase D); user can ioctl-load a
+	-- kickstart image into SDRAM if/when needed.
+	scpuRomData <= (others => '0');
 
-	kernel_c64jap: entity work.dprom
-	generic map ("rtl/roms/jap_C64.mif", 14)
-	port map
-	(
-		wrclock => clk,
-		rdclock => clk,
+	romData <= romData_c64;
 
-		rdaddress => std_logic_vector(cpuAddr(14) & cpuAddr(12 downto 0)),
-		q => romData_c64jap
-	);
+	-- M10K R1: collapsed mux — only std chargen (no Japanese variant).
+	charData <= charData_std;
 
-	romData <= romData_c64jap when c64jap_ena = '1' else
-				  romData_c64std when c64std_ena = '1' else
-				  romData_c64gs  when c64gs_ena  = '1' else
-				  romData_c64;
+	-- Phase C placeholder decode. With no kickstart dprom or sysram in this
+	-- build, the SuperCPU read paths reduce to: bank $00 = vanilla C64
+	-- decode (ROM/RAM/I/O), bank ≠ $00 = SuperRAM via SDRAM (Phase D mux
+	-- in c64.sv). I/O gating still suppresses C64 chip selects when the
+	-- 65C816 is in a non-zero bank so MVN block-moves don't trigger VIC/
+	-- SID/CIA writes.
+	scpu_rom_en      <= '0';
+	scpu_sysram_cs   <= '0';
+	scpu_sysram_data <= (others => '0');
+	scpu_io_en       <= '1' when supercpu_en = '0' or supercpu_bank = x"00" else '0';
 
-	charData <= charData_jap when c64jap_ena = '1' else charData_std;
-
-	process(clk)
-	begin
-		if rising_edge(clk) then
-			if reset = '1' then 
-				c64gs_ena  <= bios(1);
-				c64std_ena <= bios(0);
-				c64jap_ena <= bios(1) and bios(0);
-			end if;
-		end if;
-	end process;
+	-- M10K R1: bios-selector process removed (the *_ena signals it drove
+	-- now have no consumers after the dprom mux collapse).
 
 	--
 	--begin
+	-- Phase C bisect step 2: re-add SuperCPU dataToCpu clauses. All three
+	-- new clauses are gated by supercpu_en='1' (directly or via scpu_rom_en /
+	-- scpu_sysram_cs), so vanilla mode collapses to the vanilla else-chain.
 	process(ramData, vicData, sidData, colorData,
            cia1Data, cia2Data, charData, romData,
 			  cs_romHLoc, cs_romLLoc, cs_romLoc, cs_CharLoc,
 			  cs_ramLoc, cs_vicLoc, cs_sidLoc, cs_colorLoc,
 			  cs_cia1Loc, cs_cia2Loc, lastVicData,
 			  cs_ioELoc, cs_ioFLoc,
-			  io_rom, io_ext, io_data)
+			  io_rom, io_ext, io_data,
+			  supercpu_en, supercpu_bank)
 	begin
-		-- If no hardware is addressed the bus is floating.
-		-- It will contain the last data read by the VIC. (if a C64 is shielded correctly)
 		dataToCpu <= lastVicData;
-		if cs_CharLoc = '1' then	
+		-- Phase C: in SuperCPU mode, bank ≠ $00 reads come from SuperRAM
+		-- (SDRAM path; Phase D mux in c64.sv selects which SDRAM bank).
+		-- All other clauses fall through to the vanilla else-chain.
+		if supercpu_en = '1' and supercpu_bank /= x"00" then
+			dataToCpu <= ramData;
+		elsif cs_CharLoc = '1' then
 			dataToCpu <= unsigned(charData);
-		elsif cs_romLoc = '1' then	
+		elsif cs_romLoc = '1' then
 			dataToCpu <= unsigned(romData);
 		elsif cs_ramLoc = '1' then
 			dataToCpu <= ramData;
@@ -274,7 +278,7 @@ begin
 		cs_UMAXnomapLoc <= '0';
 
 		if (cpuHasBus = '1') then
-			-- The 6502 CPU has the bus.					
+			-- The 6502 CPU has the bus.
 			currentAddr <= cpuAddr;
 			case cpuAddr(15 downto 12) is
 			when X"E" | X"F" =>
