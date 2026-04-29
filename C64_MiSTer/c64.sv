@@ -1480,6 +1480,31 @@ end
 
 assign HDMI_FREEZE = freeze;
 
+// ---------------------------------------------------------------------------
+// Debug overlay pixel injection.
+// status[83] = runtime show/hide. Renderer's internal H/V counters drive
+// the box geometry; commit 3 paints solid blue, commits 4-6 swap in the
+// font cascade and live data fields.
+// ---------------------------------------------------------------------------
+wire [7:0] r_dbg, g_dbg, b_dbg;
+`ifdef DBG_OVERLAY
+debug_overlay_renderer u_dbg_overlay (
+	.clk_pix(CLK_VIDEO),
+	.ce_pix (ce_pix),
+	.hsync  (hsync),
+	.vsync  (vsync),
+	.visible(status[83]),
+	.r_in   (r),
+	.g_in   (g),
+	.b_in   (b),
+	.r_out  (r_dbg),
+	.g_out  (g_dbg),
+	.b_out  (b_dbg)
+);
+`else
+assign {r_dbg, g_dbg, b_dbg} = {r, g, b};
+`endif
+
 video_mixer #(.GAMMA(1)) video_mixer
 (
 	.CLK_VIDEO(CLK_VIDEO),
@@ -1489,9 +1514,9 @@ video_mixer #(.GAMMA(1)) video_mixer
 	.gamma_bus(gamma_bus),
 
 	.ce_pix(ce_pix),
-	.R(r),
-	.G(g),
-	.B(b),
+	.R(r_dbg),
+	.G(g_dbg),
+	.B(b_dbg),
 	.HSync(hsync_out),
 	.VSync(vsync_out),
 	.HBlank(hblank),

@@ -24,3 +24,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/capture/cap_reu.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/capture/cap_vic_wr.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/capture/cap_cpu_state.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/capture/cap_frame.sv
+
+# Pixel-rate renderer (commit 3 paints a blue test box; commits 4+ add
+# the font cascade and per-cell rendering).
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/debug_overlay_renderer.sv
