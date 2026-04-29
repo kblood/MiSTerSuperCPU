@@ -165,7 +165,11 @@ port(
 	-- supercpu_en='1'           : P65C816 active in emulation mode at reset.
 	supercpu_en   : in  std_logic := '0';
 	supercpu_bank : out std_logic_vector(7 downto 0);   -- bank byte (A23-A16); $00 when 6510 active
-	emu_mode_816  : out std_logic                       -- '1' = emulation mode (always '1' when 6510 active)
+	emu_mode_816  : out std_logic;                      -- '1' = emulation mode (always '1' when 6510 active)
+	-- Phase D: external SDRAM mux gates the SuperRAM SDRAM cycle on
+	-- cpu_has_bus so VIC-II reads (during VIC slots) never resolve to a
+	-- stale supercpu_bank value left over from the prior CPU instruction.
+	cpu_has_bus   : out std_logic                       -- '1' during CPU slots (CYCLE_CPU0..CPUF), '0' during VIC/DMA/EXT
 );
 end fpga64_sid_iec;
 
@@ -1025,6 +1029,7 @@ nmi_ack     <= nmi_ack_816  when supercpu_en = '1' else nmi_ack_6510;
 -- a sane "emulation mode bank $00" view in the default configuration.
 supercpu_bank <= std_logic_vector(addr_hi_816)         when supercpu_en = '1' else x"00";
 emu_mode_816  <= emu_mode_816_i                        when supercpu_en = '1' else '1';
+cpu_has_bus   <= cpuHasBus;
 
 cass_motor <= cpuIO(5);
 cass_write <= cpuIO(3);

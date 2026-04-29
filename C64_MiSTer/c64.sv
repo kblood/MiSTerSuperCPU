@@ -987,12 +987,28 @@ sdram sdram
 	.clk(clk64),
 	.init(~pll_locked),
 	.refresh(refresh),
-	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : ext_cycle ? reu_ram_addr : cart_addr   ),
-	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : ext_cycle ? reu_ram_ce   : cart_ce     ),
-	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : ext_cycle ? reu_ram_we   : cart_we     ),
-	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : ext_cycle ? reu_ram_dout : cart_wrdata ),
+	// Phase D: when SCPU is reading/writing a non-bank-$00 address during a
+	// CPU slot, override cart_addr with the SuperRAM address {1, bank, addr16}.
+	// In vanilla mode (supercpu_enable=0) scpu_sdram_addr collapses to
+	// cart_addr, so the mux is bit-identical to the original. ce/we/din still
+	// flow through cartridge passthrough (cart_we = ram_we and cart_wrdata =
+	// c64_data_out when no romL/romH override), so SCPU writes land at the
+	// SuperRAM address and SCPU reads return sdram_data unchanged.
+	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : ext_cycle ? reu_ram_addr : scpu_sdram_addr ),
+	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : ext_cycle ? reu_ram_ce   : cart_ce         ),
+	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : ext_cycle ? reu_ram_we   : cart_we         ),
+	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : ext_cycle ? reu_ram_dout : cart_wrdata     ),
 	.dout( sdram_data )
 );
+
+// Phase D SuperRAM address mux. Combinational so the SCPU CPU cycle's address
+// is presented to SDRAM the same clk32 the cart_ce edge fires (registering
+// here introduces a 1-cycle latency that breaks LDA-long bank transitions —
+// see master fork's project_sdram_timing_fix.md).
+wire [24:0] scpu_sdram_addr =
+    (supercpu_enable && cpu_has_bus && (supercpu_bank != 8'h00))
+        ? {1'b1, supercpu_bank, c64_addr}
+        : cart_addr;
 
 wire  [7:0] c64_data_out;
 wire  [7:0] c64_data_in;
@@ -1022,6 +1038,7 @@ wire        ntsc = status[2];
 wire        supercpu_enable = status[82];
 wire  [7:0] supercpu_bank;     // bank byte (A23-A16) from 65C816; $00 in 6510 mode
 wire        supercpu_emul;     // '1' = emulation mode (or 6510 active)
+wire        cpu_has_bus;       // '1' during CYCLE_CPU0..CPUF (Phase D mux gate)
 
 fpga64_sid_iec fpga64
 (
@@ -1137,7 +1154,8 @@ fpga64_sid_iec fpga64
 
 	.supercpu_en(supercpu_enable),
 	.supercpu_bank(supercpu_bank),
-	.emu_mode_816(supercpu_emul)
+	.emu_mode_816(supercpu_emul),
+	.cpu_has_bus(cpu_has_bus)
 );
 
 wire [7:0] mouse_x;
