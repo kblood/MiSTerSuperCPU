@@ -30,7 +30,7 @@ tools/test_cart/out/
 .vscode/
 
 # Local scratch/debug tooling artifacts
-.abacusai/tmp/
+.abacusai/
 C64_MiSTer/signalprobe_qsf.tcl
 
 # Claude Code session data
