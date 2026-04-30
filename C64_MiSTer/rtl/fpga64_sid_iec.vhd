@@ -210,7 +210,12 @@ port(
 	dbg_trace_pc1        : out std_logic_vector(23 downto 0);
 	dbg_trace_pc2        : out std_logic_vector(23 downto 0);
 	dbg_trace_pc3        : out std_logic_vector(23 downto 0);
-	dbg_trace_frozen     : out std_logic
+	dbg_trace_frozen     : out std_logic;
+	-- v219: 24-bit opcode counter, ticks on opcode_fetch_pulse. Wraps
+	-- every ~16 sec at 1MHz. Per-frame delta = opcodes/frame; T65 vs
+	-- SCPU comparison answers "same code, slower" (similar deltas) vs
+	-- "different code path" (very different deltas).
+	dbg_op_count         : out std_logic_vector(23 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -321,6 +326,8 @@ signal trace_pc1_r : std_logic_vector(23 downto 0) := (others => '0');
 signal trace_pc2_r : std_logic_vector(23 downto 0) := (others => '0');
 signal trace_pc3_r : std_logic_vector(23 downto 0) := (others => '0');
 signal trace_frozen_r : std_logic := '0';
+-- v219: opcode-fetch counter (free-running, never resets in normal op)
+signal op_count_r : unsigned(23 downto 0) := (others => '0');
 -- v218: skip-first-8 D8 writes counter. T65 only writes D8 a few
 -- times during init (V never shows D8); SCPU writes D8 many times
 -- in gameplay. Skip=8 lets us capture an actual gameplay corruption
@@ -1265,6 +1272,12 @@ begin
 				end if;
 			end if;
 
+			-- v219: opcode-fetch throughput counter. Free-running 24-bit;
+			-- consumer subtracts samples to get opcodes/frame.
+			if opcode_fetch_pulse = '1' then
+				op_count_r <= op_count_r + 1;
+			end if;
+
 			-- v211: PC ring buffer push on opcode-fetch pulses, only while
 			-- not frozen. cpu_pc_now / opcode_fetch_pulse are concurrent.
 			if trace_frozen_r = '0' and opcode_fetch_pulse = '1' then
@@ -1331,6 +1344,7 @@ dbg_trace_pc1        <= trace_pc1_r;
 dbg_trace_pc2        <= trace_pc2_r;
 dbg_trace_pc3        <= trace_pc3_r;
 dbg_trace_frozen     <= trace_frozen_r;
+dbg_op_count         <= std_logic_vector(op_count_r);
 
 -- v211: opcode-fetch pulse + current PC.
 -- T65: SYNC=1 + enableCpu_6510=1 → opcode-fetch cycle, latch cpuAddr_6510.

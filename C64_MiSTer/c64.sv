@@ -1098,6 +1098,7 @@ wire [23:0] scpu_dbg_trace_pc1;
 wire [23:0] scpu_dbg_trace_pc2;
 wire [23:0] scpu_dbg_trace_pc3;
 wire        scpu_dbg_trace_frozen;
+wire [23:0] scpu_dbg_op_count;
 
 // ---------------------------------------------------------------------------
 // Layered debug overlay (rtl/debug/) - pool struct + capture stubs.
@@ -1158,6 +1159,7 @@ cap_vic_wr u_cap_vic_wr (
 	.in_trace_pc2     (scpu_dbg_trace_pc2),
 	.in_trace_pc3     (scpu_dbg_trace_pc3),
 	.in_trace_frozen  (scpu_dbg_trace_frozen),
+	.in_op_count      (scpu_dbg_op_count),
 	.o_d018        (dbg_pool.vic_d018),
 	.o_d016        (dbg_pool.vic_d016),
 	.o_dd00        (dbg_pool.vic_dd00),
@@ -1181,7 +1183,8 @@ cap_vic_wr u_cap_vic_wr (
 	.o_trace_pc1      (dbg_pool.trace_pc1),
 	.o_trace_pc2      (dbg_pool.trace_pc2),
 	.o_trace_pc3      (dbg_pool.trace_pc3),
-	.o_trace_frozen   (dbg_pool.trace_frozen)
+	.o_trace_frozen   (dbg_pool.trace_frozen),
+	.o_op_count       (dbg_pool.op_count)
 );
 `else
 assign dbg_pool.vic_d018         = '0;
@@ -1208,6 +1211,7 @@ assign dbg_pool.trace_pc1        = '0;
 assign dbg_pool.trace_pc2        = '0;
 assign dbg_pool.trace_pc3        = '0;
 assign dbg_pool.trace_frozen     = '0;
+assign dbg_pool.op_count         = '0;
 `endif
 
 `ifdef DBG_CAP_CPU_STATE
@@ -1388,7 +1392,8 @@ fpga64_sid_iec fpga64
 	.dbg_trace_pc1        (scpu_dbg_trace_pc1),
 	.dbg_trace_pc2        (scpu_dbg_trace_pc2),
 	.dbg_trace_pc3        (scpu_dbg_trace_pc3),
-	.dbg_trace_frozen     (scpu_dbg_trace_frozen)
+	.dbg_trace_frozen     (scpu_dbg_trace_frozen),
+	.dbg_op_count         (scpu_dbg_op_count)
 );
 
 wire [7:0] mouse_x;

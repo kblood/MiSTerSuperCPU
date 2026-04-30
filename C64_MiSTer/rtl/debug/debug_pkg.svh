@@ -128,6 +128,14 @@ typedef struct packed {
   logic [23:0] trace_pc2;
   logic [23:0] trace_pc3;
   logic        trace_frozen;
+
+  // v219: throughput counter — increments on every opcode fetch
+  // (T65 SYNC=1 + enableCpu_6510=1 OR P65C816 vpa=vda=1 +
+  // enableCpu_816=1). 24-bit gives ~16M opcodes range = ~16 sec
+  // at 1MHz before wrap. Diff between consecutive frame samples =
+  // opcodes per frame. T65 vs SCPU comparison answers "same code,
+  // slower" vs "different code path".
+  logic [23:0] op_count;
 } dbg_pool_t;
 `endif
 

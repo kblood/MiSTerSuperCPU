@@ -88,7 +88,7 @@ OVR_X0 = 4
 OVR_Y0 = 6
 CELL_W = 5
 CELL_H = 6
-ROWS = 11    # 2026-04-30 v211: 11 rows; rows 9-10 hold PC ring buffer trace
+ROWS = 12    # 2026-04-30 v219: 12 rows; row 11 = OP=###### opcode counter
 COLS = 22
 
 # Lit color

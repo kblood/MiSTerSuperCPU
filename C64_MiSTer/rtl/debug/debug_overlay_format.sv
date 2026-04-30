@@ -346,6 +346,23 @@ module debug_overlay_format
 				default: glyph_id = G_SP;
 			endcase
 
+			// ===== Row 11: OP=######  (24-bit opcode counter) =========
+			// Free-running counter ticks on opcode_fetch_pulse. Per-frame
+			// delta = opcodes/frame. T65 vs SCPU comparison answers
+			// "same code, slower" vs "different code path".
+			4'd11: case (cell_x)
+				5'd0:  glyph_id = 6'd24;  // 'O'
+				5'd1:  glyph_id = G_P;
+				5'd2:  glyph_id = G_EQ;
+				5'd3:  glyph_id = hex(pool.op_count[23:20]);
+				5'd4:  glyph_id = hex(pool.op_count[19:16]);
+				5'd5:  glyph_id = hex(pool.op_count[15:12]);
+				5'd6:  glyph_id = hex(pool.op_count[11:8]);
+				5'd7:  glyph_id = hex(pool.op_count[7:4]);
+				5'd8:  glyph_id = hex(pool.op_count[3:0]);
+				default: glyph_id = G_SP;
+			endcase
+
 			default: glyph_id = G_SP;
 		endcase
 	end

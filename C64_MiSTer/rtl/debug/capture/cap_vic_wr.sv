@@ -33,6 +33,7 @@ module cap_vic_wr (
 	input  logic [23:0] in_trace_pc2,
 	input  logic [23:0] in_trace_pc3,
 	input  logic        in_trace_frozen,
+	input  logic [23:0] in_op_count,
 
 	output logic  [7:0] o_d018,
 	output logic  [7:0] o_d016,
@@ -57,7 +58,8 @@ module cap_vic_wr (
 	output logic [23:0] o_trace_pc1,
 	output logic [23:0] o_trace_pc2,
 	output logic [23:0] o_trace_pc3,
-	output logic        o_trace_frozen
+	output logic        o_trace_frozen,
+	output logic [23:0] o_op_count
 );
 
 	assign o_d018        = in_d018;
@@ -84,5 +86,6 @@ module cap_vic_wr (
 	assign o_trace_pc2      = in_trace_pc2;
 	assign o_trace_pc3      = in_trace_pc3;
 	assign o_trace_frozen   = in_trace_frozen;
+	assign o_op_count       = in_op_count;
 
 endmodule

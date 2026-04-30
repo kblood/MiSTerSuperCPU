@@ -23,7 +23,7 @@ module debug_overlay_renderer #(
 	// top border, matching master's known-good geometry. 2026-04-30:
 	// extended to 5 rows (30 px) for layout-1 DD00-write-PC capture.
 	parameter int Y_LO = 6,
-	parameter int Y_HI = 72     // exclusive (66 px = 11 * 6)
+	parameter int Y_HI = 78     // exclusive (72 px = 12 * 6) — row 11 = op_count
 ) (
 	input  logic       clk_pix,    // CLK_VIDEO (= clk64)
 	input  logic       ce_pix,     // pixel enable
