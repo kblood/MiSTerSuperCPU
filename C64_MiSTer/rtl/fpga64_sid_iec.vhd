@@ -184,7 +184,27 @@ port(
 	-- used by the overlay to detect emu-mode flag drift (X→0, M→0, DBR→!0)
 	-- which would mis-execute indexed addressing.
 	dbg_p           : out std_logic_vector(7 downto 0);
-	dbg_dbr         : out std_logic_vector(7 downto 0)
+	dbg_dbr         : out std_logic_vector(7 downto 0);
+	-- 2026-04-30 DL triage: latch PC + 8-bit count on every $DD00 write
+	-- so the overlay can show WHERE in DL the bad VIC bank value comes
+	-- from. T65 writes $01; SCPU writes $00/$02. PC here is bad-write source.
+	dbg_dd00_write_pc    : out std_logic_vector(23 downto 0);
+	dbg_dd00_write_count : out std_logic_vector(7 downto 0);
+	-- Per-value PC latches (indexed by cpuDo[1:0]) for routine-by-routine
+	-- comparison T65 vs SCPU. If v1 stays at 0 in SCPU mode but populates
+	-- in T65, that's proof the $01-writing path is never executed in SCPU.
+	dbg_dd00_pc_v0       : out std_logic_vector(23 downto 0);
+	dbg_dd00_pc_v1       : out std_logic_vector(23 downto 0);
+	dbg_dd00_pc_v2       : out std_logic_vector(23 downto 0);
+	dbg_dd00_pc_v3       : out std_logic_vector(23 downto 0);
+	dbg_dd00_cnt_v0      : out std_logic_vector(7 downto 0);
+	dbg_dd00_cnt_v1      : out std_logic_vector(7 downto 0);
+	dbg_dd00_cnt_v2      : out std_logic_vector(7 downto 0);
+	dbg_dd00_cnt_v3      : out std_logic_vector(7 downto 0);
+	dbg_d018_last_pc     : out std_logic_vector(23 downto 0);
+	dbg_d018_count       : out std_logic_vector(7 downto 0);
+	dbg_d018_bad_pc      : out std_logic_vector(23 downto 0);
+	dbg_d018_bad_count   : out std_logic_vector(7 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -271,6 +291,29 @@ signal enableCpu_816  : std_logic;
 signal dbg_d018_r     : std_logic_vector(7 downto 0) := (others => '0');
 signal dbg_d016_r     : std_logic_vector(7 downto 0) := (others => '0');
 signal dbg_dd00_r     : std_logic_vector(7 downto 0) := (others => '0');
+-- 2026-04-30 DL triage extension: PC + count on each $DD00 write
+signal dbg_dd00_pc_r    : std_logic_vector(23 downto 0) := (others => '0');
+signal dbg_dd00_count_r : std_logic_vector(7 downto 0)  := (others => '0');
+-- Per-value PC latches indexed by cpuDo[1:0]
+signal dbg_dd00_pc_v0_r : std_logic_vector(23 downto 0) := (others => '0');
+signal dbg_dd00_pc_v1_r : std_logic_vector(23 downto 0) := (others => '0');
+signal dbg_dd00_pc_v2_r : std_logic_vector(23 downto 0) := (others => '0');
+signal dbg_dd00_pc_v3_r : std_logic_vector(23 downto 0) := (others => '0');
+signal dbg_dd00_cnt_v0_r : std_logic_vector(7 downto 0) := (others => '0');
+signal dbg_dd00_cnt_v1_r : std_logic_vector(7 downto 0) := (others => '0');
+signal dbg_dd00_cnt_v2_r : std_logic_vector(7 downto 0) := (others => '0');
+signal dbg_dd00_cnt_v3_r : std_logic_vector(7 downto 0) := (others => '0');
+-- v210: D018 write tracking (PC + counts, separate "bad" vs "any")
+signal dbg_d018_last_pc_r  : std_logic_vector(23 downto 0) := (others => '0');
+signal dbg_d018_count_r    : std_logic_vector(7 downto 0)  := (others => '0');
+signal dbg_d018_bad_pc_r   : std_logic_vector(23 downto 0) := (others => '0');
+signal dbg_d018_bad_count_r: std_logic_vector(7 downto 0)  := (others => '0');
+-- T65 PC tracking — latch cpuAddr_6510 each cycle T65 is enabled and
+-- Sync='1' (opcode-fetch cycle). That snapshot equals the PC of the
+-- instruction that just started.
+signal t65_sync   : std_logic;
+signal t65_pc_latch : unsigned(15 downto 0) := (others => '0');
+signal dd00_pc_now : std_logic_vector(23 downto 0);
 signal dbg_raster_y   : unsigned(8 downto 0);
 signal dbg_pc_816_i   : unsigned(15 downto 0);
 signal dbg_pbr_816_i  : unsigned(7 downto 0);
@@ -1006,7 +1049,8 @@ port map (
 	we => cpuWe_6510,
 
 	diIO => cpuIO_6510(7) & cpuIO_6510(6) & cpuIO_6510(5) & cass_sense & cpuIO_6510(3) & "111",
-	doIO => cpuIO_6510
+	doIO => cpuIO_6510,
+	sync_out => t65_sync
 );
 
 cpu_65c816_inst: entity work.cpu_65c816
@@ -1145,16 +1189,58 @@ begin
 			dbg_d018_r <= (others => '0');
 			dbg_d016_r <= (others => '0');
 			dbg_dd00_r <= (others => '0');
+			dbg_dd00_pc_r    <= (others => '0');
+			dbg_dd00_count_r <= (others => '0');
+			dbg_dd00_pc_v0_r <= (others => '0');
+			dbg_dd00_pc_v1_r <= (others => '0');
+			dbg_dd00_pc_v2_r <= (others => '0');
+			dbg_dd00_pc_v3_r <= (others => '0');
+			dbg_dd00_cnt_v0_r <= (others => '0');
+			dbg_dd00_cnt_v1_r <= (others => '0');
+			dbg_dd00_cnt_v2_r <= (others => '0');
+			dbg_dd00_cnt_v3_r <= (others => '0');
+			dbg_d018_last_pc_r   <= (others => '0');
+			dbg_d018_count_r     <= (others => '0');
+			dbg_d018_bad_pc_r    <= (others => '0');
+			dbg_d018_bad_count_r <= (others => '0');
+			t65_pc_latch    <= (others => '0');
 		else
+			-- T65 PC tracking: latch cpuAddr_6510 on opcode fetch (Sync=1)
+			-- AND when T65 is enabled. enableCpu_6510 = T65's CE pulse.
+			if supercpu_en = '0' and enableCpu_6510 = '1' and t65_sync = '1' then
+				t65_pc_latch <= cpuAddr_6510;
+			end if;
 			if cs_vic = '1' and cpuWe = '1' then
 				if cpuAddr(5 downto 0) = "011000" then
 					dbg_d018_r <= std_logic_vector(cpuDo);
+					dbg_d018_last_pc_r <= dd00_pc_now;
+					dbg_d018_count_r <= std_logic_vector(unsigned(dbg_d018_count_r) + 1);
+					if std_logic_vector(cpuDo) /= x"18" then
+						dbg_d018_bad_pc_r    <= dd00_pc_now;
+						dbg_d018_bad_count_r <= std_logic_vector(unsigned(dbg_d018_bad_count_r) + 1);
+					end if;
 				elsif cpuAddr(5 downto 0) = "010110" then
 					dbg_d016_r <= std_logic_vector(cpuDo);
 				end if;
 			end if;
 			if cs_cia2 = '1' and cpuWe = '1' and cpuAddr(3 downto 0) = "0000" then
 				dbg_dd00_r <= std_logic_vector(cpuDo);
+				dbg_dd00_pc_r <= dd00_pc_now;
+				case cpuDo(1 downto 0) is
+					when "00"   =>
+						dbg_dd00_pc_v0_r  <= dd00_pc_now;
+						dbg_dd00_cnt_v0_r <= std_logic_vector(unsigned(dbg_dd00_cnt_v0_r) + 1);
+					when "01"   =>
+						dbg_dd00_pc_v1_r  <= dd00_pc_now;
+						dbg_dd00_cnt_v1_r <= std_logic_vector(unsigned(dbg_dd00_cnt_v1_r) + 1);
+					when "10"   =>
+						dbg_dd00_pc_v2_r  <= dd00_pc_now;
+						dbg_dd00_cnt_v2_r <= std_logic_vector(unsigned(dbg_dd00_cnt_v2_r) + 1);
+					when others =>
+						dbg_dd00_pc_v3_r  <= dd00_pc_now;
+						dbg_dd00_cnt_v3_r <= std_logic_vector(unsigned(dbg_dd00_cnt_v3_r) + 1);
+				end case;
+				dbg_dd00_count_r <= std_logic_vector(unsigned(dbg_dd00_count_r) + 1);
 			end if;
 		end if;
 	end if;
@@ -1174,5 +1260,26 @@ dbg_cpu_pc_24   <= std_logic_vector(dbg_pbr_816_i) & std_logic_vector(dbg_pc_816
 -- applicable" since the T65 path doesn't have these registers anyway.
 dbg_p   <= std_logic_vector(dbg_p_816_i)   when supercpu_en = '1' else x"00";
 dbg_dbr <= std_logic_vector(dbg_dbr_816_i) when supercpu_en = '1' else x"00";
+
+dbg_dd00_write_pc    <= dbg_dd00_pc_r;
+dbg_dd00_write_count <= dbg_dd00_count_r;
+dbg_dd00_pc_v0       <= dbg_dd00_pc_v0_r;
+dbg_dd00_pc_v1       <= dbg_dd00_pc_v1_r;
+dbg_dd00_pc_v2       <= dbg_dd00_pc_v2_r;
+dbg_dd00_pc_v3       <= dbg_dd00_pc_v3_r;
+dbg_dd00_cnt_v0      <= dbg_dd00_cnt_v0_r;
+dbg_dd00_cnt_v1      <= dbg_dd00_cnt_v1_r;
+dbg_dd00_cnt_v2      <= dbg_dd00_cnt_v2_r;
+dbg_dd00_cnt_v3      <= dbg_dd00_cnt_v3_r;
+dbg_d018_last_pc     <= dbg_d018_last_pc_r;
+dbg_d018_count       <= dbg_d018_count_r;
+dbg_d018_bad_pc      <= dbg_d018_bad_pc_r;
+dbg_d018_bad_count   <= dbg_d018_bad_count_r;
+
+-- Compose 24-bit "current PC" for $DD00 write capture: PBR:PC for SCPU,
+-- $00:t65_pc_latch (last opcode-fetch address) for T65.
+dd00_pc_now <= std_logic_vector(dbg_pbr_816_i) & std_logic_vector(dbg_pc_816_i)
+               when supercpu_en = '1'
+               else x"00" & std_logic_vector(t65_pc_latch);
 
 end architecture;

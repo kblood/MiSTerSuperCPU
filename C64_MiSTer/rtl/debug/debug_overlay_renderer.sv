@@ -20,9 +20,10 @@ module debug_overlay_renderer #(
 	parameter int X_HI = 114,   // exclusive (110 px = 22 * 5)
 	// Y_LO/Y_HI count active-video scanlines (v_cnt resets when vblank
 	// falls = start of visible area). Y_LO=6 puts the box in the C64
-	// top border, matching master's known-good geometry.
+	// top border, matching master's known-good geometry. 2026-04-30:
+	// extended to 5 rows (30 px) for layout-1 DD00-write-PC capture.
 	parameter int Y_LO = 6,
-	parameter int Y_HI = 30     // exclusive (24 px = 4 * 6)
+	parameter int Y_HI = 60     // exclusive (54 px = 9 * 6)
 ) (
 	input  logic       clk_pix,    // CLK_VIDEO (= clk64)
 	input  logic       ce_pix,     // pixel enable
@@ -84,7 +85,7 @@ module debug_overlay_renderer #(
 	// pixel/scanline ticks and clamped to '0 outside the box.
 	logic [4:0] cell_x;        // 0..21
 	logic [2:0] pix_x;         // 0..4 (4 = right gap)
-	logic [1:0] cell_y;        // 0..3
+	logic [3:0] cell_y;        // 0..8 (9 rows)
 	logic [2:0] pix_y;         // 0..5
 
 	wire in_box_x = (h_cnt >= X_LO[10:0]) & (h_cnt < X_HI[10:0]);
@@ -107,7 +108,7 @@ module debug_overlay_renderer #(
 			else if (v_cnt + 10'd1 > Y_LO[9:0] && v_cnt + 10'd1 < Y_HI[9:0]) begin
 				if (pix_y == 3'd5) begin
 					pix_y  <= '0;
-					cell_y <= cell_y + 2'd1;
+					cell_y <= cell_y + 4'd1;
 				end
 				else pix_y <= pix_y + 3'd1;
 			end

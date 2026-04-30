@@ -22,13 +22,13 @@ module debug_overlay_format
 (
 	input  dbg_pool_t  pool,
 	input  logic [4:0] cell_x,
-	input  logic [1:0] cell_y,
+	input  logic [3:0] cell_y,
 	output logic [5:0] glyph_id
 );
 `else
 (
 	input  logic [4:0] cell_x,
-	input  logic [1:0] cell_y,
+	input  logic [3:0] cell_y,
 	output logic [5:0] glyph_id
 );
 `endif
@@ -62,7 +62,7 @@ module debug_overlay_format
 		glyph_id = G_SP;
 		case (cell_y)
 			// ===== Row 0: REU C=#### A=######   =================
-			2'd0: case (cell_x)
+			4'd0: case (cell_x)
 				5'd0:  glyph_id = G_R;
 				5'd1:  glyph_id = G_E;
 				5'd2:  glyph_id = G_U;
@@ -86,7 +86,7 @@ module debug_overlay_format
 			endcase
 
 			// ===== Row 1: VIC 18=## 16=## R=### ==================
-			2'd1: case (cell_x)
+			4'd1: case (cell_x)
 				5'd0:  glyph_id = G_V;
 				5'd1:  glyph_id = G_I;
 				5'd2:  glyph_id = G_C;
@@ -112,7 +112,7 @@ module debug_overlay_format
 			endcase
 
 			// ===== Row 2: PC=###### P=## B=##    ==================
-			2'd2: case (cell_x)
+			4'd2: case (cell_x)
 				5'd0:  glyph_id = G_P;
 				5'd1:  glyph_id = G_C;
 				5'd2:  glyph_id = G_EQ;
@@ -136,7 +136,7 @@ module debug_overlay_format
 			endcase
 
 			// ===== Row 3: CMD=## E=# DD=## SC=# ==================
-			2'd3: case (cell_x)
+			4'd3: case (cell_x)
 				5'd0:  glyph_id = G_C;
 				5'd1:  glyph_id = G_M;
 				5'd2:  glyph_id = G_D;
@@ -158,6 +158,139 @@ module debug_overlay_format
 				5'd18: glyph_id = G_C;
 				5'd19: glyph_id = G_EQ;
 				5'd20: glyph_id = hex({3'b000, pool.cpu_flags[4]});  // scpu_en bit
+				default: glyph_id = G_SP;
+			endcase
+
+			// ===== Row 4: WPC=###### N=##         ==================
+			// PC at last $DD00 write, plus 8-bit write count. PC pinpoints
+			// which DL routine writes the bad VIC bank (T65=$01, SCPU=$00/$02).
+			4'd4: case (cell_x)
+				5'd0:  glyph_id = 6'd32;  // 'W'
+				5'd1:  glyph_id = G_P;
+				5'd2:  glyph_id = G_C;
+				5'd3:  glyph_id = G_EQ;
+				5'd4:  glyph_id = hex(pool.dd00_write_pc[23:20]);
+				5'd5:  glyph_id = hex(pool.dd00_write_pc[19:16]);
+				5'd6:  glyph_id = hex(pool.dd00_write_pc[15:12]);
+				5'd7:  glyph_id = hex(pool.dd00_write_pc[11:8]);
+				5'd8:  glyph_id = hex(pool.dd00_write_pc[7:4]);
+				5'd9:  glyph_id = hex(pool.dd00_write_pc[3:0]);
+				5'd10: glyph_id = G_SP;
+				5'd11: glyph_id = 6'd23;  // 'N'
+				5'd12: glyph_id = G_EQ;
+				5'd13: glyph_id = hex(pool.dd00_write_count[7:4]);
+				5'd14: glyph_id = hex(pool.dd00_write_count[3:0]);
+				default: glyph_id = G_SP;
+			endcase
+
+			// ===== Row 5: P0=###### P1=######    ==================
+			// Per-value PC capture for $DD00 writes by data nibble [1:0]:
+			// P0 = last writer of $00 (bank 3 / $C000-$FFFF)
+			// P1 = last writer of $01 (bank 2 / $8000-$BFFF) <- DL bitmap bank
+			4'd5: case (cell_x)
+				5'd0:  glyph_id = G_P;
+				5'd1:  glyph_id = 6'd0;   // '0'
+				5'd2:  glyph_id = G_EQ;
+				5'd3:  glyph_id = hex(pool.dd00_pc_v0[23:20]);
+				5'd4:  glyph_id = hex(pool.dd00_pc_v0[19:16]);
+				5'd5:  glyph_id = hex(pool.dd00_pc_v0[15:12]);
+				5'd6:  glyph_id = hex(pool.dd00_pc_v0[11:8]);
+				5'd7:  glyph_id = hex(pool.dd00_pc_v0[7:4]);
+				5'd8:  glyph_id = hex(pool.dd00_pc_v0[3:0]);
+				5'd9:  glyph_id = G_SP;
+				5'd10: glyph_id = G_P;
+				5'd11: glyph_id = 6'd1;   // '1'
+				5'd12: glyph_id = G_EQ;
+				5'd13: glyph_id = hex(pool.dd00_pc_v1[23:20]);
+				5'd14: glyph_id = hex(pool.dd00_pc_v1[19:16]);
+				5'd15: glyph_id = hex(pool.dd00_pc_v1[15:12]);
+				5'd16: glyph_id = hex(pool.dd00_pc_v1[11:8]);
+				5'd17: glyph_id = hex(pool.dd00_pc_v1[7:4]);
+				5'd18: glyph_id = hex(pool.dd00_pc_v1[3:0]);
+				default: glyph_id = G_SP;
+			endcase
+
+			// ===== Row 6: P2=###### P3=######    ==================
+			// P2 = last writer of $02 (bank 1 / $4000-$7FFF)
+			// P3 = last writer of $03 (bank 0 / $0000-$3FFF, default)
+			4'd6: case (cell_x)
+				5'd0:  glyph_id = G_P;
+				5'd1:  glyph_id = 6'd2;   // '2'
+				5'd2:  glyph_id = G_EQ;
+				5'd3:  glyph_id = hex(pool.dd00_pc_v2[23:20]);
+				5'd4:  glyph_id = hex(pool.dd00_pc_v2[19:16]);
+				5'd5:  glyph_id = hex(pool.dd00_pc_v2[15:12]);
+				5'd6:  glyph_id = hex(pool.dd00_pc_v2[11:8]);
+				5'd7:  glyph_id = hex(pool.dd00_pc_v2[7:4]);
+				5'd8:  glyph_id = hex(pool.dd00_pc_v2[3:0]);
+				5'd9:  glyph_id = G_SP;
+				5'd10: glyph_id = G_P;
+				5'd11: glyph_id = 6'd3;   // '3'
+				5'd12: glyph_id = G_EQ;
+				5'd13: glyph_id = hex(pool.dd00_pc_v3[23:20]);
+				5'd14: glyph_id = hex(pool.dd00_pc_v3[19:16]);
+				5'd15: glyph_id = hex(pool.dd00_pc_v3[15:12]);
+				5'd16: glyph_id = hex(pool.dd00_pc_v3[11:8]);
+				5'd17: glyph_id = hex(pool.dd00_pc_v3[7:4]);
+				5'd18: glyph_id = hex(pool.dd00_pc_v3[3:0]);
+				default: glyph_id = G_SP;
+			endcase
+
+			// ===== Row 7: 0=##:1=##:2=##:3=##:#### =================
+			// 8-bit per-value $DD00 write counters (no leading 'N' to fit
+			// 22 cells). T65 baseline expected to show all 4 incrementing
+			// each frame; SCPU=on expected to show N1 / N3 frozen.
+			// Cells 18..21 unused.
+			4'd7: case (cell_x)
+				5'd0:  glyph_id = 6'd0;   // '0'
+				5'd1:  glyph_id = G_EQ;
+				5'd2:  glyph_id = hex(pool.dd00_cnt_v0[7:4]);
+				5'd3:  glyph_id = hex(pool.dd00_cnt_v0[3:0]);
+				5'd4:  glyph_id = G_SP;
+				5'd5:  glyph_id = 6'd1;   // '1'
+				5'd6:  glyph_id = G_EQ;
+				5'd7:  glyph_id = hex(pool.dd00_cnt_v1[7:4]);
+				5'd8:  glyph_id = hex(pool.dd00_cnt_v1[3:0]);
+				5'd9:  glyph_id = G_SP;
+				5'd10: glyph_id = 6'd2;   // '2'
+				5'd11: glyph_id = G_EQ;
+				5'd12: glyph_id = hex(pool.dd00_cnt_v2[7:4]);
+				5'd13: glyph_id = hex(pool.dd00_cnt_v2[3:0]);
+				5'd14: glyph_id = G_SP;
+				5'd15: glyph_id = 6'd3;   // '3'
+				5'd16: glyph_id = G_EQ;
+				5'd17: glyph_id = hex(pool.dd00_cnt_v3[7:4]);
+				5'd18: glyph_id = hex(pool.dd00_cnt_v3[3:0]);
+				default: glyph_id = G_SP;
+			endcase
+
+			// ===== Row 8: BPC=######  B=## C=## ===================
+			// D018 corruption tracking: BPC = PC of last D018 write where
+			// value != $18. B = count of those bad writes. C = total D018
+			// write count. T65 baseline: B=00 (never writes != $18).
+			// SCPU intermittently writes $FF / $66 — BPC pinpoints the
+			// offending routine.
+			4'd8: case (cell_x)
+				5'd0:  glyph_id = G_B;
+				5'd1:  glyph_id = G_P;
+				5'd2:  glyph_id = G_C;
+				5'd3:  glyph_id = G_EQ;
+				5'd4:  glyph_id = hex(pool.d018_bad_pc[23:20]);
+				5'd5:  glyph_id = hex(pool.d018_bad_pc[19:16]);
+				5'd6:  glyph_id = hex(pool.d018_bad_pc[15:12]);
+				5'd7:  glyph_id = hex(pool.d018_bad_pc[11:8]);
+				5'd8:  glyph_id = hex(pool.d018_bad_pc[7:4]);
+				5'd9:  glyph_id = hex(pool.d018_bad_pc[3:0]);
+				5'd10: glyph_id = G_SP;
+				5'd11: glyph_id = G_B;
+				5'd12: glyph_id = G_EQ;
+				5'd13: glyph_id = hex(pool.d018_bad_count[7:4]);
+				5'd14: glyph_id = hex(pool.d018_bad_count[3:0]);
+				5'd15: glyph_id = G_SP;
+				5'd16: glyph_id = G_C;
+				5'd17: glyph_id = G_EQ;
+				5'd18: glyph_id = hex(pool.d018_count[7:4]);
+				5'd19: glyph_id = hex(pool.d018_count[3:0]);
 				default: glyph_id = G_SP;
 			endcase
 

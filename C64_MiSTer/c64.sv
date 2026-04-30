@@ -1078,6 +1078,20 @@ wire  [7:0] scpu_dbg_dd00;
 wire [23:0] scpu_dbg_cpu_pc;
 wire  [7:0] scpu_dbg_p;
 wire  [7:0] scpu_dbg_dbr;
+wire [23:0] scpu_dbg_dd00_pc;
+wire  [7:0] scpu_dbg_dd00_count;
+wire [23:0] scpu_dbg_dd00_pc_v0;
+wire [23:0] scpu_dbg_dd00_pc_v1;
+wire [23:0] scpu_dbg_dd00_pc_v2;
+wire [23:0] scpu_dbg_dd00_pc_v3;
+wire  [7:0] scpu_dbg_dd00_cnt_v0;
+wire  [7:0] scpu_dbg_dd00_cnt_v1;
+wire  [7:0] scpu_dbg_dd00_cnt_v2;
+wire  [7:0] scpu_dbg_dd00_cnt_v3;
+wire [23:0] scpu_dbg_d018_last_pc;
+wire  [7:0] scpu_dbg_d018_count;
+wire [23:0] scpu_dbg_d018_bad_pc;
+wire  [7:0] scpu_dbg_d018_bad_count;
 
 // ---------------------------------------------------------------------------
 // Layered debug overlay (rtl/debug/) - pool struct + capture stubs.
@@ -1112,22 +1126,64 @@ assign dbg_pool.reu_fetch_count = '0;
 
 `ifdef DBG_CAP_VIC_WR
 cap_vic_wr u_cap_vic_wr (
-	.clk      (clk_sys),
-	.rst      (~reset_n),
-	.in_d018  (scpu_dbg_d018),
-	.in_d016  (scpu_dbg_d016),
-	.in_dd00  (scpu_dbg_dd00),
-	.in_raster(scpu_dbg_raster),
-	.o_d018   (dbg_pool.vic_d018),
-	.o_d016   (dbg_pool.vic_d016),
-	.o_dd00   (dbg_pool.vic_dd00),
-	.o_raster (dbg_pool.vic_raster)
+	.clk           (clk_sys),
+	.rst           (~reset_n),
+	.in_d018       (scpu_dbg_d018),
+	.in_d016       (scpu_dbg_d016),
+	.in_dd00       (scpu_dbg_dd00),
+	.in_raster     (scpu_dbg_raster),
+	.in_dd00_pc    (scpu_dbg_dd00_pc),
+	.in_dd00_count (scpu_dbg_dd00_count),
+	.in_dd00_pc_v0 (scpu_dbg_dd00_pc_v0),
+	.in_dd00_pc_v1 (scpu_dbg_dd00_pc_v1),
+	.in_dd00_pc_v2 (scpu_dbg_dd00_pc_v2),
+	.in_dd00_pc_v3 (scpu_dbg_dd00_pc_v3),
+	.in_dd00_cnt_v0(scpu_dbg_dd00_cnt_v0),
+	.in_dd00_cnt_v1(scpu_dbg_dd00_cnt_v1),
+	.in_dd00_cnt_v2(scpu_dbg_dd00_cnt_v2),
+	.in_dd00_cnt_v3(scpu_dbg_dd00_cnt_v3),
+	.in_d018_last_pc  (scpu_dbg_d018_last_pc),
+	.in_d018_count    (scpu_dbg_d018_count),
+	.in_d018_bad_pc   (scpu_dbg_d018_bad_pc),
+	.in_d018_bad_count(scpu_dbg_d018_bad_count),
+	.o_d018        (dbg_pool.vic_d018),
+	.o_d016        (dbg_pool.vic_d016),
+	.o_dd00        (dbg_pool.vic_dd00),
+	.o_raster      (dbg_pool.vic_raster),
+	.o_dd00_pc     (dbg_pool.dd00_write_pc),
+	.o_dd00_count  (dbg_pool.dd00_write_count),
+	.o_dd00_pc_v0  (dbg_pool.dd00_pc_v0),
+	.o_dd00_pc_v1  (dbg_pool.dd00_pc_v1),
+	.o_dd00_pc_v2  (dbg_pool.dd00_pc_v2),
+	.o_dd00_pc_v3  (dbg_pool.dd00_pc_v3),
+	.o_dd00_cnt_v0 (dbg_pool.dd00_cnt_v0),
+	.o_dd00_cnt_v1 (dbg_pool.dd00_cnt_v1),
+	.o_dd00_cnt_v2 (dbg_pool.dd00_cnt_v2),
+	.o_dd00_cnt_v3 (dbg_pool.dd00_cnt_v3),
+	.o_d018_last_pc   (dbg_pool.d018_last_pc),
+	.o_d018_count     (dbg_pool.d018_count),
+	.o_d018_bad_pc    (dbg_pool.d018_bad_pc),
+	.o_d018_bad_count (dbg_pool.d018_bad_count)
 );
 `else
-assign dbg_pool.vic_d018   = '0;
-assign dbg_pool.vic_d016   = '0;
-assign dbg_pool.vic_dd00   = '0;
-assign dbg_pool.vic_raster = '0;
+assign dbg_pool.vic_d018         = '0;
+assign dbg_pool.vic_d016         = '0;
+assign dbg_pool.vic_dd00         = '0;
+assign dbg_pool.vic_raster       = '0;
+assign dbg_pool.dd00_write_pc    = '0;
+assign dbg_pool.dd00_write_count = '0;
+assign dbg_pool.dd00_pc_v0       = '0;
+assign dbg_pool.dd00_pc_v1       = '0;
+assign dbg_pool.dd00_pc_v2       = '0;
+assign dbg_pool.dd00_pc_v3       = '0;
+assign dbg_pool.dd00_cnt_v0      = '0;
+assign dbg_pool.dd00_cnt_v1      = '0;
+assign dbg_pool.dd00_cnt_v2      = '0;
+assign dbg_pool.dd00_cnt_v3      = '0;
+assign dbg_pool.d018_last_pc     = '0;
+assign dbg_pool.d018_count       = '0;
+assign dbg_pool.d018_bad_pc      = '0;
+assign dbg_pool.d018_bad_count   = '0;
 `endif
 
 `ifdef DBG_CAP_CPU_STATE
@@ -1288,7 +1344,21 @@ fpga64_sid_iec fpga64
 	.dbg_dd00       (scpu_dbg_dd00),
 	.dbg_cpu_pc_24  (scpu_dbg_cpu_pc),
 	.dbg_p          (scpu_dbg_p),
-	.dbg_dbr        (scpu_dbg_dbr)
+	.dbg_dbr        (scpu_dbg_dbr),
+	.dbg_dd00_write_pc    (scpu_dbg_dd00_pc),
+	.dbg_dd00_write_count (scpu_dbg_dd00_count),
+	.dbg_dd00_pc_v0       (scpu_dbg_dd00_pc_v0),
+	.dbg_dd00_pc_v1       (scpu_dbg_dd00_pc_v1),
+	.dbg_dd00_pc_v2       (scpu_dbg_dd00_pc_v2),
+	.dbg_dd00_pc_v3       (scpu_dbg_dd00_pc_v3),
+	.dbg_dd00_cnt_v0      (scpu_dbg_dd00_cnt_v0),
+	.dbg_dd00_cnt_v1      (scpu_dbg_dd00_cnt_v1),
+	.dbg_dd00_cnt_v2      (scpu_dbg_dd00_cnt_v2),
+	.dbg_dd00_cnt_v3      (scpu_dbg_dd00_cnt_v3),
+	.dbg_d018_last_pc     (scpu_dbg_d018_last_pc),
+	.dbg_d018_count       (scpu_dbg_d018_count),
+	.dbg_d018_bad_pc      (scpu_dbg_d018_bad_pc),
+	.dbg_d018_bad_count   (scpu_dbg_d018_bad_count)
 );
 
 wire [7:0] mouse_x;

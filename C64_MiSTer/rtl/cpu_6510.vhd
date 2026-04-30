@@ -36,7 +36,12 @@ entity cpu_6510 is
 		we      : out std_logic;
 
 		diIO    : in  unsigned(7 downto 0);
-		doIO    : out unsigned(7 downto 0)
+		doIO    : out unsigned(7 downto 0);
+
+		-- 2026-04-30 DL triage: expose T65 SYNC (high on opcode fetch).
+		-- Used by fpga64_sid_iec to latch PC for the $DD00 write capture
+		-- so T65's WPC tracks instruction PC, not destination address.
+		sync_out: out std_logic
 	);
 end cpu_6510;
 
@@ -67,6 +72,7 @@ begin
 		NMI_n   => nmi_n,
 		SO_n    => '1',
 		R_W_n   => localWe,
+		Sync    => sync_out,
 		A       => localA,
 		DI      => localDi,
 		DO      => localDo,
