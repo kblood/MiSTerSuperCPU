@@ -1532,8 +1532,8 @@ wire [7:0] r_dbg, g_dbg, b_dbg;
 debug_overlay_renderer u_dbg_overlay (
 	.clk_pix(CLK_VIDEO),
 	.ce_pix (ce_pix),
-	.hsync  (hsync),
-	.vsync  (vsync),
+	.hblank (hblank),
+	.vblank (vblank),
 	.visible(status[83]),
 	.pool   (dbg_pool),
 	.r_in   (r),

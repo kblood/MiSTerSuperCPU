@@ -18,14 +18,17 @@
 module debug_overlay_renderer #(
 	parameter int X_LO = 4,
 	parameter int X_HI = 114,   // exclusive (110 px = 22 * 5)
+	// Y_LO/Y_HI count active-video scanlines (v_cnt resets when vblank
+	// falls = start of visible area). Y_LO=6 puts the box in the C64
+	// top border, matching master's known-good geometry.
 	parameter int Y_LO = 6,
 	parameter int Y_HI = 30     // exclusive (24 px = 4 * 6)
 ) (
 	input  logic       clk_pix,    // CLK_VIDEO (= clk64)
 	input  logic       ce_pix,     // pixel enable
 
-	input  logic       hsync,      // C64 internal hsync (clk32 domain)
-	input  logic       vsync,      // C64 internal vsync (clk32 domain)
+	input  logic       hblank,     // C64 internal hblank (clk32 domain)
+	input  logic       vblank,     // C64 internal vblank (clk32 domain)
 
 	input  logic       visible,    // runtime show/hide (status[83])
 
@@ -43,27 +46,32 @@ module debug_overlay_renderer #(
 );
 
 	// ---- Sync edge detection ------------------------------------------
-	logic hs_d, vs_d;
-	logic hs_rise, vs_rise;
+	logic hb_d, vb_d;
+	logic hb_fall, vb_fall;
 
 	always_ff @(posedge clk_pix) begin
-		hs_d <= hsync;
-		vs_d <= vsync;
+		hb_d <= hblank;
+		vb_d <= vblank;
 	end
 
-	assign hs_rise = hsync & ~hs_d;
-	assign vs_rise = vsync & ~vs_d;
+	assign hb_fall = ~hblank & hb_d;     // hblank 1 -> 0 = active pixels start
+	assign vb_fall = ~vblank & vb_d;     // vblank 1 -> 0 = active video starts
 
 	// ---- H/V counters -------------------------------------------------
-	// h_cnt advances on ce_pix and resets on hs_rise. v_cnt advances on
-	// hs_rise and resets on vs_rise.
+	// h_cnt = horizontal pixel within active video (resets when hblank falls).
+	// v_cnt = vertical scanline within active video (resets when vblank falls
+	// and ticks each hblank_fall, i.e. each new active scanline).
 	logic [10:0] h_cnt;
 	logic [9:0]  v_cnt;
 
 	always_ff @(posedge clk_pix) begin
-		if (hs_rise) begin
+		if (vb_fall) begin
 			h_cnt <= '0;
-			v_cnt <= vs_rise ? 10'd0 : (v_cnt + 10'd1);
+			v_cnt <= '0;
+		end
+		else if (hb_fall) begin
+			h_cnt <= '0;
+			v_cnt <= v_cnt + 10'd1;
 		end
 		else if (ce_pix) begin
 			h_cnt <= h_cnt + 11'd1;
@@ -83,14 +91,16 @@ module debug_overlay_renderer #(
 	wire in_box_y = (v_cnt >= Y_LO[9:0])  & (v_cnt < Y_HI[9:0]);
 
 	always_ff @(posedge clk_pix) begin
-		if (hs_rise) begin
+		if (vb_fall) begin
 			cell_x <= '0;
 			pix_x  <= '0;
-			if (vs_rise) begin
-				cell_y <= '0;
-				pix_y  <= '0;
-			end
-			else if (v_cnt + 10'd1 == Y_LO[9:0]) begin
+			cell_y <= '0;
+			pix_y  <= '0;
+		end
+		else if (hb_fall) begin
+			cell_x <= '0;
+			pix_x  <= '0;
+			if (v_cnt + 10'd1 == Y_LO[9:0]) begin
 				cell_y <= '0;
 				pix_y  <= '0;
 			end
