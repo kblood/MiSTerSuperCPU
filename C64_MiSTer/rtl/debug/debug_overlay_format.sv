@@ -264,12 +264,9 @@ module debug_overlay_format
 				default: glyph_id = G_SP;
 			endcase
 
-			// ===== Row 8: BPC=######  B=## C=## ===================
-			// D018 corruption tracking: BPC = PC of last D018 write where
-			// value != $18. B = count of those bad writes. C = total D018
-			// write count. T65 baseline: B=00 (never writes != $18).
-			// SCPU intermittently writes $FF / $66 — BPC pinpoints the
-			// offending routine.
+			// ===== Row 8: BPC=######  V=## B=## C=## ==============
+			// D018 corruption: BPC = PC of last D018 != $18 write,
+			// V = value written, B = bad-write count, C = total writes.
 			4'd8: case (cell_x)
 				5'd0:  glyph_id = G_B;
 				5'd1:  glyph_id = G_P;
@@ -282,15 +279,70 @@ module debug_overlay_format
 				5'd8:  glyph_id = hex(pool.d018_bad_pc[7:4]);
 				5'd9:  glyph_id = hex(pool.d018_bad_pc[3:0]);
 				5'd10: glyph_id = G_SP;
-				5'd11: glyph_id = G_B;
+				5'd11: glyph_id = G_V;
 				5'd12: glyph_id = G_EQ;
-				5'd13: glyph_id = hex(pool.d018_bad_count[7:4]);
-				5'd14: glyph_id = hex(pool.d018_bad_count[3:0]);
+				5'd13: glyph_id = hex(pool.d018_bad_value[7:4]);
+				5'd14: glyph_id = hex(pool.d018_bad_value[3:0]);
 				5'd15: glyph_id = G_SP;
-				5'd16: glyph_id = G_C;
+				5'd16: glyph_id = G_B;
 				5'd17: glyph_id = G_EQ;
-				5'd18: glyph_id = hex(pool.d018_count[7:4]);
-				5'd19: glyph_id = hex(pool.d018_count[3:0]);
+				5'd18: glyph_id = hex(pool.d018_bad_count[7:4]);
+				5'd19: glyph_id = hex(pool.d018_bad_count[3:0]);
+				default: glyph_id = G_SP;
+			endcase
+
+			// ===== Row 9: T0=######  T1=######  F=# =============
+			// PC ring buffer (oldest two of 4 entries, frozen after first
+			// D018 != $18 write). F = trace_frozen flag (1 = ring captured).
+			4'd9: case (cell_x)
+				5'd0:  glyph_id = 6'd29;  // 'T'
+				5'd1:  glyph_id = 6'd0;   // '0'
+				5'd2:  glyph_id = G_EQ;
+				5'd3:  glyph_id = hex(pool.trace_pc0[23:20]);
+				5'd4:  glyph_id = hex(pool.trace_pc0[19:16]);
+				5'd5:  glyph_id = hex(pool.trace_pc0[15:12]);
+				5'd6:  glyph_id = hex(pool.trace_pc0[11:8]);
+				5'd7:  glyph_id = hex(pool.trace_pc0[7:4]);
+				5'd8:  glyph_id = hex(pool.trace_pc0[3:0]);
+				5'd9:  glyph_id = G_SP;
+				5'd10: glyph_id = 6'd29;  // 'T'
+				5'd11: glyph_id = 6'd1;   // '1'
+				5'd12: glyph_id = G_EQ;
+				5'd13: glyph_id = hex(pool.trace_pc1[23:20]);
+				5'd14: glyph_id = hex(pool.trace_pc1[19:16]);
+				5'd15: glyph_id = hex(pool.trace_pc1[15:12]);
+				5'd16: glyph_id = hex(pool.trace_pc1[11:8]);
+				5'd17: glyph_id = hex(pool.trace_pc1[7:4]);
+				5'd18: glyph_id = hex(pool.trace_pc1[3:0]);
+				5'd19: glyph_id = G_SP;
+				5'd20: glyph_id = G_F;
+				5'd21: glyph_id = hex({3'b000, pool.trace_frozen});
+				default: glyph_id = G_SP;
+			endcase
+
+			// ===== Row 10: T2=######  T3=###### =================
+			// T2/T3 = newer two ring entries; T3 = PC just before the
+			// trigger fired = call-site of the D018 != $18 write.
+			4'd10: case (cell_x)
+				5'd0:  glyph_id = 6'd29;  // 'T'
+				5'd1:  glyph_id = 6'd2;   // '2'
+				5'd2:  glyph_id = G_EQ;
+				5'd3:  glyph_id = hex(pool.trace_pc2[23:20]);
+				5'd4:  glyph_id = hex(pool.trace_pc2[19:16]);
+				5'd5:  glyph_id = hex(pool.trace_pc2[15:12]);
+				5'd6:  glyph_id = hex(pool.trace_pc2[11:8]);
+				5'd7:  glyph_id = hex(pool.trace_pc2[7:4]);
+				5'd8:  glyph_id = hex(pool.trace_pc2[3:0]);
+				5'd9:  glyph_id = G_SP;
+				5'd10: glyph_id = 6'd29;  // 'T'
+				5'd11: glyph_id = 6'd3;   // '3'
+				5'd12: glyph_id = G_EQ;
+				5'd13: glyph_id = hex(pool.trace_pc3[23:20]);
+				5'd14: glyph_id = hex(pool.trace_pc3[19:16]);
+				5'd15: glyph_id = hex(pool.trace_pc3[15:12]);
+				5'd16: glyph_id = hex(pool.trace_pc3[11:8]);
+				5'd17: glyph_id = hex(pool.trace_pc3[7:4]);
+				5'd18: glyph_id = hex(pool.trace_pc3[3:0]);
 				default: glyph_id = G_SP;
 			endcase
 

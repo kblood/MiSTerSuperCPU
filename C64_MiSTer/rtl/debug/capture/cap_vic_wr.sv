@@ -27,6 +27,12 @@ module cap_vic_wr (
 	input  logic  [7:0] in_d018_count,
 	input  logic [23:0] in_d018_bad_pc,
 	input  logic  [7:0] in_d018_bad_count,
+	input  logic  [7:0] in_d018_bad_value,
+	input  logic [23:0] in_trace_pc0,
+	input  logic [23:0] in_trace_pc1,
+	input  logic [23:0] in_trace_pc2,
+	input  logic [23:0] in_trace_pc3,
+	input  logic        in_trace_frozen,
 
 	output logic  [7:0] o_d018,
 	output logic  [7:0] o_d016,
@@ -45,7 +51,13 @@ module cap_vic_wr (
 	output logic [23:0] o_d018_last_pc,
 	output logic  [7:0] o_d018_count,
 	output logic [23:0] o_d018_bad_pc,
-	output logic  [7:0] o_d018_bad_count
+	output logic  [7:0] o_d018_bad_count,
+	output logic  [7:0] o_d018_bad_value,
+	output logic [23:0] o_trace_pc0,
+	output logic [23:0] o_trace_pc1,
+	output logic [23:0] o_trace_pc2,
+	output logic [23:0] o_trace_pc3,
+	output logic        o_trace_frozen
 );
 
 	assign o_d018        = in_d018;
@@ -66,5 +78,11 @@ module cap_vic_wr (
 	assign o_d018_count     = in_d018_count;
 	assign o_d018_bad_pc    = in_d018_bad_pc;
 	assign o_d018_bad_count = in_d018_bad_count;
+	assign o_d018_bad_value = in_d018_bad_value;
+	assign o_trace_pc0      = in_trace_pc0;
+	assign o_trace_pc1      = in_trace_pc1;
+	assign o_trace_pc2      = in_trace_pc2;
+	assign o_trace_pc3      = in_trace_pc3;
+	assign o_trace_frozen   = in_trace_frozen;
 
 endmodule

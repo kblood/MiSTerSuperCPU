@@ -204,7 +204,13 @@ port(
 	dbg_d018_last_pc     : out std_logic_vector(23 downto 0);
 	dbg_d018_count       : out std_logic_vector(7 downto 0);
 	dbg_d018_bad_pc      : out std_logic_vector(23 downto 0);
-	dbg_d018_bad_count   : out std_logic_vector(7 downto 0)
+	dbg_d018_bad_count   : out std_logic_vector(7 downto 0);
+	dbg_d018_bad_value   : out std_logic_vector(7 downto 0);
+	dbg_trace_pc0        : out std_logic_vector(23 downto 0);
+	dbg_trace_pc1        : out std_logic_vector(23 downto 0);
+	dbg_trace_pc2        : out std_logic_vector(23 downto 0);
+	dbg_trace_pc3        : out std_logic_vector(23 downto 0);
+	dbg_trace_frozen     : out std_logic
 );
 end fpga64_sid_iec;
 
@@ -308,6 +314,20 @@ signal dbg_d018_last_pc_r  : std_logic_vector(23 downto 0) := (others => '0');
 signal dbg_d018_count_r    : std_logic_vector(7 downto 0)  := (others => '0');
 signal dbg_d018_bad_pc_r   : std_logic_vector(23 downto 0) := (others => '0');
 signal dbg_d018_bad_count_r: std_logic_vector(7 downto 0)  := (others => '0');
+signal dbg_d018_bad_value_r: std_logic_vector(7 downto 0)  := (others => '0');
+-- v211: 4-deep PC ring buffer, frozen on first D018 != $18 write
+signal trace_pc0_r : std_logic_vector(23 downto 0) := (others => '0');
+signal trace_pc1_r : std_logic_vector(23 downto 0) := (others => '0');
+signal trace_pc2_r : std_logic_vector(23 downto 0) := (others => '0');
+signal trace_pc3_r : std_logic_vector(23 downto 0) := (others => '0');
+signal trace_frozen_r : std_logic := '0';
+-- v218: skip-first-8 D8 writes counter. T65 only writes D8 a few
+-- times during init (V never shows D8); SCPU writes D8 many times
+-- in gameplay. Skip=8 lets us capture an actual gameplay corruption
+-- chain (not the legitimate init write).
+signal trigger_skip_r : unsigned(7 downto 0) := to_unsigned(8, 8);
+signal cpu_pc_now : std_logic_vector(23 downto 0);
+signal opcode_fetch_pulse : std_logic;
 -- T65 PC tracking — latch cpuAddr_6510 each cycle T65 is enabled and
 -- Sync='1' (opcode-fetch cycle). That snapshot equals the PC of the
 -- instruction that just started.
@@ -1203,6 +1223,13 @@ begin
 			dbg_d018_count_r     <= (others => '0');
 			dbg_d018_bad_pc_r    <= (others => '0');
 			dbg_d018_bad_count_r <= (others => '0');
+			dbg_d018_bad_value_r <= (others => '0');
+			trace_pc0_r          <= (others => '0');
+			trace_pc1_r          <= (others => '0');
+			trace_pc2_r          <= (others => '0');
+			trace_pc3_r          <= (others => '0');
+			trace_frozen_r       <= '0';
+			trigger_skip_r       <= to_unsigned(8, 8);
 			t65_pc_latch    <= (others => '0');
 		else
 			-- T65 PC tracking: latch cpuAddr_6510 on opcode fetch (Sync=1)
@@ -1218,10 +1245,33 @@ begin
 					if std_logic_vector(cpuDo) /= x"18" then
 						dbg_d018_bad_pc_r    <= dd00_pc_now;
 						dbg_d018_bad_count_r <= std_logic_vector(unsigned(dbg_d018_bad_count_r) + 1);
+						dbg_d018_bad_value_r <= std_logic_vector(cpuDo);
+					end if;
+					-- v218: $D8 trigger with skip=8 to get past legitimate
+					-- init write at $9069 (both T65 and SCPU run that init).
+					-- Reuses trigger_skip_r counter. T65 expected to do
+					-- ≤8 such writes (mostly $28); SCPU does many in gameplay.
+					if std_logic_vector(cpuDo) = x"D8" then
+						if trace_frozen_r = '0' then
+							if trigger_skip_r = 0 then
+								trace_frozen_r <= '1';
+							else
+								trigger_skip_r <= trigger_skip_r - 1;
+							end if;
+						end if;
 					end if;
 				elsif cpuAddr(5 downto 0) = "010110" then
 					dbg_d016_r <= std_logic_vector(cpuDo);
 				end if;
+			end if;
+
+			-- v211: PC ring buffer push on opcode-fetch pulses, only while
+			-- not frozen. cpu_pc_now / opcode_fetch_pulse are concurrent.
+			if trace_frozen_r = '0' and opcode_fetch_pulse = '1' then
+				trace_pc0_r <= trace_pc1_r;
+				trace_pc1_r <= trace_pc2_r;
+				trace_pc2_r <= trace_pc3_r;
+				trace_pc3_r <= cpu_pc_now;
 			end if;
 			if cs_cia2 = '1' and cpuWe = '1' and cpuAddr(3 downto 0) = "0000" then
 				dbg_dd00_r <= std_logic_vector(cpuDo);
@@ -1275,6 +1325,26 @@ dbg_d018_last_pc     <= dbg_d018_last_pc_r;
 dbg_d018_count       <= dbg_d018_count_r;
 dbg_d018_bad_pc      <= dbg_d018_bad_pc_r;
 dbg_d018_bad_count   <= dbg_d018_bad_count_r;
+dbg_d018_bad_value   <= dbg_d018_bad_value_r;
+dbg_trace_pc0        <= trace_pc0_r;
+dbg_trace_pc1        <= trace_pc1_r;
+dbg_trace_pc2        <= trace_pc2_r;
+dbg_trace_pc3        <= trace_pc3_r;
+dbg_trace_frozen     <= trace_frozen_r;
+
+-- v211: opcode-fetch pulse + current PC.
+-- T65: SYNC=1 + enableCpu_6510=1 → opcode-fetch cycle, latch cpuAddr_6510.
+-- P65C816: vpa=vda=1 + enableCpu_816=1 → opcode-fetch cycle.
+-- cpu_pc_now reuses the same PC source as dd00_pc_now (PBR:PC for SCPU,
+-- $00:t65_pc_latch for T65). Note for T65 this lags by one opcode (latch
+-- is updated on SYNC, so pulse-edge sees previous opcode's PC) but ring
+-- still walks the chain correctly.
+cpu_pc_now <= std_logic_vector(dbg_pbr_816_i) & std_logic_vector(dbg_pc_816_i)
+              when supercpu_en = '1'
+              else x"00" & std_logic_vector(t65_pc_latch);
+opcode_fetch_pulse <= (vpa_816 and vda_816 and enableCpu_816)
+                      when supercpu_en = '1'
+                      else (t65_sync and enableCpu_6510);
 
 -- Compose 24-bit "current PC" for $DD00 write capture: PBR:PC for SCPU,
 -- $00:t65_pc_latch (last opcode-fetch address) for T65.

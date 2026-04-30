@@ -1,161 +1,151 @@
-# Session Handoff — 2026-04-29 — v169 shipped (M10K R3) + Task #25
+# DL/SCPU debug session — 2026-04-30
 
-Last updated: 2026-04-29 ~01:20 UTC. Overwritten each session.
+## Bottom line
+DL on `vanilla-cpu-swap` with SCPU=on is **not** broken by $DD00 value
+corruption (overlay analysis disproved that). The real cause is that
+**P65C816 emulation mode runs the DL gameplay code about 6x slower
+than T65**, so cycle-exact raster IRQs mis-fire and split-bitmap
+mode-switches land on the wrong scanlines. SCPU never reaches the
+fully-rendered gameplay state — it shows a partially-decompressed,
+mode-fragmented screen with one quarter of bitmap data and yellow
+PETSCII text bleed in the rest. T65 on the same code reaches the full
+title screen (castle, dragon, foliage).
 
-## One-line status
+Tasks updated: #31 (in_progress) carries this finding; #26 (fix P65C816
+to match VICE on divergent instruction) is the next major step.
 
-**v169 is the new shipped baseline (cache 4KB, ALM 79 %, RAM 98 %).
-Loop ran for 3 tasks: (#1) Asterix MGL autorun — v168 attempted,
-FAILED (start_strk timing was wrong layer; PRG-load reset masked by
-cold-boot RESET is the real bug); (#25) BRAM probe wiring — DONE
-(commit 82bd475); (#3 = M10K R3) cache 8KB→4KB — VALIDATED on
-hardware (commit 4275388, v169). Surprise: cache halving freed ALMs
-not M10K blocks — Quartus had packed cache into minimum-size blocks
-already.**
+## How we got here
 
-## Recent commits (top of master)
+Started session with v207. Built a layered overlay diagnostic ladder
+v207 → v218, all on `vanilla-cpu-swap`. RTL on disk = v218 state
+(uncommitted). RBF deployed = v218.
 
-```
-4275388  M10K R3: shrink cpu_cache from 8KB to 4KB              [HEAD]
-8713403  v168: defer start_strk auto-RUN pulse until reset_n=1
-82bd475  Task #25: wire BRAM probe through c64_reduced_top_v2
-c420134  kernal_drain bench: external-name probes + lower PASS bar
-f0958f9  docs: handoff captures Phase A finding (v164 cpu_cache exonerated)
-30978eb  Phase A bench fix: stimulus timing — exonerates v164 cpu_cache half
-4a714de  Phase A: kickstart-drain GHDL bench (sim discriminator HEAD vs v164)
-```
+| Build | Trigger / capture                                     |
+|-------|-------------------------------------------------------|
+| v207  | Per-value $DD00 PC latches P0..P3                     |
+| v208  | Concurrent `dd00_pc_now` signal (fixed VHDL syntax)   |
+| v209  | Per-value $DD00 8-bit counters                        |
+| v210  | $D018 BPC (last-bad-write PC) + B counter + V latch   |
+| v211  | 4-deep PC ring T0..T3, frozen on first $D018 != $18   |
+| v212  | Trigger narrowed to `(cpuDo and $C0) /= $00`          |
+| v213  | Trigger tightened to `(cpuDo and $C0) = $C0`          |
+| v214  | Skip-first-16 to escape cold-boot loop                |
+| v215  | Skip-first-4096 (cold-boot loop is tight)             |
+| v216  | PC-filter on $9558 (mysteriously failed to fire)      |
+| v217  | Value-filter on cpuDo=$D8                             |
+| v218  | $D8 with skip-first-8 (current)                       |
 
-## Loop progress
+## What the data showed
 
-### Task #1 — Asterix MGL autorun (status: FIX ATTEMPTED, NOT WORKING)
+- $D018 ring on v218 froze at the legitimate cold-boot init at
+  $9069/$906C/$906E/$9071/$9073 (CHRGET → DL entry, both CPUs run it).
+  Both T65 and SCPU reach this code; both write $D8 once during init.
 
-v168 commit 8713403 deferred the `start_strk` pulse until `reset_n=1`,
-hypothesising the act SM was clearing act on reset. Hardware test
-2026-04-29 ~00:11 UTC:
+- Per-value $DD00 PC latches P0..P3 reveal the same 4 STA $DD00
+  instructions on both CPUs:
+    - $19BD (writes value-class 11)
+    - $3105 (writes value-class 10)
+    - $3205 (writes value-class 00)
+    - $99BD (writes value-class 01)
+  SCPU reports them at +3 PC offset because P65C816 latches PC
+  post-fetch while T65 latches at SYNC=1 (instruction start).
 
-- Vanilla BASIC: GREEN (`.v168_vanilla.png`).
-- SCPU library sweep: 10/10 PASS (`logs/scpu_sweep_20260429T001728.csv`).
-- `asterix.mgl`: STILL HANGS at corrupt-BASIC READY
-  (`.v168_asterix_mgl.png`). PEEK returns OUT OF MEMORY.
+- The visible "T65 DD=04, SCPU DD=02" overlay reading is sampling-
+  phase artifact, NOT divergent code.
 
-Real bug, deeper than start_strk: under MGL initial-startup,
-ioctl_download rises while cold-boot RESET is asserted, so the
-PRG-load-reset trigger at `c64.sv:447` (`~old_download &
-ioctl_download & load_prg`) loses to the RESET branch at line 443.
-By the time RESET deasserts, ioctl_download has no fresh rising edge
-→ 100000-cycle PRG re-reset never fires → BASIC NEW chain incomplete
-→ BASIC pointers stay corrupt.
+- **The real divergence:** per-value counter rates.
+    - T65: each P0..P3 counter +224 per 1.2 s ≈ 187 writes/s/class
+      → ≈ 750 $DD00 writes/sec total → ~12.5 writes/frame (≈ 1 per
+      raster split — DL split-bitmap engine in full flight).
+    - SCPU: each counter +32 per 1.2 s ≈ 27 writes/s/class
+      → ≈ 110 writes/sec total → ~1.8 writes/frame.
+    - Ratio: T65 ≈ 6.8× faster than SCPU on this exact code path.
 
-v168 fix is theoretically sound for one race and harmless to vanilla
-+ sweep — KEPT in tree. v170 next attempt: extend PRG-load-reset
-trigger to also fire on RESET-fall + ioctl_download-still-high.
+- Visible screens confirm: T65 = full DL title screen
+  (`tools/dl_screens_v218_t65/20260430_142039-dlair64ld.png`).
+  SCPU at the same wall-clock instant = mostly black, garbled
+  "DRAGON'S LAIR" text, partial bitmap top-quarter, yellow PETSCII
+  text-mode glyphs in the lower half
+  (`tools/dl_screens_v218_scpu/20260430_141934-dlair64ld.png`).
 
-Memory: `project_v168_start_strk_defer_partial.md`.
+## Why it's a CPU throughput / cycle-count bug, not a memory bug
 
-### Task #25 — BRAM probe wiring (status: DONE)
+- Both CPUs see the SAME memory subsystem (bank $00 = BRAM, REU = SDRAM).
+  No SCPU-specific stall in the bus.
+- Both CPUs are clocked by the SAME `enableCpu` CE pulse
+  (`fpga64_sid_iec.vhd:1053-1054`), gated by `supercpu_en`. Pulse rate
+  identical when only one CPU is active.
+- IRQ source is identical (line 1063 vs 1083: same `irq_cia1 and
+  irq_vic and irq_n and irq_ext_n`).
+- vanilla-cpu-swap base commit `cf49066` correctly fixed RDY-on-write
+  (`rdy_gated <= rdy or not localWe`) so SCPU and T65 honor RDY the
+  same way.
 
-Commit 82bd475. `sim/c64_reduced_harness/c64_reduced_top_v2.vhd` now
-exposes the c64_ram64k.ram shared variable through `bram_probe_data`
-via VHDL-2008 external-name upward path
-`<< variable ^.dut.dut.ram64k_inst.ram : ram_t >>`. Works because all
-4 benches label the c64_reduced_top_v2 instance `dut`. Zero synthesis
-impact (sim-only).
+What's left: P65C816's microcode (`rtl/65C816/MCode.vhd`) drives
+opcode duration via the number of micro-states. If emu-mode opcodes
+take more micro-states than the NMOS reference, instructions take
+more cycles. A 1-cycle-per-instruction overhead on average opcodes
+adds up to dozens of scanlines of skew per IRQ — exactly the
+fragmentation pattern we see on screen.
 
-GHDL gotcha discovered: external-name aliases inside sensitized
-processes (`process(clk32)`) crash with TYPES.INTERNAL_ERROR. Use
-wait-based process. Documented for future sim work.
+## Concrete next steps
 
-Sim regressions still PASS:
-- `run_kernal_drain.sh`: 64189/65536 bank-$00 nonzero
-- `run_harness_v2.sh`: 84/84
+1. **Add an opcode-count register to overlay.** 16-bit counter ticked
+   on `opcode_fetch_pulse`. Display per-frame and as "PER FRAME"
+   delta. Compare T65 vs SCPU on identical code (BASIC `READY.`
+   prompt or DL entry). If SCPU/frame is meaningfully lower than
+   T65/frame on the same code, cycle-count bug confirmed empirically.
 
-Memory: `project_task25_bram_probe_wiring.md`.
+2. **Audit `MCode.vhd` cycle counts** for the hot opcodes used by DL's
+   split-bitmap raster IRQ:
+   - `LDA #$xx` (immediate) — should be 2 cycles
+   - `STA abs` ($DD00 / $D018) — 4 cycles
+   - `LDA zp,X` / `STA zp,X` — 4 cycles
+   - branches taken — 3 cycles (NMOS), 3 cycles (65C02), 4 in emu
+     mode is wrong if it hits 4
+   - `INX` / `DEX` — 2 cycles
+   - `RTI` — 6 cycles
+   - `JMP abs` — 3 cycles
+   Reference: NMOS 6502 cycle table at
+   https://www.masswerk.at/6502/6502_instruction_set.html
 
-### Task #3 — M10K R3 cache shrink (status: VALIDATED ON HARDWARE)
+3. **Cheaper alternative** — port master's 32-entry crash-trace ring
+   (REU $DF20-$DFA0) to vanilla-cpu-swap, freeze on a specific event,
+   read it back from a tiny PRG that prints the ring to screen RAM.
+   Gives PC + IR (instruction byte) for 32 consecutive opcode fetches.
+   Combined with VICE PC trace of the same starting state, diff
+   produces the first divergent PC — the exact instruction whose
+   cycle count is wrong.
 
-Commit 4275388. v169 build 2026-04-29 01:07:31. md5
-`631729e1a24a5bf46436ad555dfd47e5` cached at `.v169_built.rbf`.
+## RTL state on disk (uncommitted)
 
-Hardware results:
-- Vanilla BASIC: GREEN (`.v169_vanilla.png`).
-- Sweep: 10/10 PASS (`logs/scpu_sweep_20260429T011706.csv`).
-- bank01_sram_tb: 10/10 PASS (sim regression).
-- Resource: ALM 85 % → **79 %** (-2264 ALMs). RAM 540/553 = 98 %
-  **UNCHANGED** (Quartus packing already minimised block count;
-  halving the 8KB cache did NOT free M10K blocks).
+`v218`-equivalent. The trigger condition lines in
+`fpga64_sid_iec.vhd:1245-1262` are parameterized scaffolding — change
+the value/PC/skip count and rebuild to refire. Default state captures
+$D018=$D8 with skip=8.
 
-Surprise: the m10k_reclaim_plan predicted ~4 M10K blocks freed; the
-actual win is in ALMs, not M10K. Future M10K reclaim plans must
-target bigger arrays or eliminate whole consumers.
+## Diagnostic tooling
 
-Memory: `project_m10k_r3_cache_shrink.md` (updated with hardware
-results and corrected expectations).
+- `tools/dl_triage_run.py` — deploys RBF, patches `cfg[10]`, MGL-loads
+  REU+PRG, mbc-load_roms `dlair64ld.prg` for autoRUN, takes 15 burst
+  screenshots 1.2 s apart. `--t65` for T65, no flag for SCPU.
+  `--no-deploy` skips RBF re-upload.
+- `tools/decode_overlay.py` — OCRs the 11-row 4×6 yellow overlay from
+  PNGs. ROWS=11 currently. Fuzzy Hamming match per cell.
+- All v218 captures retained at
+  `tools/dl_screens_v218_t65/`, `tools/dl_screens_v218_scpu/`.
 
-## What's on the dev MiSTer right now
+## Risks / unknowns
 
-- `/media/fat/_Test/C64.rbf` = **v169** (4275388 + 8713403, md5
-  `631729e1a24a5bf46436ad555dfd47e5`). Vanilla GREEN, sweep 10/10.
-  ALM 79 %, RAM 98 %.
-- v168 cached at `.v168_built.rbf` md5
-  `8ba431fd2192799d14e0260913129473` (start_strk fix only,
-  superseded).
-- v167 cached at `.v167_restored.rbf` md5
-  `9cbd4b6b8e52d1957f528cb486a27ae5` (pre-v168/v169, for fast
-  revert if regression appears).
-- v169 cached at `.v169_built.rbf`.
+- PC-filter trigger (v216) silently failed: `dd00_pc_now=$9558` was
+  observed in BPC latch but my comparator gate
+  `if dd00_pc_now(15:0)=x"9558" and (23:16)=x"00"` never fired.
+  Synthesis quirk or a one-clock-edge race I missed. Worth
+  re-investigating before relying on PC-filtered triggers again.
 
-## Open task graph (post-loop)
-
-- **Task #1 (deferred)** — extend PRG-load-reset trigger condition to
-  fire on RESET-fall + ioctl_download-still-high. v168's start_strk
-  fix is in place but doesn't cover this. Next attempt: v170.
-- **Task #3 follow-up** — once v169 builds, deploy + smoke vanilla +
-  sweep + asterix-via-load_prg + bank01_sram_tb. If all pass, v169
-  becomes new baseline; if any fail, revert 4275388.
-- **Task #26 (still open)** — hardware bisect of fpga64_sid_iec.vhd
-  v164 subsets. Closed structurally per
-  `project_v166_bisect_failed_three_rounds.md` — only revisit if a
-  new approach replaces the cache_hit_rd-on-write fanout.
-- **$D078 Step 2** — move cache flush off $D078, deferred until
-  multi-program demand justifies.
-- **Task #14 system bench** — wire scpu64.mif into
-  simple_sdram_model.vhd so kernal_drain can exercise kickstart ROM
-  path. Still 3-5h work; deferred while bisect is closed.
-
-## Useful commands cheat-sheet
-
-```bash
-# Deploy current build
-python tools/mister_debug.py deploy C64_MiSTer/output_files/C64.rbf
-
-# Smoke vanilla BASIC
-python tools/mister_debug.py uart 8
-python tools/mister_debug.py screen vanilla.png
-
-# Run full SCPU library sweep
-python tools/scpu_library_sweep.py
-
-# Asterix title via load_prg path (NOT MGL — MGL still broken)
-python tools/mister_debug.py load_prg asterix.prg
-python tools/mister_debug.py keys "RUN" && python tools/mister_debug.py keys "enter"
-
-# Bank-$01 dprom unit bench (regression guard for v167 RTL)
-bash sim/p65c816_tb/run_bank01_sram_tb.sh   # 10/10 PASS expected
-
-# Kickstart-drain bench (HEAD baseline + v164 verifier)
-bash sim/p65c816_tb/run_kickstart_drain_only.sh  # 8/8 PASS on HEAD
-
-# Harness benches (system-level regression guards)
-bash sim/c64_reduced_harness/run_harness_v2.sh    # 84/84 PASS
-bash sim/c64_reduced_harness/run_kernal_drain.sh  # bank-$00 nonzero ≥32k
-```
-
-## Do-not-touch list
-
-- `/media/fat/_Computer/C64.rbf` — must stay vanilla MiSTer.
-- v164 path-(b) revival is shelved per
-  `project_v166_bisect_failed_three_rounds.md`. Do not re-attempt
-  without a fresh approach.
-- v167 RAM was at 98 %; v169 (M10K R3) targets ~96 %. Any new M10K
-  consumer still needs another reclaim pass (R4 chargen_d/p ~3
-  blocks each).
+- The 6× throughput ratio is suspicious — pure cycle-count divergence
+  shouldn't be 6× on average code. Possible alternative: SCPU is
+  taking a *different code path* (e.g., the IRQ entry pushes a
+  different P, the handler reads it back, branches differently).
+  An opcode-count register would distinguish "same code, slower" from
+  "different code path".

@@ -117,6 +117,17 @@ typedef struct packed {
   logic  [7:0] d018_bad_count;  // #writes where written value != $18
   logic [23:0] d018_last_pc;    // PC at last D018-write (any value)
   logic  [7:0] d018_count;      // total D018-writes
+  logic  [7:0] d018_bad_value;  // value of cpuDo at last D018 != $18 write
+
+  // v211: PC ring buffer. Latches PC at each opcode fetch (T65 SYNC=1
+  // OR P65C816 vpa=vda=1). Freezes on FIRST $D018 != $18 write. Reveals
+  // the call chain leading to the bug. T0 = oldest of 4 entries, T3 =
+  // newest (= the PC just before the trigger fired).
+  logic [23:0] trace_pc0;
+  logic [23:0] trace_pc1;
+  logic [23:0] trace_pc2;
+  logic [23:0] trace_pc3;
+  logic        trace_frozen;
 } dbg_pool_t;
 `endif
 
