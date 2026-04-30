@@ -178,7 +178,13 @@ port(
 	dbg_d018        : out std_logic_vector(7 downto 0); -- last cpuDo to $D018
 	dbg_d016        : out std_logic_vector(7 downto 0); -- last cpuDo to $D016
 	dbg_dd00        : out std_logic_vector(7 downto 0); -- last cpuDo to $DD00
-	dbg_cpu_pc_24   : out std_logic_vector(23 downto 0) -- {PBR,PC} for SCPU, {x"00",PC} for T65 (uses cpuAddr_6510 as PC proxy)
+	dbg_cpu_pc_24   : out std_logic_vector(23 downto 0); -- {PBR,PC} for SCPU, {x"00",PC} for T65 (uses cpuAddr_6510 as PC proxy)
+	-- P65C816-only diagnostics (zero when T65 active). When SCPU=on, dbg_p
+	-- exposes P (NV-MX-DIZC) and dbg_dbr the data bank register. Both are
+	-- used by the overlay to detect emu-mode flag drift (X→0, M→0, DBR→!0)
+	-- which would mis-execute indexed addressing.
+	dbg_p           : out std_logic_vector(7 downto 0);
+	dbg_dbr         : out std_logic_vector(7 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -268,6 +274,8 @@ signal dbg_dd00_r     : std_logic_vector(7 downto 0) := (others => '0');
 signal dbg_raster_y   : unsigned(8 downto 0);
 signal dbg_pc_816_i   : unsigned(15 downto 0);
 signal dbg_pbr_816_i  : unsigned(7 downto 0);
+signal dbg_p_816_i    : unsigned(7 downto 0);
+signal dbg_dbr_816_i  : unsigned(7 downto 0);
 
 -- ----------------------------------------------------------------------
 -- Phase B — SuperCPU $D07x / $D0Bx register file (lifted from master).
@@ -1026,10 +1034,10 @@ port map (
 
 	dbg_pc    => dbg_pc_816_i,
 	dbg_sp    => open,
-	dbg_p     => open,
+	dbg_p     => dbg_p_816_i,
 	dbg_ir    => open,
 	dbg_pbr   => dbg_pbr_816_i,
-	dbg_dbr   => open,
+	dbg_dbr   => dbg_dbr_816_i,
 	dbg_x     => open,
 	dbg_y     => open,
 	dbg_d     => open,
@@ -1160,5 +1168,11 @@ dbg_raster_line <= std_logic_vector(dbg_raster_y);
 dbg_cpu_pc_24   <= std_logic_vector(dbg_pbr_816_i) & std_logic_vector(dbg_pc_816_i)
                        when supercpu_en = '1'
                        else x"00" & std_logic_vector(cpuAddr_6510);
+
+-- P/DBR overlay drivers: meaningful only when SCPU=on (P65C816 active).
+-- When T65 active they read 0 — overlay viewer treats those as "not
+-- applicable" since the T65 path doesn't have these registers anyway.
+dbg_p   <= std_logic_vector(dbg_p_816_i)   when supercpu_en = '1' else x"00";
+dbg_dbr <= std_logic_vector(dbg_dbr_816_i) when supercpu_en = '1' else x"00";
 
 end architecture;

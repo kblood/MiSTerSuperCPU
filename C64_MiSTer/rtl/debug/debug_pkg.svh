@@ -79,7 +79,8 @@ typedef struct packed {
 
   // CPU domain
   logic [23:0] cpu_pc;           // 24-bit (PBR:PC) for SCPU, $00:PC for T65
-  logic  [7:0] cpu_p;            // status flags
+  logic  [7:0] cpu_p;            // status flags (NV-MX-DIZC) - SCPU only
+  logic  [7:0] cpu_dbr;          // data bank register - SCPU only
   logic  [7:0] cpu_flags;        // {ba,dma,turbo,scpu_en,1mhz,iec,emu,e_flag}
 
   // Misc

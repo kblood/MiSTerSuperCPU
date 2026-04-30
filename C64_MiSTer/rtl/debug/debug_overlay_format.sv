@@ -4,8 +4,13 @@
 //
 //   Row 0: "REU C=#### A=######   "  c64-target / RAM addr (24-bit hex)
 //   Row 1: "VIC 18=## 16=## R=### "  $D018, $D016, raster line (hex)
-//   Row 2: "F=#### PC=######      "  frame counter, CPU PC (24-bit)
+//   Row 2: "PC=###### P=## B=##   "  CPU PC + P (NV-MX-DIZC) + DBR
 //   Row 3: "CMD=## E=# DD=## SC=# "  REU last cmd, emu mode, $DD00, scpu_en
+//
+// 2026-04-30 dropped F=#### from row 2 to make room for P (status flags)
+// and B (DBR) — needed to detect emu-mode flag drift in DL triage. If P
+// shows X or M cleared (bits 4-5) while E=1, that's a P65C816 bug.
+// Frame counter still ticks in pool.frame_count for future layouts.
 //
 // Each cell maps to a 6-bit glyph id (debug_font_4x6 allocation: 0..9
 // for digits, 10..35 for A..Z, 36 = space, 39 = '=').
@@ -106,24 +111,27 @@ module debug_overlay_format
 				default: glyph_id = G_SP;
 			endcase
 
-			// ===== Row 2: F=#### PC=######      ==================
+			// ===== Row 2: PC=###### P=## B=##    ==================
 			2'd2: case (cell_x)
-				5'd0:  glyph_id = G_F;
-				5'd1:  glyph_id = G_EQ;
-				5'd2:  glyph_id = hex(pool.frame_count[15:12]);
-				5'd3:  glyph_id = hex(pool.frame_count[11:8]);
-				5'd4:  glyph_id = hex(pool.frame_count[7:4]);
-				5'd5:  glyph_id = hex(pool.frame_count[3:0]);
-				5'd6:  glyph_id = G_SP;
-				5'd7:  glyph_id = G_P;
-				5'd8:  glyph_id = G_C;
-				5'd9:  glyph_id = G_EQ;
-				5'd10: glyph_id = hex(pool.cpu_pc[23:20]);
-				5'd11: glyph_id = hex(pool.cpu_pc[19:16]);
-				5'd12: glyph_id = hex(pool.cpu_pc[15:12]);
-				5'd13: glyph_id = hex(pool.cpu_pc[11:8]);
-				5'd14: glyph_id = hex(pool.cpu_pc[7:4]);
-				5'd15: glyph_id = hex(pool.cpu_pc[3:0]);
+				5'd0:  glyph_id = G_P;
+				5'd1:  glyph_id = G_C;
+				5'd2:  glyph_id = G_EQ;
+				5'd3:  glyph_id = hex(pool.cpu_pc[23:20]);
+				5'd4:  glyph_id = hex(pool.cpu_pc[19:16]);
+				5'd5:  glyph_id = hex(pool.cpu_pc[15:12]);
+				5'd6:  glyph_id = hex(pool.cpu_pc[11:8]);
+				5'd7:  glyph_id = hex(pool.cpu_pc[7:4]);
+				5'd8:  glyph_id = hex(pool.cpu_pc[3:0]);
+				5'd9:  glyph_id = G_SP;
+				5'd10: glyph_id = G_P;
+				5'd11: glyph_id = G_EQ;
+				5'd12: glyph_id = hex(pool.cpu_p[7:4]);
+				5'd13: glyph_id = hex(pool.cpu_p[3:0]);
+				5'd14: glyph_id = G_SP;
+				5'd15: glyph_id = G_B;
+				5'd16: glyph_id = G_EQ;
+				5'd17: glyph_id = hex(pool.cpu_dbr[7:4]);
+				5'd18: glyph_id = hex(pool.cpu_dbr[3:0]);
 				default: glyph_id = G_SP;
 			endcase
 

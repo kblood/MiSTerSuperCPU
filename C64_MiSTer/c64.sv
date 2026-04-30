@@ -1076,6 +1076,8 @@ wire  [7:0] scpu_dbg_d018;
 wire  [7:0] scpu_dbg_d016;
 wire  [7:0] scpu_dbg_dd00;
 wire [23:0] scpu_dbg_cpu_pc;
+wire  [7:0] scpu_dbg_p;
+wire  [7:0] scpu_dbg_dbr;
 
 // ---------------------------------------------------------------------------
 // Layered debug overlay (rtl/debug/) - pool struct + capture stubs.
@@ -1133,17 +1135,21 @@ cap_cpu_state u_cap_cpu_state (
 	.clk           (clk_sys),
 	.rst           (~reset_n),
 	.in_pc         (scpu_dbg_cpu_pc),
+	.in_p          (scpu_dbg_p),
+	.in_dbr        (scpu_dbg_dbr),
 	.in_supercpu_en(supercpu_enable),
 	.in_emu_mode   (supercpu_emul),
 	.in_dma_active (1'b0),                 // top-level dma_active not exposed; placeholder
 	.in_ba         (1'b1),                 // ditto
 	.o_pc          (dbg_pool.cpu_pc),
 	.o_p           (dbg_pool.cpu_p),
+	.o_dbr         (dbg_pool.cpu_dbr),
 	.o_flags       (dbg_pool.cpu_flags)
 );
 `else
 assign dbg_pool.cpu_pc    = '0;
 assign dbg_pool.cpu_p     = '0;
+assign dbg_pool.cpu_dbr   = '0;
 assign dbg_pool.cpu_flags = '0;
 `endif
 
@@ -1280,7 +1286,9 @@ fpga64_sid_iec fpga64
 	.dbg_d018       (scpu_dbg_d018),
 	.dbg_d016       (scpu_dbg_d016),
 	.dbg_dd00       (scpu_dbg_dd00),
-	.dbg_cpu_pc_24  (scpu_dbg_cpu_pc)
+	.dbg_cpu_pc_24  (scpu_dbg_cpu_pc),
+	.dbg_p          (scpu_dbg_p),
+	.dbg_dbr        (scpu_dbg_dbr)
 );
 
 wire [7:0] mouse_x;
