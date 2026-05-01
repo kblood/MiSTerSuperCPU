@@ -210,12 +210,338 @@ port(
 	dbg_trace_pc1        : out std_logic_vector(23 downto 0);
 	dbg_trace_pc2        : out std_logic_vector(23 downto 0);
 	dbg_trace_pc3        : out std_logic_vector(23 downto 0);
+	dbg_trace_op0        : out std_logic_vector(7 downto 0);
+	dbg_trace_op1        : out std_logic_vector(7 downto 0);
+	dbg_trace_op2        : out std_logic_vector(7 downto 0);
+	dbg_trace_op3        : out std_logic_vector(7 downto 0);
 	dbg_trace_frozen     : out std_logic;
+	-- v254: 4-deep JSR ring (lower-16-bit PC of last JSR / JSL fetched).
+	-- Independent of trace_frozen. Reveals upstream callers of writer.
+	dbg_jsr_pc_t0        : out std_logic_vector(15 downto 0);
+	dbg_jsr_pc_t1        : out std_logic_vector(15 downto 0);
+	dbg_jsr_pc_t2        : out std_logic_vector(15 downto 0);
+	dbg_jsr_pc_t3        : out std_logic_vector(15 downto 0);
+	-- v255: 4-deep JMP-indirect target ring + IRQ vector + IO port.
+	-- jmp_tgt_tN = lower-16-bit PC of last 4 JMP-indirect targets
+	-- (post $6C/$7C/$DC). mem_0314/mem_0315 = KERNAL IRQ vector bytes.
+	-- mem_00/mem_01 = CPU IO port direction/data registers.
+	dbg_jmp_tgt_t0       : out std_logic_vector(15 downto 0);
+	dbg_jmp_tgt_t1       : out std_logic_vector(15 downto 0);
+	dbg_jmp_tgt_t2       : out std_logic_vector(15 downto 0);
+	dbg_jmp_tgt_t3       : out std_logic_vector(15 downto 0);
+	dbg_mem_0314         : out std_logic_vector(7 downto 0);
+	dbg_mem_0315         : out std_logic_vector(7 downto 0);
+	dbg_mem_00           : out std_logic_vector(7 downto 0);
+	dbg_mem_01           : out std_logic_vector(7 downto 0);
 	-- v219: 24-bit opcode counter, ticks on opcode_fetch_pulse. Wraps
 	-- every ~16 sec at 1MHz. Per-frame delta = opcodes/frame; T65 vs
 	-- SCPU comparison answers "same code, slower" (similar deltas) vs
 	-- "different code path" (very different deltas).
-	dbg_op_count         : out std_logic_vector(23 downto 0)
+	dbg_op_count         : out std_logic_vector(23 downto 0);
+	-- v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag ever
+	-- observed at 0; irq_vec_count counts $FFFE/$FFFF reads (IRQ
+	-- vector fetches); min_p = lowest dbg_p_816 ever observed.
+	dbg_scpu_iclr        : out std_logic;
+	dbg_irq_vec_count    : out std_logic_vector(15 downto 0);
+	dbg_min_p            : out std_logic_vector(7 downto 0);
+	-- v229: tail-chain diagnostics. rti_count counts $40 opcode
+	-- executions (matches IRQ exits). nmi_vec_count counts
+	-- $FFFA/$FFFB reads. Compare IRQ entries vs RTI count to detect
+	-- mid-handler re-entry; NMI count > 0 indicates NMI path active.
+	dbg_rti_count        : out std_logic_vector(15 downto 0);
+	dbg_nmi_vec_count    : out std_logic_vector(15 downto 0);
+	-- v230: source-ack discrimination. d019_wr_count counts CPU
+	-- writes to $D019 (VIC IRQ status, write-1-to-clear). dc0d_rd_count
+	-- counts $DC0D reads (CIA1 ICR, read-to-ack). T65 should hit
+	-- d019_wr_count = IRQ entries (= IV/2). SCPU < that = ack missing.
+	dbg_d019_wr_count    : out std_logic_vector(15 downto 0);
+	dbg_dc0d_rd_count    : out std_logic_vector(15 downto 0);
+	-- v231: source-side IRQ falling-edge count (matches IV/2 if no
+	-- mid-handler re-entry).
+	dbg_irq_fall_count   : out std_logic_vector(15 downto 0);
+	-- v232: per-source IRQ level samples + last $D019 write value.
+	-- Identifies WHICH source is stuck low and confirms whether the
+	-- SCPU is writing the correct ack value to $D019.
+	dbg_irq_vic_lvl      : out std_logic;
+	dbg_irq_cia1_lvl     : out std_logic;
+	dbg_irq_n_lvl        : out std_logic;
+	dbg_irq_ext_lvl      : out std_logic;
+	dbg_d019_last_val    : out std_logic_vector(7 downto 0);
+	-- v234: $D019 read-side probes. d019_last_read latches cpuDi at
+	-- every CPU read of $D019 (cs_vic+~cpuWe+offset=$19). seen_bits
+	-- is sticky-OR of bits 0..3 across all reads. d01a_last_val =
+	-- last cpuDo on $D01A write (VIC IRQ enable mask). Together
+	-- these tell us: (a) does SCPU read different sources from $D019
+	-- than T65 (= upstream branch divergence), or (b) does it read
+	-- the same value but ack differently (= CPU/decode bug), and
+	-- (c) is the IRQ enable mask the same on both modes.
+	dbg_d019_last_read   : out std_logic_vector(7 downto 0);
+	dbg_d019_seen_bits   : out std_logic_vector(3 downto 0);
+	dbg_d01a_last_val    : out std_logic_vector(7 downto 0);
+	-- v235: VIC sprite-control register write probes. T65 reads
+	-- $D019=$F1 (raster only) but SCPU reads $F7 (raster + sprite-bgnd
+	-- + sprite-sprite collisions). The extra collision IRQs must mean
+	-- sprites are wrong on SCPU. These probes capture last-written
+	-- values + writer PC + write count for the sprite control regs:
+	--   $D015 = sprite enable mask (one bit per sprite)
+	--   $D017 = sprite Y-expand mask
+	--   $D01B = sprite-background priority mask
+	--   $D01C = sprite multicolor mask
+	--   $D01D = sprite X-expand mask
+	-- d015_last_pc records the PBR:PC that wrote $D015 (the canonical
+	-- "is this a per-frame multiplexer or a setup-time write?"
+	-- question). d015_wr_count saturates at $FF.
+	dbg_d015_last_val    : out std_logic_vector(7 downto 0);
+	dbg_d015_last_pc     : out std_logic_vector(23 downto 0);
+	dbg_d015_wr_count    : out std_logic_vector(7 downto 0);
+	dbg_d017_last_val    : out std_logic_vector(7 downto 0);
+	dbg_d01b_last_val    : out std_logic_vector(7 downto 0);
+	dbg_d01c_last_val    : out std_logic_vector(7 downto 0);
+	dbg_d01d_last_val    : out std_logic_vector(7 downto 0);
+	-- v236: sprite-position probes. Sprite control (D015/D01B/D01C)
+	-- was identical T65 vs SCPU; yet SCPU still latches IMBC+IMMC
+	-- collisions. Must be sprite POSITIONS that differ. These four
+	-- 8-bit latches expose the last-written values for sprite 0 X
+	-- ($D000), sprite 0 Y ($D001), sprite 1 X ($D002), sprite 1 Y
+	-- ($D003) — sufficient for sprite-sprite IMMC overlap detection.
+	-- $D010 (high-X bits) added so we can disambiguate X >= $100.
+	dbg_d000_last_val    : out std_logic_vector(7 downto 0);
+	dbg_d001_last_val    : out std_logic_vector(7 downto 0);
+	dbg_d002_last_val    : out std_logic_vector(7 downto 0);
+	dbg_d003_last_val    : out std_logic_vector(7 downto 0);
+	dbg_d010_last_val    : out std_logic_vector(7 downto 0);
+	-- v238: I-flag edge probes (sampled at opcode_fetch_pulse only).
+	-- v237's min_p was sampled every clock; we couldn't tell if the
+	-- I=0 moments were inside IRQ-entry microcode or at instruction
+	-- boundaries. By sampling P(2) only at opcode-fetch (= first cycle
+	-- of an instruction), we discriminate "main loop has I=1" from
+	-- "we caught a transient I=0 inside IRQ entry". Edge detection
+	-- captures PC where I transitioned, plus a count to gauge
+	-- frequency.
+	dbg_p_set_pc         : out std_logic_vector(23 downto 0); -- PC at last 0->1 (I-set)
+	dbg_p_clr_pc         : out std_logic_vector(23 downto 0); -- PC at last 1->0 (I-clear)
+	dbg_p_set_count      : out std_logic_vector(15 downto 0); -- # of 0->1 transitions
+	dbg_p_clr_count      : out std_logic_vector(15 downto 0); -- # of 1->0 transitions
+	dbg_p_opfetch_min    : out std_logic_vector(7 downto 0);  -- min P at opcode fetch
+	-- v239: IRQ vector + zero-page stub + $0314/$0315 + cpuIO snapshot
+	-- to discriminate "RAM at $FFFE differs T65 vs SCPU" (setup bug)
+	-- from "$0062 stub dispatches differently" (CPU instruction bug).
+	dbg_vec_lo           : out std_logic_vector(7 downto 0);  -- byte read from $FFFE
+	dbg_vec_hi           : out std_logic_vector(7 downto 0);  -- byte read from $FFFF
+	dbg_mem_314          : out std_logic_vector(7 downto 0);  -- byte read from $0314
+	dbg_mem_315          : out std_logic_vector(7 downto 0);  -- byte read from $0315
+	dbg_mem_62           : out std_logic_vector(7 downto 0);  -- byte read from $0062
+	dbg_mem_63           : out std_logic_vector(7 downto 0);  -- byte read from $0063
+	dbg_mem_64           : out std_logic_vector(7 downto 0);  -- byte read from $0064
+	dbg_io_at_vec        : out std_logic_vector(2 downto 0);  -- cpuIO[2:0] at last $FFFE fetch
+	-- v240: extend stub coverage to $0065..$006B + capture RTI PC.
+	-- v239 confirmed RAM identical T65/SCPU at $0062..$0064; divergence
+	-- is inside the handler. v240 grabs more stub bytes + the address
+	-- of the last RTI to localize where each handler ends.
+	dbg_mem_65           : out std_logic_vector(7 downto 0);
+	dbg_mem_66           : out std_logic_vector(7 downto 0);
+	dbg_mem_67           : out std_logic_vector(7 downto 0);
+	dbg_mem_68           : out std_logic_vector(7 downto 0);
+	dbg_mem_69           : out std_logic_vector(7 downto 0);
+	dbg_mem_6A           : out std_logic_vector(7 downto 0);
+	dbg_mem_6B           : out std_logic_vector(7 downto 0);
+	-- v242: byte 6C..73 — stub continuation past STA $6F to expose the
+	-- JMP/JSR/branch that dispatches to the handler body.
+	dbg_mem_6C           : out std_logic_vector(7 downto 0);
+	dbg_mem_6D           : out std_logic_vector(7 downto 0);
+	dbg_mem_6E           : out std_logic_vector(7 downto 0);
+	dbg_mem_6F           : out std_logic_vector(7 downto 0);
+	dbg_mem_70           : out std_logic_vector(7 downto 0);
+	dbg_mem_71           : out std_logic_vector(7 downto 0);
+	dbg_mem_72           : out std_logic_vector(7 downto 0);
+	dbg_mem_73           : out std_logic_vector(7 downto 0);
+	-- v243: extend through $0078 (8 more bytes — should reveal
+	-- JMP/JSR dispatch target after stable-raster NOP padding).
+	dbg_mem_74           : out std_logic_vector(7 downto 0);
+	dbg_mem_75           : out std_logic_vector(7 downto 0);
+	dbg_mem_76           : out std_logic_vector(7 downto 0);
+	dbg_mem_77           : out std_logic_vector(7 downto 0);
+	dbg_mem_78           : out std_logic_vector(7 downto 0);
+	-- v243: dispatch-target PC. Captured at the first opcode_fetch
+	-- where PC leaves zero-page (i.e., the handler that the $0062
+	-- stub jumps to). T65 expected to rotate; SCPU expected stuck.
+	dbg_disp_target_pc   : out std_logic_vector(23 downto 0);
+	-- v244: bytes at $3380..$338F (16 bytes covering full dispatcher
+	-- head). T65 reaches FLI/chain/gameplay from here; SCPU always
+	-- selects $811C chain. Disassembling these bytes reveals the
+	-- divergent branch.
+	dbg_mem_3380         : out std_logic_vector(7 downto 0);
+	dbg_mem_3381         : out std_logic_vector(7 downto 0);
+	dbg_mem_3382         : out std_logic_vector(7 downto 0);
+	dbg_mem_3383         : out std_logic_vector(7 downto 0);
+	dbg_mem_3384         : out std_logic_vector(7 downto 0);
+	dbg_mem_3385         : out std_logic_vector(7 downto 0);
+	dbg_mem_3386         : out std_logic_vector(7 downto 0);
+	dbg_mem_3387         : out std_logic_vector(7 downto 0);
+	dbg_mem_3388         : out std_logic_vector(7 downto 0);
+	dbg_mem_3389         : out std_logic_vector(7 downto 0);
+	dbg_mem_338A         : out std_logic_vector(7 downto 0);
+	dbg_mem_338B         : out std_logic_vector(7 downto 0);
+	dbg_mem_338C         : out std_logic_vector(7 downto 0);
+	dbg_mem_338D         : out std_logic_vector(7 downto 0);
+	dbg_mem_338E         : out std_logic_vector(7 downto 0);
+	dbg_mem_338F         : out std_logic_vector(7 downto 0);
+	-- v244: bytes at $9F09..$9F18 (16 bytes — FLI handler entry).
+	-- Verify FLI body is loaded in RAM same on both modes.
+	dbg_mem_9F09         : out std_logic_vector(7 downto 0);
+	dbg_mem_9F0A         : out std_logic_vector(7 downto 0);
+	dbg_mem_9F0B         : out std_logic_vector(7 downto 0);
+	dbg_mem_9F0C         : out std_logic_vector(7 downto 0);
+	dbg_mem_9F0D         : out std_logic_vector(7 downto 0);
+	dbg_mem_9F0E         : out std_logic_vector(7 downto 0);
+	dbg_mem_9F0F         : out std_logic_vector(7 downto 0);
+	dbg_mem_9F10         : out std_logic_vector(7 downto 0);
+	dbg_mem_9F11         : out std_logic_vector(7 downto 0);
+	dbg_mem_9F12         : out std_logic_vector(7 downto 0);
+	dbg_mem_9F13         : out std_logic_vector(7 downto 0);
+	dbg_mem_9F14         : out std_logic_vector(7 downto 0);
+	dbg_mem_9F15         : out std_logic_vector(7 downto 0);
+	dbg_mem_9F16         : out std_logic_vector(7 downto 0);
+	dbg_mem_9F17         : out std_logic_vector(7 downto 0);
+	dbg_mem_9F18         : out std_logic_vector(7 downto 0);
+	-- v244: 2nd-level dispatch PC. Snapshot at first opcode_fetch
+	-- where PC leaves $33xx range. Should match the RTI ring head
+	-- ($9F09 / $811C / $1Cxx etc.).
+	dbg_disp2_target_pc  : out std_logic_vector(23 downto 0);
+	-- v244: 4-deep PC trace ring restricted to PC[15:8]=$33.
+	-- Captures the execution path through the dispatcher per IRQ.
+	dbg_pc33_t0          : out std_logic_vector(23 downto 0);
+	dbg_pc33_t1          : out std_logic_vector(23 downto 0);
+	dbg_pc33_t2          : out std_logic_vector(23 downto 0);
+	dbg_pc33_t3          : out std_logic_vector(23 downto 0);
+	-- v244: PC of last write to $0070 / $0071 (zero-page vars
+	-- that diverge T65/SCPU per v242). T65 only — SCPU never
+	-- writes to these (so wr_pc stays at reset value $000000).
+	dbg_wr70_pc          : out std_logic_vector(23 downto 0);
+	dbg_wr71_pc          : out std_logic_vector(23 downto 0);
+	dbg_rti_pc           : out std_logic_vector(23 downto 0); -- PC of last RTI execution
+	-- v241: RTI-snapshot ring. On every RTI execution, snapshot the
+	-- previous 2 opcode-fetch PCs alongside the RTI PC itself. Gives
+	-- "handler tail = ... PC2 -> PC1 -> RTI" to localize the divergent
+	-- jump instruction.
+	dbg_rti_h1           : out std_logic_vector(23 downto 0); -- PC 1 before RTI
+	dbg_rti_h2           : out std_logic_vector(23 downto 0); -- PC 2 before RTI
+	-- v245: bytes around the divergent writer at $335F. v244 proved
+	-- T65 and SCPU execute the SAME instruction at $335F but store
+	-- DIFFERENT values ($00/$05 vs $EA/$EA). 16 bytes covering
+	-- $335D..$336C reveal the A-feeding instruction.
+	dbg_mem_335D         : out std_logic_vector(7 downto 0);
+	dbg_mem_335E         : out std_logic_vector(7 downto 0);
+	dbg_mem_335F         : out std_logic_vector(7 downto 0);
+	dbg_mem_3360         : out std_logic_vector(7 downto 0);
+	dbg_mem_3361         : out std_logic_vector(7 downto 0);
+	dbg_mem_3362         : out std_logic_vector(7 downto 0);
+	dbg_mem_3363         : out std_logic_vector(7 downto 0);
+	dbg_mem_3364         : out std_logic_vector(7 downto 0);
+	dbg_mem_3365         : out std_logic_vector(7 downto 0);
+	dbg_mem_3366         : out std_logic_vector(7 downto 0);
+	dbg_mem_3367         : out std_logic_vector(7 downto 0);
+	dbg_mem_3368         : out std_logic_vector(7 downto 0);
+	dbg_mem_3369         : out std_logic_vector(7 downto 0);
+	dbg_mem_336A         : out std_logic_vector(7 downto 0);
+	dbg_mem_336B         : out std_logic_vector(7 downto 0);
+	dbg_mem_336C         : out std_logic_vector(7 downto 0);
+	-- v245: bytes at $3300-$3307 (other dispatcher entry — $3380 is
+	-- known to be JMP $3100, but $3300 path is where T65 reaches FLI).
+	dbg_mem_3300         : out std_logic_vector(7 downto 0);
+	dbg_mem_3301         : out std_logic_vector(7 downto 0);
+	dbg_mem_3302         : out std_logic_vector(7 downto 0);
+	dbg_mem_3303         : out std_logic_vector(7 downto 0);
+	dbg_mem_3304         : out std_logic_vector(7 downto 0);
+	dbg_mem_3305         : out std_logic_vector(7 downto 0);
+	dbg_mem_3306         : out std_logic_vector(7 downto 0);
+	dbg_mem_3307         : out std_logic_vector(7 downto 0);
+	-- v245: bytes at $3100-$3107 (chain handler entry — both modes
+	-- hit this; SCPU always lands here, T65 alternates with $3200).
+	dbg_mem_3100         : out std_logic_vector(7 downto 0);
+	dbg_mem_3101         : out std_logic_vector(7 downto 0);
+	dbg_mem_3102         : out std_logic_vector(7 downto 0);
+	dbg_mem_3103         : out std_logic_vector(7 downto 0);
+	dbg_mem_3104         : out std_logic_vector(7 downto 0);
+	dbg_mem_3105         : out std_logic_vector(7 downto 0);
+	dbg_mem_3106         : out std_logic_vector(7 downto 0);
+	dbg_mem_3107         : out std_logic_vector(7 downto 0);
+	-- v245: actual VALUE on cpuDo at the moment of $0070/$0071 write.
+	-- v244 inferred values from later READS but a second writer could
+	-- have intervened. Direct write-cycle capture is unambiguous.
+	dbg_wr70_val         : out std_logic_vector(7 downto 0);
+	dbg_wr71_val         : out std_logic_vector(7 downto 0);
+	-- v246: bytes $0079..$007F (7 bytes past v243's $78 boundary).
+	-- v245 proved the divergence is upstream of the writer at $335F:
+	-- the IRQ stub dispatches to $3300 (=>JMP $3200) or $3380 (=>JMP
+	-- $3100), and SCPU is biased toward $3380. The dispatch JMP
+	-- itself must live at $0079..$007F.
+	dbg_mem_79           : out std_logic_vector(7 downto 0);
+	dbg_mem_7A           : out std_logic_vector(7 downto 0);
+	dbg_mem_7B           : out std_logic_vector(7 downto 0);
+	dbg_mem_7C           : out std_logic_vector(7 downto 0);
+	dbg_mem_7D           : out std_logic_vector(7 downto 0);
+	dbg_mem_7E           : out std_logic_vector(7 downto 0);
+	dbg_mem_7F           : out std_logic_vector(7 downto 0);
+	-- v246: counters for disp2_target hits at $3200 vs $3100. Quantifies
+	-- the FLI/gameplay-vs-chain asymmetry. T65 expected ~50/50, SCPU
+	-- expected biased to $3100.
+	dbg_cnt_3200         : out std_logic_vector(15 downto 0);
+	dbg_cnt_3100         : out std_logic_vector(15 downto 0);
+	-- v247: $5B + DF01 + bytes $0080-$008B. v246 proved IRQ stub does
+	-- LDA $5B / STA $DFxx; REU cmd readback differs T65=$31 vs SCPU=$7D.
+	-- Suspect LDA $5B returns different value between modes (or some
+	-- prior writer differs).
+	dbg_mem_5B           : out std_logic_vector(7 downto 0);
+	dbg_wr5B_pc          : out std_logic_vector(23 downto 0);
+	dbg_wr5B_val         : out std_logic_vector(7 downto 0);
+	dbg_wr_df01_pc       : out std_logic_vector(23 downto 0);
+	dbg_wr_df01_val      : out std_logic_vector(7 downto 0);
+	dbg_cnt_df01         : out std_logic_vector(15 downto 0);
+	dbg_mem_80           : out std_logic_vector(7 downto 0);
+	dbg_mem_81           : out std_logic_vector(7 downto 0);
+	dbg_mem_82           : out std_logic_vector(7 downto 0);
+	dbg_mem_83           : out std_logic_vector(7 downto 0);
+	dbg_mem_84           : out std_logic_vector(7 downto 0);
+	dbg_mem_85           : out std_logic_vector(7 downto 0);
+	dbg_mem_86           : out std_logic_vector(7 downto 0);
+	dbg_mem_87           : out std_logic_vector(7 downto 0);
+	dbg_mem_88           : out std_logic_vector(7 downto 0);
+	dbg_mem_89           : out std_logic_vector(7 downto 0);
+	dbg_mem_8A           : out std_logic_vector(7 downto 0);
+	dbg_mem_8B           : out std_logic_vector(7 downto 0);
+	-- v249: IRQ dispatch ptr + JMP indirect operand high byte +
+	-- 4-deep P ring at IRQ entry. v248 confirmed IRQ stub ends at
+	-- JMP ($XX02), operand low=$02 not $FF (so NMOS fix doesn't
+	-- apply). Need mem_8C to get operand high; mem_02/mem_03 carry
+	-- the dispatch target word; wr02/wr03_pc/val pinpoint writer;
+	-- p_irq_tN catches flag-state divergence at IRQ entry.
+	dbg_mem_8C           : out std_logic_vector(7 downto 0);
+	dbg_mem_02           : out std_logic_vector(7 downto 0);
+	dbg_mem_03           : out std_logic_vector(7 downto 0);
+	dbg_wr02_pc          : out std_logic_vector(23 downto 0);
+	dbg_wr02_val         : out std_logic_vector(7 downto 0);
+	dbg_wr03_pc          : out std_logic_vector(23 downto 0);
+	dbg_wr03_val         : out std_logic_vector(7 downto 0);
+	-- v256: write-count to $0002 (dispatch vector lo). Increments on
+	-- every cpuWe to $0002. SCPU << T65 if vector-update is skipped.
+	dbg_cnt_wr02         : out std_logic_vector(15 downto 0);
+	-- v257: write-count to $0002 where new VALUE differs from previous.
+	-- Tests "SCPU writes same target repeatedly" hypothesis numerically.
+	dbg_cnt_wr02_chg     : out std_logic_vector(15 downto 0);
+	-- v258: 4-deep ring of values stored to $0002 (newest = v3, oldest = v0).
+	-- Probes the value distribution directly. Plus X+Y register state at the
+	-- moment of the most-recent $0002 write (to identify upstream table index).
+	dbg_wr02_v0          : out std_logic_vector(7 downto 0);
+	dbg_wr02_v1          : out std_logic_vector(7 downto 0);
+	dbg_wr02_v2          : out std_logic_vector(7 downto 0);
+	dbg_wr02_v3          : out std_logic_vector(7 downto 0);
+	dbg_wr02_y           : out std_logic_vector(7 downto 0);
+	dbg_wr02_x           : out std_logic_vector(7 downto 0);
+	dbg_p_irq_t0         : out std_logic_vector(7 downto 0);
+	dbg_p_irq_t1         : out std_logic_vector(7 downto 0);
+	dbg_p_irq_t2         : out std_logic_vector(7 downto 0);
+	dbg_p_irq_t3         : out std_logic_vector(7 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -325,9 +651,227 @@ signal trace_pc0_r : std_logic_vector(23 downto 0) := (others => '0');
 signal trace_pc1_r : std_logic_vector(23 downto 0) := (others => '0');
 signal trace_pc2_r : std_logic_vector(23 downto 0) := (others => '0');
 signal trace_pc3_r : std_logic_vector(23 downto 0) := (others => '0');
+-- v223: parallel 4-deep opcode-byte ring. Captures cpuDi at the same
+-- edge as the PC ring on opcode_fetch_pulse. Decoupled from PC: pairs
+-- {trace_pc0, trace_op0} ... {trace_pc3, trace_op3}.
+-- Tells us the actual byte at each captured PC. T65/SCPU both should
+-- see the same opcode at the same address; if the bytes differ it's
+-- RAM corruption, if the bytes are the same but ring chains differ
+-- it's a CPU instruction-decode divergence.
+signal trace_op0_r : std_logic_vector(7 downto 0) := (others => '0');
+signal trace_op1_r : std_logic_vector(7 downto 0) := (others => '0');
+signal trace_op2_r : std_logic_vector(7 downto 0) := (others => '0');
+signal trace_op3_r : std_logic_vector(7 downto 0) := (others => '0');
 signal trace_frozen_r : std_logic := '0';
+-- v254: JSR ring. Pushes cpu_pc_now (lower 16 bits) on opcode_fetch_pulse
+-- when cpuDi = $20 (JSR abs) or $22 (JSL abslong). Independent of trace
+-- freeze. Captures the upstream callers that JSR'd into the writer.
+-- t0=oldest, t3=newest. The newest JSR before $DF01 trigger reveals who
+-- called the writer routine; older entries reveal the call chain.
+signal jsr_pc_t0_r : std_logic_vector(15 downto 0) := (others => '0');
+signal jsr_pc_t1_r : std_logic_vector(15 downto 0) := (others => '0');
+signal jsr_pc_t2_r : std_logic_vector(15 downto 0) := (others => '0');
+signal jsr_pc_t3_r : std_logic_vector(15 downto 0) := (others => '0');
+-- v255: JMP-indirect target ring. After fetching $6C (JMP abs-indirect),
+-- $7C (JMP abs,X), or $DC (JML long-indirect), the very next opcode
+-- fetch IS the resolved target. Push that target's lower 16 bits to a
+-- 4-deep ring. DL's IRQ stub at $0079..$008B does `JMP ($0002)` so this
+-- ring captures which writer routine the $0002 vector pointed to at
+-- each IRQ. T65 vs SCPU divergence here = the dispatcher chose
+-- different writers despite the same vector address.
+signal jmp_ind_pending_r : std_logic := '0';
+signal jmp_tgt_t0_r : std_logic_vector(15 downto 0) := (others => '0');
+signal jmp_tgt_t1_r : std_logic_vector(15 downto 0) := (others => '0');
+signal jmp_tgt_t2_r : std_logic_vector(15 downto 0) := (others => '0');
+signal jmp_tgt_t3_r : std_logic_vector(15 downto 0) := (others => '0');
+-- v255: KERNAL IRQ-vector RAM bytes. Latched on every CPU READ of $0314
+-- ($EA31 default points to KERNAL IRQ tail) and $0315. DL replaces this
+-- vector to install its own raster handler. If T65 and SCPU read
+-- different bytes here, the IRQ entry diverges.
+signal mem_0314_r : std_logic_vector(7 downto 0) := (others => '0');
+signal mem_0315_r : std_logic_vector(7 downto 0) := (others => '0');
+-- v255: CPU IO port direction ($0000) + data ($0001). Bits in $0001
+-- (LORAM/HIRAM/CHAREN) gate ROM/RAM visibility at $A000/$E000/$D000.
+-- If SCPU has different value here, the SAME PC sees different bytes
+-- in modes -- can produce wildly different code paths.
+signal mem_00_r : std_logic_vector(7 downto 0) := (others => '0');
+signal mem_01_r : std_logic_vector(7 downto 0) := (others => '0');
 -- v219: opcode-fetch counter (free-running, never resets in normal op)
 signal op_count_r : unsigned(23 downto 0) := (others => '0');
+-- v228: I-flag diagnostics for SCPU.
+--  scpu_iclr_r = '1' once dbg_p_816(2) was ever observed = 0 with SCPU
+--                active. If stays '0', SCPU never reaches I=0 — IRQ off.
+--  irq_vec_count_r = 16-bit counter of cpu reads from $FFFE/$FFFF
+--                (IRQ vector fetches). T65 should tick this every raster
+--                ISR; SCPU stays at 0 if no IRQ ever fires.
+--  min_p_r = minimum dbg_p_816 value observed when SCPU active. Initial
+--                $FF; tracks lowest P seen → reveals I-bit floor.
+signal scpu_iclr_r      : std_logic := '0';
+signal irq_vec_count_r  : unsigned(15 downto 0) := (others => '0');
+signal min_p_r          : std_logic_vector(7 downto 0) := x"FF";
+-- v229
+signal rti_count_r      : unsigned(15 downto 0) := (others => '0');
+signal nmi_vec_count_r  : unsigned(15 downto 0) := (others => '0');
+-- v230
+signal d019_wr_count_r  : unsigned(15 downto 0) := (others => '0');
+signal dc0d_rd_count_r  : unsigned(15 downto 0) := (others => '0');
+-- v231 IRQ source-level falling-edge counter
+signal irq_combined     : std_logic;
+signal irq_combined_d   : std_logic := '1';
+signal irq_fall_count_r : unsigned(15 downto 0) := (others => '0');
+-- v232 last $D019 write value
+signal d019_last_val_r  : std_logic_vector(7 downto 0) := (others => '0');
+-- v234 $D019 read-side probes
+signal d019_last_read_r : std_logic_vector(7 downto 0) := (others => '0');
+signal d019_seen_bits_r : std_logic_vector(3 downto 0) := (others => '0');
+signal d01a_last_val_r  : std_logic_vector(7 downto 0) := (others => '0');
+-- v235 sprite-control write probes
+signal d015_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
+signal d015_last_pc_r   : std_logic_vector(23 downto 0) := (others => '0');
+signal d015_wr_count_r  : unsigned(7 downto 0)          := (others => '0');
+signal d017_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
+signal d01b_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
+signal d01c_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
+signal d01d_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
+-- v236 sprite-position write probes
+signal d000_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
+signal d001_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
+signal d002_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
+signal d003_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
+signal d010_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
+-- v238 I-flag edge probes (sampled on opcode_fetch_pulse only)
+signal p_i_prev_r       : std_logic                      := '1'; -- starts at I=1 (reset state)
+signal p_set_pc_r       : std_logic_vector(23 downto 0)  := (others => '0');
+signal p_clr_pc_r       : std_logic_vector(23 downto 0)  := (others => '0');
+signal p_set_count_r    : unsigned(15 downto 0)          := (others => '0');
+signal p_clr_count_r    : unsigned(15 downto 0)          := (others => '0');
+signal p_opfetch_min_r  : std_logic_vector(7 downto 0)   := x"FF";
+-- v239 IRQ vector + zero-page stub + $0314/$0315 + cpuIO snapshot
+signal vec_lo_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal vec_hi_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_314_r        : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_315_r        : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_62_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_63_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_64_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal io_at_vec_r      : std_logic_vector(2 downto 0)   := (others => '0');
+-- v240 extended stub bytes + RTI PC
+signal mem_65_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_66_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_67_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_68_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_69_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_6A_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_6B_r         : std_logic_vector(7 downto 0)   := (others => '0');
+-- v242: stub continuation $006C..$0073
+signal mem_6C_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_6D_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_6E_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_6F_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_70_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_71_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_72_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_73_r         : std_logic_vector(7 downto 0)   := (others => '0');
+-- v243: extend $0074..$0078 + dispatch-target PC tracker
+signal mem_74_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_75_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_76_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_77_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_78_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal disp_target_pc_r : std_logic_vector(23 downto 0)  := (others => '0');
+signal pc_was_zp_r      : std_logic                      := '0';
+-- v244: dispatcher disasm + FLI verify + PC trace ring + write-PC
+type byte_array_t is array (natural range <>) of std_logic_vector(7 downto 0);
+signal mem_3380_r       : byte_array_t(0 to 15)          := (others => (others => '0'));
+signal mem_9F09_r       : byte_array_t(0 to 15)          := (others => (others => '0'));
+signal disp2_target_pc_r: std_logic_vector(23 downto 0)  := (others => '0');
+signal pc_was_33_r      : std_logic                      := '0';
+signal pc33_t0_r        : std_logic_vector(23 downto 0)  := (others => '0');
+signal pc33_t1_r        : std_logic_vector(23 downto 0)  := (others => '0');
+signal pc33_t2_r        : std_logic_vector(23 downto 0)  := (others => '0');
+signal pc33_t3_r        : std_logic_vector(23 downto 0)  := (others => '0');
+signal wr70_pc_r        : std_logic_vector(23 downto 0)  := (others => '0');
+signal wr71_pc_r        : std_logic_vector(23 downto 0)  := (others => '0');
+-- v245: bytes around the divergent writer at $335F + $3300/$3100
+-- dispatcher entries + actual write VALUES at $0070/$0071.
+signal mem_335D_r       : byte_array_t(0 to 15)          := (others => (others => '0')); -- $335D..$336C
+signal mem_3300_r       : byte_array_t(0 to 7)           := (others => (others => '0')); -- $3300..$3307
+signal mem_3100_r       : byte_array_t(0 to 7)           := (others => (others => '0')); -- $3100..$3107
+signal wr70_val_r       : std_logic_vector(7 downto 0)   := (others => '0');
+signal wr71_val_r       : std_logic_vector(7 downto 0)   := (others => '0');
+-- v246: bytes $0079..$007F + dispatch counters
+signal mem_79_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_7A_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_7B_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_7C_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_7D_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_7E_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_7F_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal cnt_3200_r       : std_logic_vector(15 downto 0)  := (others => '0');
+signal cnt_3100_r       : std_logic_vector(15 downto 0)  := (others => '0');
+-- v247: $5B + DF01 + bytes $0080-$008B
+signal mem_5B_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal wr5B_pc_r        : std_logic_vector(23 downto 0)  := (others => '0');
+signal wr5B_val_r       : std_logic_vector(7 downto 0)   := (others => '0');
+signal wr_df01_pc_r     : std_logic_vector(23 downto 0)  := (others => '0');
+signal wr_df01_val_r    : std_logic_vector(7 downto 0)   := (others => '0');
+signal cnt_df01_r       : std_logic_vector(15 downto 0)  := (others => '0');
+signal mem_80_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_81_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_82_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_83_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_84_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_85_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_86_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_87_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_88_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_89_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_8A_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_8B_r         : std_logic_vector(7 downto 0)   := (others => '0');
+-- v249: IRQ dispatch ptr + JMP operand high byte + 4-deep P ring
+signal mem_8C_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_02_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_03_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal wr02_pc_r        : std_logic_vector(23 downto 0)  := (others => '0');
+signal wr02_val_r       : std_logic_vector(7 downto 0)   := (others => '0');
+signal wr03_pc_r        : std_logic_vector(23 downto 0)  := (others => '0');
+signal wr03_val_r       : std_logic_vector(7 downto 0)   := (others => '0');
+-- v256: counter of writes to $0002 (dispatch vector lo). Increments on
+-- every cpuWe to $0002. T65 should tick this once per IRQ; SCPU should
+-- tick it less often if dispatch-vector update is skipped.
+signal cnt_wr02_r       : unsigned(15 downto 0)          := (others => '0');
+-- v257: counter of writes to $0002 where new value DIFFERS from previous.
+-- T65: cnt_wr02_chg ≈ cnt_wr02 (each IRQ fresh target).
+-- SCPU: cnt_wr02_chg << cnt_wr02 (same target stored repeatedly).
+signal cnt_wr02_chg_r   : unsigned(15 downto 0)          := (others => '0');
+-- v258: 4-deep ring of $0002 values (newest=v3) + register state at write.
+signal wr02_v0_r        : std_logic_vector(7 downto 0)   := (others => '0');
+signal wr02_v1_r        : std_logic_vector(7 downto 0)   := (others => '0');
+signal wr02_v2_r        : std_logic_vector(7 downto 0)   := (others => '0');
+signal wr02_v3_r        : std_logic_vector(7 downto 0)   := (others => '0');
+signal wr02_y_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal wr02_x_r         : std_logic_vector(7 downto 0)   := (others => '0');
+-- T65 register file (PC[16] | S[8] | P[8] | Y[8] | X[8] | A[8]).
+signal t65_regs         : std_logic_vector(63 downto 0)  := (others => '0');
+-- P65C816 X/Y register exports (formerly `open`).
+signal dbg_x_816_i      : unsigned(15 downto 0);
+signal dbg_y_816_i      : unsigned(15 downto 0);
+-- Muxed CPU X/Y at current cycle (zero-extends 8-bit T65 values).
+signal cpu_x_now        : std_logic_vector(7 downto 0);
+signal cpu_y_now        : std_logic_vector(7 downto 0);
+signal p_irq_t0_r       : std_logic_vector(7 downto 0)   := (others => '0');
+signal p_irq_t1_r       : std_logic_vector(7 downto 0)   := (others => '0');
+signal p_irq_t2_r       : std_logic_vector(7 downto 0)   := (others => '0');
+signal p_irq_t3_r       : std_logic_vector(7 downto 0)   := (others => '0');
+-- Edge-detect for $FFFE vector fetch (rising edge of vec_lo grab)
+signal vec_lo_grab_d    : std_logic                      := '0';
+signal rti_pc_r         : std_logic_vector(23 downto 0)  := (others => '0');
+-- v241 RTI-snapshot ring: pc_r{0,1} are a rolling 2-deep history of
+-- opcode-fetch PCs (internal only). On RTI, copy them into rti_h{1,2}.
+signal pc_r0            : std_logic_vector(23 downto 0)  := (others => '0');
+signal pc_r1            : std_logic_vector(23 downto 0)  := (others => '0');
+signal rti_h1_r         : std_logic_vector(23 downto 0)  := (others => '0');
+signal rti_h2_r         : std_logic_vector(23 downto 0)  := (others => '0');
 -- v218: skip-first-8 D8 writes counter. T65 only writes D8 a few
 -- times during init (V never shows D8); SCPU writes D8 many times
 -- in gameplay. Skip=8 lets us capture an actual gameplay corruption
@@ -819,7 +1363,10 @@ port map (
 	
 	cs => cs_vic,
 	we => cpuWe,
-	lp_n => cia1_pbi(4),
+	-- v233: experimental kludge — force lp_n=1 when SCPU=on so VIC's
+	-- lightpen IRQ never asserts. Confirms whether LP is the source of
+	-- the stuck-low irq_vic seen in v232 (V=0 always on SCPU).
+	lp_n => cia1_pbi(4) or supercpu_en,
 
 	aRegisters => cpuAddr(5 downto 0),
 	diRegisters => cpuDo,
@@ -1077,7 +1624,8 @@ port map (
 
 	diIO => cpuIO_6510(7) & cpuIO_6510(6) & cpuIO_6510(5) & cass_sense & cpuIO_6510(3) & "111",
 	doIO => cpuIO_6510,
-	sync_out => t65_sync
+	sync_out => t65_sync,
+	regs => t65_regs
 );
 
 cpu_65c816_inst: entity work.cpu_65c816
@@ -1109,8 +1657,8 @@ port map (
 	dbg_ir    => open,
 	dbg_pbr   => dbg_pbr_816_i,
 	dbg_dbr   => dbg_dbr_816_i,
-	dbg_x     => open,
-	dbg_y     => open,
+	dbg_x     => dbg_x_816_i,
+	dbg_y     => dbg_y_816_i,
 	dbg_d     => open,
 	dbg_state => open
 );
@@ -1164,6 +1712,7 @@ begin
 					when "01" => turbo_m <= "110";
 					when "10" => turbo_m <= "111";
 					when "11" => turbo_m <= "111"; -- unused
+					when others => turbo_m <= "000"; -- GHDL: std_logic_vector is open-valued
 				end case;
 			end if;
 		end if;
@@ -1235,8 +1784,157 @@ begin
 			trace_pc1_r          <= (others => '0');
 			trace_pc2_r          <= (others => '0');
 			trace_pc3_r          <= (others => '0');
+			trace_op0_r          <= (others => '0');
+			trace_op1_r          <= (others => '0');
+			trace_op2_r          <= (others => '0');
+			trace_op3_r          <= (others => '0');
 			trace_frozen_r       <= '0';
-			trigger_skip_r       <= to_unsigned(8, 8);
+			-- v250: skip first 32 STA $DF01 writes so trace ring captures
+			-- steady-state IRQ-handler call chain, not the loader's
+			-- one-shot setup writes.
+			trigger_skip_r       <= to_unsigned(32, 8);
+			scpu_iclr_r          <= '0';
+			irq_vec_count_r      <= (others => '0');
+			min_p_r              <= x"FF";
+			rti_count_r          <= (others => '0');
+			nmi_vec_count_r      <= (others => '0');
+			d019_wr_count_r      <= (others => '0');
+			dc0d_rd_count_r      <= (others => '0');
+			irq_combined_d       <= '1';
+			irq_fall_count_r     <= (others => '0');
+			d019_last_read_r     <= (others => '0');
+			d019_seen_bits_r     <= (others => '0');
+			d01a_last_val_r      <= (others => '0');
+			d015_last_val_r      <= (others => '0');
+			d015_last_pc_r       <= (others => '0');
+			d015_wr_count_r      <= (others => '0');
+			d017_last_val_r      <= (others => '0');
+			d01b_last_val_r      <= (others => '0');
+			d01c_last_val_r      <= (others => '0');
+			d01d_last_val_r      <= (others => '0');
+			d000_last_val_r      <= (others => '0');
+			d001_last_val_r      <= (others => '0');
+			d002_last_val_r      <= (others => '0');
+			d003_last_val_r      <= (others => '0');
+			d010_last_val_r      <= (others => '0');
+			-- v238 I-flag edge probes
+			p_i_prev_r           <= '1';
+			p_set_pc_r           <= (others => '0');
+			p_clr_pc_r           <= (others => '0');
+			p_set_count_r        <= (others => '0');
+			p_clr_count_r        <= (others => '0');
+			p_opfetch_min_r      <= x"FF";
+			-- v239
+			vec_lo_r             <= (others => '0');
+			vec_hi_r             <= (others => '0');
+			mem_314_r            <= (others => '0');
+			mem_315_r            <= (others => '0');
+			mem_62_r             <= (others => '0');
+			mem_63_r             <= (others => '0');
+			mem_64_r             <= (others => '0');
+			io_at_vec_r          <= (others => '0');
+			-- v240
+			mem_65_r             <= (others => '0');
+			mem_66_r             <= (others => '0');
+			mem_67_r             <= (others => '0');
+			mem_68_r             <= (others => '0');
+			mem_69_r             <= (others => '0');
+			mem_6A_r             <= (others => '0');
+			mem_6B_r             <= (others => '0');
+			mem_6C_r             <= (others => '0');
+			mem_6D_r             <= (others => '0');
+			mem_6E_r             <= (others => '0');
+			mem_6F_r             <= (others => '0');
+			mem_70_r             <= (others => '0');
+			mem_71_r             <= (others => '0');
+			mem_72_r             <= (others => '0');
+			mem_73_r             <= (others => '0');
+			mem_74_r             <= (others => '0');
+			mem_75_r             <= (others => '0');
+			mem_76_r             <= (others => '0');
+			mem_77_r             <= (others => '0');
+			mem_78_r             <= (others => '0');
+			disp_target_pc_r     <= (others => '0');
+			pc_was_zp_r          <= '0';
+			-- v244 reset
+			for i in 0 to 15 loop
+				mem_3380_r(i) <= (others => '0');
+				mem_9F09_r(i) <= (others => '0');
+			end loop;
+			disp2_target_pc_r    <= (others => '0');
+			pc_was_33_r          <= '0';
+			pc33_t0_r            <= (others => '0');
+			pc33_t1_r            <= (others => '0');
+			pc33_t2_r            <= (others => '0');
+			pc33_t3_r            <= (others => '0');
+			wr70_pc_r            <= (others => '0');
+			wr71_pc_r            <= (others => '0');
+			-- v245
+			for i in 0 to 15 loop
+				mem_335D_r(i) <= (others => '0');
+			end loop;
+			for i in 0 to 7 loop
+				mem_3300_r(i) <= (others => '0');
+				mem_3100_r(i) <= (others => '0');
+			end loop;
+			wr70_val_r           <= (others => '0');
+			wr71_val_r           <= (others => '0');
+			-- v246
+			mem_79_r             <= (others => '0');
+			mem_7A_r             <= (others => '0');
+			mem_7B_r             <= (others => '0');
+			mem_7C_r             <= (others => '0');
+			mem_7D_r             <= (others => '0');
+			mem_7E_r             <= (others => '0');
+			mem_7F_r             <= (others => '0');
+			cnt_3200_r           <= (others => '0');
+			cnt_3100_r           <= (others => '0');
+			-- v247
+			mem_5B_r             <= (others => '0');
+			wr5B_pc_r            <= (others => '0');
+			wr5B_val_r           <= (others => '0');
+			wr_df01_pc_r         <= (others => '0');
+			wr_df01_val_r        <= (others => '0');
+			cnt_df01_r           <= (others => '0');
+			mem_80_r             <= (others => '0');
+			mem_81_r             <= (others => '0');
+			mem_82_r             <= (others => '0');
+			mem_83_r             <= (others => '0');
+			mem_84_r             <= (others => '0');
+			mem_85_r             <= (others => '0');
+			mem_86_r             <= (others => '0');
+			mem_87_r             <= (others => '0');
+			mem_88_r             <= (others => '0');
+			mem_89_r             <= (others => '0');
+			mem_8A_r             <= (others => '0');
+			mem_8B_r             <= (others => '0');
+			-- v249
+			mem_8C_r             <= (others => '0');
+			mem_02_r             <= (others => '0');
+			mem_03_r             <= (others => '0');
+			wr02_pc_r            <= (others => '0');
+			wr02_val_r           <= (others => '0');
+			wr03_pc_r            <= (others => '0');
+			wr03_val_r           <= (others => '0');
+			cnt_wr02_r           <= (others => '0');     -- v256
+			cnt_wr02_chg_r       <= (others => '0');     -- v257
+			wr02_v0_r            <= (others => '0');     -- v258
+			wr02_v1_r            <= (others => '0');
+			wr02_v2_r            <= (others => '0');
+			wr02_v3_r            <= (others => '0');
+			wr02_y_r             <= (others => '0');
+			wr02_x_r             <= (others => '0');
+			p_irq_t0_r           <= (others => '0');
+			p_irq_t1_r           <= (others => '0');
+			p_irq_t2_r           <= (others => '0');
+			p_irq_t3_r           <= (others => '0');
+			vec_lo_grab_d        <= '0';
+			rti_pc_r             <= (others => '0');
+			-- v241
+			pc_r0                <= (others => '0');
+			pc_r1                <= (others => '0');
+			rti_h1_r             <= (others => '0');
+			rti_h2_r             <= (others => '0');
 			t65_pc_latch    <= (others => '0');
 		else
 			-- T65 PC tracking: latch cpuAddr_6510 on opcode fetch (Sync=1)
@@ -1253,19 +1951,11 @@ begin
 						dbg_d018_bad_pc_r    <= dd00_pc_now;
 						dbg_d018_bad_count_r <= std_logic_vector(unsigned(dbg_d018_bad_count_r) + 1);
 						dbg_d018_bad_value_r <= std_logic_vector(cpuDo);
-					end if;
-					-- v218: $D8 trigger with skip=8 to get past legitimate
-					-- init write at $9069 (both T65 and SCPU run that init).
-					-- Reuses trigger_skip_r counter. T65 expected to do
-					-- ≤8 such writes (mostly $28); SCPU does many in gameplay.
-					if std_logic_vector(cpuDo) = x"D8" then
-						if trace_frozen_r = '0' then
-							if trigger_skip_r = 0 then
-								trace_frozen_r <= '1';
-							else
-								trigger_skip_r <= trigger_skip_r - 1;
-							end if;
-						end if;
+						-- v250: $9F13 trigger retired (v227-v249 history).
+						-- Replaced by STA $DF01 trigger near line 2101.
+						-- DL on this branch never reaches $9F13 reliably
+						-- under either mode, so the old trigger never
+						-- fired in steady state.
 					end if;
 				elsif cpuAddr(5 downto 0) = "010110" then
 					dbg_d016_r <= std_logic_vector(cpuDo);
@@ -1278,13 +1968,521 @@ begin
 				op_count_r <= op_count_r + 1;
 			end if;
 
+			-- v228: track if SCPU's I-flag ever clears, count IRQ vector
+			-- fetches, and track minimum P observed for SCPU.
+			if supercpu_en = '1' then
+				if dbg_p_816_i(2) = '0' then
+					scpu_iclr_r <= '1';
+				end if;
+				if unsigned(dbg_p_816_i) < unsigned(min_p_r) then
+					min_p_r <= std_logic_vector(dbg_p_816_i);
+				end if;
+			end if;
+			-- IRQ vector fetch detection. Active CPU reading $00FFFE or
+			-- $00FFFF (or $FFEE/F in native mode) — vector fetch. We use
+			-- cpuAddr_pre because that's the muxed pre-DMA address.
+			-- enableCpu gates so we sample on a CPU cycle, not idle.
+			if enableCpu = '1' and cpuWe_pre = '0'
+			   and cpuAddr_pre(15 downto 1) = "111111111111111" then
+				-- match $FFFE or $FFFF (low bit don't-care)
+				irq_vec_count_r <= irq_vec_count_r + 1;
+			end if;
+
+			-- v249: P-flag ring at IRQ entry. Sample dbg_p_816_i on the
+			-- first byte of the vector fetch ($FFFE). t3 = newest, t0 =
+			-- oldest. Reveals D / V / C flag drift across IRQs that could
+			-- divert the SCPU handler vs T65.
+			if enableCpu = '1' and cpuWe_pre = '0' and cpuAddr_pre = x"FFFE" then
+				p_irq_t0_r <= p_irq_t1_r;
+				p_irq_t1_r <= p_irq_t2_r;
+				p_irq_t2_r <= p_irq_t3_r;
+				p_irq_t3_r <= std_logic_vector(dbg_p_816_i);
+			end if;
+
+			-- v239: latch byte values at key IRQ-vector and stub addresses
+			-- so we can compare T65 vs SCPU. Ungated on supercpu_en — the
+			-- *active* CPU's reads populate these regardless of mode. Use
+			-- cpuDi (data into CPU) which is the read result.
+			if enableCpu = '1' and cpuWe_pre = '0' then
+				if cpuAddr_pre = x"FFFE" then
+					vec_lo_r    <= std_logic_vector(cpuDi);
+					io_at_vec_r <= std_logic_vector(cpuIO(2 downto 0));
+				end if;
+				if cpuAddr_pre = x"FFFF" then
+					vec_hi_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0314" then
+					mem_314_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0315" then
+					mem_315_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0062" then
+					mem_62_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0063" then
+					mem_63_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0064" then
+					mem_64_r <= std_logic_vector(cpuDi);
+				end if;
+				-- v240: more stub bytes
+				if cpuAddr_pre = x"0065" then
+					mem_65_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0066" then
+					mem_66_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0067" then
+					mem_67_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0068" then
+					mem_68_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0069" then
+					mem_69_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"006A" then
+					mem_6A_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"006B" then
+					mem_6B_r <= std_logic_vector(cpuDi);
+				end if;
+				-- v242: continuation past STA $6F
+				if cpuAddr_pre = x"006C" then
+					mem_6C_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"006D" then
+					mem_6D_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"006E" then
+					mem_6E_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"006F" then
+					mem_6F_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0070" then
+					mem_70_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0071" then
+					mem_71_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0072" then
+					mem_72_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0073" then
+					mem_73_r <= std_logic_vector(cpuDi);
+				end if;
+				-- v243 extended stub bytes
+				if cpuAddr_pre = x"0074" then
+					mem_74_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0075" then
+					mem_75_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0076" then
+					mem_76_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0077" then
+					mem_77_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0078" then
+					mem_78_r <= std_logic_vector(cpuDi);
+				end if;
+				-- v246: $0079..$007F to find the dispatch JMP
+				if cpuAddr_pre = x"0079" then mem_79_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"007A" then mem_7A_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"007B" then mem_7B_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"007C" then mem_7C_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"007D" then mem_7D_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"007E" then mem_7E_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"007F" then mem_7F_r <= std_logic_vector(cpuDi); end if;
+				-- v247: $005B + $0080-$008B byte capture
+				if cpuAddr_pre = x"005B" then mem_5B_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0080" then mem_80_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0081" then mem_81_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0082" then mem_82_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0083" then mem_83_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0084" then mem_84_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0085" then mem_85_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0086" then mem_86_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0087" then mem_87_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0088" then mem_88_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0089" then mem_89_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"008A" then mem_8A_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"008B" then mem_8B_r <= std_logic_vector(cpuDi); end if;
+				-- v249: $008C (JMP indirect operand high byte) + $0002/$0003
+				-- (the actual dispatch ptr if JMP ($0002))
+				if cpuAddr_pre = x"008C" then mem_8C_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0002" then mem_02_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0003" then mem_03_r <= std_logic_vector(cpuDi); end if;
+				-- v244: bytes at $3380..$338F (dispatcher disasm).
+				-- cpuAddr_pre is 16 bits, top 12 bits select the
+				-- $338x range. Index into the byte array by low 4
+				-- bits of cpuAddr_pre.
+				if cpuAddr_pre(15 downto 4) = x"338" then
+					mem_3380_r(to_integer(unsigned(cpuAddr_pre(3 downto 0))))
+						<= std_logic_vector(cpuDi);
+				end if;
+				-- v244: bytes at $9F09..$9F18 (FLI body verify).
+				-- $9F09..$9F0F = low nibble 9..F of $9F0x; then
+				-- $9F10..$9F18 = low nibble 0..8 of $9F1x.
+				if cpuAddr_pre(15 downto 4) = x"9F0"
+				   and unsigned(cpuAddr_pre(3 downto 0)) >= 9 then
+					-- offsets 0..6 of mem_9F09_r
+					mem_9F09_r(to_integer(unsigned(cpuAddr_pre(3 downto 0))) - 9)
+						<= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre(15 downto 4) = x"9F1"
+				   and unsigned(cpuAddr_pre(3 downto 0)) <= 8 then
+					-- offsets 7..15 of mem_9F09_r
+					mem_9F09_r(to_integer(unsigned(cpuAddr_pre(3 downto 0))) + 7)
+						<= std_logic_vector(cpuDi);
+				end if;
+				-- v245: bytes at $335D..$336C (writer + context).
+				-- $335D..$335F = low nibble D..F of $335x; then
+				-- $3360..$336C = low nibble 0..C of $336x. Index
+				-- offsets: 0..2 = D,E,F at $335x; 3..15 = 0..C at $336x.
+				if cpuAddr_pre(15 downto 4) = x"335"
+				   and unsigned(cpuAddr_pre(3 downto 0)) >= 13 then
+					-- $335D..$335F => offsets 0..2
+					mem_335D_r(to_integer(unsigned(cpuAddr_pre(3 downto 0))) - 13)
+						<= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre(15 downto 4) = x"336"
+				   and unsigned(cpuAddr_pre(3 downto 0)) <= 12 then
+					-- $3360..$336C => offsets 3..15
+					mem_335D_r(to_integer(unsigned(cpuAddr_pre(3 downto 0))) + 3)
+						<= std_logic_vector(cpuDi);
+				end if;
+				-- v245: bytes at $3300..$3307 (other dispatcher entry).
+				if cpuAddr_pre(15 downto 4) = x"330"
+				   and cpuAddr_pre(3) = '0' then
+					mem_3300_r(to_integer(unsigned(cpuAddr_pre(2 downto 0))))
+						<= std_logic_vector(cpuDi);
+				end if;
+				-- v245: bytes at $3100..$3107 (chain handler entry).
+				if cpuAddr_pre(15 downto 4) = x"310"
+				   and cpuAddr_pre(3) = '0' then
+					mem_3100_r(to_integer(unsigned(cpuAddr_pre(2 downto 0))))
+						<= std_logic_vector(cpuDi);
+				end if;
+			end if;
+			-- v244: write-PC capture for $0070 / $0071 (zero-page vars
+			-- that diverge T65/SCPU per v242). Trigger on cpuWe_pre.
+			-- v245: also capture cpuDo (actual stored byte) at the same
+			-- write cycle.
+			-- v247: also capture write to $5B (suspect — the IRQ stub
+			-- LDAs from $5B then writes to REU $DF01) and to $DF01
+			-- (REU command — readback differs T65=$31 vs SCPU=$7D).
+			if enableCpu = '1' and cpuWe_pre = '1' then
+				if cpuAddr_pre = x"0070" then
+					wr70_pc_r  <= cpu_pc_now;
+					wr70_val_r <= std_logic_vector(cpuDo_pre);
+				end if;
+				if cpuAddr_pre = x"0071" then
+					wr71_pc_r  <= cpu_pc_now;
+					wr71_val_r <= std_logic_vector(cpuDo_pre);
+				end if;
+				if cpuAddr_pre = x"005B" then
+					wr5B_pc_r  <= cpu_pc_now;
+					wr5B_val_r <= std_logic_vector(cpuDo_pre);
+				end if;
+				if cpuAddr_pre = x"DF01" then
+					wr_df01_pc_r  <= cpu_pc_now;
+					wr_df01_val_r <= std_logic_vector(cpuDo_pre);
+					cnt_df01_r    <= std_logic_vector(unsigned(cnt_df01_r) + 1);
+					-- v252: filter trigger to skip $832C (the shared immediate-
+					-- DMA REU-setup writer reached by both modes) and capture
+					-- the ALTERNATE $FD-writer routes. T65 visits $852B/
+					-- $805F/$8835; SCPU visits $8062/$8028/$862C rarely.
+					-- The trace ring will pick up WHICHEVER alternate route
+					-- the mode reaches first, plus its 4-deep call chain.
+					if trace_frozen_r = '0'
+					   and cpu_pc_now(15 downto 12) = x"8"
+					   and cpu_pc_now(11 downto 0) /= x"32C" then
+						trace_frozen_r <= '1';
+					end if;
+				end if;
+				-- v249: writers to $0002 / $0003 (the JMP ($0002) target ptr
+				-- if mem_8C=$00). Whoever wrote to these bytes upstream
+				-- defined the IRQ dispatch destination.
+				if cpuAddr_pre = x"0002" then
+					wr02_pc_r  <= cpu_pc_now;
+					wr02_val_r <= std_logic_vector(cpuDo_pre);
+					cnt_wr02_r <= cnt_wr02_r + 1;     -- v256
+					-- v257: increment chg counter only when new ≠ previous.
+					-- wr02_val_r still holds the previous-cycle value here.
+					if std_logic_vector(cpuDo_pre) /= wr02_val_r then
+						cnt_wr02_chg_r <= cnt_wr02_chg_r + 1;
+					end if;
+					-- v258: push value into 4-deep ring (newest = v3).
+					wr02_v0_r <= wr02_v1_r;
+					wr02_v1_r <= wr02_v2_r;
+					wr02_v2_r <= wr02_v3_r;
+					wr02_v3_r <= std_logic_vector(cpuDo_pre);
+					-- v258: latch register state at the write.
+					wr02_y_r  <= cpu_y_now;
+					wr02_x_r  <= cpu_x_now;
+				end if;
+				if cpuAddr_pre = x"0003" then
+					wr03_pc_r  <= cpu_pc_now;
+					wr03_val_r <= std_logic_vector(cpuDo_pre);
+				end if;
+			end if;
+			-- v243: dispatch-target PC. Snapshot the PC at the FIRST
+			-- opcode_fetch_pulse where PC leaves the zero-page-stub
+			-- range ($00xx). Tracks what handler the $0062 IRQ stub
+			-- jumps to. Updates only on zp→non-zp transition; stays
+			-- latched until the next dispatch happens.
+			-- v244: also capture disp2_target_pc (first non-$33xx PC
+			-- after PC was at $33xx) and the 4-deep PC trace ring
+			-- restricted to $33xx (execution path through dispatcher).
+			if opcode_fetch_pulse = '1' then
+				if pc_was_zp_r = '1' and cpu_pc_now(15 downto 8) /= x"00" then
+					disp_target_pc_r <= cpu_pc_now;
+				end if;
+				if cpu_pc_now(15 downto 8) = x"00" then
+					pc_was_zp_r <= '1';
+				else
+					pc_was_zp_r <= '0';
+				end if;
+				-- v244: 2nd-level dispatch — first PC outside $33xx
+				-- after a $33xx PC. Should match RTI ring head
+				-- ($9F09 / $811C / $1Cxx etc.).
+				-- v246: bump counters when target is $3200 (FLI/gameplay
+				-- via $3300) or $3100 (chain via $3380). Quantifies the
+				-- ratio T65 (~50/50) vs SCPU (biased to $3100).
+				if pc_was_33_r = '1' and cpu_pc_now(15 downto 8) /= x"33" then
+					disp2_target_pc_r <= cpu_pc_now;
+					if cpu_pc_now(15 downto 0) = x"3200" then
+						cnt_3200_r <= std_logic_vector(unsigned(cnt_3200_r) + 1);
+					end if;
+					if cpu_pc_now(15 downto 0) = x"3100" then
+						cnt_3100_r <= std_logic_vector(unsigned(cnt_3100_r) + 1);
+					end if;
+				end if;
+				if cpu_pc_now(15 downto 8) = x"33" then
+					pc_was_33_r <= '1';
+				else
+					pc_was_33_r <= '0';
+				end if;
+				-- v244: 4-deep PC trace ring while PC[15:8]=$33.
+				-- Shifts only when the fetch is in the $33xx range,
+				-- so we capture the dispatcher's exact instruction
+				-- sequence (no out-of-range pollution).
+				if cpu_pc_now(15 downto 8) = x"33" then
+					pc33_t3_r <= pc33_t2_r;
+					pc33_t2_r <= pc33_t1_r;
+					pc33_t1_r <= pc33_t0_r;
+					pc33_t0_r <= cpu_pc_now;
+				end if;
+			end if;
+			-- v240/v241: PC at RTI + 2 PCs leading up to it. pc_r0/pc_r1
+			-- are an internal 2-deep rolling history of opcode-fetch PCs;
+			-- when an RTI is fetched, snapshot the current PC + pc_r0 +
+			-- pc_r1 into rti_pc_r / rti_h1_r / rti_h2_r. Sequence
+			-- semantics: rti_h2 -> rti_h1 -> rti_pc (RTI itself).
+			if opcode_fetch_pulse = '1' then
+				if cpuDi = x"40" then
+					rti_pc_r <= cpu_pc_now;
+					rti_h1_r <= pc_r0;
+					rti_h2_r <= pc_r1;
+				end if;
+				-- shift rolling history every opcode (RTI included)
+				pc_r0 <= cpu_pc_now;
+				pc_r1 <= pc_r0;
+			end if;
+
+			-- v229: NMI vector fetch detection ($FFFA / $FFFB).
+			if enableCpu = '1' and cpuWe_pre = '0'
+			   and cpuAddr_pre(15 downto 1) = "111111111111101" then
+				nmi_vec_count_r <= nmi_vec_count_r + 1;
+			end if;
+
+			-- v229: RTI execution. Detect $40 opcode at fetch pulse.
+			-- Pairs with IRQ entry: should match irq-entries (= IV/2)
+			-- in steady state. If RTI count << IRQ entries, handler
+			-- re-enters mid-execution = tail-chain bug.
+			if opcode_fetch_pulse = '1' and cpuDi = x"40" then
+				rti_count_r <= rti_count_r + 1;
+			end if;
+
+			-- v230: $D019 write count (VIC IRQ ack). cs_vic gated to
+			-- VIC chip-select; cpuWe = active write; offset $19 = D019.
+			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "011001" then
+				d019_wr_count_r <= d019_wr_count_r + 1;
+				d019_last_val_r <= std_logic_vector(cpuDo);
+			end if;
+			-- v230: $DC0D read count (CIA1 ICR, read-to-ack).
+			if cs_cia1 = '1' and cpuWe = '0' and cpuAddr(3 downto 0) = "1101" then
+				dc0d_rd_count_r <= dc0d_rd_count_r + 1;
+			end if;
+
+			-- v234: $D019 read value latch + sticky bits-seen mask. cpuDi
+			-- carries VIC's `do` output during a $D019 read. Bits 0-3 are
+			-- the IRST/IMBC/IMMC/ILP latches that VIC currently exposes to
+			-- the CPU. seen_bits accumulates which sources have EVER been
+			-- observed set across all reads — diagnoses whether SCPU's
+			-- handler dispatch is reading a different mix of sources than
+			-- T65's handler. Saturating sticky OR.
+			if cs_vic = '1' and cpuWe = '0' and cpuAddr(5 downto 0) = "011001" then
+				d019_last_read_r <= std_logic_vector(cpuDi);
+				d019_seen_bits_r <= d019_seen_bits_r or std_logic_vector(cpuDi(3 downto 0));
+			end if;
+
+			-- v234: $D01A write value latch (VIC IRQ enable mask).
+			-- Tells us which IRQ sources DL has enabled. If T65 and SCPU
+			-- end up with different enable masks, the upstream branch
+			-- divergence already happened during VIC setup.
+			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "011010" then
+				d01a_last_val_r <= std_logic_vector(cpuDo);
+			end if;
+
+			-- v235: sprite-control register write probes. Five regs
+			-- ($D015/$D017/$D01B/$D01C/$D01D) latch last-written byte.
+			-- $D015 additionally latches PBR:PC of the writer + saturates
+			-- an 8-bit write counter (frequency hint: per-frame
+			-- multiplexer vs setup-time enable).
+			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "010101" then
+				d015_last_val_r <= std_logic_vector(cpuDo);
+				d015_last_pc_r  <= cpu_pc_now;
+				if d015_wr_count_r /= x"FF" then
+					d015_wr_count_r <= d015_wr_count_r + 1;
+				end if;
+			end if;
+			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "010111" then
+				d017_last_val_r <= std_logic_vector(cpuDo);
+			end if;
+			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "011011" then
+				d01b_last_val_r <= std_logic_vector(cpuDo);
+			end if;
+			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "011100" then
+				d01c_last_val_r <= std_logic_vector(cpuDo);
+			end if;
+			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "011101" then
+				d01d_last_val_r <= std_logic_vector(cpuDo);
+			end if;
+
+			-- v236: sprite-position write probes. Latch last-written
+			-- byte for sprite 0/1 X/Y ($D000-$D003) + $D010 high-X bits.
+			-- Sprite control was identical T65 vs SCPU; if positions
+			-- differ here, sprite-sprite collision IRQ asymmetry is
+			-- explained.
+			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "000000" then
+				d000_last_val_r <= std_logic_vector(cpuDo);
+			end if;
+			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "000001" then
+				d001_last_val_r <= std_logic_vector(cpuDo);
+			end if;
+			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "000010" then
+				d002_last_val_r <= std_logic_vector(cpuDo);
+			end if;
+			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "000011" then
+				d003_last_val_r <= std_logic_vector(cpuDo);
+			end if;
+			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "010000" then
+				d010_last_val_r <= std_logic_vector(cpuDo);
+			end if;
+
+			-- v238: I-flag edge probes. Sample P(2) at opcode_fetch only,
+			-- so we don't catch transient values inside multi-cycle
+			-- microcode (BRK/IRQ entry, RTI). The PC at the moment of an
+			-- I-flag edge identifies the first instruction that observes
+			-- the new I value:
+			--   - 0->1 edge PC = first opcode of IRQ handler / after SEI
+			--   - 1->0 edge PC = first opcode after RTI / after CLI
+			-- Counts let us see how often each transition occurs.
+			-- p_opfetch_min separates "main code has I=1" (= still ~$34)
+			-- from "I=0 only seen inside IRQ entry" (v237 saw min=$30
+			-- but every-clock sampling can't tell us if that was at an
+			-- instruction boundary).
+			if supercpu_en = '1' and opcode_fetch_pulse = '1' then
+				if p_i_prev_r = '0' and dbg_p_816_i(2) = '1' then
+					p_set_pc_r    <= cpu_pc_now;
+					p_set_count_r <= p_set_count_r + 1;
+				elsif p_i_prev_r = '1' and dbg_p_816_i(2) = '0' then
+					p_clr_pc_r    <= cpu_pc_now;
+					p_clr_count_r <= p_clr_count_r + 1;
+				end if;
+				p_i_prev_r <= dbg_p_816_i(2);
+				if unsigned(dbg_p_816_i) < unsigned(p_opfetch_min_r) then
+					p_opfetch_min_r <= std_logic_vector(dbg_p_816_i);
+				end if;
+			end if;
+
+			-- v231: combined IRQ_N falling edges (source-side firing rate).
+			-- Each true raster IRQ produces one 1->0 edge; tail-chain inside
+			-- CPU doesn't move this counter. T65 IV/2 should match this; if
+			-- SCPU IV/2 >> this, CPU is re-entering on a single source pulse.
+			irq_combined_d <= irq_combined;
+			if irq_combined_d = '1' and irq_combined = '0' then
+				irq_fall_count_r <= irq_fall_count_r + 1;
+			end if;
+
 			-- v211: PC ring buffer push on opcode-fetch pulses, only while
 			-- not frozen. cpu_pc_now / opcode_fetch_pulse are concurrent.
+			-- v223: parallel opcode-byte ring captures cpuDi at the same
+			-- edge. {pcN, opN} are paired entries.
 			if trace_frozen_r = '0' and opcode_fetch_pulse = '1' then
 				trace_pc0_r <= trace_pc1_r;
 				trace_pc1_r <= trace_pc2_r;
 				trace_pc2_r <= trace_pc3_r;
 				trace_pc3_r <= cpu_pc_now;
+				trace_op0_r <= trace_op1_r;
+				trace_op1_r <= trace_op2_r;
+				-- (continued below; trace_op2_r / trace_op3_r assignment kept
+				-- adjacent in original block; the v254 JSR ring is updated
+				-- BELOW, after this block, so it lives independent of the
+				-- trace_frozen gate.)
+				trace_op2_r <= trace_op3_r;
+				trace_op3_r <= std_logic_vector(cpuDi);
+			end if;
+			-- v254: JSR ring. Always-live (NOT gated by trace_frozen_r), so
+			-- each screenshot captures the *most recent* 4 JSRs even after
+			-- the writer trigger has fired. cpuDi = $20 (JSR abs) or $22
+			-- (JSL abslong) at opcode_fetch_pulse defines a JSR fetch. Push
+			-- the JSR's own PC (lower 16 bits) into the ring so the entry
+			-- IS the caller's address. t0 = oldest, t3 = newest.
+			if opcode_fetch_pulse = '1' and (cpuDi = x"20" or cpuDi = x"22") then
+				jsr_pc_t0_r <= jsr_pc_t1_r;
+				jsr_pc_t1_r <= jsr_pc_t2_r;
+				jsr_pc_t2_r <= jsr_pc_t3_r;
+				jsr_pc_t3_r <= cpu_pc_now(15 downto 0);
+			end if;
+			-- v255: JMP-indirect target ring. Two-step: (a) on opcode fetch
+			-- of $6C/$7C/$DC, set jmp_ind_pending_r; (b) on the NEXT
+			-- opcode_fetch_pulse, the cpu_pc_now IS the target -- push to
+			-- ring and clear flag. Ordering inside this if-block matters:
+			-- check pending FIRST (so the same fetch that resolves a target
+			-- doesn't also re-arm pending if the target is itself JMP ind).
+			if opcode_fetch_pulse = '1' then
+				if jmp_ind_pending_r = '1' then
+					jmp_tgt_t0_r <= jmp_tgt_t1_r;
+					jmp_tgt_t1_r <= jmp_tgt_t2_r;
+					jmp_tgt_t2_r <= jmp_tgt_t3_r;
+					jmp_tgt_t3_r <= cpu_pc_now(15 downto 0);
+					jmp_ind_pending_r <= '0';
+				end if;
+				if cpuDi = x"6C" or cpuDi = x"7C" or cpuDi = x"DC" then
+					jmp_ind_pending_r <= '1';
+				end if;
+			end if;
+			-- v255: latch RAM bytes on CPU read. cpuWe_pre='0' = read; we
+			-- snoop cpuDi at the cycle the address bus has cpuAddr_pre.
+			if enableCpu = '1' and cpuWe_pre = '0' then
+				if cpuAddr_pre = x"0314" then
+					mem_0314_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0315" then
+					mem_0315_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0000" then
+					mem_00_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0001" then
+					mem_01_r <= std_logic_vector(cpuDi);
+				end if;
 			end if;
 			if cs_cia2 = '1' and cpuWe = '1' and cpuAddr(3 downto 0) = "0000" then
 				dbg_dd00_r <= std_logic_vector(cpuDo);
@@ -1343,8 +2541,231 @@ dbg_trace_pc0        <= trace_pc0_r;
 dbg_trace_pc1        <= trace_pc1_r;
 dbg_trace_pc2        <= trace_pc2_r;
 dbg_trace_pc3        <= trace_pc3_r;
+dbg_trace_op0        <= trace_op0_r;
+dbg_trace_op1        <= trace_op1_r;
+dbg_trace_op2        <= trace_op2_r;
+dbg_trace_op3        <= trace_op3_r;
 dbg_trace_frozen     <= trace_frozen_r;
+-- v254: JSR ring outputs (lower 16 bits of last 4 JSR/JSL fetches)
+dbg_jsr_pc_t0        <= jsr_pc_t0_r;
+dbg_jsr_pc_t1        <= jsr_pc_t1_r;
+dbg_jsr_pc_t2        <= jsr_pc_t2_r;
+dbg_jsr_pc_t3        <= jsr_pc_t3_r;
+-- v255: JMP-indirect target ring + IRQ vector + IO port
+dbg_jmp_tgt_t0       <= jmp_tgt_t0_r;
+dbg_jmp_tgt_t1       <= jmp_tgt_t1_r;
+dbg_jmp_tgt_t2       <= jmp_tgt_t2_r;
+dbg_jmp_tgt_t3       <= jmp_tgt_t3_r;
+dbg_mem_0314         <= mem_0314_r;
+dbg_mem_0315         <= mem_0315_r;
+dbg_mem_00           <= mem_00_r;
+dbg_mem_01           <= mem_01_r;
 dbg_op_count         <= std_logic_vector(op_count_r);
+dbg_scpu_iclr        <= scpu_iclr_r;
+dbg_irq_vec_count    <= std_logic_vector(irq_vec_count_r);
+dbg_min_p            <= min_p_r;
+dbg_rti_count        <= std_logic_vector(rti_count_r);
+dbg_nmi_vec_count    <= std_logic_vector(nmi_vec_count_r);
+dbg_d019_wr_count    <= std_logic_vector(d019_wr_count_r);
+dbg_dc0d_rd_count    <= std_logic_vector(dc0d_rd_count_r);
+dbg_irq_fall_count   <= std_logic_vector(irq_fall_count_r);
+
+-- v231 source-IRQ aggregate (mirror of port-map gate)
+irq_combined <= irq_cia1 and irq_vic and irq_n and irq_ext_n;
+
+-- v232 per-source IRQ levels + last $D019 write value
+dbg_irq_vic_lvl   <= irq_vic;
+dbg_irq_cia1_lvl  <= irq_cia1;
+dbg_irq_n_lvl     <= irq_n;
+dbg_irq_ext_lvl   <= irq_ext_n;
+dbg_d019_last_val <= d019_last_val_r;
+-- v234 $D019 read-side + $D01A enable-mask probes
+dbg_d019_last_read <= d019_last_read_r;
+dbg_d019_seen_bits <= d019_seen_bits_r;
+dbg_d01a_last_val  <= d01a_last_val_r;
+-- v235 sprite-control write probes
+dbg_d015_last_val  <= d015_last_val_r;
+dbg_d015_last_pc   <= d015_last_pc_r;
+dbg_d015_wr_count  <= std_logic_vector(d015_wr_count_r);
+dbg_d017_last_val  <= d017_last_val_r;
+dbg_d01b_last_val  <= d01b_last_val_r;
+dbg_d01c_last_val  <= d01c_last_val_r;
+dbg_d01d_last_val  <= d01d_last_val_r;
+-- v236 sprite-position outputs
+dbg_d000_last_val  <= d000_last_val_r;
+dbg_d001_last_val  <= d001_last_val_r;
+dbg_d002_last_val  <= d002_last_val_r;
+dbg_d003_last_val  <= d003_last_val_r;
+dbg_d010_last_val  <= d010_last_val_r;
+-- v238 I-flag edge outputs
+dbg_p_set_pc       <= p_set_pc_r;
+dbg_p_clr_pc       <= p_clr_pc_r;
+dbg_p_set_count    <= std_logic_vector(p_set_count_r);
+dbg_p_clr_count    <= std_logic_vector(p_clr_count_r);
+dbg_p_opfetch_min  <= p_opfetch_min_r;
+
+-- v239 IRQ vector + zero-page stub + $0314/$0315 + cpuIO snapshot
+dbg_vec_lo    <= vec_lo_r;
+dbg_vec_hi    <= vec_hi_r;
+dbg_mem_314   <= mem_314_r;
+dbg_mem_315   <= mem_315_r;
+dbg_mem_62    <= mem_62_r;
+dbg_mem_63    <= mem_63_r;
+dbg_mem_64    <= mem_64_r;
+dbg_io_at_vec <= io_at_vec_r;
+-- v240 extended stub bytes + RTI PC
+dbg_mem_65    <= mem_65_r;
+dbg_mem_66    <= mem_66_r;
+dbg_mem_67    <= mem_67_r;
+dbg_mem_68    <= mem_68_r;
+dbg_mem_69    <= mem_69_r;
+dbg_mem_6A    <= mem_6A_r;
+dbg_mem_6B    <= mem_6B_r;
+-- v242 stub continuation $006C..$0073
+dbg_mem_6C    <= mem_6C_r;
+dbg_mem_6D    <= mem_6D_r;
+dbg_mem_6E    <= mem_6E_r;
+dbg_mem_6F    <= mem_6F_r;
+dbg_mem_70    <= mem_70_r;
+dbg_mem_71    <= mem_71_r;
+dbg_mem_72    <= mem_72_r;
+dbg_mem_73    <= mem_73_r;
+-- v243 extension $0074..$0078 + dispatch-target PC
+dbg_mem_74    <= mem_74_r;
+dbg_mem_75    <= mem_75_r;
+dbg_mem_76    <= mem_76_r;
+dbg_mem_77    <= mem_77_r;
+dbg_mem_78    <= mem_78_r;
+dbg_disp_target_pc <= disp_target_pc_r;
+-- v244 dispatcher disasm + FLI verify + PC trace + write-PC
+dbg_mem_3380  <= mem_3380_r(0);
+dbg_mem_3381  <= mem_3380_r(1);
+dbg_mem_3382  <= mem_3380_r(2);
+dbg_mem_3383  <= mem_3380_r(3);
+dbg_mem_3384  <= mem_3380_r(4);
+dbg_mem_3385  <= mem_3380_r(5);
+dbg_mem_3386  <= mem_3380_r(6);
+dbg_mem_3387  <= mem_3380_r(7);
+dbg_mem_3388  <= mem_3380_r(8);
+dbg_mem_3389  <= mem_3380_r(9);
+dbg_mem_338A  <= mem_3380_r(10);
+dbg_mem_338B  <= mem_3380_r(11);
+dbg_mem_338C  <= mem_3380_r(12);
+dbg_mem_338D  <= mem_3380_r(13);
+dbg_mem_338E  <= mem_3380_r(14);
+dbg_mem_338F  <= mem_3380_r(15);
+dbg_mem_9F09  <= mem_9F09_r(0);
+dbg_mem_9F0A  <= mem_9F09_r(1);
+dbg_mem_9F0B  <= mem_9F09_r(2);
+dbg_mem_9F0C  <= mem_9F09_r(3);
+dbg_mem_9F0D  <= mem_9F09_r(4);
+dbg_mem_9F0E  <= mem_9F09_r(5);
+dbg_mem_9F0F  <= mem_9F09_r(6);
+dbg_mem_9F10  <= mem_9F09_r(7);
+dbg_mem_9F11  <= mem_9F09_r(8);
+dbg_mem_9F12  <= mem_9F09_r(9);
+dbg_mem_9F13  <= mem_9F09_r(10);
+dbg_mem_9F14  <= mem_9F09_r(11);
+dbg_mem_9F15  <= mem_9F09_r(12);
+dbg_mem_9F16  <= mem_9F09_r(13);
+dbg_mem_9F17  <= mem_9F09_r(14);
+dbg_mem_9F18  <= mem_9F09_r(15);
+dbg_disp2_target_pc <= disp2_target_pc_r;
+dbg_pc33_t0   <= pc33_t0_r;
+dbg_pc33_t1   <= pc33_t1_r;
+dbg_pc33_t2   <= pc33_t2_r;
+dbg_pc33_t3   <= pc33_t3_r;
+dbg_wr70_pc   <= wr70_pc_r;
+dbg_wr71_pc   <= wr71_pc_r;
+dbg_rti_pc    <= rti_pc_r;
+-- v241 RTI snapshot ring
+dbg_rti_h1    <= rti_h1_r;
+dbg_rti_h2    <= rti_h2_r;
+-- v245 dispatcher disasm $335D..$336C, $3300..$3307, $3100..$3107 + write values
+dbg_mem_335D <= mem_335D_r(0);
+dbg_mem_335E <= mem_335D_r(1);
+dbg_mem_335F <= mem_335D_r(2);
+dbg_mem_3360 <= mem_335D_r(3);
+dbg_mem_3361 <= mem_335D_r(4);
+dbg_mem_3362 <= mem_335D_r(5);
+dbg_mem_3363 <= mem_335D_r(6);
+dbg_mem_3364 <= mem_335D_r(7);
+dbg_mem_3365 <= mem_335D_r(8);
+dbg_mem_3366 <= mem_335D_r(9);
+dbg_mem_3367 <= mem_335D_r(10);
+dbg_mem_3368 <= mem_335D_r(11);
+dbg_mem_3369 <= mem_335D_r(12);
+dbg_mem_336A <= mem_335D_r(13);
+dbg_mem_336B <= mem_335D_r(14);
+dbg_mem_336C <= mem_335D_r(15);
+dbg_mem_3300 <= mem_3300_r(0);
+dbg_mem_3301 <= mem_3300_r(1);
+dbg_mem_3302 <= mem_3300_r(2);
+dbg_mem_3303 <= mem_3300_r(3);
+dbg_mem_3304 <= mem_3300_r(4);
+dbg_mem_3305 <= mem_3300_r(5);
+dbg_mem_3306 <= mem_3300_r(6);
+dbg_mem_3307 <= mem_3300_r(7);
+dbg_mem_3100 <= mem_3100_r(0);
+dbg_mem_3101 <= mem_3100_r(1);
+dbg_mem_3102 <= mem_3100_r(2);
+dbg_mem_3103 <= mem_3100_r(3);
+dbg_mem_3104 <= mem_3100_r(4);
+dbg_mem_3105 <= mem_3100_r(5);
+dbg_mem_3106 <= mem_3100_r(6);
+dbg_mem_3107 <= mem_3100_r(7);
+dbg_wr70_val <= wr70_val_r;
+dbg_wr71_val <= wr71_val_r;
+-- v246
+dbg_mem_79   <= mem_79_r;
+dbg_mem_7A   <= mem_7A_r;
+dbg_mem_7B   <= mem_7B_r;
+dbg_mem_7C   <= mem_7C_r;
+dbg_mem_7D   <= mem_7D_r;
+dbg_mem_7E   <= mem_7E_r;
+dbg_mem_7F   <= mem_7F_r;
+dbg_cnt_3200 <= cnt_3200_r;
+dbg_cnt_3100 <= cnt_3100_r;
+-- v247
+dbg_mem_5B      <= mem_5B_r;
+dbg_wr5B_pc     <= wr5B_pc_r;
+dbg_wr5B_val    <= wr5B_val_r;
+dbg_wr_df01_pc  <= wr_df01_pc_r;
+dbg_wr_df01_val <= wr_df01_val_r;
+dbg_cnt_df01    <= cnt_df01_r;
+dbg_mem_80   <= mem_80_r;
+dbg_mem_81   <= mem_81_r;
+dbg_mem_82   <= mem_82_r;
+dbg_mem_83   <= mem_83_r;
+dbg_mem_84   <= mem_84_r;
+dbg_mem_85   <= mem_85_r;
+dbg_mem_86   <= mem_86_r;
+dbg_mem_87   <= mem_87_r;
+dbg_mem_88   <= mem_88_r;
+dbg_mem_89   <= mem_89_r;
+dbg_mem_8A   <= mem_8A_r;
+dbg_mem_8B   <= mem_8B_r;
+-- v249
+dbg_mem_8C    <= mem_8C_r;
+dbg_mem_02    <= mem_02_r;
+dbg_mem_03    <= mem_03_r;
+dbg_wr02_pc   <= wr02_pc_r;
+dbg_wr02_val  <= wr02_val_r;
+dbg_wr03_pc   <= wr03_pc_r;
+dbg_wr03_val  <= wr03_val_r;
+dbg_cnt_wr02  <= std_logic_vector(cnt_wr02_r);
+dbg_cnt_wr02_chg <= std_logic_vector(cnt_wr02_chg_r);   -- v257
+-- v258
+dbg_wr02_v0   <= wr02_v0_r;
+dbg_wr02_v1   <= wr02_v1_r;
+dbg_wr02_v2   <= wr02_v2_r;
+dbg_wr02_v3   <= wr02_v3_r;
+dbg_wr02_y    <= wr02_y_r;
+dbg_wr02_x    <= wr02_x_r;
+dbg_p_irq_t0  <= p_irq_t0_r;
+dbg_p_irq_t1  <= p_irq_t1_r;
+dbg_p_irq_t2  <= p_irq_t2_r;
+dbg_p_irq_t3  <= p_irq_t3_r;
 
 -- v211: opcode-fetch pulse + current PC.
 -- T65: SYNC=1 + enableCpu_6510=1 → opcode-fetch cycle, latch cpuAddr_6510.
@@ -1359,6 +2780,17 @@ cpu_pc_now <= std_logic_vector(dbg_pbr_816_i) & std_logic_vector(dbg_pc_816_i)
 opcode_fetch_pulse <= (vpa_816 and vda_816 and enableCpu_816)
                       when supercpu_en = '1'
                       else (t65_sync and enableCpu_6510);
+
+-- v258: muxed CPU X/Y at the current cycle. P65C816 native exposes 16-bit
+-- X/Y; emu mode forces hi byte to $00 internally so [7:0] is correct.
+-- T65 Regs layout (T65.vhd:275): {PC[16] S[16] P[8] Y[8] X[8] A[8]}.
+-- → PC=[63:48], S=[47:32], P=[31:24], Y=[23:16], X=[15:8], A=[7:0].
+cpu_x_now <= std_logic_vector(dbg_x_816_i(7 downto 0))
+             when supercpu_en = '1'
+             else t65_regs(15 downto 8);
+cpu_y_now <= std_logic_vector(dbg_y_816_i(7 downto 0))
+             when supercpu_en = '1'
+             else t65_regs(23 downto 16);
 
 -- Compose 24-bit "current PC" for $DD00 write capture: PBR:PC for SCPU,
 -- $00:t65_pc_latch (last opcode-fetch address) for T65.

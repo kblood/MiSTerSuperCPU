@@ -32,7 +32,23 @@ module cap_vic_wr (
 	input  logic [23:0] in_trace_pc1,
 	input  logic [23:0] in_trace_pc2,
 	input  logic [23:0] in_trace_pc3,
+	input  logic  [7:0] in_trace_op0,
+	input  logic  [7:0] in_trace_op1,
+	input  logic  [7:0] in_trace_op2,
+	input  logic  [7:0] in_trace_op3,
 	input  logic        in_trace_frozen,
+	input  logic [15:0] in_jsr_pc_t0,
+	input  logic [15:0] in_jsr_pc_t1,
+	input  logic [15:0] in_jsr_pc_t2,
+	input  logic [15:0] in_jsr_pc_t3,
+	input  logic [15:0] in_jmp_tgt_t0,
+	input  logic [15:0] in_jmp_tgt_t1,
+	input  logic [15:0] in_jmp_tgt_t2,
+	input  logic [15:0] in_jmp_tgt_t3,
+	input  logic  [7:0] in_mem_0314,
+	input  logic  [7:0] in_mem_0315,
+	input  logic  [7:0] in_mem_00,
+	input  logic  [7:0] in_mem_01,
 	input  logic [23:0] in_op_count,
 
 	output logic  [7:0] o_d018,
@@ -58,7 +74,23 @@ module cap_vic_wr (
 	output logic [23:0] o_trace_pc1,
 	output logic [23:0] o_trace_pc2,
 	output logic [23:0] o_trace_pc3,
+	output logic  [7:0] o_trace_op0,
+	output logic  [7:0] o_trace_op1,
+	output logic  [7:0] o_trace_op2,
+	output logic  [7:0] o_trace_op3,
 	output logic        o_trace_frozen,
+	output logic [15:0] o_jsr_pc_t0,
+	output logic [15:0] o_jsr_pc_t1,
+	output logic [15:0] o_jsr_pc_t2,
+	output logic [15:0] o_jsr_pc_t3,
+	output logic [15:0] o_jmp_tgt_t0,
+	output logic [15:0] o_jmp_tgt_t1,
+	output logic [15:0] o_jmp_tgt_t2,
+	output logic [15:0] o_jmp_tgt_t3,
+	output logic  [7:0] o_mem_0314,
+	output logic  [7:0] o_mem_0315,
+	output logic  [7:0] o_mem_00,
+	output logic  [7:0] o_mem_01,
 	output logic [23:0] o_op_count
 );
 
@@ -85,7 +117,23 @@ module cap_vic_wr (
 	assign o_trace_pc1      = in_trace_pc1;
 	assign o_trace_pc2      = in_trace_pc2;
 	assign o_trace_pc3      = in_trace_pc3;
+	assign o_trace_op0      = in_trace_op0;
+	assign o_trace_op1      = in_trace_op1;
+	assign o_trace_op2      = in_trace_op2;
+	assign o_trace_op3      = in_trace_op3;
 	assign o_trace_frozen   = in_trace_frozen;
+	assign o_jsr_pc_t0      = in_jsr_pc_t0;
+	assign o_jsr_pc_t1      = in_jsr_pc_t1;
+	assign o_jsr_pc_t2      = in_jsr_pc_t2;
+	assign o_jsr_pc_t3      = in_jsr_pc_t3;
+	assign o_jmp_tgt_t0     = in_jmp_tgt_t0;
+	assign o_jmp_tgt_t1     = in_jmp_tgt_t1;
+	assign o_jmp_tgt_t2     = in_jmp_tgt_t2;
+	assign o_jmp_tgt_t3     = in_jmp_tgt_t3;
+	assign o_mem_0314       = in_mem_0314;
+	assign o_mem_0315       = in_mem_0315;
+	assign o_mem_00         = in_mem_00;
+	assign o_mem_01         = in_mem_01;
 	assign o_op_count       = in_op_count;
 
 endmodule

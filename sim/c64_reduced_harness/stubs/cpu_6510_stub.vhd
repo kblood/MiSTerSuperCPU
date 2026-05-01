@@ -46,7 +46,9 @@ entity cpu_6510 is
         we      : out std_logic;
 
         diIO    : in  unsigned(7 downto 0);
-        doIO    : out unsigned(7 downto 0)
+        doIO    : out unsigned(7 downto 0);
+        sync_out: out std_logic;
+        regs    : out std_logic_vector(63 downto 0)
     );
 end entity;
 
@@ -57,4 +59,6 @@ begin
     addr    <= (others => '0');
     we      <= '0';
     doIO    <= x"37";   -- matches the kernel default (LORAM|HIRAM|CHAREN)
+    sync_out <= '0';
+    regs     <= (others => '0');
 end architecture;

@@ -92,6 +92,12 @@ def main():
     cfg = 0x0C   # SCPU+overlay
     if '--t65' in sys.argv:
         cfg = 0x08  # overlay only, T65 path
+    suffix = ''
+    if '--suffix' in sys.argv:
+        suffix = sys.argv[sys.argv.index('--suffix')+1]
+    global SCREENS_LOCAL
+    if suffix:
+        SCREENS_LOCAL = SCREENS_LOCAL + '_' + suffix
     c = ssh()
     if deploy:
         deploy_rbf(c)

@@ -1097,8 +1097,143 @@ wire [23:0] scpu_dbg_trace_pc0;
 wire [23:0] scpu_dbg_trace_pc1;
 wire [23:0] scpu_dbg_trace_pc2;
 wire [23:0] scpu_dbg_trace_pc3;
+wire  [7:0] scpu_dbg_trace_op0;
+wire  [7:0] scpu_dbg_trace_op1;
+wire  [7:0] scpu_dbg_trace_op2;
+wire  [7:0] scpu_dbg_trace_op3;
 wire        scpu_dbg_trace_frozen;
+// v254: JSR ring (lower-16-bit PCs of last 4 JSR/JSL fetches)
+wire [15:0] scpu_dbg_jsr_pc_t0;
+wire [15:0] scpu_dbg_jsr_pc_t1;
+wire [15:0] scpu_dbg_jsr_pc_t2;
+wire [15:0] scpu_dbg_jsr_pc_t3;
+// v255: JMP-indirect target ring + IRQ vector + IO port
+wire [15:0] scpu_dbg_jmp_tgt_t0;
+wire [15:0] scpu_dbg_jmp_tgt_t1;
+wire [15:0] scpu_dbg_jmp_tgt_t2;
+wire [15:0] scpu_dbg_jmp_tgt_t3;
+wire  [7:0] scpu_dbg_mem_0314;
+wire  [7:0] scpu_dbg_mem_0315;
+wire  [7:0] scpu_dbg_mem_00;
+wire  [7:0] scpu_dbg_mem_01;
 wire [23:0] scpu_dbg_op_count;
+wire        scpu_dbg_scpu_iclr;
+wire [15:0] scpu_dbg_irq_vec_count;
+wire  [7:0] scpu_dbg_min_p;
+wire [15:0] scpu_dbg_rti_count;
+wire [15:0] scpu_dbg_nmi_vec_count;
+wire [15:0] scpu_dbg_d019_wr_count;
+wire [15:0] scpu_dbg_dc0d_rd_count;
+wire [15:0] scpu_dbg_irq_fall_count;
+wire        scpu_dbg_irq_vic_lvl;
+wire        scpu_dbg_irq_cia1_lvl;
+wire        scpu_dbg_irq_n_lvl;
+wire        scpu_dbg_irq_ext_lvl;
+wire  [7:0] scpu_dbg_d019_last_val;
+// v234: $D019 read-side + $D01A write-side probes
+wire  [7:0] scpu_dbg_d019_last_read;
+wire  [3:0] scpu_dbg_d019_seen_bits;
+wire  [7:0] scpu_dbg_d01a_last_val;
+// v235: sprite-control register write probes
+wire  [7:0] scpu_dbg_d015_last_val;
+wire [23:0] scpu_dbg_d015_last_pc;
+wire  [7:0] scpu_dbg_d015_wr_count;
+wire  [7:0] scpu_dbg_d017_last_val;
+wire  [7:0] scpu_dbg_d01b_last_val;
+wire  [7:0] scpu_dbg_d01c_last_val;
+wire  [7:0] scpu_dbg_d01d_last_val;
+// v236 sprite-position probe wires
+wire  [7:0] scpu_dbg_d000_last_val;
+wire  [7:0] scpu_dbg_d001_last_val;
+wire  [7:0] scpu_dbg_d002_last_val;
+wire  [7:0] scpu_dbg_d003_last_val;
+wire  [7:0] scpu_dbg_d010_last_val;
+// v238 I-flag edge probes (sampled at opcode_fetch only)
+wire [23:0] scpu_dbg_p_set_pc;
+wire [23:0] scpu_dbg_p_clr_pc;
+wire [15:0] scpu_dbg_p_set_count;
+wire [15:0] scpu_dbg_p_clr_count;
+wire  [7:0] scpu_dbg_p_opfetch_min;
+// v239 IRQ vector + stub + KERNAL-indirect + cpuIO snapshot
+wire  [7:0] scpu_dbg_vec_lo;
+wire  [7:0] scpu_dbg_vec_hi;
+wire  [7:0] scpu_dbg_mem_314;
+wire  [7:0] scpu_dbg_mem_315;
+wire  [7:0] scpu_dbg_mem_62;
+wire  [7:0] scpu_dbg_mem_63;
+wire  [7:0] scpu_dbg_mem_64;
+wire  [2:0] scpu_dbg_io_at_vec;
+// v240 extended stub bytes + RTI PC
+wire  [7:0] scpu_dbg_mem_65;
+wire  [7:0] scpu_dbg_mem_66;
+wire  [7:0] scpu_dbg_mem_67;
+wire  [7:0] scpu_dbg_mem_68;
+wire  [7:0] scpu_dbg_mem_69;
+wire  [7:0] scpu_dbg_mem_6A;
+wire  [7:0] scpu_dbg_mem_6B;
+// v242: stub continuation $006C..$0073
+wire  [7:0] scpu_dbg_mem_6C;
+wire  [7:0] scpu_dbg_mem_6D;
+wire  [7:0] scpu_dbg_mem_6E;
+wire  [7:0] scpu_dbg_mem_6F;
+wire  [7:0] scpu_dbg_mem_70;
+wire  [7:0] scpu_dbg_mem_71;
+wire  [7:0] scpu_dbg_mem_72;
+wire  [7:0] scpu_dbg_mem_73;
+// v243: extension + dispatch-target PC
+wire  [7:0] scpu_dbg_mem_74;
+wire  [7:0] scpu_dbg_mem_75;
+wire  [7:0] scpu_dbg_mem_76;
+wire  [7:0] scpu_dbg_mem_77;
+wire  [7:0] scpu_dbg_mem_78;
+wire [23:0] scpu_dbg_disp_target_pc;
+// v244: dispatcher bytes + FLI verify + PC trace ring + write-PC
+wire  [7:0] scpu_dbg_mem_3380, scpu_dbg_mem_3381, scpu_dbg_mem_3382, scpu_dbg_mem_3383;
+wire  [7:0] scpu_dbg_mem_3384, scpu_dbg_mem_3385, scpu_dbg_mem_3386, scpu_dbg_mem_3387;
+wire  [7:0] scpu_dbg_mem_3388, scpu_dbg_mem_3389, scpu_dbg_mem_338A, scpu_dbg_mem_338B;
+wire  [7:0] scpu_dbg_mem_338C, scpu_dbg_mem_338D, scpu_dbg_mem_338E, scpu_dbg_mem_338F;
+wire  [7:0] scpu_dbg_mem_9F09, scpu_dbg_mem_9F0A, scpu_dbg_mem_9F0B, scpu_dbg_mem_9F0C;
+wire  [7:0] scpu_dbg_mem_9F0D, scpu_dbg_mem_9F0E, scpu_dbg_mem_9F0F, scpu_dbg_mem_9F10;
+wire  [7:0] scpu_dbg_mem_9F11, scpu_dbg_mem_9F12, scpu_dbg_mem_9F13, scpu_dbg_mem_9F14;
+wire  [7:0] scpu_dbg_mem_9F15, scpu_dbg_mem_9F16, scpu_dbg_mem_9F17, scpu_dbg_mem_9F18;
+wire [23:0] scpu_dbg_disp2_target_pc;
+wire [23:0] scpu_dbg_pc33_t0, scpu_dbg_pc33_t1, scpu_dbg_pc33_t2, scpu_dbg_pc33_t3;
+wire [23:0] scpu_dbg_wr70_pc, scpu_dbg_wr71_pc;
+wire [23:0] scpu_dbg_rti_pc;
+// v241 RTI snapshot ring (2 PCs leading up to RTI)
+wire [23:0] scpu_dbg_rti_h1;
+wire [23:0] scpu_dbg_rti_h2;
+// v245 dispatcher disasm $335D..$336C, $3300..$3307, $3100..$3107 + write values
+wire  [7:0] scpu_dbg_mem_335D, scpu_dbg_mem_335E, scpu_dbg_mem_335F, scpu_dbg_mem_3360;
+wire  [7:0] scpu_dbg_mem_3361, scpu_dbg_mem_3362, scpu_dbg_mem_3363, scpu_dbg_mem_3364;
+wire  [7:0] scpu_dbg_mem_3365, scpu_dbg_mem_3366, scpu_dbg_mem_3367, scpu_dbg_mem_3368;
+wire  [7:0] scpu_dbg_mem_3369, scpu_dbg_mem_336A, scpu_dbg_mem_336B, scpu_dbg_mem_336C;
+wire  [7:0] scpu_dbg_mem_3300, scpu_dbg_mem_3301, scpu_dbg_mem_3302, scpu_dbg_mem_3303;
+wire  [7:0] scpu_dbg_mem_3304, scpu_dbg_mem_3305, scpu_dbg_mem_3306, scpu_dbg_mem_3307;
+wire  [7:0] scpu_dbg_mem_3100, scpu_dbg_mem_3101, scpu_dbg_mem_3102, scpu_dbg_mem_3103;
+wire  [7:0] scpu_dbg_mem_3104, scpu_dbg_mem_3105, scpu_dbg_mem_3106, scpu_dbg_mem_3107;
+wire  [7:0] scpu_dbg_wr70_val, scpu_dbg_wr71_val;
+// v246 dispatch JMP bytes + entry counters
+wire  [7:0] scpu_dbg_mem_79, scpu_dbg_mem_7A, scpu_dbg_mem_7B, scpu_dbg_mem_7C;
+wire  [7:0] scpu_dbg_mem_7D, scpu_dbg_mem_7E, scpu_dbg_mem_7F;
+wire [15:0] scpu_dbg_cnt_3200, scpu_dbg_cnt_3100;
+// v247 $5B + DF01 + bytes $0080-$008B
+wire  [7:0] scpu_dbg_mem_5B, scpu_dbg_wr5B_val, scpu_dbg_wr_df01_val;
+wire [23:0] scpu_dbg_wr5B_pc, scpu_dbg_wr_df01_pc;
+wire [15:0] scpu_dbg_cnt_df01;
+wire  [7:0] scpu_dbg_mem_80, scpu_dbg_mem_81, scpu_dbg_mem_82, scpu_dbg_mem_83;
+wire  [7:0] scpu_dbg_mem_84, scpu_dbg_mem_85, scpu_dbg_mem_86, scpu_dbg_mem_87;
+wire  [7:0] scpu_dbg_mem_88, scpu_dbg_mem_89, scpu_dbg_mem_8A, scpu_dbg_mem_8B;
+// v249 IRQ dispatch ptr + JMP operand high + 4-deep P ring at IRQ entry
+wire  [7:0] scpu_dbg_mem_8C, scpu_dbg_mem_02, scpu_dbg_mem_03;
+wire [23:0] scpu_dbg_wr02_pc, scpu_dbg_wr03_pc;
+wire  [7:0] scpu_dbg_wr02_val, scpu_dbg_wr03_val;
+wire [15:0] scpu_dbg_cnt_wr02;       // v256
+wire [15:0] scpu_dbg_cnt_wr02_chg;   // v257
+// v258 — 4-deep value ring + register state at $0002 write
+wire  [7:0] scpu_dbg_wr02_v0, scpu_dbg_wr02_v1, scpu_dbg_wr02_v2, scpu_dbg_wr02_v3;
+wire  [7:0] scpu_dbg_wr02_y,  scpu_dbg_wr02_x;
+wire  [7:0] scpu_dbg_p_irq_t0, scpu_dbg_p_irq_t1, scpu_dbg_p_irq_t2, scpu_dbg_p_irq_t3;
 
 // ---------------------------------------------------------------------------
 // Layered debug overlay (rtl/debug/) - pool struct + capture stubs.
@@ -1158,7 +1293,23 @@ cap_vic_wr u_cap_vic_wr (
 	.in_trace_pc1     (scpu_dbg_trace_pc1),
 	.in_trace_pc2     (scpu_dbg_trace_pc2),
 	.in_trace_pc3     (scpu_dbg_trace_pc3),
+	.in_trace_op0     (scpu_dbg_trace_op0),
+	.in_trace_op1     (scpu_dbg_trace_op1),
+	.in_trace_op2     (scpu_dbg_trace_op2),
+	.in_trace_op3     (scpu_dbg_trace_op3),
 	.in_trace_frozen  (scpu_dbg_trace_frozen),
+	.in_jsr_pc_t0     (scpu_dbg_jsr_pc_t0),
+	.in_jsr_pc_t1     (scpu_dbg_jsr_pc_t1),
+	.in_jsr_pc_t2     (scpu_dbg_jsr_pc_t2),
+	.in_jsr_pc_t3     (scpu_dbg_jsr_pc_t3),
+	.in_jmp_tgt_t0    (scpu_dbg_jmp_tgt_t0),
+	.in_jmp_tgt_t1    (scpu_dbg_jmp_tgt_t1),
+	.in_jmp_tgt_t2    (scpu_dbg_jmp_tgt_t2),
+	.in_jmp_tgt_t3    (scpu_dbg_jmp_tgt_t3),
+	.in_mem_0314      (scpu_dbg_mem_0314),
+	.in_mem_0315      (scpu_dbg_mem_0315),
+	.in_mem_00        (scpu_dbg_mem_00),
+	.in_mem_01        (scpu_dbg_mem_01),
 	.in_op_count      (scpu_dbg_op_count),
 	.o_d018        (dbg_pool.vic_d018),
 	.o_d016        (dbg_pool.vic_d016),
@@ -1183,7 +1334,23 @@ cap_vic_wr u_cap_vic_wr (
 	.o_trace_pc1      (dbg_pool.trace_pc1),
 	.o_trace_pc2      (dbg_pool.trace_pc2),
 	.o_trace_pc3      (dbg_pool.trace_pc3),
+	.o_trace_op0      (dbg_pool.trace_op0),
+	.o_trace_op1      (dbg_pool.trace_op1),
+	.o_trace_op2      (dbg_pool.trace_op2),
+	.o_trace_op3      (dbg_pool.trace_op3),
 	.o_trace_frozen   (dbg_pool.trace_frozen),
+	.o_jsr_pc_t0      (dbg_pool.jsr_pc_t0),
+	.o_jsr_pc_t1      (dbg_pool.jsr_pc_t1),
+	.o_jsr_pc_t2      (dbg_pool.jsr_pc_t2),
+	.o_jsr_pc_t3      (dbg_pool.jsr_pc_t3),
+	.o_jmp_tgt_t0     (dbg_pool.jmp_tgt_t0),
+	.o_jmp_tgt_t1     (dbg_pool.jmp_tgt_t1),
+	.o_jmp_tgt_t2     (dbg_pool.jmp_tgt_t2),
+	.o_jmp_tgt_t3     (dbg_pool.jmp_tgt_t3),
+	.o_mem_0314       (dbg_pool.mem_0314),
+	.o_mem_0315       (dbg_pool.mem_0315),
+	.o_mem_00         (dbg_pool.mem_00),
+	.o_mem_01         (dbg_pool.mem_01),
 	.o_op_count       (dbg_pool.op_count)
 );
 `else
@@ -1210,7 +1377,23 @@ assign dbg_pool.trace_pc0        = '0;
 assign dbg_pool.trace_pc1        = '0;
 assign dbg_pool.trace_pc2        = '0;
 assign dbg_pool.trace_pc3        = '0;
+assign dbg_pool.trace_op0        = '0;
+assign dbg_pool.trace_op1        = '0;
+assign dbg_pool.trace_op2        = '0;
+assign dbg_pool.trace_op3        = '0;
 assign dbg_pool.trace_frozen     = '0;
+assign dbg_pool.jsr_pc_t0        = '0;
+assign dbg_pool.jsr_pc_t1        = '0;
+assign dbg_pool.jsr_pc_t2        = '0;
+assign dbg_pool.jsr_pc_t3        = '0;
+assign dbg_pool.jmp_tgt_t0       = '0;
+assign dbg_pool.jmp_tgt_t1       = '0;
+assign dbg_pool.jmp_tgt_t2       = '0;
+assign dbg_pool.jmp_tgt_t3       = '0;
+assign dbg_pool.mem_0314         = '0;
+assign dbg_pool.mem_0315         = '0;
+assign dbg_pool.mem_00           = '0;
+assign dbg_pool.mem_01           = '0;
 assign dbg_pool.op_count         = '0;
 `endif
 
@@ -1236,6 +1419,207 @@ assign dbg_pool.cpu_p     = '0;
 assign dbg_pool.cpu_dbr   = '0;
 assign dbg_pool.cpu_flags = '0;
 `endif
+
+// v228: direct pool wiring for I-flag diagnostics (no cap wrapper).
+assign dbg_pool.scpu_iclr      = scpu_dbg_scpu_iclr;
+assign dbg_pool.irq_vec_count  = scpu_dbg_irq_vec_count;
+assign dbg_pool.min_p          = scpu_dbg_min_p;
+assign dbg_pool.rti_count      = scpu_dbg_rti_count;
+assign dbg_pool.nmi_vec_count  = scpu_dbg_nmi_vec_count;
+assign dbg_pool.d019_wr_count  = scpu_dbg_d019_wr_count;
+assign dbg_pool.dc0d_rd_count  = scpu_dbg_dc0d_rd_count;
+assign dbg_pool.irq_fall_count = scpu_dbg_irq_fall_count;
+assign dbg_pool.irq_vic_lvl    = scpu_dbg_irq_vic_lvl;
+assign dbg_pool.irq_cia1_lvl   = scpu_dbg_irq_cia1_lvl;
+assign dbg_pool.irq_n_lvl      = scpu_dbg_irq_n_lvl;
+assign dbg_pool.irq_ext_lvl    = scpu_dbg_irq_ext_lvl;
+assign dbg_pool.d019_last_val  = scpu_dbg_d019_last_val;
+// v234
+assign dbg_pool.d019_last_read = scpu_dbg_d019_last_read;
+assign dbg_pool.d019_seen_bits = scpu_dbg_d019_seen_bits;
+assign dbg_pool.d01a_last_val  = scpu_dbg_d01a_last_val;
+// v235 sprite-control writes
+assign dbg_pool.d015_last_val  = scpu_dbg_d015_last_val;
+assign dbg_pool.d015_last_pc   = scpu_dbg_d015_last_pc;
+assign dbg_pool.d015_wr_count  = scpu_dbg_d015_wr_count;
+assign dbg_pool.d017_last_val  = scpu_dbg_d017_last_val;
+assign dbg_pool.d01b_last_val  = scpu_dbg_d01b_last_val;
+assign dbg_pool.d01c_last_val  = scpu_dbg_d01c_last_val;
+assign dbg_pool.d01d_last_val  = scpu_dbg_d01d_last_val;
+// v236 sprite-position writes
+assign dbg_pool.d000_last_val  = scpu_dbg_d000_last_val;
+assign dbg_pool.d001_last_val  = scpu_dbg_d001_last_val;
+assign dbg_pool.d002_last_val  = scpu_dbg_d002_last_val;
+assign dbg_pool.d003_last_val  = scpu_dbg_d003_last_val;
+assign dbg_pool.d010_last_val  = scpu_dbg_d010_last_val;
+// v238 I-flag edge probes
+assign dbg_pool.p_set_pc       = scpu_dbg_p_set_pc;
+assign dbg_pool.p_clr_pc       = scpu_dbg_p_clr_pc;
+assign dbg_pool.p_set_count    = scpu_dbg_p_set_count;
+assign dbg_pool.p_clr_count    = scpu_dbg_p_clr_count;
+assign dbg_pool.p_opfetch_min  = scpu_dbg_p_opfetch_min;
+// v239 IRQ vector + stub + KERNAL-indirect + cpuIO snapshot
+assign dbg_pool.vec_lo         = scpu_dbg_vec_lo;
+assign dbg_pool.vec_hi         = scpu_dbg_vec_hi;
+assign dbg_pool.mem_314        = scpu_dbg_mem_314;
+assign dbg_pool.mem_315        = scpu_dbg_mem_315;
+assign dbg_pool.mem_62         = scpu_dbg_mem_62;
+assign dbg_pool.mem_63         = scpu_dbg_mem_63;
+assign dbg_pool.mem_64         = scpu_dbg_mem_64;
+assign dbg_pool.io_at_vec      = scpu_dbg_io_at_vec;
+// v240 extended stub bytes + RTI PC
+assign dbg_pool.mem_65         = scpu_dbg_mem_65;
+assign dbg_pool.mem_66         = scpu_dbg_mem_66;
+assign dbg_pool.mem_67         = scpu_dbg_mem_67;
+assign dbg_pool.mem_68         = scpu_dbg_mem_68;
+assign dbg_pool.mem_69         = scpu_dbg_mem_69;
+assign dbg_pool.mem_6A         = scpu_dbg_mem_6A;
+assign dbg_pool.mem_6B         = scpu_dbg_mem_6B;
+// v242 stub continuation
+assign dbg_pool.mem_6C         = scpu_dbg_mem_6C;
+assign dbg_pool.mem_6D         = scpu_dbg_mem_6D;
+assign dbg_pool.mem_6E         = scpu_dbg_mem_6E;
+assign dbg_pool.mem_6F         = scpu_dbg_mem_6F;
+assign dbg_pool.mem_70         = scpu_dbg_mem_70;
+assign dbg_pool.mem_71         = scpu_dbg_mem_71;
+assign dbg_pool.mem_72         = scpu_dbg_mem_72;
+assign dbg_pool.mem_73         = scpu_dbg_mem_73;
+// v243 extension + dispatch-target PC
+assign dbg_pool.mem_74         = scpu_dbg_mem_74;
+assign dbg_pool.mem_75         = scpu_dbg_mem_75;
+assign dbg_pool.mem_76         = scpu_dbg_mem_76;
+assign dbg_pool.mem_77         = scpu_dbg_mem_77;
+assign dbg_pool.mem_78         = scpu_dbg_mem_78;
+assign dbg_pool.disp_target_pc = scpu_dbg_disp_target_pc;
+// v244 dispatcher disasm + FLI verify + PC ring + write-PC
+assign dbg_pool.mem_3380       = scpu_dbg_mem_3380;
+assign dbg_pool.mem_3381       = scpu_dbg_mem_3381;
+assign dbg_pool.mem_3382       = scpu_dbg_mem_3382;
+assign dbg_pool.mem_3383       = scpu_dbg_mem_3383;
+assign dbg_pool.mem_3384       = scpu_dbg_mem_3384;
+assign dbg_pool.mem_3385       = scpu_dbg_mem_3385;
+assign dbg_pool.mem_3386       = scpu_dbg_mem_3386;
+assign dbg_pool.mem_3387       = scpu_dbg_mem_3387;
+assign dbg_pool.mem_3388       = scpu_dbg_mem_3388;
+assign dbg_pool.mem_3389       = scpu_dbg_mem_3389;
+assign dbg_pool.mem_338A       = scpu_dbg_mem_338A;
+assign dbg_pool.mem_338B       = scpu_dbg_mem_338B;
+assign dbg_pool.mem_338C       = scpu_dbg_mem_338C;
+assign dbg_pool.mem_338D       = scpu_dbg_mem_338D;
+assign dbg_pool.mem_338E       = scpu_dbg_mem_338E;
+assign dbg_pool.mem_338F       = scpu_dbg_mem_338F;
+assign dbg_pool.mem_9F09       = scpu_dbg_mem_9F09;
+assign dbg_pool.mem_9F0A       = scpu_dbg_mem_9F0A;
+assign dbg_pool.mem_9F0B       = scpu_dbg_mem_9F0B;
+assign dbg_pool.mem_9F0C       = scpu_dbg_mem_9F0C;
+assign dbg_pool.mem_9F0D       = scpu_dbg_mem_9F0D;
+assign dbg_pool.mem_9F0E       = scpu_dbg_mem_9F0E;
+assign dbg_pool.mem_9F0F       = scpu_dbg_mem_9F0F;
+assign dbg_pool.mem_9F10       = scpu_dbg_mem_9F10;
+assign dbg_pool.mem_9F11       = scpu_dbg_mem_9F11;
+assign dbg_pool.mem_9F12       = scpu_dbg_mem_9F12;
+assign dbg_pool.mem_9F13       = scpu_dbg_mem_9F13;
+assign dbg_pool.mem_9F14       = scpu_dbg_mem_9F14;
+assign dbg_pool.mem_9F15       = scpu_dbg_mem_9F15;
+assign dbg_pool.mem_9F16       = scpu_dbg_mem_9F16;
+assign dbg_pool.mem_9F17       = scpu_dbg_mem_9F17;
+assign dbg_pool.mem_9F18       = scpu_dbg_mem_9F18;
+assign dbg_pool.disp2_target_pc = scpu_dbg_disp2_target_pc;
+assign dbg_pool.pc33_t0        = scpu_dbg_pc33_t0;
+assign dbg_pool.pc33_t1        = scpu_dbg_pc33_t1;
+assign dbg_pool.pc33_t2        = scpu_dbg_pc33_t2;
+assign dbg_pool.pc33_t3        = scpu_dbg_pc33_t3;
+assign dbg_pool.wr70_pc        = scpu_dbg_wr70_pc;
+assign dbg_pool.wr71_pc        = scpu_dbg_wr71_pc;
+assign dbg_pool.rti_pc         = scpu_dbg_rti_pc;
+// v241 RTI snapshot ring
+assign dbg_pool.rti_h1         = scpu_dbg_rti_h1;
+assign dbg_pool.rti_h2         = scpu_dbg_rti_h2;
+// v245 dispatcher disasm $335D..$336C, $3300..$3307, $3100..$3107 + write values
+assign dbg_pool.mem_335D       = scpu_dbg_mem_335D;
+assign dbg_pool.mem_335E       = scpu_dbg_mem_335E;
+assign dbg_pool.mem_335F       = scpu_dbg_mem_335F;
+assign dbg_pool.mem_3360       = scpu_dbg_mem_3360;
+assign dbg_pool.mem_3361       = scpu_dbg_mem_3361;
+assign dbg_pool.mem_3362       = scpu_dbg_mem_3362;
+assign dbg_pool.mem_3363       = scpu_dbg_mem_3363;
+assign dbg_pool.mem_3364       = scpu_dbg_mem_3364;
+assign dbg_pool.mem_3365       = scpu_dbg_mem_3365;
+assign dbg_pool.mem_3366       = scpu_dbg_mem_3366;
+assign dbg_pool.mem_3367       = scpu_dbg_mem_3367;
+assign dbg_pool.mem_3368       = scpu_dbg_mem_3368;
+assign dbg_pool.mem_3369       = scpu_dbg_mem_3369;
+assign dbg_pool.mem_336A       = scpu_dbg_mem_336A;
+assign dbg_pool.mem_336B       = scpu_dbg_mem_336B;
+assign dbg_pool.mem_336C       = scpu_dbg_mem_336C;
+assign dbg_pool.mem_3300       = scpu_dbg_mem_3300;
+assign dbg_pool.mem_3301       = scpu_dbg_mem_3301;
+assign dbg_pool.mem_3302       = scpu_dbg_mem_3302;
+assign dbg_pool.mem_3303       = scpu_dbg_mem_3303;
+assign dbg_pool.mem_3304       = scpu_dbg_mem_3304;
+assign dbg_pool.mem_3305       = scpu_dbg_mem_3305;
+assign dbg_pool.mem_3306       = scpu_dbg_mem_3306;
+assign dbg_pool.mem_3307       = scpu_dbg_mem_3307;
+assign dbg_pool.mem_3100       = scpu_dbg_mem_3100;
+assign dbg_pool.mem_3101       = scpu_dbg_mem_3101;
+assign dbg_pool.mem_3102       = scpu_dbg_mem_3102;
+assign dbg_pool.mem_3103       = scpu_dbg_mem_3103;
+assign dbg_pool.mem_3104       = scpu_dbg_mem_3104;
+assign dbg_pool.mem_3105       = scpu_dbg_mem_3105;
+assign dbg_pool.mem_3106       = scpu_dbg_mem_3106;
+assign dbg_pool.mem_3107       = scpu_dbg_mem_3107;
+assign dbg_pool.wr70_val       = scpu_dbg_wr70_val;
+assign dbg_pool.wr71_val       = scpu_dbg_wr71_val;
+// v246 dispatch JMP bytes + entry counters
+assign dbg_pool.mem_79         = scpu_dbg_mem_79;
+assign dbg_pool.mem_7A         = scpu_dbg_mem_7A;
+assign dbg_pool.mem_7B         = scpu_dbg_mem_7B;
+assign dbg_pool.mem_7C         = scpu_dbg_mem_7C;
+assign dbg_pool.mem_7D         = scpu_dbg_mem_7D;
+assign dbg_pool.mem_7E         = scpu_dbg_mem_7E;
+assign dbg_pool.mem_7F         = scpu_dbg_mem_7F;
+assign dbg_pool.cnt_3200       = scpu_dbg_cnt_3200;
+assign dbg_pool.cnt_3100       = scpu_dbg_cnt_3100;
+// v247 $5B + DF01 + bytes $0080-$008B
+assign dbg_pool.mem_5B         = scpu_dbg_mem_5B;
+assign dbg_pool.wr5B_pc        = scpu_dbg_wr5B_pc;
+assign dbg_pool.wr5B_val       = scpu_dbg_wr5B_val;
+assign dbg_pool.wr_df01_pc     = scpu_dbg_wr_df01_pc;
+assign dbg_pool.wr_df01_val    = scpu_dbg_wr_df01_val;
+assign dbg_pool.cnt_df01       = scpu_dbg_cnt_df01;
+assign dbg_pool.mem_80         = scpu_dbg_mem_80;
+assign dbg_pool.mem_81         = scpu_dbg_mem_81;
+assign dbg_pool.mem_82         = scpu_dbg_mem_82;
+assign dbg_pool.mem_83         = scpu_dbg_mem_83;
+assign dbg_pool.mem_84         = scpu_dbg_mem_84;
+assign dbg_pool.mem_85         = scpu_dbg_mem_85;
+assign dbg_pool.mem_86         = scpu_dbg_mem_86;
+assign dbg_pool.mem_87         = scpu_dbg_mem_87;
+assign dbg_pool.mem_88         = scpu_dbg_mem_88;
+assign dbg_pool.mem_89         = scpu_dbg_mem_89;
+assign dbg_pool.mem_8A         = scpu_dbg_mem_8A;
+assign dbg_pool.mem_8B         = scpu_dbg_mem_8B;
+// v249
+assign dbg_pool.mem_8C         = scpu_dbg_mem_8C;
+assign dbg_pool.mem_02         = scpu_dbg_mem_02;
+assign dbg_pool.mem_03         = scpu_dbg_mem_03;
+assign dbg_pool.wr02_pc        = scpu_dbg_wr02_pc;
+assign dbg_pool.wr02_val       = scpu_dbg_wr02_val;
+assign dbg_pool.wr03_pc        = scpu_dbg_wr03_pc;
+assign dbg_pool.wr03_val       = scpu_dbg_wr03_val;
+assign dbg_pool.cnt_wr02       = scpu_dbg_cnt_wr02;
+assign dbg_pool.cnt_wr02_chg   = scpu_dbg_cnt_wr02_chg;     // v257
+// v258
+assign dbg_pool.wr02_v0        = scpu_dbg_wr02_v0;
+assign dbg_pool.wr02_v1        = scpu_dbg_wr02_v1;
+assign dbg_pool.wr02_v2        = scpu_dbg_wr02_v2;
+assign dbg_pool.wr02_v3        = scpu_dbg_wr02_v3;
+assign dbg_pool.wr02_y         = scpu_dbg_wr02_y;
+assign dbg_pool.wr02_x         = scpu_dbg_wr02_x;
+assign dbg_pool.p_irq_t0       = scpu_dbg_p_irq_t0;
+assign dbg_pool.p_irq_t1       = scpu_dbg_p_irq_t1;
+assign dbg_pool.p_irq_t2       = scpu_dbg_p_irq_t2;
+assign dbg_pool.p_irq_t3       = scpu_dbg_p_irq_t3;
 
 `ifdef DBG_CAP_FRAME
 cap_frame u_cap_frame (
@@ -1392,8 +1776,212 @@ fpga64_sid_iec fpga64
 	.dbg_trace_pc1        (scpu_dbg_trace_pc1),
 	.dbg_trace_pc2        (scpu_dbg_trace_pc2),
 	.dbg_trace_pc3        (scpu_dbg_trace_pc3),
+	.dbg_trace_op0        (scpu_dbg_trace_op0),
+	.dbg_trace_op1        (scpu_dbg_trace_op1),
+	.dbg_trace_op2        (scpu_dbg_trace_op2),
+	.dbg_trace_op3        (scpu_dbg_trace_op3),
 	.dbg_trace_frozen     (scpu_dbg_trace_frozen),
-	.dbg_op_count         (scpu_dbg_op_count)
+	.dbg_jsr_pc_t0        (scpu_dbg_jsr_pc_t0),
+	.dbg_jsr_pc_t1        (scpu_dbg_jsr_pc_t1),
+	.dbg_jsr_pc_t2        (scpu_dbg_jsr_pc_t2),
+	.dbg_jsr_pc_t3        (scpu_dbg_jsr_pc_t3),
+	.dbg_jmp_tgt_t0       (scpu_dbg_jmp_tgt_t0),
+	.dbg_jmp_tgt_t1       (scpu_dbg_jmp_tgt_t1),
+	.dbg_jmp_tgt_t2       (scpu_dbg_jmp_tgt_t2),
+	.dbg_jmp_tgt_t3       (scpu_dbg_jmp_tgt_t3),
+	.dbg_mem_0314         (scpu_dbg_mem_0314),
+	.dbg_mem_0315         (scpu_dbg_mem_0315),
+	.dbg_mem_00           (scpu_dbg_mem_00),
+	.dbg_mem_01           (scpu_dbg_mem_01),
+	.dbg_op_count         (scpu_dbg_op_count),
+	.dbg_scpu_iclr        (scpu_dbg_scpu_iclr),
+	.dbg_irq_vec_count    (scpu_dbg_irq_vec_count),
+	.dbg_min_p            (scpu_dbg_min_p),
+	.dbg_rti_count        (scpu_dbg_rti_count),
+	.dbg_nmi_vec_count    (scpu_dbg_nmi_vec_count),
+	.dbg_d019_wr_count    (scpu_dbg_d019_wr_count),
+	.dbg_dc0d_rd_count    (scpu_dbg_dc0d_rd_count),
+	.dbg_irq_fall_count   (scpu_dbg_irq_fall_count),
+	.dbg_irq_vic_lvl      (scpu_dbg_irq_vic_lvl),
+	.dbg_irq_cia1_lvl     (scpu_dbg_irq_cia1_lvl),
+	.dbg_irq_n_lvl        (scpu_dbg_irq_n_lvl),
+	.dbg_irq_ext_lvl      (scpu_dbg_irq_ext_lvl),
+	.dbg_d019_last_val    (scpu_dbg_d019_last_val),
+	.dbg_d019_last_read   (scpu_dbg_d019_last_read),
+	.dbg_d019_seen_bits   (scpu_dbg_d019_seen_bits),
+	.dbg_d01a_last_val    (scpu_dbg_d01a_last_val),
+	.dbg_d015_last_val    (scpu_dbg_d015_last_val),
+	.dbg_d015_last_pc     (scpu_dbg_d015_last_pc),
+	.dbg_d015_wr_count    (scpu_dbg_d015_wr_count),
+	.dbg_d017_last_val    (scpu_dbg_d017_last_val),
+	.dbg_d01b_last_val    (scpu_dbg_d01b_last_val),
+	.dbg_d01c_last_val    (scpu_dbg_d01c_last_val),
+	.dbg_d01d_last_val    (scpu_dbg_d01d_last_val),
+	.dbg_d000_last_val    (scpu_dbg_d000_last_val),
+	.dbg_d001_last_val    (scpu_dbg_d001_last_val),
+	.dbg_d002_last_val    (scpu_dbg_d002_last_val),
+	.dbg_d003_last_val    (scpu_dbg_d003_last_val),
+	.dbg_d010_last_val    (scpu_dbg_d010_last_val),
+	.dbg_p_set_pc         (scpu_dbg_p_set_pc),
+	.dbg_p_clr_pc         (scpu_dbg_p_clr_pc),
+	.dbg_p_set_count      (scpu_dbg_p_set_count),
+	.dbg_p_clr_count      (scpu_dbg_p_clr_count),
+	.dbg_p_opfetch_min    (scpu_dbg_p_opfetch_min),
+	.dbg_vec_lo           (scpu_dbg_vec_lo),
+	.dbg_vec_hi           (scpu_dbg_vec_hi),
+	.dbg_mem_314          (scpu_dbg_mem_314),
+	.dbg_mem_315          (scpu_dbg_mem_315),
+	.dbg_mem_62           (scpu_dbg_mem_62),
+	.dbg_mem_63           (scpu_dbg_mem_63),
+	.dbg_mem_64           (scpu_dbg_mem_64),
+	.dbg_io_at_vec        (scpu_dbg_io_at_vec),
+	.dbg_mem_65           (scpu_dbg_mem_65),
+	.dbg_mem_66           (scpu_dbg_mem_66),
+	.dbg_mem_67           (scpu_dbg_mem_67),
+	.dbg_mem_68           (scpu_dbg_mem_68),
+	.dbg_mem_69           (scpu_dbg_mem_69),
+	.dbg_mem_6A           (scpu_dbg_mem_6A),
+	.dbg_mem_6B           (scpu_dbg_mem_6B),
+	.dbg_mem_6C           (scpu_dbg_mem_6C),
+	.dbg_mem_6D           (scpu_dbg_mem_6D),
+	.dbg_mem_6E           (scpu_dbg_mem_6E),
+	.dbg_mem_6F           (scpu_dbg_mem_6F),
+	.dbg_mem_70           (scpu_dbg_mem_70),
+	.dbg_mem_71           (scpu_dbg_mem_71),
+	.dbg_mem_72           (scpu_dbg_mem_72),
+	.dbg_mem_73           (scpu_dbg_mem_73),
+	.dbg_mem_74           (scpu_dbg_mem_74),
+	.dbg_mem_75           (scpu_dbg_mem_75),
+	.dbg_mem_76           (scpu_dbg_mem_76),
+	.dbg_mem_77           (scpu_dbg_mem_77),
+	.dbg_mem_78           (scpu_dbg_mem_78),
+	.dbg_disp_target_pc   (scpu_dbg_disp_target_pc),
+	.dbg_mem_3380         (scpu_dbg_mem_3380),
+	.dbg_mem_3381         (scpu_dbg_mem_3381),
+	.dbg_mem_3382         (scpu_dbg_mem_3382),
+	.dbg_mem_3383         (scpu_dbg_mem_3383),
+	.dbg_mem_3384         (scpu_dbg_mem_3384),
+	.dbg_mem_3385         (scpu_dbg_mem_3385),
+	.dbg_mem_3386         (scpu_dbg_mem_3386),
+	.dbg_mem_3387         (scpu_dbg_mem_3387),
+	.dbg_mem_3388         (scpu_dbg_mem_3388),
+	.dbg_mem_3389         (scpu_dbg_mem_3389),
+	.dbg_mem_338A         (scpu_dbg_mem_338A),
+	.dbg_mem_338B         (scpu_dbg_mem_338B),
+	.dbg_mem_338C         (scpu_dbg_mem_338C),
+	.dbg_mem_338D         (scpu_dbg_mem_338D),
+	.dbg_mem_338E         (scpu_dbg_mem_338E),
+	.dbg_mem_338F         (scpu_dbg_mem_338F),
+	.dbg_mem_9F09         (scpu_dbg_mem_9F09),
+	.dbg_mem_9F0A         (scpu_dbg_mem_9F0A),
+	.dbg_mem_9F0B         (scpu_dbg_mem_9F0B),
+	.dbg_mem_9F0C         (scpu_dbg_mem_9F0C),
+	.dbg_mem_9F0D         (scpu_dbg_mem_9F0D),
+	.dbg_mem_9F0E         (scpu_dbg_mem_9F0E),
+	.dbg_mem_9F0F         (scpu_dbg_mem_9F0F),
+	.dbg_mem_9F10         (scpu_dbg_mem_9F10),
+	.dbg_mem_9F11         (scpu_dbg_mem_9F11),
+	.dbg_mem_9F12         (scpu_dbg_mem_9F12),
+	.dbg_mem_9F13         (scpu_dbg_mem_9F13),
+	.dbg_mem_9F14         (scpu_dbg_mem_9F14),
+	.dbg_mem_9F15         (scpu_dbg_mem_9F15),
+	.dbg_mem_9F16         (scpu_dbg_mem_9F16),
+	.dbg_mem_9F17         (scpu_dbg_mem_9F17),
+	.dbg_mem_9F18         (scpu_dbg_mem_9F18),
+	.dbg_disp2_target_pc  (scpu_dbg_disp2_target_pc),
+	.dbg_pc33_t0          (scpu_dbg_pc33_t0),
+	.dbg_pc33_t1          (scpu_dbg_pc33_t1),
+	.dbg_pc33_t2          (scpu_dbg_pc33_t2),
+	.dbg_pc33_t3          (scpu_dbg_pc33_t3),
+	.dbg_wr70_pc          (scpu_dbg_wr70_pc),
+	.dbg_wr71_pc          (scpu_dbg_wr71_pc),
+	.dbg_rti_pc           (scpu_dbg_rti_pc),
+	.dbg_rti_h1           (scpu_dbg_rti_h1),
+	.dbg_rti_h2           (scpu_dbg_rti_h2),
+	// v245
+	.dbg_mem_335D         (scpu_dbg_mem_335D),
+	.dbg_mem_335E         (scpu_dbg_mem_335E),
+	.dbg_mem_335F         (scpu_dbg_mem_335F),
+	.dbg_mem_3360         (scpu_dbg_mem_3360),
+	.dbg_mem_3361         (scpu_dbg_mem_3361),
+	.dbg_mem_3362         (scpu_dbg_mem_3362),
+	.dbg_mem_3363         (scpu_dbg_mem_3363),
+	.dbg_mem_3364         (scpu_dbg_mem_3364),
+	.dbg_mem_3365         (scpu_dbg_mem_3365),
+	.dbg_mem_3366         (scpu_dbg_mem_3366),
+	.dbg_mem_3367         (scpu_dbg_mem_3367),
+	.dbg_mem_3368         (scpu_dbg_mem_3368),
+	.dbg_mem_3369         (scpu_dbg_mem_3369),
+	.dbg_mem_336A         (scpu_dbg_mem_336A),
+	.dbg_mem_336B         (scpu_dbg_mem_336B),
+	.dbg_mem_336C         (scpu_dbg_mem_336C),
+	.dbg_mem_3300         (scpu_dbg_mem_3300),
+	.dbg_mem_3301         (scpu_dbg_mem_3301),
+	.dbg_mem_3302         (scpu_dbg_mem_3302),
+	.dbg_mem_3303         (scpu_dbg_mem_3303),
+	.dbg_mem_3304         (scpu_dbg_mem_3304),
+	.dbg_mem_3305         (scpu_dbg_mem_3305),
+	.dbg_mem_3306         (scpu_dbg_mem_3306),
+	.dbg_mem_3307         (scpu_dbg_mem_3307),
+	.dbg_mem_3100         (scpu_dbg_mem_3100),
+	.dbg_mem_3101         (scpu_dbg_mem_3101),
+	.dbg_mem_3102         (scpu_dbg_mem_3102),
+	.dbg_mem_3103         (scpu_dbg_mem_3103),
+	.dbg_mem_3104         (scpu_dbg_mem_3104),
+	.dbg_mem_3105         (scpu_dbg_mem_3105),
+	.dbg_mem_3106         (scpu_dbg_mem_3106),
+	.dbg_mem_3107         (scpu_dbg_mem_3107),
+	.dbg_wr70_val         (scpu_dbg_wr70_val),
+	.dbg_wr71_val         (scpu_dbg_wr71_val),
+	// v246
+	.dbg_mem_79           (scpu_dbg_mem_79),
+	.dbg_mem_7A           (scpu_dbg_mem_7A),
+	.dbg_mem_7B           (scpu_dbg_mem_7B),
+	.dbg_mem_7C           (scpu_dbg_mem_7C),
+	.dbg_mem_7D           (scpu_dbg_mem_7D),
+	.dbg_mem_7E           (scpu_dbg_mem_7E),
+	.dbg_mem_7F           (scpu_dbg_mem_7F),
+	.dbg_cnt_3200         (scpu_dbg_cnt_3200),
+	.dbg_cnt_3100         (scpu_dbg_cnt_3100),
+	// v247
+	.dbg_mem_5B           (scpu_dbg_mem_5B),
+	.dbg_wr5B_pc          (scpu_dbg_wr5B_pc),
+	.dbg_wr5B_val         (scpu_dbg_wr5B_val),
+	.dbg_wr_df01_pc       (scpu_dbg_wr_df01_pc),
+	.dbg_wr_df01_val      (scpu_dbg_wr_df01_val),
+	.dbg_cnt_df01         (scpu_dbg_cnt_df01),
+	.dbg_mem_80           (scpu_dbg_mem_80),
+	.dbg_mem_81           (scpu_dbg_mem_81),
+	.dbg_mem_82           (scpu_dbg_mem_82),
+	.dbg_mem_83           (scpu_dbg_mem_83),
+	.dbg_mem_84           (scpu_dbg_mem_84),
+	.dbg_mem_85           (scpu_dbg_mem_85),
+	.dbg_mem_86           (scpu_dbg_mem_86),
+	.dbg_mem_87           (scpu_dbg_mem_87),
+	.dbg_mem_88           (scpu_dbg_mem_88),
+	.dbg_mem_89           (scpu_dbg_mem_89),
+	.dbg_mem_8A           (scpu_dbg_mem_8A),
+	.dbg_mem_8B           (scpu_dbg_mem_8B),
+	// v249
+	.dbg_mem_8C           (scpu_dbg_mem_8C),
+	.dbg_mem_02           (scpu_dbg_mem_02),
+	.dbg_mem_03           (scpu_dbg_mem_03),
+	.dbg_wr02_pc          (scpu_dbg_wr02_pc),
+	.dbg_wr02_val         (scpu_dbg_wr02_val),
+	.dbg_wr03_pc          (scpu_dbg_wr03_pc),
+	.dbg_wr03_val         (scpu_dbg_wr03_val),
+	.dbg_cnt_wr02         (scpu_dbg_cnt_wr02),
+	.dbg_cnt_wr02_chg     (scpu_dbg_cnt_wr02_chg),
+	.dbg_wr02_v0          (scpu_dbg_wr02_v0),
+	.dbg_wr02_v1          (scpu_dbg_wr02_v1),
+	.dbg_wr02_v2          (scpu_dbg_wr02_v2),
+	.dbg_wr02_v3          (scpu_dbg_wr02_v3),
+	.dbg_wr02_y           (scpu_dbg_wr02_y),
+	.dbg_wr02_x           (scpu_dbg_wr02_x),
+	.dbg_p_irq_t0         (scpu_dbg_p_irq_t0),
+	.dbg_p_irq_t1         (scpu_dbg_p_irq_t1),
+	.dbg_p_irq_t2         (scpu_dbg_p_irq_t2),
+	.dbg_p_irq_t3         (scpu_dbg_p_irq_t3)
 );
 
 wire [7:0] mouse_x;
@@ -1642,7 +2230,13 @@ assign HDMI_FREEZE = freeze;
 // ---------------------------------------------------------------------------
 wire [7:0] r_dbg, g_dbg, b_dbg;
 `ifdef DBG_OVERLAY
-debug_overlay_renderer u_dbg_overlay (
+// v220: Moved overlay to mid-screen (Y_LO=180) so it remains visible
+// during DL gameplay. DL's open-top-border + DEN tricks effectively
+// suppress the screenshot output above scanline ~62 in T65 mode (entire
+// top is captured as black). Mid-screen positioning bypasses that.
+// v235: extended overlay to 13 rows (78 px) for sprite-control probe row 12.
+// v236: extended to 14 rows (84 px) for sprite-position probe row 13.
+debug_overlay_renderer #(.Y_LO(174), .Y_HI(270)) u_dbg_overlay (
 	.clk_pix(CLK_VIDEO),
 	.ce_pix (ce_pix),
 	.hblank (hblank),

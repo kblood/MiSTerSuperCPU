@@ -144,7 +144,7 @@ architecture rtl of c64_reduced_top_v2 is
 
     signal supercpu_emul_s : std_logic;
     signal supercpu_cycle_s : std_logic;
-    signal supercpu_bank_s : unsigned(7 downto 0);
+    signal supercpu_bank_s : std_logic_vector(7 downto 0);
     signal cpu_has_bus_s : std_logic;
 
     ------------------------------------------------------------------
@@ -408,10 +408,6 @@ begin
 
             ramAddr      => c64_addr,
             ramDin       => c64_data_in,
-            sdram_raw    => sdram_data_raw,
-            sdram_superram => sdram_data_reu,
-            sdram_hi     => sdram_data_hi,
-            sdram_lo     => sdram_data_lo,
             ramDout      => c64_data_out,
             ramCE        => ram_ce,
             ramWE        => ram_we,
@@ -423,73 +419,16 @@ begin
             cia_mode     => '0',
             turbo_mode   => "00",
             turbo_speed  => "00",
-            scpu_speed   => "00",
             supercpu_en  => '1',       -- active CPU = 65C816
-            supercpu_rom => '0',       -- no kickstart ROM — run C64 KERNAL directly
-            bram_invalidate => bram_inval_hold,
-            io_bram_we   => io_bram_we_pulse,
-            io_bram_addr => io_cycle_addr(15 downto 0),
-            io_bram_din  => io_cycle_data,
 
-            dbg_0801_trap_en => '0',
-            dbg_0801_pc      => open,
-            dbg_0801_ir      => open,
-            dbg_0801_data_out=> open,
-            dbg_0801_cnt     => open,
 
-            supercpu_emul  => supercpu_emul_s,
-            supercpu_cycle => supercpu_cycle_s,
             supercpu_bank  => supercpu_bank_s,
             cpu_has_bus    => cpu_has_bus_s,
 
-            dbg_cpu_addr => dbg_cpu_addr_s,
-            dbg_cpu_data => dbg_cpu_data_s,
-            dbg_cpu_we   => dbg_cpu_we_s,
-            dbg_cpu_en   => dbg_cpu_en_s,
-            dbg_cpu_sp   => dbg_cpu_sp_s,
-            dbg_cpu_p    => dbg_cpu_p_s,
-            dbg_cpu_ir   => dbg_cpu_ir_s,
-            dbg_cpu_pbr  => dbg_cpu_pbr_s,
-            dbg_cpu_dbr  => dbg_cpu_dbr_s,
 
-            dbg_cia1_pa  => open,
-            dbg_cia1_pb  => open,
 
-            dbg_scr_wr_addr => open,
-            dbg_scr_wr_pc   => open,
-            dbg_scr_wr_data => open,
-            dbg_scr_wr_ir   => open,
-            dbg_scr_zero_hit=> open,
-            dbg_scr_wr_bank => open,
-            dbg_scr_arm     => open,
 
-            dbg_vic_zero_hit => open,
-            dbg_vic_zero_addr=> open,
-            dbg_vic_zero_cpu => open,
-            dbg_vic_zero_sysaddr => open,
-            dbg_vic_wr_match => open,
-            dbg_vic_wr_pc    => open,
-            dbg_vic_prearm_cnt => open,
-            dbg_vic_hit_cnt    => open,
-            dbg_vic_mode       => open,
-            dbg_vic_cpuf_zero_cnt => open,
-            dbg_vic_cpue_live_zero_cnt => open,
-            dbg_vic_cpue_hold_zero_cnt => open,
-            dbg_vic_cpue_mismatch_cnt  => open,
 
-            dbg_turbo_en       => open,
-            dbg_cache_hit_d1   => open,
-            dbg_enable_cpu_t65 => open,
-            dbg_cpu_cyc        => open,
-            dbg_diag           => dbg_diag_out,
-            dbg_bug_buf        => open,
-            dbg_native_irq_vec => open,
-            dbg_srr_count      => open,
-            dbg_srr_data       => open,
-            dbg_srr_addr_hi    => open,
-            dbg_srr_cache_bank => open,
-            dbg_srr_addr_lo    => open,
-            dbg_srr_addr_mid   => open,
 
             vic_variant => "00",
             ntscMode    => '0',
@@ -512,12 +451,6 @@ begin
             UMAXromH    => open,
             IOE         => open,
             IOF         => open,
-            IOF_raw     => open,
-            iof_detect_o=> open,
-            iof_we_o    => open,
-            iof_addr_o  => open,
-            iof_dout_o  => open,
-            iof_fall_pulse_o => open,
             freeze_key  => open,
             mod_key     => open,
             tape_play   => open,

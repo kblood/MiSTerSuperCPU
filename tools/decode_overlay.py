@@ -88,7 +88,7 @@ OVR_X0 = 4
 OVR_Y0 = 6
 CELL_W = 5
 CELL_H = 6
-ROWS = 12    # 2026-04-30 v219: 12 rows; row 11 = OP=###### opcode counter
+ROWS = 16    # 2026-05-01 v239: 16 rows (added row 15 = IRQ vec + stub + cpuIO)
 COLS = 22
 
 # Lit color
@@ -101,16 +101,56 @@ def is_lit(rgb):
             abs(g - LIT_G) < LIT_TOL and
             abs(b - LIT_B) < LIT_TOL)
 
+
+def _detect_overlay_y(px, W, H):
+    # Strategy: find the bottom of the overlay (last row with left>=4 AND
+    # right==0 inside a sustained band), then anchor the top at
+    # bottom - (12 cells * 12 px - 1). Works for both clean BG (T65/BASIC)
+    # and corrupted-but-bottom-clear cases (SCPU DL with yellow PETSCII
+    # bleed overlapping upper overlay rows).
+    MIN_RUN = 12
+    bands = []
+    run = 0
+    run_start = None
+    for y in range(H):
+        left = sum(1 for x in range(0, 120) if is_lit(px[x, y]))
+        right = sum(1 for x in range(120, W) if is_lit(px[x, y]))
+        if left >= 4 and right == 0:
+            if run == 0:
+                run_start = y
+            run += 1
+        else:
+            if run >= MIN_RUN:
+                bands.append((run_start, run))
+            run = 0
+            run_start = None
+    if run >= MIN_RUN:
+        bands.append((run_start, run))
+    if not bands:
+        return 10
+    # Bottom-anchor: find the LAST band's last row, that is the bottom
+    # of the overlay (text rows fall off at the bottom into black).
+    last = max(bands, key=lambda b: b[0])
+    bottom = last[0] + last[1] - 1
+    # Overlay is ROWS source rows × CELL_PNG_H (12) PNG-rows; sampling
+    # offset puts cell-row 5 sample at top + (ROWS-1)*12 + 11. So top
+    # is bottom - (ROWS*12 - 1).
+    top = bottom - (ROWS * 12 - 1)
+    if top < 0:
+        top = 10
+    return top
+
 def decode(path, verbose=False):
     img = Image.open(path).convert('RGB')
     W, H = img.size
     px = img.load()
-    # Empirically located overlay box in PNG coords:
-    # x 5..108 (22 cells × 5 px), y 10..57 (4 rows × 12 px = 6 src rows × 2)
+    # v220 (2026-04-30): overlay moved from top to mid-screen (Y_LO=180)
+    # to remain visible during DL gameplay. PNG-coord Y0 = (180-6)*2 + 10 = 358.
+    # Auto-detect: scan rows for first contiguous block of overlay-yellow.
     OVR_PNG_X0 = 5
-    OVR_PNG_Y0 = 10
     CELL_PNG_W = 5
     CELL_PNG_H = 12
+    OVR_PNG_Y0 = _detect_overlay_y(px, W, H)
     out = []
     for cy in range(ROWS):
         line = ''

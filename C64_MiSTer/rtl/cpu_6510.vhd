@@ -41,7 +41,10 @@ entity cpu_6510 is
 		-- 2026-04-30 DL triage: expose T65 SYNC (high on opcode fetch).
 		-- Used by fpga64_sid_iec to latch PC for the $DD00 write capture
 		-- so T65's WPC tracks instruction PC, not destination address.
-		sync_out: out std_logic
+		sync_out: out std_logic;
+		-- 2026-05-01 v258: expose T65 register file. Pack {PC,S,P,Y,X,A}
+		-- (64 bits) — Y at [23:16], X at [15:8].
+		regs    : out std_logic_vector(63 downto 0)
 	);
 end cpu_6510;
 
@@ -52,6 +55,7 @@ architecture rtl of cpu_6510 is
 	signal localDi : std_logic_vector(7 downto 0);
 	signal localDo : std_logic_vector(7 downto 0);
 	signal localWe : std_logic;
+	signal localRegs : std_logic_vector(63 downto 0);
 
 	signal currentIO : std_logic_vector(7 downto 0);
 	signal ioDir : std_logic_vector(7 downto 0);
@@ -76,8 +80,11 @@ begin
 		A       => localA,
 		DI      => localDi,
 		DO      => localDo,
+		Regs    => localRegs,
 		NMI_ack => nmi_ack
 	);
+
+	regs <= localRegs;
 
 	accessIO <= '1' when localA(15 downto 1) = X"000"&"000" else '0';
 	localDi  <= localDo when localWe = '0' else std_logic_vector(di) when accessIO = '0' else ioDir when localA(0) = '0' else currentIO;

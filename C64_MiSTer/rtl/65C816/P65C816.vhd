@@ -422,7 +422,20 @@ begin
 							IR = x"EB" or IR = x"AB" or IR = x"5B" or IR = x"BA" then
 							P(1 downto 0) <= ZO & CO; P(7 downto 6) <= SO & VO; -- ALU
 						end if;
-					when "010" => P(2) <= '1'; P(3) <= '0';		-- BRK/COP
+					when "010" =>
+						-- v253 (2026-05-01): NMOS D-flag preservation in emu
+						-- mode. Per W65C816S datasheet BRK/IRQ/NMI clear D
+						-- in BOTH native and emu mode -- BUT this differs
+						-- from NMOS 6502 (which leaves D unchanged). DL was
+						-- written for stock C64 (NMOS 6510) and may rely on
+						-- D staying as-set across IRQs. In native mode keep
+						-- WDC behaviour; in emu mode (EF=1) match NMOS by
+						-- preserving D.
+						P(2) <= '1';
+						if EF = '0' then
+							P(3) <= '0';
+						end if;
+						-- BRK/COP
 					when "011" => P(7 downto 6) <= D_IN(7 downto 6); P(5) <= D_IN(5) or EF; P(4) <= D_IN(4) or EF; P(3 downto 0) <= D_IN(3 downto 0); -- RTI/PLP
 					when "100" => 
 						case IR(7 downto 6) is

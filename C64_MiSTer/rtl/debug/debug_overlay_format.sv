@@ -49,6 +49,9 @@ module debug_overlay_format
 	localparam [5:0] G_S  = 6'd28;
 	localparam [5:0] G_U  = 6'd30;
 	localparam [5:0] G_V  = 6'd31;
+	localparam [5:0] G_W  = 6'd32;
+	localparam [5:0] G_H  = 6'd17;
+	localparam [5:0] G_N  = 6'd23;
 
 	// Helper: 4-bit hex nibble -> glyph. The font allocates 0..9 for
 	// digits and 10..15 for A..F contiguously, so the nibble value
@@ -161,205 +164,383 @@ module debug_overlay_format
 				default: glyph_id = G_SP;
 			endcase
 
-			// ===== Row 4: WPC=###### N=##         ==================
-			// PC at last $DD00 write, plus 8-bit write count. PC pinpoints
-			// which DL routine writes the bad VIC bank (T65=$01, SCPU=$00/$02).
+			// ===== Row 4: 02=#### 03=#### C=#### v256 dispatch-vector ===
+			// v256: writers of $0002 and $0003 (the dispatch-vector RAM
+			// bytes) + counter of $0002 writes.
+			//   02=#### = lower 16 bits of wr02_pc (PC of last writer to $0002)
+			//   03=#### = lower 16 bits of wr03_pc (PC of last writer to $0003)
+			//   C=####  = cnt_wr02 (count of writes to $0002)
+			// v255 found SCPU's JMP-indirect targets stuck at $3300/$3380
+			// across many IRQs while T65's targets are different every IRQ.
+			// Hypothesis: SCPU rarely re-writes $0002. If cnt_wr02 << T65's,
+			// confirms. wr02_pc reveals WHICH code does the writing — that
+			// PC's surrounding routine is the divergent code.
+			// (Replaces v246 $0079..$007F mem dump; mem_79..mem_7F confirmed
+			// identical T65/SCPU per memory.)
 			4'd4: case (cell_x)
-				5'd0:  glyph_id = 6'd32;  // 'W'
-				5'd1:  glyph_id = G_P;
-				5'd2:  glyph_id = G_C;
-				5'd3:  glyph_id = G_EQ;
-				5'd4:  glyph_id = hex(pool.dd00_write_pc[23:20]);
-				5'd5:  glyph_id = hex(pool.dd00_write_pc[19:16]);
-				5'd6:  glyph_id = hex(pool.dd00_write_pc[15:12]);
-				5'd7:  glyph_id = hex(pool.dd00_write_pc[11:8]);
-				5'd8:  glyph_id = hex(pool.dd00_write_pc[7:4]);
-				5'd9:  glyph_id = hex(pool.dd00_write_pc[3:0]);
-				5'd10: glyph_id = G_SP;
-				5'd11: glyph_id = 6'd23;  // 'N'
-				5'd12: glyph_id = G_EQ;
-				5'd13: glyph_id = hex(pool.dd00_write_count[7:4]);
-				5'd14: glyph_id = hex(pool.dd00_write_count[3:0]);
-				default: glyph_id = G_SP;
-			endcase
-
-			// ===== Row 5: P0=###### P1=######    ==================
-			// Per-value PC capture for $DD00 writes by data nibble [1:0]:
-			// P0 = last writer of $00 (bank 3 / $C000-$FFFF)
-			// P1 = last writer of $01 (bank 2 / $8000-$BFFF) <- DL bitmap bank
-			4'd5: case (cell_x)
-				5'd0:  glyph_id = G_P;
-				5'd1:  glyph_id = 6'd0;   // '0'
+				5'd0:  glyph_id = 6'd0;        // '0'
+				5'd1:  glyph_id = 6'd2;        // '2'
 				5'd2:  glyph_id = G_EQ;
-				5'd3:  glyph_id = hex(pool.dd00_pc_v0[23:20]);
-				5'd4:  glyph_id = hex(pool.dd00_pc_v0[19:16]);
-				5'd5:  glyph_id = hex(pool.dd00_pc_v0[15:12]);
-				5'd6:  glyph_id = hex(pool.dd00_pc_v0[11:8]);
-				5'd7:  glyph_id = hex(pool.dd00_pc_v0[7:4]);
-				5'd8:  glyph_id = hex(pool.dd00_pc_v0[3:0]);
-				5'd9:  glyph_id = G_SP;
-				5'd10: glyph_id = G_P;
-				5'd11: glyph_id = 6'd1;   // '1'
-				5'd12: glyph_id = G_EQ;
-				5'd13: glyph_id = hex(pool.dd00_pc_v1[23:20]);
-				5'd14: glyph_id = hex(pool.dd00_pc_v1[19:16]);
-				5'd15: glyph_id = hex(pool.dd00_pc_v1[15:12]);
-				5'd16: glyph_id = hex(pool.dd00_pc_v1[11:8]);
-				5'd17: glyph_id = hex(pool.dd00_pc_v1[7:4]);
-				5'd18: glyph_id = hex(pool.dd00_pc_v1[3:0]);
-				default: glyph_id = G_SP;
-			endcase
-
-			// ===== Row 6: P2=###### P3=######    ==================
-			// P2 = last writer of $02 (bank 1 / $4000-$7FFF)
-			// P3 = last writer of $03 (bank 0 / $0000-$3FFF, default)
-			4'd6: case (cell_x)
-				5'd0:  glyph_id = G_P;
-				5'd1:  glyph_id = 6'd2;   // '2'
-				5'd2:  glyph_id = G_EQ;
-				5'd3:  glyph_id = hex(pool.dd00_pc_v2[23:20]);
-				5'd4:  glyph_id = hex(pool.dd00_pc_v2[19:16]);
-				5'd5:  glyph_id = hex(pool.dd00_pc_v2[15:12]);
-				5'd6:  glyph_id = hex(pool.dd00_pc_v2[11:8]);
-				5'd7:  glyph_id = hex(pool.dd00_pc_v2[7:4]);
-				5'd8:  glyph_id = hex(pool.dd00_pc_v2[3:0]);
-				5'd9:  glyph_id = G_SP;
-				5'd10: glyph_id = G_P;
-				5'd11: glyph_id = 6'd3;   // '3'
-				5'd12: glyph_id = G_EQ;
-				5'd13: glyph_id = hex(pool.dd00_pc_v3[23:20]);
-				5'd14: glyph_id = hex(pool.dd00_pc_v3[19:16]);
-				5'd15: glyph_id = hex(pool.dd00_pc_v3[15:12]);
-				5'd16: glyph_id = hex(pool.dd00_pc_v3[11:8]);
-				5'd17: glyph_id = hex(pool.dd00_pc_v3[7:4]);
-				5'd18: glyph_id = hex(pool.dd00_pc_v3[3:0]);
-				default: glyph_id = G_SP;
-			endcase
-
-			// ===== Row 7: 0=##:1=##:2=##:3=##:#### =================
-			// 8-bit per-value $DD00 write counters (no leading 'N' to fit
-			// 22 cells). T65 baseline expected to show all 4 incrementing
-			// each frame; SCPU=on expected to show N1 / N3 frozen.
-			// Cells 18..21 unused.
-			4'd7: case (cell_x)
-				5'd0:  glyph_id = 6'd0;   // '0'
-				5'd1:  glyph_id = G_EQ;
-				5'd2:  glyph_id = hex(pool.dd00_cnt_v0[7:4]);
-				5'd3:  glyph_id = hex(pool.dd00_cnt_v0[3:0]);
-				5'd4:  glyph_id = G_SP;
-				5'd5:  glyph_id = 6'd1;   // '1'
-				5'd6:  glyph_id = G_EQ;
-				5'd7:  glyph_id = hex(pool.dd00_cnt_v1[7:4]);
-				5'd8:  glyph_id = hex(pool.dd00_cnt_v1[3:0]);
-				5'd9:  glyph_id = G_SP;
-				5'd10: glyph_id = 6'd2;   // '2'
-				5'd11: glyph_id = G_EQ;
-				5'd12: glyph_id = hex(pool.dd00_cnt_v2[7:4]);
-				5'd13: glyph_id = hex(pool.dd00_cnt_v2[3:0]);
-				5'd14: glyph_id = G_SP;
-				5'd15: glyph_id = 6'd3;   // '3'
-				5'd16: glyph_id = G_EQ;
-				5'd17: glyph_id = hex(pool.dd00_cnt_v3[7:4]);
-				5'd18: glyph_id = hex(pool.dd00_cnt_v3[3:0]);
-				default: glyph_id = G_SP;
-			endcase
-
-			// ===== Row 8: BPC=######  V=## B=## C=## ==============
-			// D018 corruption: BPC = PC of last D018 != $18 write,
-			// V = value written, B = bad-write count, C = total writes.
-			4'd8: case (cell_x)
-				5'd0:  glyph_id = G_B;
-				5'd1:  glyph_id = G_P;
-				5'd2:  glyph_id = G_C;
-				5'd3:  glyph_id = G_EQ;
-				5'd4:  glyph_id = hex(pool.d018_bad_pc[23:20]);
-				5'd5:  glyph_id = hex(pool.d018_bad_pc[19:16]);
-				5'd6:  glyph_id = hex(pool.d018_bad_pc[15:12]);
-				5'd7:  glyph_id = hex(pool.d018_bad_pc[11:8]);
-				5'd8:  glyph_id = hex(pool.d018_bad_pc[7:4]);
-				5'd9:  glyph_id = hex(pool.d018_bad_pc[3:0]);
-				5'd10: glyph_id = G_SP;
-				5'd11: glyph_id = G_V;
-				5'd12: glyph_id = G_EQ;
-				5'd13: glyph_id = hex(pool.d018_bad_value[7:4]);
-				5'd14: glyph_id = hex(pool.d018_bad_value[3:0]);
+				5'd3:  glyph_id = hex(pool.wr02_pc[15:12]);
+				5'd4:  glyph_id = hex(pool.wr02_pc[11:8]);
+				5'd5:  glyph_id = hex(pool.wr02_pc[7:4]);
+				5'd6:  glyph_id = hex(pool.wr02_pc[3:0]);
+				5'd7:  glyph_id = G_SP;
+				5'd8:  glyph_id = 6'd0;        // '0'
+				5'd9:  glyph_id = 6'd3;        // '3'
+				5'd10: glyph_id = G_EQ;
+				5'd11: glyph_id = hex(pool.wr03_pc[15:12]);
+				5'd12: glyph_id = hex(pool.wr03_pc[11:8]);
+				5'd13: glyph_id = hex(pool.wr03_pc[7:4]);
+				5'd14: glyph_id = hex(pool.wr03_pc[3:0]);
 				5'd15: glyph_id = G_SP;
-				5'd16: glyph_id = G_B;
+				5'd16: glyph_id = G_C;
 				5'd17: glyph_id = G_EQ;
-				5'd18: glyph_id = hex(pool.d018_bad_count[7:4]);
-				5'd19: glyph_id = hex(pool.d018_bad_count[3:0]);
+				5'd18: glyph_id = hex(pool.cnt_wr02[15:12]);
+				5'd19: glyph_id = hex(pool.cnt_wr02[11:8]);
+				5'd20: glyph_id = hex(pool.cnt_wr02[7:4]);
+				5'd21: glyph_id = hex(pool.cnt_wr02[3:0]);
 				default: glyph_id = G_SP;
 			endcase
 
-			// ===== Row 9: T0=######  T1=######  F=# =============
-			// PC ring buffer (oldest two of 4 entries, frozen after first
-			// D018 != $18 write). F = trace_frozen flag (1 = ring captured).
+			// ===== Row 5: V0=## V1=## W=###### ========================
+			// v245: actual VALUES written to $0070/$0071 (cpuDo at the
+			// write cycle) + W = wr70_pc (PC of the writer instruction).
+			// v244 row 5 ($3388-$338F dump) was identical T65/SCPU per
+			// v244 capture; retiring it frees the row for v245 data.
+			4'd5: case (cell_x)
+				5'd0:  glyph_id = G_V;
+				5'd1:  glyph_id = 6'd0;       // '0'
+				5'd2:  glyph_id = G_EQ;
+				5'd3:  glyph_id = hex(pool.wr70_val[7:4]);
+				5'd4:  glyph_id = hex(pool.wr70_val[3:0]);
+				5'd5:  glyph_id = G_SP;
+				5'd6:  glyph_id = G_V;
+				5'd7:  glyph_id = 6'd1;       // '1'
+				5'd8:  glyph_id = G_EQ;
+				5'd9:  glyph_id = hex(pool.wr71_val[7:4]);
+				5'd10: glyph_id = hex(pool.wr71_val[3:0]);
+				5'd11: glyph_id = G_SP;
+				5'd12: glyph_id = 6'd32;       // 'W'
+				5'd13: glyph_id = G_EQ;
+				5'd14: glyph_id = hex(pool.wr70_pc[23:20]);
+				5'd15: glyph_id = hex(pool.wr70_pc[19:16]);
+				5'd16: glyph_id = hex(pool.wr70_pc[15:12]);
+				5'd17: glyph_id = hex(pool.wr70_pc[11:8]);
+				5'd18: glyph_id = hex(pool.wr70_pc[7:4]);
+				5'd19: glyph_id = hex(pool.wr70_pc[3:0]);
+				default: glyph_id = G_SP;
+			endcase
+
+			// ===== Row 6: V=## ## ## ##  YX=#### v258 wr02 value ring + regs
+			// v258: replaces stale v246 cnt_3200/cnt_3100 (proven 50/50
+			// identical both modes since v246, no longer load-bearing).
+			//   V=## ## ## ## : last 4 values stored to $0002 (newest=v3)
+			//   YX=####       : Y/X register pair at most-recent $0002
+			//                   write (Y[7:0] X[7:0])
+			// SCPU expected: V cycles through 2 narrow values (e.g. $00
+			// $80 $00 $80) → JMP ring narrow ($3300/$3380). Y is the
+			// suspected upstream table index.
+			4'd6: case (cell_x)
+				5'd0:  glyph_id = G_V;
+				5'd1:  glyph_id = G_EQ;
+				5'd2:  glyph_id = hex(pool.wr02_v0[7:4]);
+				5'd3:  glyph_id = hex(pool.wr02_v0[3:0]);
+				5'd4:  glyph_id = G_SP;
+				5'd5:  glyph_id = hex(pool.wr02_v1[7:4]);
+				5'd6:  glyph_id = hex(pool.wr02_v1[3:0]);
+				5'd7:  glyph_id = G_SP;
+				5'd8:  glyph_id = hex(pool.wr02_v2[7:4]);
+				5'd9:  glyph_id = hex(pool.wr02_v2[3:0]);
+				5'd10: glyph_id = G_SP;
+				5'd11: glyph_id = hex(pool.wr02_v3[7:4]);
+				5'd12: glyph_id = hex(pool.wr02_v3[3:0]);
+				5'd13: glyph_id = G_SP;
+				5'd14: glyph_id = G_SP;
+				5'd15: glyph_id = 6'd34;          // 'Y'
+				5'd16: glyph_id = 6'd33;          // 'X'
+				5'd17: glyph_id = G_EQ;
+				5'd18: glyph_id = hex(pool.wr02_y[7:4]);
+				5'd19: glyph_id = hex(pool.wr02_y[3:0]);
+				5'd20: glyph_id = hex(pool.wr02_x[7:4]);
+				5'd21: glyph_id = hex(pool.wr02_x[3:0]);
+				default: glyph_id = G_SP;
+			endcase
+
+			// ===== Row 7: V=#### IO=## ## ============================
+			// v255: KERNAL IRQ vector ($0314 lo, $0315 hi) + CPU IO port
+			// direction ($0000) and data ($0001).
+			//   V=####    = mem[$0315] : mem[$0314] (16-bit IRQ vector)
+			//   IO=## ##  = mem[$0000] mem[$0001] (CPU IO port DDR/DATA)
+			// DL replaces the IRQ vector with its raster handler. If T65
+			// vs SCPU read different bytes, IRQ entry diverges. The CPU
+			// IO port bit 7 (CHAREN), bit 6 (HIRAM), bit 5 (LORAM) gate
+			// what's visible at $A000/$D000/$E000. Different IO port
+			// value => same PC sees different code => state divergence.
+			// Replaces v247 5B-row (mem_5B confirmed identical both modes).
+			4'd7: case (cell_x)
+				5'd0:  glyph_id = G_V;
+				5'd1:  glyph_id = G_EQ;
+				5'd2:  glyph_id = hex(pool.mem_0315[7:4]);
+				5'd3:  glyph_id = hex(pool.mem_0315[3:0]);
+				5'd4:  glyph_id = hex(pool.mem_0314[7:4]);
+				5'd5:  glyph_id = hex(pool.mem_0314[3:0]);
+				5'd6:  glyph_id = G_SP;
+				5'd7:  glyph_id = G_I;
+				5'd8:  glyph_id = 6'd24;       // 'O'
+				5'd9:  glyph_id = G_EQ;
+				5'd10: glyph_id = hex(pool.mem_00[7:4]);
+				5'd11: glyph_id = hex(pool.mem_00[3:0]);
+				5'd12: glyph_id = G_SP;
+				5'd13: glyph_id = hex(pool.mem_01[7:4]);
+				5'd14: glyph_id = hex(pool.mem_01[3:0]);
+				default: glyph_id = G_SP;
+			endcase
+
+			// ===== Row 8: 80=[14 hex chars = 7 bytes $0080..$0086] ====
+			// v247: rest of the IRQ stub's REU dispatch routine. v246
+			// captured up to $007F (LDA $5B); these bytes show the next
+			// STA $DFxx that uses A and any subsequent ops.
+			4'd8: case (cell_x)
+				5'd0:  glyph_id = 6'd8;       // '8'
+				5'd1:  glyph_id = 6'd0;       // '0'
+				5'd2:  glyph_id = G_EQ;
+				5'd3:  glyph_id = hex(pool.mem_80[7:4]);
+				5'd4:  glyph_id = hex(pool.mem_80[3:0]);
+				5'd5:  glyph_id = hex(pool.mem_81[7:4]);
+				5'd6:  glyph_id = hex(pool.mem_81[3:0]);
+				5'd7:  glyph_id = hex(pool.mem_82[7:4]);
+				5'd8:  glyph_id = hex(pool.mem_82[3:0]);
+				5'd9:  glyph_id = hex(pool.mem_83[7:4]);
+				5'd10: glyph_id = hex(pool.mem_83[3:0]);
+				5'd11: glyph_id = hex(pool.mem_84[7:4]);
+				5'd12: glyph_id = hex(pool.mem_84[3:0]);
+				5'd13: glyph_id = hex(pool.mem_85[7:4]);
+				5'd14: glyph_id = hex(pool.mem_85[3:0]);
+				5'd15: glyph_id = hex(pool.mem_86[7:4]);
+				5'd16: glyph_id = hex(pool.mem_86[3:0]);
+				default: glyph_id = G_SP;
+			endcase
+
+			// ===== Row 9: 87=[10 hex chars = 5 bytes $0087..$008B] ====
+			// v247: continuation of dispatch routine.
+			// ===== Row 9: J=#### #### #### #### v254 JSR ring ============
+			// v254: lower 16 bits of last 4 JSR/JSL fetch PCs. Reading
+			// order jsr_pc_t0 (oldest) -> jsr_pc_t3 (newest).
+			// jsr_pc_t3 = the JSR/JSL that called the routine where the
+			// $DF01 trigger fired (i.e. the writer's immediate caller).
+			// Earlier entries reveal the call chain leading there.
+			// T65 expected to show JSR PCs that route to $852B/$805F/
+			// $8835/$832C; SCPU shows different upstream PC if dispatcher
+			// branches diverge. Replaced the mem_87..mem_8B row (those
+			// bytes are identical T65/SCPU per v249, so freed for JSR).
 			4'd9: case (cell_x)
-				5'd0:  glyph_id = 6'd29;  // 'T'
-				5'd1:  glyph_id = 6'd0;   // '0'
-				5'd2:  glyph_id = G_EQ;
-				5'd3:  glyph_id = hex(pool.trace_pc0[23:20]);
-				5'd4:  glyph_id = hex(pool.trace_pc0[19:16]);
-				5'd5:  glyph_id = hex(pool.trace_pc0[15:12]);
-				5'd6:  glyph_id = hex(pool.trace_pc0[11:8]);
-				5'd7:  glyph_id = hex(pool.trace_pc0[7:4]);
-				5'd8:  glyph_id = hex(pool.trace_pc0[3:0]);
-				5'd9:  glyph_id = G_SP;
-				5'd10: glyph_id = 6'd29;  // 'T'
-				5'd11: glyph_id = 6'd1;   // '1'
-				5'd12: glyph_id = G_EQ;
-				5'd13: glyph_id = hex(pool.trace_pc1[23:20]);
-				5'd14: glyph_id = hex(pool.trace_pc1[19:16]);
-				5'd15: glyph_id = hex(pool.trace_pc1[15:12]);
-				5'd16: glyph_id = hex(pool.trace_pc1[11:8]);
-				5'd17: glyph_id = hex(pool.trace_pc1[7:4]);
-				5'd18: glyph_id = hex(pool.trace_pc1[3:0]);
-				5'd19: glyph_id = G_SP;
-				5'd20: glyph_id = G_F;
-				5'd21: glyph_id = hex({3'b000, pool.trace_frozen});
+				5'd0:  glyph_id = 6'd19;         // 'J'   (G_J = 19)
+				5'd1:  glyph_id = G_EQ;
+				5'd2:  glyph_id = hex(pool.jsr_pc_t0[15:12]);
+				5'd3:  glyph_id = hex(pool.jsr_pc_t0[11:8]);
+				5'd4:  glyph_id = hex(pool.jsr_pc_t0[7:4]);
+				5'd5:  glyph_id = hex(pool.jsr_pc_t0[3:0]);
+				5'd6:  glyph_id = G_SP;
+				5'd7:  glyph_id = hex(pool.jsr_pc_t1[15:12]);
+				5'd8:  glyph_id = hex(pool.jsr_pc_t1[11:8]);
+				5'd9:  glyph_id = hex(pool.jsr_pc_t1[7:4]);
+				5'd10: glyph_id = hex(pool.jsr_pc_t1[3:0]);
+				5'd11: glyph_id = G_SP;
+				5'd12: glyph_id = hex(pool.jsr_pc_t2[15:12]);
+				5'd13: glyph_id = hex(pool.jsr_pc_t2[11:8]);
+				5'd14: glyph_id = hex(pool.jsr_pc_t2[7:4]);
+				5'd15: glyph_id = hex(pool.jsr_pc_t2[3:0]);
+				5'd16: glyph_id = G_SP;
+				5'd17: glyph_id = hex(pool.jsr_pc_t3[15:12]);
+				5'd18: glyph_id = hex(pool.jsr_pc_t3[11:8]);
+				5'd19: glyph_id = hex(pool.jsr_pc_t3[7:4]);
+				5'd20: glyph_id = hex(pool.jsr_pc_t3[3:0]);
 				default: glyph_id = G_SP;
 			endcase
 
-			// ===== Row 10: T2=######  T3=###### =================
-			// T2/T3 = newer two ring entries; T3 = PC just before the
-			// trigger fired = call-site of the D018 != $18 write.
+			// ===== Row 10: D1=## P=###### ============================
+			// v247: last write to $DF01 (REU command).
+			//   D1=## = value the CPU last wrote to $DF01 (REU cmd byte)
+			//   P=##  = 24-bit PC of that writer instruction
+			// v246 readback differed T65=$31 vs SCPU=$7D; this captures
+			// the actual byte the CPU writes (vs reads back post-DMA
+			// when bit 7 has cleared and other bits may be muted).
 			4'd10: case (cell_x)
-				5'd0:  glyph_id = 6'd29;  // 'T'
-				5'd1:  glyph_id = 6'd2;   // '2'
+				5'd0:  glyph_id = G_D;
+				5'd1:  glyph_id = 6'd1;       // '1'
 				5'd2:  glyph_id = G_EQ;
-				5'd3:  glyph_id = hex(pool.trace_pc2[23:20]);
-				5'd4:  glyph_id = hex(pool.trace_pc2[19:16]);
-				5'd5:  glyph_id = hex(pool.trace_pc2[15:12]);
-				5'd6:  glyph_id = hex(pool.trace_pc2[11:8]);
-				5'd7:  glyph_id = hex(pool.trace_pc2[7:4]);
-				5'd8:  glyph_id = hex(pool.trace_pc2[3:0]);
-				5'd9:  glyph_id = G_SP;
-				5'd10: glyph_id = 6'd29;  // 'T'
-				5'd11: glyph_id = 6'd3;   // '3'
-				5'd12: glyph_id = G_EQ;
-				5'd13: glyph_id = hex(pool.trace_pc3[23:20]);
-				5'd14: glyph_id = hex(pool.trace_pc3[19:16]);
-				5'd15: glyph_id = hex(pool.trace_pc3[15:12]);
-				5'd16: glyph_id = hex(pool.trace_pc3[11:8]);
-				5'd17: glyph_id = hex(pool.trace_pc3[7:4]);
-				5'd18: glyph_id = hex(pool.trace_pc3[3:0]);
+				5'd3:  glyph_id = hex(pool.wr_df01_val[7:4]);
+				5'd4:  glyph_id = hex(pool.wr_df01_val[3:0]);
+				5'd5:  glyph_id = G_SP;
+				5'd6:  glyph_id = G_P;
+				5'd7:  glyph_id = G_EQ;
+				5'd8:  glyph_id = hex(pool.wr_df01_pc[23:20]);
+				5'd9:  glyph_id = hex(pool.wr_df01_pc[19:16]);
+				5'd10: glyph_id = hex(pool.wr_df01_pc[15:12]);
+				5'd11: glyph_id = hex(pool.wr_df01_pc[11:8]);
+				5'd12: glyph_id = hex(pool.wr_df01_pc[7:4]);
+				5'd13: glyph_id = hex(pool.wr_df01_pc[3:0]);
 				default: glyph_id = G_SP;
 			endcase
 
-			// ===== Row 11: OP=######  (24-bit opcode counter) =========
-			// Free-running counter ticks on opcode_fetch_pulse. Per-frame
-			// delta = opcodes/frame. T65 vs SCPU comparison answers
-			// "same code, slower" vs "different code path".
+			// ===== Row 11: DC=#### CG=#### ===========================
+			// v247: DC=#### = 16-bit counter of writes to $DF01 (REU DMA
+			// count). v257: CG=#### = subset where stored value at $0002
+			// differs from previous (T65 expected ≈ cnt_wr02; SCPU
+			// expected << cnt_wr02 because dispatcher writes same target
+			// repeatedly).
 			4'd11: case (cell_x)
-				5'd0:  glyph_id = 6'd24;  // 'O'
-				5'd1:  glyph_id = G_P;
+				5'd0:  glyph_id = G_D;
+				5'd1:  glyph_id = G_C;
 				5'd2:  glyph_id = G_EQ;
-				5'd3:  glyph_id = hex(pool.op_count[23:20]);
-				5'd4:  glyph_id = hex(pool.op_count[19:16]);
-				5'd5:  glyph_id = hex(pool.op_count[15:12]);
-				5'd6:  glyph_id = hex(pool.op_count[11:8]);
-				5'd7:  glyph_id = hex(pool.op_count[7:4]);
-				5'd8:  glyph_id = hex(pool.op_count[3:0]);
+				5'd3:  glyph_id = hex(pool.cnt_df01[15:12]);
+				5'd4:  glyph_id = hex(pool.cnt_df01[11:8]);
+				5'd5:  glyph_id = hex(pool.cnt_df01[7:4]);
+				5'd6:  glyph_id = hex(pool.cnt_df01[3:0]);
+				5'd7:  glyph_id = G_SP;
+				5'd8:  glyph_id = G_C;
+				5'd9:  glyph_id = 6'd16;          // 'G' (G_G inline)
+				5'd10: glyph_id = G_EQ;
+				5'd11: glyph_id = hex(pool.cnt_wr02_chg[15:12]);
+				5'd12: glyph_id = hex(pool.cnt_wr02_chg[11:8]);
+				5'd13: glyph_id = hex(pool.cnt_wr02_chg[7:4]);
+				5'd14: glyph_id = hex(pool.cnt_wr02_chg[3:0]);
+				default: glyph_id = G_SP;
+			endcase
+
+			// ===== Row 12: O=## ## ## ## F=#  v250 trace ring opcodes ====
+			// v250: row 12 repurposed. trace_op0..op3 = opcode bytes at
+			// each PC in the trace ring. trace_op3 = the opcode at the
+			// STA $DF01 trigger (should be $8D = STA absolute). F=1 once
+			// the ring has frozen on the 33rd STA $DF01 write (skip 32
+			// to clear loader/setup writes and land in steady-state IRQ
+			// handler). v249 confirmed mem_8C/02/03 identical T65/SCPU
+			// so this row is freed for trace-ring data.
+			4'd12: case (cell_x)
+				5'd0:  glyph_id = 6'd24;         // 'O'   (G_O = 24)
+				5'd1:  glyph_id = G_EQ;
+				5'd2:  glyph_id = hex(pool.trace_op0[7:4]);
+				5'd3:  glyph_id = hex(pool.trace_op0[3:0]);
+				5'd4:  glyph_id = G_SP;
+				5'd5:  glyph_id = hex(pool.trace_op1[7:4]);
+				5'd6:  glyph_id = hex(pool.trace_op1[3:0]);
+				5'd7:  glyph_id = G_SP;
+				5'd8:  glyph_id = hex(pool.trace_op2[7:4]);
+				5'd9:  glyph_id = hex(pool.trace_op2[3:0]);
+				5'd10: glyph_id = G_SP;
+				5'd11: glyph_id = hex(pool.trace_op3[7:4]);
+				5'd12: glyph_id = hex(pool.trace_op3[3:0]);
+				5'd13: glyph_id = G_SP;
+				5'd14: glyph_id = G_F;
+				5'd15: glyph_id = G_EQ;
+				5'd16: glyph_id = hex({3'b000, pool.trace_frozen});
+				default: glyph_id = G_SP;
+			endcase
+
+			// ===== Row 13: M=#### #### #### #### v255 JMP-indirect ring ===
+			// v255: lower 16 bits of last 4 JMP-indirect targets ($6C
+			// JMP (abs), $7C JMP (abs,X), $DC JML [abs]). After fetching
+			// the indirect-jump opcode the next opcode_fetch_pulse fires
+			// AT the target -- captured here. DL's IRQ stub calls
+			// `JMP ($0002)` so this ring shows the dispatch destination
+			// chosen each IRQ. T65 vs SCPU divergence here = the same
+			// vector resolved to different writers despite identical
+			// stored vector bytes. Replaces v249 P-irq ring (D/V flag
+			// stability already verified at v249-v253).
+			4'd13: case (cell_x)
+				5'd0:  glyph_id = G_M;
+				5'd1:  glyph_id = G_EQ;
+				5'd2:  glyph_id = hex(pool.jmp_tgt_t0[15:12]);
+				5'd3:  glyph_id = hex(pool.jmp_tgt_t0[11:8]);
+				5'd4:  glyph_id = hex(pool.jmp_tgt_t0[7:4]);
+				5'd5:  glyph_id = hex(pool.jmp_tgt_t0[3:0]);
+				5'd6:  glyph_id = G_SP;
+				5'd7:  glyph_id = hex(pool.jmp_tgt_t1[15:12]);
+				5'd8:  glyph_id = hex(pool.jmp_tgt_t1[11:8]);
+				5'd9:  glyph_id = hex(pool.jmp_tgt_t1[7:4]);
+				5'd10: glyph_id = hex(pool.jmp_tgt_t1[3:0]);
+				5'd11: glyph_id = G_SP;
+				5'd12: glyph_id = hex(pool.jmp_tgt_t2[15:12]);
+				5'd13: glyph_id = hex(pool.jmp_tgt_t2[11:8]);
+				5'd14: glyph_id = hex(pool.jmp_tgt_t2[7:4]);
+				5'd15: glyph_id = hex(pool.jmp_tgt_t2[3:0]);
+				5'd16: glyph_id = G_SP;
+				5'd17: glyph_id = hex(pool.jmp_tgt_t3[15:12]);
+				5'd18: glyph_id = hex(pool.jmp_tgt_t3[11:8]);
+				5'd19: glyph_id = hex(pool.jmp_tgt_t3[7:4]);
+				5'd20: glyph_id = hex(pool.jmp_tgt_t3[3:0]);
+				default: glyph_id = G_SP;
+			endcase
+
+			// ===== Row 15: P######B######R###### ========================
+			// v241: RTI snapshot ring — 3 PCs ending at RTI execution.
+			//   P###### = PBR:PC two opcodes before RTI (rti_h2)
+			//   B###### = PBR:PC one opcode before RTI (rti_h1)
+			//   R###### = PBR:PC of the RTI itself (rti_pc)
+			// Reading order: P → B → R (chronological, oldest to RTI).
+			// Diagnostic: T65 vs SCPU comparison shows the divergent
+			// instruction. If P/B addresses differ, the JMP/branch
+			// inside the IRQ handler took different paths.
+			4'd15: case (cell_x)
+				5'd0:  glyph_id = G_P;
+				5'd1:  glyph_id = hex(pool.rti_h2[23:20]);
+				5'd2:  glyph_id = hex(pool.rti_h2[19:16]);
+				5'd3:  glyph_id = hex(pool.rti_h2[15:12]);
+				5'd4:  glyph_id = hex(pool.rti_h2[11:8]);
+				5'd5:  glyph_id = hex(pool.rti_h2[7:4]);
+				5'd6:  glyph_id = hex(pool.rti_h2[3:0]);
+				5'd7:  glyph_id = G_B;
+				5'd8:  glyph_id = hex(pool.rti_h1[23:20]);
+				5'd9:  glyph_id = hex(pool.rti_h1[19:16]);
+				5'd10: glyph_id = hex(pool.rti_h1[15:12]);
+				5'd11: glyph_id = hex(pool.rti_h1[11:8]);
+				5'd12: glyph_id = hex(pool.rti_h1[7:4]);
+				5'd13: glyph_id = hex(pool.rti_h1[3:0]);
+				5'd14: glyph_id = G_R;
+				5'd15: glyph_id = hex(pool.rti_pc[23:20]);
+				5'd16: glyph_id = hex(pool.rti_pc[19:16]);
+				5'd17: glyph_id = hex(pool.rti_pc[15:12]);
+				5'd18: glyph_id = hex(pool.rti_pc[11:8]);
+				5'd19: glyph_id = hex(pool.rti_pc[7:4]);
+				5'd20: glyph_id = hex(pool.rti_pc[3:0]);
+				default: glyph_id = G_SP;
+			endcase
+
+			// ===== Row 14: T=#### #### #### #### v250 trace ring PCs =====
+			// v250: trace_pc0..pc3 = PCs at the last 4 opcode_fetch_pulses
+			// before STA $DF01 fired (frozen on the 33rd DF01 write — see
+			// row 12 F flag). Bank=0 in emu mode so we show only the
+			// lower 16 bits. Reading order trace_pc0 (oldest) -> trace_pc3
+			// (= STA $DF01 PC). trace_pc2 = LDA #imm (A9 immediate value
+			// fed to STA $DF01); trace_pc1 = JSR/JMP/branch into the
+			// routine. T65 expected to land on $852B/$8835/$805F (FF00-
+			// triggered FETCH cmd $FD); SCPU stuck at $8D2A (immediate-
+			// fire FETCH cmd $A1). The trace_pc1 difference IS the
+			// divergent caller. v249 confirmed wr02/wr03 PCs identical
+			// so this row is freed for trace-ring data.
+			4'd14: case (cell_x)
+				5'd0:  glyph_id = 6'd29;         // 'T'   (G_T = 29)
+				5'd1:  glyph_id = G_EQ;
+				5'd2:  glyph_id = hex(pool.trace_pc0[15:12]);
+				5'd3:  glyph_id = hex(pool.trace_pc0[11:8]);
+				5'd4:  glyph_id = hex(pool.trace_pc0[7:4]);
+				5'd5:  glyph_id = hex(pool.trace_pc0[3:0]);
+				5'd6:  glyph_id = G_SP;
+				5'd7:  glyph_id = hex(pool.trace_pc1[15:12]);
+				5'd8:  glyph_id = hex(pool.trace_pc1[11:8]);
+				5'd9:  glyph_id = hex(pool.trace_pc1[7:4]);
+				5'd10: glyph_id = hex(pool.trace_pc1[3:0]);
+				5'd11: glyph_id = G_SP;
+				5'd12: glyph_id = hex(pool.trace_pc2[15:12]);
+				5'd13: glyph_id = hex(pool.trace_pc2[11:8]);
+				5'd14: glyph_id = hex(pool.trace_pc2[7:4]);
+				5'd15: glyph_id = hex(pool.trace_pc2[3:0]);
+				5'd16: glyph_id = G_SP;
+				5'd17: glyph_id = hex(pool.trace_pc3[15:12]);
+				5'd18: glyph_id = hex(pool.trace_pc3[11:8]);
+				5'd19: glyph_id = hex(pool.trace_pc3[7:4]);
+				5'd20: glyph_id = hex(pool.trace_pc3[3:0]);
 				default: glyph_id = G_SP;
 			endcase
 
