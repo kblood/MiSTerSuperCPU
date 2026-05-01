@@ -4,7 +4,19 @@
 // vblank rising edge containing the dbg_pool fields most relevant for
 // the Dragon's Lair / SCPU-emu-mode investigation:
 //
-//   F:#### PC:###### P:## V:## ## ## ## YX:#### WP:###### CG:#### CY:####\n
+//   F:#### PC:###### P:## V:## ## ## ## YX:#### WP:###### CG:#### CY:#### J:#### #### #### #### M:#### #### #### ####\n
+//
+// J = 4-deep JSR-PC ring (low 16 bits)         from pool.jsr_pc_t0..t3
+// M = 4-deep JMP-indirect target ring          from pool.jmp_tgt_t0..t3
+//
+// Added 2026-05-01 after the dl_uart_baseline finding: V/Y/X are
+// IDENTICAL T65 vs SCPU but PC distribution is disjoint, so the bug is
+// in upstream state. JSR ring + JMP-target ring per frame gives 4
+// samples × 50 fps = 200 calls/s of caller-chain visibility, vs the
+// 4-per-screenshot the overlay provided.
+//
+// Bandwidth: 114 chars × 50 Hz = 5700 B/s, well below the 11520 B/s
+// budget at 115200 baud.
 //
 // Fields:
 //   F  = frame_count  (16-bit, ticks each vsync)
@@ -54,13 +66,15 @@ module debug_uart_pool_fmt
 	reg [23:0] lat_wp;
 	reg [15:0] lat_cg;
 	reg [15:0] lat_cy;
+	reg [15:0] lat_jsr0, lat_jsr1, lat_jsr2, lat_jsr3;
+	reg [15:0] lat_jmp0, lat_jmp1, lat_jmp2, lat_jmp3;
 
 	// -----------------------------------------------------------------
 	// Send FSM: drive tx_send for one cycle whenever tx is idle and the
 	// next byte hasn't been issued yet. byte_idx indexes the line bytes
 	// 0..LINE_LEN-1; LINE_LEN signals "line done, idle until next vblank".
 	// -----------------------------------------------------------------
-	localparam LINE_LEN = 8'd70;
+	localparam LINE_LEN = 8'd114;
 
 	reg [7:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -158,9 +172,57 @@ module debug_uart_pool_fmt
 			8'd66: line_byte = hex_nibble(lat_cy[11:8]);
 			8'd67: line_byte = hex_nibble(lat_cy[7:4]);
 			8'd68: line_byte = hex_nibble(lat_cy[3:0]);
+			8'd69: line_byte = " ";
+
+			// "J:#### #### #### ####"
+			8'd70: line_byte = "J";
+			8'd71: line_byte = ":";
+			8'd72: line_byte = hex_nibble(lat_jsr0[15:12]);
+			8'd73: line_byte = hex_nibble(lat_jsr0[11:8]);
+			8'd74: line_byte = hex_nibble(lat_jsr0[7:4]);
+			8'd75: line_byte = hex_nibble(lat_jsr0[3:0]);
+			8'd76: line_byte = " ";
+			8'd77: line_byte = hex_nibble(lat_jsr1[15:12]);
+			8'd78: line_byte = hex_nibble(lat_jsr1[11:8]);
+			8'd79: line_byte = hex_nibble(lat_jsr1[7:4]);
+			8'd80: line_byte = hex_nibble(lat_jsr1[3:0]);
+			8'd81: line_byte = " ";
+			8'd82: line_byte = hex_nibble(lat_jsr2[15:12]);
+			8'd83: line_byte = hex_nibble(lat_jsr2[11:8]);
+			8'd84: line_byte = hex_nibble(lat_jsr2[7:4]);
+			8'd85: line_byte = hex_nibble(lat_jsr2[3:0]);
+			8'd86: line_byte = " ";
+			8'd87: line_byte = hex_nibble(lat_jsr3[15:12]);
+			8'd88: line_byte = hex_nibble(lat_jsr3[11:8]);
+			8'd89: line_byte = hex_nibble(lat_jsr3[7:4]);
+			8'd90: line_byte = hex_nibble(lat_jsr3[3:0]);
+			8'd91: line_byte = " ";
+
+			// "M:#### #### #### ####"
+			8'd92:  line_byte = "M";
+			8'd93:  line_byte = ":";
+			8'd94:  line_byte = hex_nibble(lat_jmp0[15:12]);
+			8'd95:  line_byte = hex_nibble(lat_jmp0[11:8]);
+			8'd96:  line_byte = hex_nibble(lat_jmp0[7:4]);
+			8'd97:  line_byte = hex_nibble(lat_jmp0[3:0]);
+			8'd98:  line_byte = " ";
+			8'd99:  line_byte = hex_nibble(lat_jmp1[15:12]);
+			8'd100: line_byte = hex_nibble(lat_jmp1[11:8]);
+			8'd101: line_byte = hex_nibble(lat_jmp1[7:4]);
+			8'd102: line_byte = hex_nibble(lat_jmp1[3:0]);
+			8'd103: line_byte = " ";
+			8'd104: line_byte = hex_nibble(lat_jmp2[15:12]);
+			8'd105: line_byte = hex_nibble(lat_jmp2[11:8]);
+			8'd106: line_byte = hex_nibble(lat_jmp2[7:4]);
+			8'd107: line_byte = hex_nibble(lat_jmp2[3:0]);
+			8'd108: line_byte = " ";
+			8'd109: line_byte = hex_nibble(lat_jmp3[15:12]);
+			8'd110: line_byte = hex_nibble(lat_jmp3[11:8]);
+			8'd111: line_byte = hex_nibble(lat_jmp3[7:4]);
+			8'd112: line_byte = hex_nibble(lat_jmp3[3:0]);
 
 			// newline
-			8'd69: line_byte = 8'h0A;
+			8'd113: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -192,6 +254,14 @@ module debug_uart_pool_fmt
 				lat_wp    <= pool.wr02_pc;
 				lat_cg    <= pool.cnt_wr02_chg;
 				lat_cy    <= pool.cnt_wr02;
+				lat_jsr0  <= pool.jsr_pc_t0;
+				lat_jsr1  <= pool.jsr_pc_t1;
+				lat_jsr2  <= pool.jsr_pc_t2;
+				lat_jsr3  <= pool.jsr_pc_t3;
+				lat_jmp0  <= pool.jmp_tgt_t0;
+				lat_jmp1  <= pool.jmp_tgt_t1;
+				lat_jmp2  <= pool.jmp_tgt_t2;
+				lat_jmp3  <= pool.jmp_tgt_t3;
 				byte_idx  <= 8'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin
