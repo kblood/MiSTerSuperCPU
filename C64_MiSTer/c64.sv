@@ -2262,7 +2262,11 @@ assign {r_dbg, g_dbg, b_dbg} = {r, g, b};
 // and the UART_TXD override block at the C64 functional-UART logic is also
 // gated, so synthesis collapses this entire path.
 // ---------------------------------------------------------------------------
-wire       dbg_uart_en = status[87];
+// 2026-05-01: hardcode-on for v1 hardware verification. OSD bit O[87] is
+// still wired so we can revert to status[87] later — for the first DL
+// triage capture session, always-on matches the master branch behavior
+// and avoids relying on OSD navigation working out-of-box.
+wire       dbg_uart_en = 1'b1;       // was: status[87]
 wire       dbg_uart_tx;
 wire       dbg_uart_busy;
 wire [7:0] dbg_uart_data;
