@@ -492,6 +492,10 @@ port(
 	-- LDA $5B / STA $DFxx; REU cmd readback differs T65=$31 vs SCPU=$7D.
 	-- Suspect LDA $5B returns different value between modes (or some
 	-- prior writer differs).
+	-- v259: DL gate variables ($40/$44/$5C). Per x64sc disasm.
+	dbg_mem_40           : out std_logic_vector(7 downto 0);
+	dbg_mem_44           : out std_logic_vector(7 downto 0);
+	dbg_mem_5C           : out std_logic_vector(7 downto 0);
 	dbg_mem_5B           : out std_logic_vector(7 downto 0);
 	dbg_wr5B_pc          : out std_logic_vector(23 downto 0);
 	dbg_wr5B_val         : out std_logic_vector(7 downto 0);
@@ -809,6 +813,14 @@ signal mem_7E_r         : std_logic_vector(7 downto 0)   := (others => '0');
 signal mem_7F_r         : std_logic_vector(7 downto 0)   := (others => '0');
 signal cnt_3200_r       : std_logic_vector(15 downto 0)  := (others => '0');
 signal cnt_3100_r       : std_logic_vector(15 downto 0)  := (others => '0');
+-- v259: DL gate variables. Per x64sc disasm at $8100-$811C, the
+-- per-IRQ game-advance gate is `LDA $44 / BNE $811C ; LDA $40 / BEQ $811C`.
+-- T65 reaches JMP $1F4E (game advance, page $1F); SCPU goes to RTI tail
+-- ($811C -> $8166) and never reaches $1Fxx. Capture $40/$44/$5C bytes
+-- to localize which gate variable is corrupted on SCPU.
+signal mem_40_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_44_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal mem_5C_r         : std_logic_vector(7 downto 0)   := (others => '0');
 -- v247: $5B + DF01 + bytes $0080-$008B
 signal mem_5B_r         : std_logic_vector(7 downto 0)   := (others => '0');
 signal wr5B_pc_r        : std_logic_vector(23 downto 0)  := (others => '0');
@@ -1890,6 +1902,10 @@ begin
 			cnt_3200_r           <= (others => '0');
 			cnt_3100_r           <= (others => '0');
 			-- v247
+			-- v259
+			mem_40_r             <= (others => '0');
+			mem_44_r             <= (others => '0');
+			mem_5C_r             <= (others => '0');
 			mem_5B_r             <= (others => '0');
 			wr5B_pc_r            <= (others => '0');
 			wr5B_val_r           <= (others => '0');
@@ -2097,6 +2113,11 @@ begin
 				if cpuAddr_pre = x"007D" then mem_7D_r <= std_logic_vector(cpuDi); end if;
 				if cpuAddr_pre = x"007E" then mem_7E_r <= std_logic_vector(cpuDi); end if;
 				if cpuAddr_pre = x"007F" then mem_7F_r <= std_logic_vector(cpuDi); end if;
+				-- v259: DL gate variables. Latch on any cycle (read or write)
+				-- where the bus targets these zero-page addresses.
+				if cpuAddr_pre = x"0040" then mem_40_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0044" then mem_44_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"005C" then mem_5C_r <= std_logic_vector(cpuDi); end if;
 				-- v247: $005B + $0080-$008B byte capture
 				if cpuAddr_pre = x"005B" then mem_5B_r <= std_logic_vector(cpuDi); end if;
 				if cpuAddr_pre = x"0080" then mem_80_r <= std_logic_vector(cpuDi); end if;
@@ -2727,6 +2748,10 @@ dbg_mem_7F   <= mem_7F_r;
 dbg_cnt_3200 <= cnt_3200_r;
 dbg_cnt_3100 <= cnt_3100_r;
 -- v247
+-- v259: DL gate variables
+dbg_mem_40      <= mem_40_r;
+dbg_mem_44      <= mem_44_r;
+dbg_mem_5C      <= mem_5C_r;
 dbg_mem_5B      <= mem_5B_r;
 dbg_wr5B_pc     <= wr5B_pc_r;
 dbg_wr5B_val    <= wr5B_val_r;

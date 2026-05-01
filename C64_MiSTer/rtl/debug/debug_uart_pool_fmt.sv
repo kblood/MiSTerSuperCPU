@@ -4,10 +4,11 @@
 // vblank rising edge containing the dbg_pool fields most relevant for
 // the Dragon's Lair / SCPU-emu-mode investigation:
 //
-//   F:#### PC:###### P:## V:## ## ## ## YX:#### WP:###### CG:#### CY:#### J:#### #### #### #### M:#### #### #### ####\n
+//   F:#### PC:###### P:## V:## ## ## ## YX:#### WP:###### CG:#### CY:#### J:#### #### #### #### M:#### #### #### #### G:## ## ##\n
 //
 // J = 4-deep JSR-PC ring (low 16 bits)         from pool.jsr_pc_t0..t3
 // M = 4-deep JMP-indirect target ring          from pool.jmp_tgt_t0..t3
+// G = DL gate variables: $40 $44 $5C           from pool.mem_40/mem_44/mem_5C
 //
 // Added 2026-05-01 after the dl_uart_baseline finding: V/Y/X are
 // IDENTICAL T65 vs SCPU but PC distribution is disjoint, so the bug is
@@ -68,13 +69,14 @@ module debug_uart_pool_fmt
 	reg [15:0] lat_cy;
 	reg [15:0] lat_jsr0, lat_jsr1, lat_jsr2, lat_jsr3;
 	reg [15:0] lat_jmp0, lat_jmp1, lat_jmp2, lat_jmp3;
+	reg  [7:0] lat_m40, lat_m44, lat_m5c;
 
 	// -----------------------------------------------------------------
 	// Send FSM: drive tx_send for one cycle whenever tx is idle and the
 	// next byte hasn't been issued yet. byte_idx indexes the line bytes
 	// 0..LINE_LEN-1; LINE_LEN signals "line done, idle until next vblank".
 	// -----------------------------------------------------------------
-	localparam LINE_LEN = 8'd114;
+	localparam LINE_LEN = 8'd125;
 
 	reg [7:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -221,8 +223,21 @@ module debug_uart_pool_fmt
 			8'd111: line_byte = hex_nibble(lat_jmp3[7:4]);
 			8'd112: line_byte = hex_nibble(lat_jmp3[3:0]);
 
+			// " G:## ## ##" — DL gate variables ($40 / $44 / $5C)
+			8'd113: line_byte = " ";
+			8'd114: line_byte = "G";
+			8'd115: line_byte = ":";
+			8'd116: line_byte = hex_nibble(lat_m40[7:4]);
+			8'd117: line_byte = hex_nibble(lat_m40[3:0]);
+			8'd118: line_byte = " ";
+			8'd119: line_byte = hex_nibble(lat_m44[7:4]);
+			8'd120: line_byte = hex_nibble(lat_m44[3:0]);
+			8'd121: line_byte = " ";
+			8'd122: line_byte = hex_nibble(lat_m5c[7:4]);
+			8'd123: line_byte = hex_nibble(lat_m5c[3:0]);
+
 			// newline
-			8'd113: line_byte = 8'h0A;
+			8'd124: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -262,6 +277,9 @@ module debug_uart_pool_fmt
 				lat_jmp1  <= pool.jmp_tgt_t1;
 				lat_jmp2  <= pool.jmp_tgt_t2;
 				lat_jmp3  <= pool.jmp_tgt_t3;
+				lat_m40   <= pool.mem_40;
+				lat_m44   <= pool.mem_44;
+				lat_m5c   <= pool.mem_5C;
 				byte_idx  <= 8'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin

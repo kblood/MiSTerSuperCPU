@@ -461,6 +461,16 @@ typedef struct packed {
   logic  [7:0] p_irq_t1;
   logic  [7:0] p_irq_t2;
   logic  [7:0] p_irq_t3;
+
+  // v259: DL per-IRQ gate variables. Per x64sc disasm of $8100-$811C:
+  //   LDA $44 / BNE $811C  -- if $44 != 0, skip game advance
+  //   LDA $40 / BEQ $811C  -- if $40 == 0, skip game advance
+  //   ; else SED / DEC $40 / CLD / JMP $1F4E (game advance)
+  // T65 reaches JMP $1F4E (page $1F vblank-PC sample); SCPU never does.
+  // Capture the actual byte values to localize gate corruption.
+  logic  [7:0] mem_40;
+  logic  [7:0] mem_44;
+  logic  [7:0] mem_5C;
 } dbg_pool_t;
 `endif
 
