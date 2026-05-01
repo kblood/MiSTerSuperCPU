@@ -615,8 +615,17 @@ begin
 				
 			when "0010"=>
 				ADDR_BUS <= PBR & std_logic_vector(unsigned(AA(15 downto 0)) + ADDR_INC);
-			when "0110"=> 
-				ADDR_BUS <= x"00" & std_logic_vector(unsigned(AA(15 downto 0)) + ADDR_INC);
+			when "0110"=>
+				-- NMOS JMP ($xxFF) page-wrap in emu mode (E=1): real NMOS 6502
+				-- increments only AA(7:0) when reading successive bytes of an
+				-- indirect target through bank 0 -- JMP ($02FF) reads lo from
+				-- $02FF and hi from $0200, NOT $0300. Mirrors the EF-gated
+				-- wrap already used by ADDR_BUS="0111" (DP indirect) below.
+				if EF = '1' then
+					ADDR_BUS <= x"00" & AA(15 downto 8) & std_logic_vector(unsigned(AA(7 downto 0)) + ADDR_INC(7 downto 0));
+				else
+					ADDR_BUS <= x"00" & std_logic_vector(unsigned(AA(15 downto 0)) + ADDR_INC);
+				end if;
 				
 			when "0011" | "0111" => 
 				if EF = '0' or MC.ADDR_BUS(2) = '0' then
