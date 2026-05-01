@@ -289,6 +289,7 @@ localparam CONF_STR = {
 	"d6O[49:48],Turbo speed,2x,3x,4x;",
 	"-;",
 	"O[82],SuperCPU (65C816),Off,On;",
+	"O[87],Debug UART,Off,On;",
 	"-;",
 	"R[0],Reset;",
 	"R[17],Reset & Detach Cartridge;",
@@ -2254,6 +2255,47 @@ debug_overlay_renderer #(.Y_LO(174), .Y_HI(270)) u_dbg_overlay (
 assign {r_dbg, g_dbg, b_dbg} = {r, g, b};
 `endif
 
+// ---------------------------------------------------------------------------
+// Debug UART (DBG_UART): per-frame ASCII dump of dbg_pool fields.
+// status[87] runtime gate; line emitted on each vblank rising edge.
+// When DBG_UART is undef (e.g. C64_release.qsf), all wires below stay zero
+// and the UART_TXD override block at the C64 functional-UART logic is also
+// gated, so synthesis collapses this entire path.
+// ---------------------------------------------------------------------------
+wire       dbg_uart_en = status[87];
+wire       dbg_uart_tx;
+wire       dbg_uart_busy;
+wire [7:0] dbg_uart_data;
+wire       dbg_uart_send;
+
+`ifdef DBG_UART
+debug_uart_pool_fmt u_dbg_uart_fmt (
+	.clk     (clk_sys),
+	.reset   (~reset_n),
+	.enable  (dbg_uart_en),
+	.vblank  (vblank),
+	.pool    (dbg_pool),
+	.tx_data (dbg_uart_data),
+	.tx_send (dbg_uart_send),
+	.tx_busy (dbg_uart_busy)
+);
+
+debug_uart_tx #(.CLK_FREQ(32000000), .BAUD(115200)) u_dbg_uart_tx (
+	.clk    (clk_sys),
+	.reset  (~reset_n),
+	.enable (dbg_uart_en),
+	.data   (dbg_uart_data),
+	.send   (dbg_uart_send),
+	.tx     (dbg_uart_tx),
+	.busy   (dbg_uart_busy)
+);
+`else
+assign dbg_uart_tx   = 1'b1;
+assign dbg_uart_busy = 1'b0;
+assign dbg_uart_data = 8'h00;
+assign dbg_uart_send = 1'b0;
+`endif
+
 video_mixer #(.GAMMA(1)) video_mixer
 (
 	.CLK_VIDEO(CLK_VIDEO),
@@ -2541,6 +2583,14 @@ always_comb begin
 	else begin
 		pb_i[5:0] = {!joyD_c64[6:4], !joyC_c64[6:4], pb_o[7] ? ~joyC_c64[3:0] : ~joyD_c64[3:0]};
 	end
+
+`ifdef DBG_UART
+	// Debug UART override: when status[87]=1, take over UART_TXD for the
+	// per-frame pool dump. Restores 8N1 idle-high when disabled.
+	if (dbg_uart_en) begin
+		UART_TXD = dbg_uart_tx;
+	end
+`endif
 end
 
 wire uart_int = ~status[33];

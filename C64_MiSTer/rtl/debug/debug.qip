@@ -11,7 +11,8 @@
 #   DBG_CAP_CPU_STATE  PC / P / S / flags capture
 #   DBG_CAP_FRAME    frame counter
 #   DBG_LAYOUT       integer (1..N) selecting which fields render where
-#   DBG_UART         (reserved, not in scope this commit)
+#   DBG_UART         per-frame ASCII line emitter (debug_uart_pool_fmt +
+#                    debug_uart_tx) — overrides UART_TXD when enabled
 #
 # When DBG_OVERLAY is undef, all renderer/format/capture wires reduce to
 # direct pass-throughs and synthesis collapses them.
@@ -29,3 +30,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/capture/cap_frame.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/debug_overlay_renderer.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/debug_overlay_format.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/debug_font_4x6.sv
+
+# UART formatter + serializer (gated by DBG_UART).
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/debug_uart_pool_fmt.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/debug_uart_tx.sv

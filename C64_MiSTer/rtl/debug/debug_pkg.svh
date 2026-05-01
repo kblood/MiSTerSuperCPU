@@ -50,6 +50,19 @@
   `ifndef DBG_CAP_FRAME
     `define DBG_CAP_FRAME
   `endif
+  `ifndef DBG_UART
+    `define DBG_UART
+  `endif
+`endif
+
+// ---- DBG_UART implies DBG_OVERLAY -------------------------------------
+// The pool struct is declared inside `ifdef DBG_OVERLAY in debug_pkg.svh,
+// and the UART formatter consumes pool fields, so enabling DBG_UART
+// without DBG_OVERLAY is a config error. Auto-promote.
+`ifdef DBG_UART
+  `ifndef DBG_OVERLAY
+    `define DBG_OVERLAY
+  `endif
 `endif
 
 // ---- Layout id (commit 6 will populate) -------------------------------
