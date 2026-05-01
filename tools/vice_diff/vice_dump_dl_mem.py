@@ -34,6 +34,10 @@ RANGES = [
     ("8f00-8fff", "8f00",  "8fff"),    # $8F2B = where wait-loop escape jumps
     ("9700-99ff", "9700",  "99ff"),    # SCPU vblank-PC clustering (ROM mirror)
     ("1700-19ff", "1700",  "19ff"),    # SCPU vblank-PC clustering (RAM)
+    ("8200-82ff", "8200",  "82ff"),    # JSR $8200 from $8F32 setup
+    ("8e00-8eff", "8e00",  "8eff"),    # JSR $8EC7 from $8F35
+    ("0044-0048", "0044",  "0048"),    # check $45 specifically
+    ("0045-0046", "0045",  "0046"),    # $0045 is the wait-loop variable
 ]
 
 def expect_prompt(sock, timeout=5.0):

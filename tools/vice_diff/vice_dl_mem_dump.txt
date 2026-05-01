@@ -1,26 +1,27 @@
 # DL memory + disasm dump (x64sc, settled DL)
 
 === 0002-0003 BYTES ===
-(C:$3093) 
+(C:$83bc) 
 === 0002-0003 DISASM ===
-(C:$3093) 
+(C:$83bc) 
 === 0040-0070 BYTES ===
->C:0002  80 33                                                .3
+>C:0002  00 33                                                @3
 (C:$0004) 
 === 0040-0070 DISASM ===
-.C:0002  80 33       NOOP #$33
-(C:$0004) >C:0040  00 00 00 00  00 
+.C:0002  00          BRK
+.C:0003  33 B1       RLA ($B1),Y
+(C:$0005) >C:0040  00 
 === 0079-008b BYTES ===
-ff 00 00  00 15 48 07  27 00 00 00   @@@@@�@@@uhg'@@@
+00 00 00  00 ff 00 00  00 15 48 07  27 00 00 00   @@@@@�@@@uhg'@@@
 >C:0050  19 00 00 03  4c 00 00 00  fe 00 00 00  03 00 00 00   y@@cl@@@�@@@c@@@
 >C:0060  00 8c ad 04  dc 29 07 49  07 4a 85 6f  90 00 10 02   @��d�)gigj�O.@pb
 >C:0070  ea                                                   �
-(C:$0071) .C:0040  00          BRK
+(C:$0071) 
+=== 0079-008b DISASM ===
+.C:0040  00          BRK
 .C:0041  00          BRK
 .C:0042  00          BRK
 .C:0043  00          BRK
-
-=== 0079-008b DISASM ===
 .C:0044  00          BRK
 .C:0045  FF 00 00    ISB $0000,X
 .C:0048  00          BRK
@@ -62,9 +63,9 @@ ff 00 00  00 15 48 07  27 00 00 00   @@@@@�@@@uhg'@@@
 .C:0085  8D 04 DF    STA $DF04
 .C:0088  A0 FF       LDY #$FF
 .C:008a  6C 02 00    JMP ($0002)
-(C:$008d) >C:3300 
+(C:$008d) 
 === 8100-81ff BYTES ===
- 4c 00 32 a9  34 85 01 a2  20 bd df 82  9d ff 0f ca   l@2�4�a� �߂.�oJ
+>C:3300  4c 00 32 a9  34 85 01 a2  20 bd df 82  9d ff 0f ca   l@2�4�a� �߂.�oJ
 >C:3310  d0 f7 a0 6c  a9 10 8d 20  33 a9 90 8d  23 33 bd 00   P� L�p. 3�..#3�@
 >C:3320  7c 9d 00 fc  e8 d0 f7 ee  20 33 ee 23  33 88 d0 ee   �.@��P�� 3�#3.P�
 >C:3330  a9 35 85 01  a9 80 85 02  a9 33 85 03  a9 01 8d 26   �5�a�.�b�3�c�a.&
@@ -77,13 +78,13 @@ ff 00 00  00 15 48 07  27 00 00 00   @@@@@�@@@uhg'@@@
 >C:33a0  5b 8d 06 df  a5 59 8d 04  df a0 ff 6c  02 00 00 00   [.fߥy.d� �Lb@@@
 >C:33b0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
 >C:33c0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
->C:33d0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 f5   @@@@@@@@@@@@@@@�
->C:33e0  0b 0b 0f 0c  08 0b 00 40  08 0c 00 0b  00 00 00 00   kkolhk@@hl@k@@@@
->C:33f0  00 00 00 00  00 00 00 ff  00 00 00 00  00 00 00 c0   @@@@@@@�@@@@@@@�
-(C:$3400) .C:3300  4C 00 32    JMP $3200
-.C:3303  A9 34       LDA #$34
-
+>C:33d0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:33e0  0c 0b 01 0f  06 0f 00 00  09 00 0c 0b  00 00 00 00   lkaofo@@i@lk@@@@
+>C:33f0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 40   @@@@@@@@@@@@@@@@
+(C:$3400) 
 === 8100-81ff DISASM ===
+.C:3300  4C 00 32    JMP $3200
+.C:3303  A9 34       LDA #$34
 .C:3305  85 01       STA $01
 .C:3307  A2 20       LDX #$20
 .C:3309  BD DF 82    LDA $82DF,X
@@ -219,14 +220,13 @@ ff 00 00  00 15 48 07  27 00 00 00   @@@@@�@@@uhg'@@@
 .C:33dc  00          BRK
 .C:33dd  00          BRK
 .C:33de  00          BRK
-.C:33df  F5 0B       SBC $0B,X
-.C:33e1  0B 0F       ANC #$0F
-.C:33e3  0C 08 0B    NOOP $0B08
+.C:33df  00          BRK
+.C:33e0  0C 0B 01    NOOP $010B
+.C:33e3  0F 06 0F    SLO $0F06
 .C:33e6  00          BRK
-.C:33e7  40          RTI
-.C:33e8  08          PHP
-.C:33e9  0C 00 0B    NOOP $0B00
-.C:33ec  00          BRK
+.C:33e7  00          BRK
+.C:33e8  09 00       ORA #$00
+.C:33ea  0C 0B 00    NOOP $000B
 .C:33ed  00          BRK
 .C:33ee  00          BRK
 .C:33ef  00          BRK
@@ -237,18 +237,20 @@ ff 00 00  00 15 48 07  27 00 00 00   @@@@@�@@@uhg'@@@
 .C:33f4  00          BRK
 .C:33f5  00          BRK
 .C:33f6  00          BRK
-.C:33f7  FF 00 00    ISB $0000,X
+.C:33f7  00          BRK
+.C:33f8  00          BRK
+.C:33f9  00          BRK
 .C:33fa  00          BRK
 .C:33fb  00          BRK
 .C:33fc  00          BRK
 .C:33fd  00          BRK
 .C:33fe  00          BRK
-.C:33ff  C0 00       CPY #$00
-(C:$3401) 
+.C:33ff  40          RTI
+(C:$3400) 
 === 8800-88ff BYTES ===
 >C:8100  a6 5c ca 30  1a 20 34 8d  a5 44 d0 10  a5 40 f0 0c   �\J0z 4.�dPp�@�l
 >C:8110  f8 a5 40 38  e9 01 85 40  d8 4c 4e 1f  4c 66 81 a5   ��@8�a�@Xln_lF.�
->C:8120  02 49 80 85  02 a0 2a 88  d0 23 e6 2b  e6 2b d0 02   bi.�b *.P#�+�+Pb
+>C:8120  02 49 80 85  02 a0 33 88  d0 23 e6 2b  e6 2b d0 02   bi.�b 3.P#�+�+Pb
 >C:8130  e6 2c b1 2b  aa 29 f0 4a  4a 4a 8d 3e  81 6c 12 7f   �,�+�)�jjj.>.Lr�
 >C:8140  8a 8d 53 81  09 40 8d 59  81 c8 b1 2b  a8 8c 26 81   �.s.i@.y.H�+��&.
 >C:8150  a4 12 be 91  80 a5 11 18  79 d1 80 86  12 85 11 bd   �r��.�qxYQ.�r�q�
@@ -262,11 +264,11 @@ ff 00 00  00 15 48 07  27 00 00 00   @@@@@�@@@uhg'@@@
 >C:81d0  00 20 7a 87  a9 00 85 41  4c 2a 81 e0  50 d0 03 4c   @ Z��@�al*. pPcl
 >C:81e0  77 1f e0 51  d0 03 4c 7a  1f e0 52 d0  05 c6 46 4c   W_ qPclZ_ rPeFfl
 >C:81f0  87 1f e0 53  d0 07 c6 46  c6 46 4c 87  1f 4c 97 1f   �_ sPgFfFfl�_l�_
-(C:$8200) .C:8100  A6 5C       LDX $5C
+(C:$8200) 
+=== 8800-88ff DISASM ===
+.C:8100  A6 5C       LDX $5C
 .C:8102  CA          DEX
 .C:8103  30 1A       BMI $811F
-
-=== 8800-88ff DISASM ===
 .C:8105  20 34 8D    JSR $8D34
 .C:8108  A5 44       LDA $44
 .C:810a  D0 10       BNE $811C
@@ -283,7 +285,7 @@ ff 00 00  00 15 48 07  27 00 00 00   @@@@@�@@@uhg'@@@
 .C:811f  A5 02       LDA $02
 .C:8121  49 80       EOR #$80
 .C:8123  85 02       STA $02
-.C:8125  A0 2A       LDY #$2A
+.C:8125  A0 33       LDY #$33
 .C:8127  88          DEY
 .C:8128  D0 23       BNE $814D
 .C:812a  E6 2B       INC $2B
@@ -511,9 +513,9 @@ ff 00 00  00 15 48 07  27 00 00 00   @@@@@�@@@uhg'@@@
 .C:88f9  8C 01 DF    STY $DF01
 .C:88fc  A9 BB       LDA #$BB
 .C:88fe  8D 02 DF    STA $DF02
-(C:$8901) >C:8900 
+(C:$8901) 
 === 8b00-8bff BYTES ===
- df a9 21 8d  04 df e8 8e  05 df 8c 01  df a9 0b 8d   ߩ!.dߨ�eߌaߩk.
+>C:8900  df a9 21 8d  04 df e8 8e  05 df 8c 01  df a9 0b 8d   ߩ!.dߨ�eߌaߩk.
 >C:8910  02 df a9 46  05 02 8d 03  df a9 46 8d  04 df 8c 01   bߩfeb.cߩf.dߌa
 >C:8920  df a9 5b 8d  02 df a9 6b  8d 04 df a9  65 8d 07 df   ߩ[.bߩK.dߩE.g�
 >C:8930  a9 01 8d 08  df 8c 01 df  a9 2b 8d 02  df a9 48 05   �a.hߌaߩ+.bߩhe
@@ -634,9 +636,9 @@ ff 00 00  00 15 48 07  27 00 00 00   @@@@@�@@@uhg'@@@
 .C:89f9  A9 60       LDA #$60
 .C:89fb  8D 04 DF    STA $DF04
 .C:89fe  8C 01 DF    STY $DF01
-(C:$8a01) 
+(C:$8a01) >C:8b00 
 === 8c00-8cff BYTES ===
->C:8b00  78 05 02 8d  03 df a9 e0  8d 04 df 8c  01 df a9 53   Xeb.cߩ .dߌaߩs
+ 78 05 02 8d  03 df a9 e0  8d 04 df 8c  01 df a9 53   Xeb.cߩ .dߌaߩs
 >C:8b10  8d 02 df a9  05 8d 04 df  e8 8e 05 df  8c 01 df a9   .bߩe.dߨ�eߌaߩ
 >C:8b20  a3 8d 02 df  a9 2a 8d 04  df 8c 01 df  a9 f3 8d 02   �.bߩ*.dߌaߩ�.b
 >C:8b30  df a9 4f 8d  04 df 8c 01  df a9 43 8d  02 df a9 79   ߩo.dߌaߩc.bߩY
@@ -1382,9 +1384,9 @@ ff 00 00  00 15 48 07  27 00 00 00   @@@@@�@@@uhg'@@@
 >C:85d0  02 df a9 f5  8d 04 df 8c  01 df a9 9b  8d 02 df a9   bߩ�.dߌaߩ�.bߩ
 >C:85e0  1a 8d 04 df  e8 8e 05 df  8c 01 df a9  c3 8d 02 df   z.dߨ�eߌaߩC.b�
 >C:85f0  a9 3f 8d 04  df 8c 01 df  a9 83 8d 02  df a9 26 05   �?.dߌaߩ�.bߩ&e
-(C:$8600) .C:8500  A9 04       LDA #$04
-
+(C:$8600) 
 === 1f00-1fff DISASM ===
+.C:8500  A9 04       LDA #$04
 .C:8502  8D 02 DF    STA $DF02
 .C:8505  A9 20       LDA #$20
 .C:8507  05 02       ORA $02
@@ -1493,9 +1495,9 @@ ff 00 00  00 15 48 07  27 00 00 00   @@@@@�@@@uhg'@@@
 .C:85fa  8D 02 DF    STA $DF02
 .C:85fd  A9 26       LDA #$26
 .C:85ff  05 02       ORA $02
-(C:$8601) >C:1f00 
+(C:$8601) 
 === 8f00-8fff BYTES ===
- 2a d0 a0 0f  8c 2b d0 a0  0f 8c 2c d0  a0 0f 8c 2d   *P o�+P o�,P o�-
+>C:1f00  2a d0 a0 0f  8c 2b d0 a0  0f 8c 2c d0  a0 0f 8c 2d   *P o�+P o�,P o�-
 >C:1f10  d0 a0 88 8c  18 d0 a0 0f  8e 11 d0 8c  28 d0 a0 0f   P .�xP o�qP�(P o
 >C:1f20  8c 29 d0 a0  0f 8c 2a d0  a0 0f 8c 2b  d0 a0 0f 8c   �)P o�*P o�+P o�
 >C:1f30  2c d0 a0 0f  8c 2d d0 a0  18 8c 18 d0  a0 10 8c 11   ,P o�-P x�xP p�q
@@ -1798,226 +1800,226 @@ ff 00 00  00 15 48 07  27 00 00 00   @@@@@�@@@uhg'@@@
 .C:8ffd  00          BRK
 .C:8ffe  00          BRK
 .C:8fff  00          BRK
-(C:$9000) 
+(C:$9000) >C:9700  18 d0 a0 
 === 1700-19ff BYTES ===
->C:9700  18 d0 a0 3c  8c 11 d0 a0  01 8c 28 d0  a0 05 8c 29   xP <�qP a�(P e�)
->C:9710  d0 a0 0a 8c  2a d0 a0 5c  8c 25 d0 a0  70 8c 27 d0   P j�*P \�%P P�'P
->C:9720  a0 0b 8c 2d  d0 a0 08 8c  18 d0 a0 01  8e 11 d0 8c    k�-P h�xP a�qP�
->C:9730  28 d0 a0 0a  8c 29 d0 a0  0a 8c 2a d0  a0 07 8c 2b   (P j�)P j�*P g�+
->C:9740  d0 a0 0c 8c  2c d0 a0 0c  8c 2d d0 a0  78 8c 18 d0   P l�,P l�-P X�xP
->C:9750  8d 11 d0 a0  01 8c 28 d0  a0 0f 8c 29  d0 a0 0a 8c   .qP a�(P o�)P j�
->C:9760  2a d0 a0 07  8c 2b d0 a0  ee 8c 2e d0  a0 69 8c 26   *P g�+P ��.P I�&
->C:9770  d0 a0 68 8c  18 d0 a4 3a  8c 11 d0 a0  01 8c 28 d0   P H�xP�:�qP a�(P
->C:9780  a0 0f 8c 29  d0 a0 eb 8c  2e d0 a0 63  8c 26 d0 a0    o�)P ��.P C�&P 
->C:9790  50 8c 25 d0  a0 7c 8c 27  d0 a0 e8 8c  18 d0 a0 3c   p�%P ܌'P ��xP <
->C:97a0  8c 11 d0 a0  01 8c 28 d0  a0 0f 8c 29  d0 a0 0a 8c   �qP a�(P o�)P j�
->C:97b0  2a d0 a0 07  8c 2b d0 a0  0c 8c 2c d0  a0 0c 8c 2d   *P g�+P l�,P l�-
->C:97c0  d0 a0 d8 8c  18 d0 a0 01  8e 11 d0 8c  28 d0 a0 0f   P X�xP a�qP�(P o
->C:97d0  8c 29 d0 a0  0a 8c 2a d0  a0 e1 8c 2e  d0 a0 7f 8c   �)P j�*P ��.P ߌ
->C:97e0  27 d0 a0 05  8c 2d d0 a0  38 8c 18 d0  8d 11 d0 a0   'P e�-P 8�xP.qP 
->C:97f0  01 8c 28 d0  a0 0f 8c 29  d0 a0 0a 8c  2a d0 a0 6e   a�(P o�)P j�*P N
->C:9800  8c 26 d0 a0  7c 8c 27 d0  a0 0c 8c 2d  d0 a0 28 8c   �&P ܌'P l�-P (�
->C:9810  18 d0 a4 3a  8c 11 d0 a0  01 8c 28 d0  a0 57 8c 25   xP�:�qP a�(P w�%
->C:9820  d0 a0 70 8c  27 d0 a0 0f  8c 2b d0 a0  0b 8c 2c d0   P P�'P o�+P k�,P
->C:9830  a0 0e 8c 2d  d0 a0 18 8c  18 d0 a0 3c  8c 11 d0 a0    n�-P x�xP <�qP 
->C:9840  0f 8c 28 d0  a0 0f 8c 29  d0 a0 0f 8c  2a d0 a0 00   o�(P o�)P o�*P @
->C:9850  8c 2b d0 a0  53 8c 25 d0  a0 00 8c 2d  d0 a0 08 8c   �+P s�%P @�-P h�
->C:9860  18 d0 a0 0f  8e 11 d0 8c  28 d0 a0 0b  8c 29 d0 a0   xP o�qP�(P k�)P 
->C:9870  0f 8c 2a d0  a0 0c 8c 2b  d0 a0 0b 8c  2c d0 a0 00   o�*P l�+P k�,P @
->C:9880  8c 2d d0 a0  78 8c 18 d0  8d 11 d0 a0  0c 8c 28 d0   �-P X�xP.qP l�(P
->C:9890  a0 0b 8c 29  d0 a0 0f 8c  2a d0 a0 0c  8c 2b d0 a0    k�)P o�*P l�+P 
->C:98a0  0d 8c 2c d0  a0 0c 8c 2d  d0 a0 68 8c  18 d0 a4 3a   m�,P l�-P H�xP�:
->C:98b0  8c 11 d0 a0  0f 8c 28 d0  a0 09 8c 29  d0 a0 0a 8c   �qP o�(P i�)P j�
->C:98c0  2a d0 a0 09  8c 2b d0 a0  05 8c 2c d0  a0 74 8c 27   *P i�+P e�,P T�'
->C:98d0  d0 a0 e8 8c  18 d0 a0 3c  8c 11 d0 a0  04 8c 28 d0   P ��xP <�qP d�(P
->C:98e0  a0 09 8c 29  d0 a0 0a 8c  2a d0 a0 6a  8c 26 d0 a0    i�)P j�*P J�&P 
->C:98f0  0f 8c 2c d0  a0 50 8c 25  d0 a0 d8 8c  18 d0 a0 09   o�,P p�%P X�xP i
->C:9900  8e 11 d0 8c  28 d0 a0 09  8c 29 d0 a0  0a 8c 2a d0   �qP�(P i�)P j�*P
->C:9910  a0 0c 8c 2b  d0 a0 0d 8c  2c d0 a0 5c  8c 25 d0 a0    l�+P m�,P \�%P 
->C:9920  38 8c 18 d0  8d 11 d0 a0  07 8c 28 d0  a0 01 8c 29   8�xP.qP g�(P a�)
->C:9930  d0 a0 01 8c  2a d0 a0 08  8c 2b d0 a0  0d 8c 2c d0   P a�*P h�+P m�,P
->C:9940  a0 50 8c 25  d0 a0 28 8c  18 d0 a4 3a  8c 11 d0 a0    p�%P (�xP�:�qP 
->C:9950  0f 8c 28 d0  a0 01 8c 29  d0 a0 0a 8c  2a d0 a0 08   o�(P a�)P j�*P h
->C:9960  8c 2b d0 a0  e6 8c 2e d0  a0 62 8c 26  d0 a0 18 8c   �+P ��.P B�&P x�
->C:9970  18 d0 a0 3c  8c 11 d0 a0  0f 8c 28 d0  a0 05 8c 29   xP <�qP o�(P e�)
->C:9980  d0 a0 0a 8c  2a d0 a0 08  8c 2b d0 a0  01 8c 2c d0   P j�*P h�+P a�,P
->C:9990  a0 d4 8c 0d  d0 a0 08 8c  18 d0 a0 0f  8e 11 d0 8c    T�mP h�xP o�qP�
->C:99a0  28 d0 a0 69  8c 26 d0 a0  5b 8c 25 d0  a0 0a 8c 2b   (P I�&P [�%P j�+
->C:99b0  d0 a0 72 8c  27 d0 a0 0f  8c 2d d0 a0  01 8c 00 dd   P R�'P o�-P a�@�
->C:99c0  8d 11 d0 a0  0f 8c 28 d0  a0 0b 8c 29  d0 a0 0c 8c   .qP o�(P k�)P l�
->C:99d0  2a d0 a0 03  8c 2b d0 a0  74 8c 27 d0  a0 09 8c 2d   *P c�+P T�'P i�-
->C:99e0  d0 a0 98 8c  18 d0 a4 3a  8c 11 d0 a0  0c 8c 28 d0   P .�xP�:�qP l�(P
->C:99f0  a0 0a 8c 29  d0 a0 0c 8c  2a d0 a0 00  8c 2b d0 a0    j�)P l�*P @�+P 
+3c  8c 11 d0 a0  0b 8c 28 d0  a0 04 8c 29   xP <�qP k�(P d�)
+>C:9710  d0 a0 0c 8c  2a d0 a0 04  8c 2b d0 a0  04 8c 2c d0   P l�*P d�+P d�,P
+>C:9720  a0 09 8c 2d  d0 a0 08 8c  18 d0 a0 05  8e 11 d0 8c    i�-P h�xP e�qP�
+>C:9730  28 d0 a0 0e  8c 29 d0 a0  0a 8c 2a d0  a0 04 8c 2b   (P n�)P j�*P d�+
+>C:9740  d0 a0 04 8c  2c d0 a0 0f  8c 2d d0 a0  78 8c 18 d0   P d�,P o�-P X�xP
+>C:9750  8d 11 d0 a0  05 8c 28 d0  a0 0e 8c 29  d0 a0 0a 8c   .qP e�(P n�)P j�
+>C:9760  2a d0 a0 04  8c 2b d0 a0  04 8c 2c d0  a0 09 8c 2d   *P d�+P d�,P i�-
+>C:9770  d0 a0 68 8c  18 d0 a4 3a  8c 11 d0 a0  05 8c 28 d0   P H�xP�:�qP e�(P
+>C:9780  a0 0e 8c 29  d0 a0 0a 8c  2a d0 a0 04  8c 2b d0 a0    n�)P j�*P d�+P 
+>C:9790  04 8c 2c d0  a0 09 8c 2d  d0 a0 e8 8c  18 d0 a0 3c   d�,P i�-P ��xP <
+>C:97a0  8c 11 d0 a0  05 8c 28 d0  a0 0e 8c 29  d0 a0 0a 8c   �qP e�(P n�)P j�
+>C:97b0  2a d0 a0 04  8c 2b d0 a0  04 8c 2c d0  a0 0f 8c 2d   *P d�+P d�,P o�-
+>C:97c0  d0 a0 d8 8c  18 d0 a0 05  8e 11 d0 8c  28 d0 a0 0e   P X�xP e�qP�(P n
+>C:97d0  8c 29 d0 a0  0a 8c 2a d0  a0 04 8c 2b  d0 a0 04 8c   �)P j�*P d�+P d�
+>C:97e0  2c d0 a0 09  8c 2d d0 a0  38 8c 18 d0  8d 11 d0 a0   ,P i�-P 8�xP.qP 
+>C:97f0  0b 8c 28 d0  a0 0e 8c 29  d0 a0 0a 8c  2a d0 a0 04   k�(P n�)P j�*P d
+>C:9800  8c 2b d0 a0  04 8c 2c d0  a0 09 8c 2d  d0 a0 28 8c   �+P d�,P i�-P (�
+>C:9810  18 d0 a4 3a  8c 11 d0 a0  0f 8c 28 d0  a0 0b 8c 29   xP�:�qP o�(P k�)
+>C:9820  d0 a0 0a 8c  2a d0 a0 04  8c 2b d0 a0  0b 8c 2c d0   P j�*P d�+P k�,P
+>C:9830  a0 09 8c 2d  d0 a0 18 8c  18 d0 a0 3c  8c 11 d0 a0    i�-P x�xP <�qP 
+>C:9840  03 8c 28 d0  a0 09 8c 29  d0 a0 0a 8c  2a d0 a0 0a   c�(P i�)P j�*P j
+>C:9850  8c 2b d0 a0  04 8c 2c d0  a0 09 8c 2d  d0 a0 08 8c   �+P d�,P i�-P h�
+>C:9860  18 d0 a0 03  8e 11 d0 8c  28 d0 a0 0c  8c 29 d0 a0   xP c�qP�(P l�)P 
+>C:9870  0a 8c 2a d0  a0 0a 8c 2b  d0 a0 04 8c  2c d0 a0 0f   j�*P j�+P d�,P o
+>C:9880  8c 2d d0 a0  78 8c 18 d0  8d 11 d0 a0  05 8c 28 d0   �-P X�xP.qP e�(P
+>C:9890  a0 0c 8c 29  d0 a0 0a 8c  2a d0 a0 0a  8c 2b d0 a0    l�)P j�*P j�+P 
+>C:98a0  04 8c 2c d0  a0 0c 8c 2d  d0 a0 68 8c  18 d0 a4 3a   d�,P l�-P H�xP�:
+>C:98b0  8c 11 d0 a0  05 8c 28 d0  a0 0c 8c 29  d0 a0 0a 8c   �qP e�(P l�)P j�
+>C:98c0  2a d0 a0 0a  8c 2b d0 a0  04 8c 2c d0  a0 0c 8c 2d   *P j�+P d�,P l�-
+>C:98d0  d0 a0 e8 8c  18 d0 a0 3c  8c 11 d0 a0  05 8c 28 d0   P ��xP <�qP e�(P
+>C:98e0  a0 0c 8c 29  d0 a0 0a 8c  2a d0 a0 0a  8c 2b d0 a0    l�)P j�*P j�+P 
+>C:98f0  04 8c 2c d0  a0 0c 8c 2d  d0 a0 d8 8c  18 d0 a0 09   d�,P l�-P X�xP i
+>C:9900  8e 11 d0 8c  28 d0 a0 0c  8c 29 d0 a0  0a 8c 2a d0   �qP�(P l�)P j�*P
+>C:9910  a0 0a 8c 2b  d0 a0 04 8c  2c d0 a0 0c  8c 2d d0 a0    j�+P d�,P l�-P 
+>C:9920  38 8c 18 d0  8d 11 d0 a0  0f 8c 28 d0  a0 08 8c 29   8�xP.qP o�(P h�)
+>C:9930  d0 a0 0a 8c  2a d0 a0 0a  8c 2b d0 a0  03 8c 2c d0   P j�*P j�+P c�,P
+>C:9940  a0 0c 8c 2d  d0 a0 28 8c  18 d0 a4 3a  8c 11 d0 a0    l�-P (�xP�:�qP 
+>C:9950  05 8c 28 d0  a0 0a 8c 29  d0 a0 0a 8c  2a d0 a0 0a   e�(P j�)P j�*P j
+>C:9960  8c 2b d0 a0  03 8c 2c d0  a0 d4 8c 0f  d0 a0 18 8c   �+P c�,P T�oP x�
+>C:9970  18 d0 a0 3c  8c 11 d0 a0  09 8c 28 d0  a0 0e 8c 29   xP <�qP i�(P n�)
+>C:9980  d0 a0 0a 8c  2a d0 a0 0a  8c 2b d0 a0  03 8c 2c d0   P j�*P j�+P c�,P
+>C:9990  a0 d4 8c 0d  d0 a0 08 8c  18 d0 a0 0d  8e 11 d0 8c    T�mP h�xP m�qP�
+>C:99a0  28 d0 a0 0e  8c 29 d0 a0  0a 8c 2a d0  a0 0a 8c 2b   (P n�)P j�*P j�+
+>C:99b0  d0 a0 d4 8c  0b d0 a0 05  8c 2d d0 a0  01 8c 00 dd   P T�kP e�-P a�@�
+>C:99c0  8d 11 d0 a0  05 8c 28 d0  a0 0f 8c 29  d0 a0 0a 8c   .qP e�(P o�)P j�
+>C:99d0  2a d0 a0 0a  8c 2b d0 a0  03 8c 2c d0  a0 0c 8c 2d   *P j�+P c�,P l�-
+>C:99e0  d0 a0 98 8c  18 d0 a4 3a  8c 11 d0 a0  05 8c 28 d0   P .�xP�:�qP e�(P
+>C:99f0  a0 0f 8c 29  d0 a0 0a 8c  2a d0 a0 d4  8c 09 d0 a0    o�)P j�*P T�iP 
 (C:$9a00) 
 === 1700-19ff DISASM ===
 .C:9700  18          CLC
 .C:9701  D0 A0       BNE $96A3
 .C:9703  3C 8C 11    NOOP $118C,X
 .C:9706  D0 A0       BNE $96A8
-.C:9708  01 8C       ORA ($8C,X)
+.C:9708  0B 8C       ANC #$8C
 .C:970a  28          PLP
 .C:970b  D0 A0       BNE $96AD
-.C:970d  05 8C       ORA $8C
+.C:970d  04 8C       NOOP $8C
 .C:970f  29 D0       AND #$D0
-.C:9711  A0 0A       LDY #$0A
+.C:9711  A0 0C       LDY #$0C
 .C:9713  8C 2A D0    STY $D02A
-.C:9716  A0 5C       LDY #$5C
-.C:9718  8C 25 D0    STY $D025
-.C:971b  A0 70       LDY #$70
-.C:971d  8C 27 D0    STY $D027
-.C:9720  A0 0B       LDY #$0B
+.C:9716  A0 04       LDY #$04
+.C:9718  8C 2B D0    STY $D02B
+.C:971b  A0 04       LDY #$04
+.C:971d  8C 2C D0    STY $D02C
+.C:9720  A0 09       LDY #$09
 .C:9722  8C 2D D0    STY $D02D
 .C:9725  A0 08       LDY #$08
 .C:9727  8C 18 D0    STY $D018
-.C:972a  A0 01       LDY #$01
+.C:972a  A0 05       LDY #$05
 .C:972c  8E 11 D0    STX $D011
 .C:972f  8C 28 D0    STY $D028
-.C:9732  A0 0A       LDY #$0A
+.C:9732  A0 0E       LDY #$0E
 .C:9734  8C 29 D0    STY $D029
 .C:9737  A0 0A       LDY #$0A
 .C:9739  8C 2A D0    STY $D02A
-.C:973c  A0 07       LDY #$07
+.C:973c  A0 04       LDY #$04
 .C:973e  8C 2B D0    STY $D02B
-.C:9741  A0 0C       LDY #$0C
+.C:9741  A0 04       LDY #$04
 .C:9743  8C 2C D0    STY $D02C
-.C:9746  A0 0C       LDY #$0C
+.C:9746  A0 0F       LDY #$0F
 .C:9748  8C 2D D0    STY $D02D
 .C:974b  A0 78       LDY #$78
 .C:974d  8C 18 D0    STY $D018
 .C:9750  8D 11 D0    STA $D011
-.C:9753  A0 01       LDY #$01
+.C:9753  A0 05       LDY #$05
 .C:9755  8C 28 D0    STY $D028
-.C:9758  A0 0F       LDY #$0F
+.C:9758  A0 0E       LDY #$0E
 .C:975a  8C 29 D0    STY $D029
 .C:975d  A0 0A       LDY #$0A
 .C:975f  8C 2A D0    STY $D02A
-.C:9762  A0 07       LDY #$07
+.C:9762  A0 04       LDY #$04
 .C:9764  8C 2B D0    STY $D02B
-.C:9767  A0 EE       LDY #$EE
-.C:9769  8C 2E D0    STY $D02E
-.C:976c  A0 69       LDY #$69
-.C:976e  8C 26 D0    STY $D026
+.C:9767  A0 04       LDY #$04
+.C:9769  8C 2C D0    STY $D02C
+.C:976c  A0 09       LDY #$09
+.C:976e  8C 2D D0    STY $D02D
 .C:9771  A0 68       LDY #$68
 .C:9773  8C 18 D0    STY $D018
 .C:9776  A4 3A       LDY $3A
 .C:9778  8C 11 D0    STY $D011
-.C:977b  A0 01       LDY #$01
+.C:977b  A0 05       LDY #$05
 .C:977d  8C 28 D0    STY $D028
-.C:9780  A0 0F       LDY #$0F
+.C:9780  A0 0E       LDY #$0E
 .C:9782  8C 29 D0    STY $D029
-.C:9785  A0 EB       LDY #$EB
-.C:9787  8C 2E D0    STY $D02E
-.C:978a  A0 63       LDY #$63
-.C:978c  8C 26 D0    STY $D026
-.C:978f  A0 50       LDY #$50
-.C:9791  8C 25 D0    STY $D025
-.C:9794  A0 7C       LDY #$7C
-.C:9796  8C 27 D0    STY $D027
+.C:9785  A0 0A       LDY #$0A
+.C:9787  8C 2A D0    STY $D02A
+.C:978a  A0 04       LDY #$04
+.C:978c  8C 2B D0    STY $D02B
+.C:978f  A0 04       LDY #$04
+.C:9791  8C 2C D0    STY $D02C
+.C:9794  A0 09       LDY #$09
+.C:9796  8C 2D D0    STY $D02D
 .C:9799  A0 E8       LDY #$E8
 .C:979b  8C 18 D0    STY $D018
 .C:979e  A0 3C       LDY #$3C
 .C:97a0  8C 11 D0    STY $D011
-.C:97a3  A0 01       LDY #$01
+.C:97a3  A0 05       LDY #$05
 .C:97a5  8C 28 D0    STY $D028
-.C:97a8  A0 0F       LDY #$0F
+.C:97a8  A0 0E       LDY #$0E
 .C:97aa  8C 29 D0    STY $D029
 .C:97ad  A0 0A       LDY #$0A
 .C:97af  8C 2A D0    STY $D02A
-.C:97b2  A0 07       LDY #$07
+.C:97b2  A0 04       LDY #$04
 .C:97b4  8C 2B D0    STY $D02B
-.C:97b7  A0 0C       LDY #$0C
+.C:97b7  A0 04       LDY #$04
 .C:97b9  8C 2C D0    STY $D02C
-.C:97bc  A0 0C       LDY #$0C
+.C:97bc  A0 0F       LDY #$0F
 .C:97be  8C 2D D0    STY $D02D
 .C:97c1  A0 D8       LDY #$D8
 .C:97c3  8C 18 D0    STY $D018
-.C:97c6  A0 01       LDY #$01
+.C:97c6  A0 05       LDY #$05
 .C:97c8  8E 11 D0    STX $D011
 .C:97cb  8C 28 D0    STY $D028
-.C:97ce  A0 0F       LDY #$0F
+.C:97ce  A0 0E       LDY #$0E
 .C:97d0  8C 29 D0    STY $D029
 .C:97d3  A0 0A       LDY #$0A
 .C:97d5  8C 2A D0    STY $D02A
-.C:97d8  A0 E1       LDY #$E1
-.C:97da  8C 2E D0    STY $D02E
-.C:97dd  A0 7F       LDY #$7F
-.C:97df  8C 27 D0    STY $D027
-.C:97e2  A0 05       LDY #$05
+.C:97d8  A0 04       LDY #$04
+.C:97da  8C 2B D0    STY $D02B
+.C:97dd  A0 04       LDY #$04
+.C:97df  8C 2C D0    STY $D02C
+.C:97e2  A0 09       LDY #$09
 .C:97e4  8C 2D D0    STY $D02D
 .C:97e7  A0 38       LDY #$38
 .C:97e9  8C 18 D0    STY $D018
 .C:97ec  8D 11 D0    STA $D011
-.C:97ef  A0 01       LDY #$01
+.C:97ef  A0 0B       LDY #$0B
 .C:97f1  8C 28 D0    STY $D028
-.C:97f4  A0 0F       LDY #$0F
+.C:97f4  A0 0E       LDY #$0E
 .C:97f6  8C 29 D0    STY $D029
 .C:97f9  A0 0A       LDY #$0A
 .C:97fb  8C 2A D0    STY $D02A
-.C:97fe  A0 6E       LDY #$6E
-.C:9800  8C 26 D0    STY $D026
-.C:9803  A0 7C       LDY #$7C
-.C:9805  8C 27 D0    STY $D027
-.C:9808  A0 0C       LDY #$0C
+.C:97fe  A0 04       LDY #$04
+.C:9800  8C 2B D0    STY $D02B
+.C:9803  A0 04       LDY #$04
+.C:9805  8C 2C D0    STY $D02C
+.C:9808  A0 09       LDY #$09
 .C:980a  8C 2D D0    STY $D02D
 .C:980d  A0 28       LDY #$28
 .C:980f  8C 18 D0    STY $D018
 .C:9812  A4 3A       LDY $3A
 .C:9814  8C 11 D0    STY $D011
-.C:9817  A0 01       LDY #$01
+.C:9817  A0 0F       LDY #$0F
 .C:9819  8C 28 D0    STY $D028
-.C:981c  A0 57       LDY #$57
-.C:981e  8C 25 D0    STY $D025
-.C:9821  A0 70       LDY #$70
-.C:9823  8C 27 D0    STY $D027
-.C:9826  A0 0F       LDY #$0F
+.C:981c  A0 0B       LDY #$0B
+.C:981e  8C 29 D0    STY $D029
+.C:9821  A0 0A       LDY #$0A
+.C:9823  8C 2A D0    STY $D02A
+.C:9826  A0 04       LDY #$04
 .C:9828  8C 2B D0    STY $D02B
 .C:982b  A0 0B       LDY #$0B
 .C:982d  8C 2C D0    STY $D02C
-.C:9830  A0 0E       LDY #$0E
+.C:9830  A0 09       LDY #$09
 .C:9832  8C 2D D0    STY $D02D
 .C:9835  A0 18       LDY #$18
 .C:9837  8C 18 D0    STY $D018
 .C:983a  A0 3C       LDY #$3C
 .C:983c  8C 11 D0    STY $D011
-.C:983f  A0 0F       LDY #$0F
+.C:983f  A0 03       LDY #$03
 .C:9841  8C 28 D0    STY $D028
-.C:9844  A0 0F       LDY #$0F
+.C:9844  A0 09       LDY #$09
 .C:9846  8C 29 D0    STY $D029
-.C:9849  A0 0F       LDY #$0F
+.C:9849  A0 0A       LDY #$0A
 .C:984b  8C 2A D0    STY $D02A
-.C:984e  A0 00       LDY #$00
+.C:984e  A0 0A       LDY #$0A
 .C:9850  8C 2B D0    STY $D02B
-.C:9853  A0 53       LDY #$53
-.C:9855  8C 25 D0    STY $D025
-.C:9858  A0 00       LDY #$00
+.C:9853  A0 04       LDY #$04
+.C:9855  8C 2C D0    STY $D02C
+.C:9858  A0 09       LDY #$09
 .C:985a  8C 2D D0    STY $D02D
 .C:985d  A0 08       LDY #$08
 .C:985f  8C 18 D0    STY $D018
-.C:9862  A0 0F       LDY #$0F
+.C:9862  A0 03       LDY #$03
 .C:9864  8E 11 D0    STX $D011
 .C:9867  8C 28 D0    STY $D028
-.C:986a  A0 0B       LDY #$0B
+.C:986a  A0 0C       LDY #$0C
 .C:986c  8C 29 D0    STY $D029
-.C:986f  A0 0F       LDY #$0F
+.C:986f  A0 0A       LDY #$0A
 .C:9871  8C 2A D0    STY $D02A
-.C:9874  A0 0C       LDY #$0C
+.C:9874  A0 0A       LDY #$0A
 .C:9876  8C 2B D0    STY $D02B
-.C:9879  A0 0B       LDY #$0B
+.C:9879  A0 04       LDY #$04
 .C:987b  8C 2C D0    STY $D02C
-.C:987e  A0 00       LDY #$00
+.C:987e  A0 0F       LDY #$0F
 .C:9880  8C 2D D0    STY $D02D
 .C:9883  A0 78       LDY #$78
 .C:9885  8C 18 D0    STY $D018
 .C:9888  8D 11 D0    STA $D011
-.C:988b  A0 0C       LDY #$0C
+.C:988b  A0 05       LDY #$05
 .C:988d  8C 28 D0    STY $D028
-.C:9890  A0 0B       LDY #$0B
+.C:9890  A0 0C       LDY #$0C
 .C:9892  8C 29 D0    STY $D029
-.C:9895  A0 0F       LDY #$0F
+.C:9895  A0 0A       LDY #$0A
 .C:9897  8C 2A D0    STY $D02A
-.C:989a  A0 0C       LDY #$0C
+.C:989a  A0 0A       LDY #$0A
 .C:989c  8C 2B D0    STY $D02B
-.C:989f  A0 0D       LDY #$0D
+.C:989f  A0 04       LDY #$04
 .C:98a1  8C 2C D0    STY $D02C
 .C:98a4  A0 0C       LDY #$0C
 .C:98a6  8C 2D D0    STY $D02D
@@ -2025,137 +2027,875 @@ ff 00 00  00 15 48 07  27 00 00 00   @@@@@�@@@uhg'@@@
 .C:98ab  8C 18 D0    STY $D018
 .C:98ae  A4 3A       LDY $3A
 .C:98b0  8C 11 D0    STY $D011
-.C:98b3  A0 0F       LDY #$0F
+.C:98b3  A0 05       LDY #$05
 .C:98b5  8C 28 D0    STY $D028
-.C:98b8  A0 09       LDY #$09
+.C:98b8  A0 0C       LDY #$0C
 .C:98ba  8C 29 D0    STY $D029
 .C:98bd  A0 0A       LDY #$0A
 .C:98bf  8C 2A D0    STY $D02A
-.C:98c2  A0 09       LDY #$09
+.C:98c2  A0 0A       LDY #$0A
 .C:98c4  8C 2B D0    STY $D02B
-.C:98c7  A0 05       LDY #$05
+.C:98c7  A0 04       LDY #$04
 .C:98c9  8C 2C D0    STY $D02C
-.C:98cc  A0 74       LDY #$74
-.C:98ce  8C 27 D0    STY $D027
+.C:98cc  A0 0C       LDY #$0C
+.C:98ce  8C 2D D0    STY $D02D
 .C:98d1  A0 E8       LDY #$E8
 .C:98d3  8C 18 D0    STY $D018
 .C:98d6  A0 3C       LDY #$3C
 .C:98d8  8C 11 D0    STY $D011
-.C:98db  A0 04       LDY #$04
+.C:98db  A0 05       LDY #$05
 .C:98dd  8C 28 D0    STY $D028
-.C:98e0  A0 09       LDY #$09
+.C:98e0  A0 0C       LDY #$0C
 .C:98e2  8C 29 D0    STY $D029
 .C:98e5  A0 0A       LDY #$0A
 .C:98e7  8C 2A D0    STY $D02A
-.C:98ea  A0 6A       LDY #$6A
-.C:98ec  8C 26 D0    STY $D026
-.C:98ef  A0 0F       LDY #$0F
+.C:98ea  A0 0A       LDY #$0A
+.C:98ec  8C 2B D0    STY $D02B
+.C:98ef  A0 04       LDY #$04
 .C:98f1  8C 2C D0    STY $D02C
-.C:98f4  A0 50       LDY #$50
-.C:98f6  8C 25 D0    STY $D025
+.C:98f4  A0 0C       LDY #$0C
+.C:98f6  8C 2D D0    STY $D02D
 .C:98f9  A0 D8       LDY #$D8
 .C:98fb  8C 18 D0    STY $D018
 .C:98fe  A0 09       LDY #$09
 .C:9900  8E 11 D0    STX $D011
 .C:9903  8C 28 D0    STY $D028
-.C:9906  A0 09       LDY #$09
+.C:9906  A0 0C       LDY #$0C
 .C:9908  8C 29 D0    STY $D029
 .C:990b  A0 0A       LDY #$0A
 .C:990d  8C 2A D0    STY $D02A
-.C:9910  A0 0C       LDY #$0C
+.C:9910  A0 0A       LDY #$0A
 .C:9912  8C 2B D0    STY $D02B
-.C:9915  A0 0D       LDY #$0D
+.C:9915  A0 04       LDY #$04
 .C:9917  8C 2C D0    STY $D02C
-.C:991a  A0 5C       LDY #$5C
-.C:991c  8C 25 D0    STY $D025
+.C:991a  A0 0C       LDY #$0C
+.C:991c  8C 2D D0    STY $D02D
 .C:991f  A0 38       LDY #$38
 .C:9921  8C 18 D0    STY $D018
 .C:9924  8D 11 D0    STA $D011
-.C:9927  A0 07       LDY #$07
+.C:9927  A0 0F       LDY #$0F
 .C:9929  8C 28 D0    STY $D028
-.C:992c  A0 01       LDY #$01
+.C:992c  A0 08       LDY #$08
 .C:992e  8C 29 D0    STY $D029
-.C:9931  A0 01       LDY #$01
+.C:9931  A0 0A       LDY #$0A
 .C:9933  8C 2A D0    STY $D02A
-.C:9936  A0 08       LDY #$08
+.C:9936  A0 0A       LDY #$0A
 .C:9938  8C 2B D0    STY $D02B
-.C:993b  A0 0D       LDY #$0D
+.C:993b  A0 03       LDY #$03
 .C:993d  8C 2C D0    STY $D02C
-.C:9940  A0 50       LDY #$50
-.C:9942  8C 25 D0    STY $D025
+.C:9940  A0 0C       LDY #$0C
+.C:9942  8C 2D D0    STY $D02D
 .C:9945  A0 28       LDY #$28
 .C:9947  8C 18 D0    STY $D018
 .C:994a  A4 3A       LDY $3A
 .C:994c  8C 11 D0    STY $D011
-.C:994f  A0 0F       LDY #$0F
+.C:994f  A0 05       LDY #$05
 .C:9951  8C 28 D0    STY $D028
-.C:9954  A0 01       LDY #$01
+.C:9954  A0 0A       LDY #$0A
 .C:9956  8C 29 D0    STY $D029
 .C:9959  A0 0A       LDY #$0A
 .C:995b  8C 2A D0    STY $D02A
-.C:995e  A0 08       LDY #$08
+.C:995e  A0 0A       LDY #$0A
 .C:9960  8C 2B D0    STY $D02B
-.C:9963  A0 E6       LDY #$E6
-.C:9965  8C 2E D0    STY $D02E
-.C:9968  A0 62       LDY #$62
-.C:996a  8C 26 D0    STY $D026
+.C:9963  A0 03       LDY #$03
+.C:9965  8C 2C D0    STY $D02C
+.C:9968  A0 D4       LDY #$D4
+.C:996a  8C 0F D0    STY $D00F
 .C:996d  A0 18       LDY #$18
 .C:996f  8C 18 D0    STY $D018
 .C:9972  A0 3C       LDY #$3C
 .C:9974  8C 11 D0    STY $D011
-.C:9977  A0 0F       LDY #$0F
+.C:9977  A0 09       LDY #$09
 .C:9979  8C 28 D0    STY $D028
-.C:997c  A0 05       LDY #$05
+.C:997c  A0 0E       LDY #$0E
 .C:997e  8C 29 D0    STY $D029
 .C:9981  A0 0A       LDY #$0A
 .C:9983  8C 2A D0    STY $D02A
-.C:9986  A0 08       LDY #$08
+.C:9986  A0 0A       LDY #$0A
 .C:9988  8C 2B D0    STY $D02B
-.C:998b  A0 01       LDY #$01
+.C:998b  A0 03       LDY #$03
 .C:998d  8C 2C D0    STY $D02C
 .C:9990  A0 D4       LDY #$D4
 .C:9992  8C 0D D0    STY $D00D
 .C:9995  A0 08       LDY #$08
 .C:9997  8C 18 D0    STY $D018
-.C:999a  A0 0F       LDY #$0F
+.C:999a  A0 0D       LDY #$0D
 .C:999c  8E 11 D0    STX $D011
 .C:999f  8C 28 D0    STY $D028
-.C:99a2  A0 69       LDY #$69
-.C:99a4  8C 26 D0    STY $D026
-.C:99a7  A0 5B       LDY #$5B
-.C:99a9  8C 25 D0    STY $D025
+.C:99a2  A0 0E       LDY #$0E
+.C:99a4  8C 29 D0    STY $D029
+.C:99a7  A0 0A       LDY #$0A
+.C:99a9  8C 2A D0    STY $D02A
 .C:99ac  A0 0A       LDY #$0A
 .C:99ae  8C 2B D0    STY $D02B
-.C:99b1  A0 72       LDY #$72
-.C:99b3  8C 27 D0    STY $D027
-.C:99b6  A0 0F       LDY #$0F
+.C:99b1  A0 D4       LDY #$D4
+.C:99b3  8C 0B D0    STY $D00B
+.C:99b6  A0 05       LDY #$05
 .C:99b8  8C 2D D0    STY $D02D
 .C:99bb  A0 01       LDY #$01
 .C:99bd  8C 00 DD    STY $DD00
 .C:99c0  8D 11 D0    STA $D011
-.C:99c3  A0 0F       LDY #$0F
+.C:99c3  A0 05       LDY #$05
 .C:99c5  8C 28 D0    STY $D028
-.C:99c8  A0 0B       LDY #$0B
+.C:99c8  A0 0F       LDY #$0F
 .C:99ca  8C 29 D0    STY $D029
-.C:99cd  A0 0C       LDY #$0C
+.C:99cd  A0 0A       LDY #$0A
 .C:99cf  8C 2A D0    STY $D02A
-.C:99d2  A0 03       LDY #$03
+.C:99d2  A0 0A       LDY #$0A
 .C:99d4  8C 2B D0    STY $D02B
-.C:99d7  A0 74       LDY #$74
-.C:99d9  8C 27 D0    STY $D027
-.C:99dc  A0 09       LDY #$09
+.C:99d7  A0 03       LDY #$03
+.C:99d9  8C 2C D0    STY $D02C
+.C:99dc  A0 0C       LDY #$0C
 .C:99de  8C 2D D0    STY $D02D
 .C:99e1  A0 98       LDY #$98
 .C:99e3  8C 18 D0    STY $D018
 .C:99e6  A4 3A       LDY $3A
 .C:99e8  8C 11 D0    STY $D011
-.C:99eb  A0 0C       LDY #$0C
+.C:99eb  A0 05       LDY #$05
 .C:99ed  8C 28 D0    STY $D028
-.C:99f0  A0 0A       LDY #$0A
+.C:99f0  A0 0F       LDY #$0F
 .C:99f2  8C 29 D0    STY $D029
-.C:99f5  A0 0C       LDY #$0C
+.C:99f5  A0 0A       LDY #$0A
 .C:99f7  8C 2A D0    STY $D02A
-.C:99fa  A0 00       LDY #$00
-.C:99fc  8C 2B D0    STY $D02B
-.C:99ff  A0 0B       LDY #$0B
+.C:99fa  A0 D4       LDY #$D4
+.C:99fc  8C 09 D0    STY $D009
+.C:99ff  A0 E0       LDY #$E0
 (C:$9a01) 
+=== 8200-82ff BYTES ===
+>C:1700  18 d0 a0 3c  8c 11 d0 a0  04 8c 28 d0  a0 0f 8c 29   xP <�qP d�(P o�)
+>C:1710  d0 a0 0f 8c  2a d0 a0 0f  8c 2b d0 a0  0a 8c 2c d0   P o�*P o�+P j�,P
+>C:1720  a0 0b 8c 2d  d0 a0 08 8c  18 d0 a0 04  8e 11 d0 8c    k�-P h�xP d�qP�
+>C:1730  28 d0 a0 0a  8c 29 d0 a0  0f 8c 2a d0  a0 0f 8c 2b   (P j�)P o�*P o�+
+>C:1740  d0 a0 0e 8c  2c d0 a0 0b  8c 2d d0 a0  78 8c 18 d0   P n�,P k�-P X�xP
+>C:1750  8d 11 d0 a0  04 8c 28 d0  a0 0f 8c 29  d0 a0 0f 8c   .qP d�(P o�)P o�
+>C:1760  2a d0 a0 0f  8c 2b d0 a0  0f 8c 2c d0  a0 06 8c 2d   *P o�+P o�,P f�-
+>C:1770  d0 a0 68 8c  18 d0 a4 3a  8c 11 d0 a0  04 8c 28 d0   P H�xP�:�qP d�(P
+>C:1780  a0 01 8c 29  d0 a0 0f 8c  2a d0 a0 0f  8c 2b d0 a0    a�)P o�*P o�+P 
+>C:1790  0f 8c 2c d0  a0 06 8c 2d  d0 a0 e8 8c  18 d0 a0 3c   o�,P f�-P ��xP <
+>C:17a0  8c 11 d0 a0  04 8c 28 d0  a0 01 8c 29  d0 a0 0f 8c   �qP d�(P a�)P o�
+>C:17b0  2a d0 a0 0f  8c 2b d0 a0  0a 8c 2c d0  a0 06 8c 2d   *P o�+P j�,P f�-
+>C:17c0  d0 a0 d8 8c  18 d0 a0 04  8e 11 d0 8c  28 d0 a0 0f   P X�xP d�qP�(P o
+>C:17d0  8c 29 d0 a0  0f 8c 2a d0  a0 0f 8c 2b  d0 a0 0a 8c   �)P o�*P o�+P j�
+>C:17e0  2c d0 a0 06  8c 2d d0 a0  38 8c 18 d0  8d 11 d0 a0   ,P f�-P 8�xP.qP 
+>C:17f0  09 8c 28 d0  a0 0f 8c 29  d0 a0 0f 8c  2a d0 a0 0f   i�(P o�)P o�*P o
+>C:1800  8c 2b d0 a0  0a 8c 2c d0  a0 06 8c 2d  d0 a0 28 8c   �+P j�,P f�-P (�
+>C:1810  18 d0 a4 3a  8c 11 d0 a0  0a 8c 28 d0  a0 0f 8c 29   xP�:�qP j�(P o�)
+>C:1820  d0 a0 0f 8c  2a d0 a0 0f  8c 2b d0 a0  0a 8c 2c d0   P o�*P o�+P j�,P
+>C:1830  a0 06 8c 2d  d0 a0 18 8c  18 d0 a0 3c  8c 11 d0 a0    f�-P x�xP <�qP 
+>C:1840  0a 8c 28 d0  a0 0f 8c 29  d0 a0 0f 8c  2a d0 a0 0f   j�(P o�)P o�*P o
+>C:1850  8c 2b d0 a0  0a 8c 2c d0  a0 06 8c 2d  d0 a0 08 8c   �+P j�,P f�-P h�
+>C:1860  18 d0 a0 0a  8e 11 d0 8c  28 d0 a0 0f  8c 29 d0 a0   xP j�qP�(P o�)P 
+>C:1870  0f 8c 2a d0  a0 0f 8c 2b  d0 a0 0a 8c  2c d0 a0 06   o�*P o�+P j�,P f
+>C:1880  8c 2d d0 a0  78 8c 18 d0  8d 11 d0 a0  0a 8c 28 d0   �-P X�xP.qP j�(P
+>C:1890  a0 0f 8c 29  d0 a0 0f 8c  2a d0 a0 0f  8c 2b d0 a0    o�)P o�*P o�+P 
+>C:18a0  0a 8c 2c d0  a0 0b 8c 2d  d0 a0 68 8c  18 d0 a4 3a   j�,P k�-P H�xP�:
+>C:18b0  8c 11 d0 a0  0a 8c 28 d0  a0 0f 8c 29  d0 a0 0f 8c   �qP j�(P o�)P o�
+>C:18c0  2a d0 a0 0f  8c 2b d0 a0  0a 8c 2c d0  a0 0f 8c 2d   *P o�+P j�,P o�-
+>C:18d0  d0 a0 e8 8c  18 d0 a0 3c  8c 11 d0 a0  0f 8c 28 d0   P ��xP <�qP o�(P
+>C:18e0  a0 0f 8c 29  d0 a0 0f 8c  2a d0 a0 0f  8c 2b d0 a0    o�)P o�*P o�+P 
+>C:18f0  0a 8c 2c d0  a0 09 8c 2d  d0 a0 d8 8c  18 d0 a0 06   j�,P i�-P X�xP f
+>C:1900  8e 11 d0 8c  28 d0 a0 0f  8c 29 d0 a0  0f 8c 2a d0   �qP�(P o�)P o�*P
+>C:1910  a0 0f 8c 2b  d0 a0 0a 8c  2c d0 a0 0f  8c 2d d0 a0    o�+P j�,P o�-P 
+>C:1920  38 8c 18 d0  8d 11 d0 a0  09 8c 28 d0  a0 0f 8c 29   8�xP.qP i�(P o�)
+>C:1930  d0 a0 0f 8c  2a d0 a0 0f  8c 2b d0 a0  0a 8c 2c d0   P o�*P o�+P j�,P
+>C:1940  a0 06 8c 2d  d0 a0 28 8c  18 d0 a4 3a  8c 11 d0 a0    f�-P (�xP�:�qP 
+>C:1950  09 8c 28 d0  a0 0f 8c 29  d0 a0 0f 8c  2a d0 a0 0f   i�(P o�)P o�*P o
+>C:1960  8c 2b d0 a0  d4 8c 05 d0  a0 0e 8c 2d  d0 a0 18 8c   �+P T�eP n�-P x�
+>C:1970  18 d0 a0 3c  8c 11 d0 a0  09 8c 28 d0  a0 0a 8c 29   xP <�qP i�(P j�)
+>C:1980  d0 a0 0f 8c  2a d0 a0 0f  8c 2b d0 a0  d4 8c 0f d0   P o�*P o�+P T�oP
+>C:1990  a0 04 8c 2d  d0 a0 08 8c  18 d0 a0 06  8e 11 d0 8c    d�-P h�xP f�qP�
+>C:19a0  28 d0 a0 0a  8c 29 d0 a0  0f 8c 2a d0  a0 0f 8c 2b   (P j�)P o�*P o�+
+>C:19b0  d0 a0 d4 8c  0d d0 a0 d4  8c 03 d0 a0  03 8c 00 dd   P T�mP T�cP c�@�
+>C:19c0  8d 11 d0 a0  0c 8c 28 d0  a0 0a 8c 29  d0 a0 0f 8c   .qP l�(P j�)P o�
+>C:19d0  2a d0 a0 0f  8c 2b d0 a0  0f 8c 2c d0  a0 e9 8c 2e   *P o�+P o�,P ��.
+>C:19e0  d0 a0 98 8c  18 d0 a4 3a  8c 11 d0 a0  0c 8c 28 d0   P .�xP�:�qP l�(P
+>C:19f0  a0 0f 8c 29  d0 a0 0f 8c  2a d0 a0 0f  8c 2b d0 a0    o�)P o�*P o�+P 
+(C:$1a00) 
+=== 8200-82ff DISASM ===
+.C:1700  18          CLC
+.C:1701  D0 A0       BNE $16A3
+.C:1703  3C 8C 11    NOOP $118C,X
+.C:1706  D0 A0       BNE $16A8
+.C:1708  04 8C       NOOP $8C
+.C:170a  28          PLP
+.C:170b  D0 A0       BNE $16AD
+.C:170d  0F 8C 29    SLO $298C
+.C:1710  D0 A0       BNE $16B2
+.C:1712  0F 8C 2A    SLO $2A8C
+.C:1715  D0 A0       BNE $16B7
+.C:1717  0F 8C 2B    SLO $2B8C
+.C:171a  D0 A0       BNE $16BC
+.C:171c  0A          ASL A
+.C:171d  8C 2C D0    STY $D02C
+.C:1720  A0 0B       LDY #$0B
+.C:1722  8C 2D D0    STY $D02D
+.C:1725  A0 08       LDY #$08
+.C:1727  8C 18 D0    STY $D018
+.C:172a  A0 04       LDY #$04
+.C:172c  8E 11 D0    STX $D011
+.C:172f  8C 28 D0    STY $D028
+.C:1732  A0 0A       LDY #$0A
+.C:1734  8C 29 D0    STY $D029
+.C:1737  A0 0F       LDY #$0F
+.C:1739  8C 2A D0    STY $D02A
+.C:173c  A0 0F       LDY #$0F
+.C:173e  8C 2B D0    STY $D02B
+.C:1741  A0 0E       LDY #$0E
+.C:1743  8C 2C D0    STY $D02C
+.C:1746  A0 0B       LDY #$0B
+.C:1748  8C 2D D0    STY $D02D
+.C:174b  A0 78       LDY #$78
+.C:174d  8C 18 D0    STY $D018
+.C:1750  8D 11 D0    STA $D011
+.C:1753  A0 04       LDY #$04
+.C:1755  8C 28 D0    STY $D028
+.C:1758  A0 0F       LDY #$0F
+.C:175a  8C 29 D0    STY $D029
+.C:175d  A0 0F       LDY #$0F
+.C:175f  8C 2A D0    STY $D02A
+.C:1762  A0 0F       LDY #$0F
+.C:1764  8C 2B D0    STY $D02B
+.C:1767  A0 0F       LDY #$0F
+.C:1769  8C 2C D0    STY $D02C
+.C:176c  A0 06       LDY #$06
+.C:176e  8C 2D D0    STY $D02D
+.C:1771  A0 68       LDY #$68
+.C:1773  8C 18 D0    STY $D018
+.C:1776  A4 3A       LDY $3A
+.C:1778  8C 11 D0    STY $D011
+.C:177b  A0 04       LDY #$04
+.C:177d  8C 28 D0    STY $D028
+.C:1780  A0 01       LDY #$01
+.C:1782  8C 29 D0    STY $D029
+.C:1785  A0 0F       LDY #$0F
+.C:1787  8C 2A D0    STY $D02A
+.C:178a  A0 0F       LDY #$0F
+.C:178c  8C 2B D0    STY $D02B
+.C:178f  A0 0F       LDY #$0F
+.C:1791  8C 2C D0    STY $D02C
+.C:1794  A0 06       LDY #$06
+.C:1796  8C 2D D0    STY $D02D
+.C:1799  A0 E8       LDY #$E8
+.C:179b  8C 18 D0    STY $D018
+.C:179e  A0 3C       LDY #$3C
+.C:17a0  8C 11 D0    STY $D011
+.C:17a3  A0 04       LDY #$04
+.C:17a5  8C 28 D0    STY $D028
+.C:17a8  A0 01       LDY #$01
+.C:17aa  8C 29 D0    STY $D029
+.C:17ad  A0 0F       LDY #$0F
+.C:17af  8C 2A D0    STY $D02A
+.C:17b2  A0 0F       LDY #$0F
+.C:17b4  8C 2B D0    STY $D02B
+.C:17b7  A0 0A       LDY #$0A
+.C:17b9  8C 2C D0    STY $D02C
+.C:17bc  A0 06       LDY #$06
+.C:17be  8C 2D D0    STY $D02D
+.C:17c1  A0 D8       LDY #$D8
+.C:17c3  8C 18 D0    STY $D018
+.C:17c6  A0 04       LDY #$04
+.C:17c8  8E 11 D0    STX $D011
+.C:17cb  8C 28 D0    STY $D028
+.C:17ce  A0 0F       LDY #$0F
+.C:17d0  8C 29 D0    STY $D029
+.C:17d3  A0 0F       LDY #$0F
+.C:17d5  8C 2A D0    STY $D02A
+.C:17d8  A0 0F       LDY #$0F
+.C:17da  8C 2B D0    STY $D02B
+.C:17dd  A0 0A       LDY #$0A
+.C:17df  8C 2C D0    STY $D02C
+.C:17e2  A0 06       LDY #$06
+.C:17e4  8C 2D D0    STY $D02D
+.C:17e7  A0 38       LDY #$38
+.C:17e9  8C 18 D0    STY $D018
+.C:17ec  8D 11 D0    STA $D011
+.C:17ef  A0 09       LDY #$09
+.C:17f1  8C 28 D0    STY $D028
+.C:17f4  A0 0F       LDY #$0F
+.C:17f6  8C 29 D0    STY $D029
+.C:17f9  A0 0F       LDY #$0F
+.C:17fb  8C 2A D0    STY $D02A
+.C:17fe  A0 0F       LDY #$0F
+.C:1800  8C 2B D0    STY $D02B
+.C:1803  A0 0A       LDY #$0A
+.C:1805  8C 2C D0    STY $D02C
+.C:1808  A0 06       LDY #$06
+.C:180a  8C 2D D0    STY $D02D
+.C:180d  A0 28       LDY #$28
+.C:180f  8C 18 D0    STY $D018
+.C:1812  A4 3A       LDY $3A
+.C:1814  8C 11 D0    STY $D011
+.C:1817  A0 0A       LDY #$0A
+.C:1819  8C 28 D0    STY $D028
+.C:181c  A0 0F       LDY #$0F
+.C:181e  8C 29 D0    STY $D029
+.C:1821  A0 0F       LDY #$0F
+.C:1823  8C 2A D0    STY $D02A
+.C:1826  A0 0F       LDY #$0F
+.C:1828  8C 2B D0    STY $D02B
+.C:182b  A0 0A       LDY #$0A
+.C:182d  8C 2C D0    STY $D02C
+.C:1830  A0 06       LDY #$06
+.C:1832  8C 2D D0    STY $D02D
+.C:1835  A0 18       LDY #$18
+.C:1837  8C 18 D0    STY $D018
+.C:183a  A0 3C       LDY #$3C
+.C:183c  8C 11 D0    STY $D011
+.C:183f  A0 0A       LDY #$0A
+.C:1841  8C 28 D0    STY $D028
+.C:1844  A0 0F       LDY #$0F
+.C:1846  8C 29 D0    STY $D029
+.C:1849  A0 0F       LDY #$0F
+.C:184b  8C 2A D0    STY $D02A
+.C:184e  A0 0F       LDY #$0F
+.C:1850  8C 2B D0    STY $D02B
+.C:1853  A0 0A       LDY #$0A
+.C:1855  8C 2C D0    STY $D02C
+.C:1858  A0 06       LDY #$06
+.C:185a  8C 2D D0    STY $D02D
+.C:185d  A0 08       LDY #$08
+.C:185f  8C 18 D0    STY $D018
+.C:1862  A0 0A       LDY #$0A
+.C:1864  8E 11 D0    STX $D011
+.C:1867  8C 28 D0    STY $D028
+.C:186a  A0 0F       LDY #$0F
+.C:186c  8C 29 D0    STY $D029
+.C:186f  A0 0F       LDY #$0F
+.C:1871  8C 2A D0    STY $D02A
+.C:1874  A0 0F       LDY #$0F
+.C:1876  8C 2B D0    STY $D02B
+.C:1879  A0 0A       LDY #$0A
+.C:187b  8C 2C D0    STY $D02C
+.C:187e  A0 06       LDY #$06
+.C:1880  8C 2D D0    STY $D02D
+.C:1883  A0 78       LDY #$78
+.C:1885  8C 18 D0    STY $D018
+.C:1888  8D 11 D0    STA $D011
+.C:188b  A0 0A       LDY #$0A
+.C:188d  8C 28 D0    STY $D028
+.C:1890  A0 0F       LDY #$0F
+.C:1892  8C 29 D0    STY $D029
+.C:1895  A0 0F       LDY #$0F
+.C:1897  8C 2A D0    STY $D02A
+.C:189a  A0 0F       LDY #$0F
+.C:189c  8C 2B D0    STY $D02B
+.C:189f  A0 0A       LDY #$0A
+.C:18a1  8C 2C D0    STY $D02C
+.C:18a4  A0 0B       LDY #$0B
+.C:18a6  8C 2D D0    STY $D02D
+.C:18a9  A0 68       LDY #$68
+.C:18ab  8C 18 D0    STY $D018
+.C:18ae  A4 3A       LDY $3A
+.C:18b0  8C 11 D0    STY $D011
+.C:18b3  A0 0A       LDY #$0A
+.C:18b5  8C 28 D0    STY $D028
+.C:18b8  A0 0F       LDY #$0F
+.C:18ba  8C 29 D0    STY $D029
+.C:18bd  A0 0F       LDY #$0F
+.C:18bf  8C 2A D0    STY $D02A
+.C:18c2  A0 0F       LDY #$0F
+.C:18c4  8C 2B D0    STY $D02B
+.C:18c7  A0 0A       LDY #$0A
+.C:18c9  8C 2C D0    STY $D02C
+.C:18cc  A0 0F       LDY #$0F
+.C:18ce  8C 2D D0    STY $D02D
+.C:18d1  A0 E8       LDY #$E8
+.C:18d3  8C 18 D0    STY $D018
+.C:18d6  A0 3C       LDY #$3C
+.C:18d8  8C 11 D0    STY $D011
+.C:18db  A0 0F       LDY #$0F
+.C:18dd  8C 28 D0    STY $D028
+.C:18e0  A0 0F       LDY #$0F
+.C:18e2  8C 29 D0    STY $D029
+.C:18e5  A0 0F       LDY #$0F
+.C:18e7  8C 2A D0    STY $D02A
+.C:18ea  A0 0F       LDY #$0F
+.C:18ec  8C 2B D0    STY $D02B
+.C:18ef  A0 0A       LDY #$0A
+.C:18f1  8C 2C D0    STY $D02C
+.C:18f4  A0 09       LDY #$09
+.C:18f6  8C 2D D0    STY $D02D
+.C:18f9  A0 D8       LDY #$D8
+.C:18fb  8C 18 D0    STY $D018
+.C:18fe  A0 06       LDY #$06
+.C:1900  8E 11 D0    STX $D011
+.C:1903  8C 28 D0    STY $D028
+.C:1906  A0 0F       LDY #$0F
+.C:1908  8C 29 D0    STY $D029
+.C:190b  A0 0F       LDY #$0F
+.C:190d  8C 2A D0    STY $D02A
+.C:1910  A0 0F       LDY #$0F
+.C:1912  8C 2B D0    STY $D02B
+.C:1915  A0 0A       LDY #$0A
+.C:1917  8C 2C D0    STY $D02C
+.C:191a  A0 0F       LDY #$0F
+.C:191c  8C 2D D0    STY $D02D
+.C:191f  A0 38       LDY #$38
+.C:1921  8C 18 D0    STY $D018
+.C:1924  8D 11 D0    STA $D011
+.C:1927  A0 09       LDY #$09
+.C:1929  8C 28 D0    STY $D028
+.C:192c  A0 0F       LDY #$0F
+.C:192e  8C 29 D0    STY $D029
+.C:1931  A0 0F       LDY #$0F
+.C:1933  8C 2A D0    STY $D02A
+.C:1936  A0 0F       LDY #$0F
+.C:1938  8C 2B D0    STY $D02B
+.C:193b  A0 0A       LDY #$0A
+.C:193d  8C 2C D0    STY $D02C
+.C:1940  A0 06       LDY #$06
+.C:1942  8C 2D D0    STY $D02D
+.C:1945  A0 28       LDY #$28
+.C:1947  8C 18 D0    STY $D018
+.C:194a  A4 3A       LDY $3A
+.C:194c  8C 11 D0    STY $D011
+.C:194f  A0 09       LDY #$09
+.C:1951  8C 28 D0    STY $D028
+.C:1954  A0 0F       LDY #$0F
+.C:1956  8C 29 D0    STY $D029
+.C:1959  A0 0F       LDY #$0F
+.C:195b  8C 2A D0    STY $D02A
+.C:195e  A0 0F       LDY #$0F
+.C:1960  8C 2B D0    STY $D02B
+.C:1963  A0 D4       LDY #$D4
+.C:1965  8C 05 D0    STY $D005
+.C:1968  A0 0E       LDY #$0E
+.C:196a  8C 2D D0    STY $D02D
+.C:196d  A0 18       LDY #$18
+.C:196f  8C 18 D0    STY $D018
+.C:1972  A0 3C       LDY #$3C
+.C:1974  8C 11 D0    STY $D011
+.C:1977  A0 09       LDY #$09
+.C:1979  8C 28 D0    STY $D028
+.C:197c  A0 0A       LDY #$0A
+.C:197e  8C 29 D0    STY $D029
+.C:1981  A0 0F       LDY #$0F
+.C:1983  8C 2A D0    STY $D02A
+.C:1986  A0 0F       LDY #$0F
+.C:1988  8C 2B D0    STY $D02B
+.C:198b  A0 D4       LDY #$D4
+.C:198d  8C 0F D0    STY $D00F
+.C:1990  A0 04       LDY #$04
+.C:1992  8C 2D D0    STY $D02D
+.C:1995  A0 08       LDY #$08
+.C:1997  8C 18 D0    STY $D018
+.C:199a  A0 06       LDY #$06
+.C:199c  8E 11 D0    STX $D011
+.C:199f  8C 28 D0    STY $D028
+.C:19a2  A0 0A       LDY #$0A
+.C:19a4  8C 29 D0    STY $D029
+.C:19a7  A0 0F       LDY #$0F
+.C:19a9  8C 2A D0    STY $D02A
+.C:19ac  A0 0F       LDY #$0F
+.C:19ae  8C 2B D0    STY $D02B
+.C:19b1  A0 D4       LDY #$D4
+.C:19b3  8C 0D D0    STY $D00D
+.C:19b6  A0 D4       LDY #$D4
+.C:19b8  8C 03 D0    STY $D003
+.C:19bb  A0 03       LDY #$03
+.C:19bd  8C 00 DD    STY $DD00
+.C:19c0  8D 11 D0    STA $D011
+.C:19c3  A0 0C       LDY #$0C
+.C:19c5  8C 28 D0    STY $D028
+.C:19c8  A0 0A       LDY #$0A
+.C:19ca  8C 29 D0    STY $D029
+.C:19cd  A0 0F       LDY #$0F
+.C:19cf  8C 2A D0    STY $D02A
+.C:19d2  A0 0F       LDY #$0F
+.C:19d4  8C 2B D0    STY $D02B
+.C:19d7  A0 0F       LDY #$0F
+.C:19d9  8C 2C D0    STY $D02C
+.C:19dc  A0 E9       LDY #$E9
+.C:19de  8C 2E D0    STY $D02E
+.C:19e1  A0 98       LDY #$98
+.C:19e3  8C 18 D0    STY $D018
+.C:19e6  A4 3A       LDY $3A
+.C:19e8  8C 11 D0    STY $D011
+.C:19eb  A0 0C       LDY #$0C
+.C:19ed  8C 28 D0    STY $D028
+.C:19f0  A0 0F       LDY #$0F
+.C:19f2  8C 29 D0    STY $D029
+.C:19f5  A0 0F       LDY #$0F
+.C:19f7  8C 2A D0    STY $D02A
+.C:19fa  A0 0F       LDY #$0F
+.C:19fc  8C 2B D0    STY $D02B
+.C:19ff  A0 D4       LDY #$D4
+(C:$1a01) 
+=== 8e00-8eff BYTES ===
+>C:8200  20 39 8e a0  04 84 49 a9  00 a0 04 20  9e 8e a9 14    9� d�i�@ d ���t
+>C:8210  85 49 a9 06  a0 01 20 9e  8e e6 49 a9  04 a0 01 20   �i�f a ���i�d a 
+>C:8220  9e 8e 60 00  00 00 00 00  00 00 00 00  00 00 00 00   ���@@@@@@@@@@@@@
+>C:8230  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:8240  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:8250  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:8260  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:8270  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:8280  f0 f0 f0 f0  90 fb cb c3  f3 fd 3a ea  a4 a4 4a e4   ����.�KC��:���j�
+>C:8290  4e e4 42 e4  42 e2 ef ec  ef ef ef ea  ce e4 cb f0   n�b�b�������N�K�
+>C:82a0  c5 c3 c3 b0  f0 f0 f0 f0  00 00 00 00  00 00 00 00   ECC�����@@@@@@@@
+>C:82b0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:82c0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:82d0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:82e0  8d 11 d0 ad  00 dd 09 01  a2 10 a0 f8  cc 12 d0 d0   .qP�@�ia�p �LrPP
+>C:82f0  fb 8e 11 d0  8d 00 dd 18  4c 00 8e 00  00 00 00 00   ��qP.@�xl@�@@@@@
+(C:$8300) 
+=== 8e00-8eff DISASM ===
+.C:8200  20 39 8E    JSR $8E39
+.C:8203  A0 04       LDY #$04
+.C:8205  84 49       STY $49
+.C:8207  A9 00       LDA #$00
+.C:8209  A0 04       LDY #$04
+.C:820b  20 9E 8E    JSR $8E9E
+.C:820e  A9 14       LDA #$14
+.C:8210  85 49       STA $49
+.C:8212  A9 06       LDA #$06
+.C:8214  A0 01       LDY #$01
+.C:8216  20 9E 8E    JSR $8E9E
+.C:8219  E6 49       INC $49
+.C:821b  A9 04       LDA #$04
+.C:821d  A0 01       LDY #$01
+.C:821f  20 9E 8E    JSR $8E9E
+.C:8222  60          RTS
+.C:8223  00          BRK
+.C:8224  00          BRK
+.C:8225  00          BRK
+.C:8226  00          BRK
+.C:8227  00          BRK
+.C:8228  00          BRK
+.C:8229  00          BRK
+.C:822a  00          BRK
+.C:822b  00          BRK
+.C:822c  00          BRK
+.C:822d  00          BRK
+.C:822e  00          BRK
+.C:822f  00          BRK
+.C:8230  00          BRK
+.C:8231  00          BRK
+.C:8232  00          BRK
+.C:8233  00          BRK
+.C:8234  00          BRK
+.C:8235  00          BRK
+.C:8236  00          BRK
+.C:8237  00          BRK
+.C:8238  00          BRK
+.C:8239  00          BRK
+.C:823a  00          BRK
+.C:823b  00          BRK
+.C:823c  00          BRK
+.C:823d  00          BRK
+.C:823e  00          BRK
+.C:823f  00          BRK
+.C:8240  00          BRK
+.C:8241  00          BRK
+.C:8242  00          BRK
+.C:8243  00          BRK
+.C:8244  00          BRK
+.C:8245  00          BRK
+.C:8246  00          BRK
+.C:8247  00          BRK
+.C:8248  00          BRK
+.C:8249  00          BRK
+.C:824a  00          BRK
+.C:824b  00          BRK
+.C:824c  00          BRK
+.C:824d  00          BRK
+.C:824e  00          BRK
+.C:824f  00          BRK
+.C:8250  00          BRK
+.C:8251  00          BRK
+.C:8252  00          BRK
+.C:8253  00          BRK
+.C:8254  00          BRK
+.C:8255  00          BRK
+.C:8256  00          BRK
+.C:8257  00          BRK
+.C:8258  00          BRK
+.C:8259  00          BRK
+.C:825a  00          BRK
+.C:825b  00          BRK
+.C:825c  00          BRK
+.C:825d  00          BRK
+.C:825e  00          BRK
+.C:825f  00          BRK
+.C:8260  00          BRK
+.C:8261  00          BRK
+.C:8262  00          BRK
+.C:8263  00          BRK
+.C:8264  00          BRK
+.C:8265  00          BRK
+.C:8266  00          BRK
+.C:8267  00          BRK
+.C:8268  00          BRK
+.C:8269  00          BRK
+.C:826a  00          BRK
+.C:826b  00          BRK
+.C:826c  00          BRK
+.C:826d  00          BRK
+.C:826e  00          BRK
+.C:826f  00          BRK
+.C:8270  00          BRK
+.C:8271  00          BRK
+.C:8272  00          BRK
+.C:8273  00          BRK
+.C:8274  00          BRK
+.C:8275  00          BRK
+.C:8276  00          BRK
+.C:8277  00          BRK
+.C:8278  00          BRK
+.C:8279  00          BRK
+.C:827a  00          BRK
+.C:827b  00          BRK
+.C:827c  00          BRK
+.C:827d  00          BRK
+.C:827e  00          BRK
+.C:827f  00          BRK
+.C:8280  F0 F0       BEQ $8272
+.C:8282  F0 F0       BEQ $8274
+.C:8284  90 FB       BCC $8281
+.C:8286  CB C3       SBX #$C3
+.C:8288  F3 FD       ISB ($FD),Y
+.C:828a  3A          NOOP
+.C:828b  EA          NOP
+.C:828c  A4 A4       LDY $A4
+.C:828e  4A          LSR A
+.C:828f  E4 4E       CPX $4E
+.C:8291  E4 42       CPX $42
+.C:8293  E4 42       CPX $42
+.C:8295  E2 EF       NOOP #$EF
+.C:8297  EC EF EF    CPX $EFEF
+.C:829a  EF EA CE    ISB $CEEA
+.C:829d  E4 CB       CPX $CB
+.C:829f  F0 C5       BEQ $8266
+.C:82a1  C3 C3       DCP ($C3,X)
+.C:82a3  B0 F0       BCS $8295
+.C:82a5  F0 F0       BEQ $8297
+.C:82a7  F0 00       BEQ $82A9
+.C:82a9  00          BRK
+.C:82aa  00          BRK
+.C:82ab  00          BRK
+.C:82ac  00          BRK
+.C:82ad  00          BRK
+.C:82ae  00          BRK
+.C:82af  00          BRK
+.C:82b0  00          BRK
+.C:82b1  00          BRK
+.C:82b2  00          BRK
+.C:82b3  00          BRK
+.C:82b4  00          BRK
+.C:82b5  00          BRK
+.C:82b6  00          BRK
+.C:82b7  00          BRK
+.C:82b8  00          BRK
+.C:82b9  00          BRK
+.C:82ba  00          BRK
+.C:82bb  00          BRK
+.C:82bc  00          BRK
+.C:82bd  00          BRK
+.C:82be  00          BRK
+.C:82bf  00          BRK
+.C:82c0  00          BRK
+.C:82c1  00          BRK
+.C:82c2  00          BRK
+.C:82c3  00          BRK
+.C:82c4  00          BRK
+.C:82c5  00          BRK
+.C:82c6  00          BRK
+.C:82c7  00          BRK
+.C:82c8  00          BRK
+.C:82c9  00          BRK
+.C:82ca  00          BRK
+.C:82cb  00          BRK
+.C:82cc  00          BRK
+.C:82cd  00          BRK
+.C:82ce  00          BRK
+.C:82cf  00          BRK
+.C:82d0  00          BRK
+.C:82d1  00          BRK
+.C:82d2  00          BRK
+.C:82d3  00          BRK
+.C:82d4  00          BRK
+.C:82d5  00          BRK
+.C:82d6  00          BRK
+.C:82d7  00          BRK
+.C:82d8  00          BRK
+.C:82d9  00          BRK
+.C:82da  00          BRK
+.C:82db  00          BRK
+.C:82dc  00          BRK
+.C:82dd  00          BRK
+.C:82de  00          BRK
+.C:82df  00          BRK
+.C:82e0  8D 11 D0    STA $D011
+.C:82e3  AD 00 DD    LDA $DD00
+.C:82e6  09 01       ORA #$01
+.C:82e8  A2 10       LDX #$10
+.C:82ea  A0 F8       LDY #$F8
+.C:82ec  CC 12 D0    CPY $D012
+.C:82ef  D0 FB       BNE $82EC
+.C:82f1  8E 11 D0    STX $D011
+.C:82f4  8D 00 DD    STA $DD00
+.C:82f7  18          CLC
+.C:82f8  4C 00 8E    JMP $8E00
+.C:82fb  00          BRK
+.C:82fc  00          BRK
+.C:82fd  00          BRK
+.C:82fe  00          BRK
+.C:82ff  00          BRK
+(C:$8300) 
+=== 0044-0048 BYTES ===
+>C:8e00  a9 00 8d 17  d0 4c 31 8e  5a c9 c7 d0  0c e0 82 d0   �@.wPl1�zIGPl �P
+>C:8e10  08 a9 ae a2  ff a0 ff d0  0d a4 5b 38  e9 19 b0 06   h���� �Pm�[8�y�f
+>C:8e20  ca e0 ff d0  01 88 85 59  86 5a 84 5b  a9 fd 8d 01   J �Pa.�y�z�[��.a
+>C:8e30  df a5 45 f0  03 4c 00 83  40 a9 06 8d  20 d0 8d 21   ߥe�cl@�@�f. P.!
+>C:8e40  d0 a9 15 8d  18 d0 a9 97  8d 00 dd a0  00 a9 07 99   P�u.xP��.@� @�g.
+>C:8e50  00 d8 99 00  d9 99 00 da  99 00 db a9  20 99 00 04   @X.@Y.@Z.@۩ .@d
+>C:8e60  99 00 05 c8  d0 e7 60 84  4c a9 04 85  4b a9 00 85   .@eHP���l�d�k�@�
+>C:8e70  4a e0 00 f0  10 18 a5 4a  69 28 85 4a  a5 4b 69 00   j @�px�jI(�j�kI@
+>C:8e80  85 4b ca d0  f1 60 8e 91  8e 8c 92 8e  a2 00 a4 4c   �kJP���������@�l
+>C:8e90  bd 40 84 f0  06 91 4a c8  e8 d0 f5 84  4c 60 48 a6   �@��f�jH�P��l�h�
+>C:8ea0  49 20 67 8e  68 a8 b9 8a  84 aa a0 84  20 86 8e 60   i G�H����� � ���
+>C:8eb0  a4 4c aa 4a  4a 4a 4a 09  30 91 4a c8  8a 29 0f 09   �l�jjjji0�jH�)oi
+>C:8ec0  30 91 4a c8  84 4c 60 a0  08 84 49 a9  02 a0 04 20   0�jH�l� h�i�b d 
+>C:8ed0  9e 8e a5 40  20 b0 8e a9  03 a0 14 20  9e 8e a5 47   ���@ ���c t ���g
+>C:8ee0  20 b0 8e a0  0a 84 49 a0  04 20 92 84  a5 47 d0 07    �� j�i d ���gPg
+>C:8ef0  a9 05 a0 14  20 9e 8e 60  a0 06 84 49  a9 01 a0 04   �e t ��� f�i�a d
+(C:$8f00) .C:8e00  A9 00       LDA #$00
+
+=== 0044-0048 DISASM ===
+.C:8e02  8D 17 D0    STA $D017
+.C:8e05  4C 31 8E    JMP $8E31
+.C:8e08  5A          NOOP
+.C:8e09  C9 C7       CMP #$C7
+.C:8e0b  D0 0C       BNE $8E19
+.C:8e0d  E0 82       CPX #$82
+.C:8e0f  D0 08       BNE $8E19
+.C:8e11  A9 AE       LDA #$AE
+.C:8e13  A2 FF       LDX #$FF
+.C:8e15  A0 FF       LDY #$FF
+.C:8e17  D0 0D       BNE $8E26
+.C:8e19  A4 5B       LDY $5B
+.C:8e1b  38          SEC
+.C:8e1c  E9 19       SBC #$19
+.C:8e1e  B0 06       BCS $8E26
+.C:8e20  CA          DEX
+.C:8e21  E0 FF       CPX #$FF
+.C:8e23  D0 01       BNE $8E26
+.C:8e25  88          DEY
+.C:8e26  85 59       STA $59
+.C:8e28  86 5A       STX $5A
+.C:8e2a  84 5B       STY $5B
+.C:8e2c  A9 FD       LDA #$FD
+.C:8e2e  8D 01 DF    STA $DF01
+.C:8e31  A5 45       LDA $45
+.C:8e33  F0 03       BEQ $8E38
+.C:8e35  4C 00 83    JMP $8300
+.C:8e38  40          RTI
+.C:8e39  A9 06       LDA #$06
+.C:8e3b  8D 20 D0    STA $D020
+.C:8e3e  8D 21 D0    STA $D021
+.C:8e41  A9 15       LDA #$15
+.C:8e43  8D 18 D0    STA $D018
+.C:8e46  A9 97       LDA #$97
+.C:8e48  8D 00 DD    STA $DD00
+.C:8e4b  A0 00       LDY #$00
+.C:8e4d  A9 07       LDA #$07
+.C:8e4f  99 00 D8    STA $D800,Y
+.C:8e52  99 00 D9    STA $D900,Y
+.C:8e55  99 00 DA    STA $DA00,Y
+.C:8e58  99 00 DB    STA $DB00,Y
+.C:8e5b  A9 20       LDA #$20
+.C:8e5d  99 00 04    STA $0400,Y
+.C:8e60  99 00 05    STA $0500,Y
+.C:8e63  C8          INY
+.C:8e64  D0 E7       BNE $8E4D
+.C:8e66  60          RTS
+.C:8e67  84 4C       STY $4C
+.C:8e69  A9 04       LDA #$04
+.C:8e6b  85 4B       STA $4B
+.C:8e6d  A9 00       LDA #$00
+.C:8e6f  85 4A       STA $4A
+.C:8e71  E0 00       CPX #$00
+.C:8e73  F0 10       BEQ $8E85
+.C:8e75  18          CLC
+.C:8e76  A5 4A       LDA $4A
+.C:8e78  69 28       ADC #$28
+.C:8e7a  85 4A       STA $4A
+.C:8e7c  A5 4B       LDA $4B
+.C:8e7e  69 00       ADC #$00
+.C:8e80  85 4B       STA $4B
+.C:8e82  CA          DEX
+.C:8e83  D0 F1       BNE $8E76
+.C:8e85  60          RTS
+.C:8e86  8E 91 8E    STX $8E91
+.C:8e89  8C 92 8E    STY $8E92
+.C:8e8c  A2 00       LDX #$00
+.C:8e8e  A4 4C       LDY $4C
+.C:8e90  BD 40 84    LDA $8440,X
+.C:8e93  F0 06       BEQ $8E9B
+.C:8e95  91 4A       STA ($4A),Y
+.C:8e97  C8          INY
+.C:8e98  E8          INX
+.C:8e99  D0 F5       BNE $8E90
+.C:8e9b  84 4C       STY $4C
+.C:8e9d  60          RTS
+.C:8e9e  48          PHA
+.C:8e9f  A6 49       LDX $49
+.C:8ea1  20 67 8E    JSR $8E67
+.C:8ea4  68          PLA
+.C:8ea5  A8          TAY
+.C:8ea6  B9 8A 84    LDA $848A,Y
+.C:8ea9  AA          TAX
+.C:8eaa  A0 84       LDY #$84
+.C:8eac  20 86 8E    JSR $8E86
+.C:8eaf  60          RTS
+.C:8eb0  A4 4C       LDY $4C
+.C:8eb2  AA          TAX
+.C:8eb3  4A          LSR A
+.C:8eb4  4A          LSR A
+.C:8eb5  4A          LSR A
+.C:8eb6  4A          LSR A
+.C:8eb7  09 30       ORA #$30
+.C:8eb9  91 4A       STA ($4A),Y
+.C:8ebb  C8          INY
+.C:8ebc  8A          TXA
+.C:8ebd  29 0F       AND #$0F
+.C:8ebf  09 30       ORA #$30
+.C:8ec1  91 4A       STA ($4A),Y
+.C:8ec3  C8          INY
+.C:8ec4  84 4C       STY $4C
+.C:8ec6  60          RTS
+.C:8ec7  A0 08       LDY #$08
+.C:8ec9  84 49       STY $49
+.C:8ecb  A9 02       LDA #$02
+.C:8ecd  A0 04       LDY #$04
+.C:8ecf  20 9E 8E    JSR $8E9E
+.C:8ed2  A5 40       LDA $40
+.C:8ed4  20 B0 8E    JSR $8EB0
+.C:8ed7  A9 03       LDA #$03
+.C:8ed9  A0 14       LDY #$14
+.C:8edb  20 9E 8E    JSR $8E9E
+.C:8ede  A5 47       LDA $47
+.C:8ee0  20 B0 8E    JSR $8EB0
+.C:8ee3  A0 0A       LDY #$0A
+.C:8ee5  84 49       STY $49
+.C:8ee7  A0 04       LDY #$04
+.C:8ee9  20 92 84    JSR $8492
+.C:8eec  A5 47       LDA $47
+.C:8eee  D0 07       BNE $8EF7
+.C:8ef0  A9 05       LDA #$05
+.C:8ef2  A0 14       LDY #$14
+.C:8ef4  20 9E 8E    JSR $8E9E
+.C:8ef7  60          RTS
+.C:8ef8  A0 06       LDY #$06
+.C:8efa  84 49       STY $49
+.C:8efc  A9 01       LDA #$01
+.C:8efe  A0 04       LDY #$04
+(C:$8f00) 
+=== 0045-0046 BYTES ===
+>C:0044  00 ff 00 00  00                                      @�@@@
+(C:$0049) 
+=== 0045-0046 DISASM ===
+.C:0044  00          BRK
+.C:0045  FF 00 00    ISB $0000,X
+.C:0048  00          BRK
+(C:$0049) >C:0045  ff 00 
