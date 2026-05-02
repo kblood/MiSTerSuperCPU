@@ -289,7 +289,9 @@ begin
 
 	-- v272: RMW opcode decode (mirrors the per-process `rmw` variable
 	-- at the VPB/MLB stage below). Excludes accumulator-mode INC/DEC
-	-- ($1A, $3A) which never touch memory.
+	-- ($1A, $3A) which never touch memory. TSB/TRB ($04/$0C/$14/$1C)
+	-- ARE included: SST shows real silicon performs an NMOS-style
+	-- double-write on these too in emu mode (v273 verified).
 	rmw_decode <=
 		'1' when IR = x"06" or IR = x"0E" or IR = x"16" or IR = x"1E" or
 		         IR = x"C6" or IR = x"CE" or IR = x"D6" or IR = x"DE" or
@@ -770,7 +772,23 @@ begin
 			VPB <= '1';
 		end if;
 
-		if (MC.ADDR_BUS = "0001" or MC.ADDR_BUS = "0011" or MC.ADDR_BUS = "0111") and rmw = '1' then
+		-- MLB asserts (low) during the read-modify-write portion of any of
+		-- the 28 RMW opcodes. Per WDC, the lock covers the read, the
+		-- modify (internal), and the write -- but not the operand fetches
+		-- or the page-cross IO before the read.
+		--   * Operand fetches use ADDR_BUS="0000" (PBR:PC) -> excluded.
+		--   * RMW data accesses use ADDR_BUS in {"0001","0011","0101","0111"}
+		--     for ABS/DP/ABS,X/STK respectively. The DP,X variants reuse
+		--     the DP "0011" pattern. ABS,X uses "0101", which the older
+		--     gate omitted entirely (v273 SST sweep caught this).
+		--   * The page-cross IO of ABS,X also has ADDR_BUS="0101" but
+		--     VA="00" and LOAD_T="00", so we additionally require
+		--     VA /= "00" or the modify-cycle signature LOAD_T="10".
+		if rmw = '1'
+		   and (MC.ADDR_BUS = "0001" or MC.ADDR_BUS = "0011"
+		        or MC.ADDR_BUS = "0101" or MC.ADDR_BUS = "0111")
+		   and (MC.VA /= "00" or MC.LOAD_T = "10")
+		then
 			MLB <= '0';
 		else
 			MLB <= '1';

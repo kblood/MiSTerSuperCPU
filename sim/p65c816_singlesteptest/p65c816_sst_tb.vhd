@@ -22,9 +22,10 @@
 --      Mismatches log a `FAIL: case <N> <reason>` line; matches log
 --      `PASS: case <N>` (or summary-only when verbose=false).
 --
--- Phase 0 scope: works for opcodes 04/0C/14/1C and the 24 ASL/LSR/
--- ROL/ROR/INC/DEC RMW opcodes -- these don't mutate A, so DBG_A isn't
--- needed for register comparison. Phase 2 will add DBG_A.
+-- Phase 1 scope: works for the 28 RMW opcodes (04/0C/14/1C TSB/TRB and
+-- 24 ASL/LSR/ROL/ROR/INC/DEC variants). These don't mutate A, so DBG_A
+-- isn't required for register comparison. Phase 2 (full 256-opcode
+-- sweep) needs DBG_A wired through P65C816 to also verify A/B updates.
 
 library IEEE;
 use IEEE.std_logic_1164.all;
@@ -326,6 +327,9 @@ begin
         variable cyc_idx   : integer;
         variable cycles_settle : integer;
 
+        variable stk_top    : integer;
+        variable stk_below  : integer;
+
         variable target_pbr : std_logic_vector(7 downto 0);
         variable target_pc  : std_logic_vector(15 downto 0);
 
@@ -487,6 +491,11 @@ begin
             -- the prelude lives), running this case would either crash
             -- the prelude (IR overwrites it) or read the wrong test
             -- value (prelude overwrites IR). Phase 0/1 skip these.
+            -- ALSO skip cases where ram cells live at the two stack bytes
+            -- the prelude transiently uses for the PHA/PLA save/restore
+            -- around LDA #p in step 10. Stack address is bank 0:
+            --   * emu (init_e=1):    $00:01:S_lo and $00:01:(S_lo-1)
+            --   * native (init_e=0): $00:S      and $00:(S-1)
             for i in 0 to n_ir - 1 loop
                 if ir_cells(i).addr(23 downto 16) = x"00" and
                    to_integer(ir_cells(i).addr(15 downto 0)) >= prelude_base_lo and
@@ -499,6 +508,62 @@ begin
                 if fr_cells(i).addr(23 downto 16) = x"00" and
                    to_integer(fr_cells(i).addr(15 downto 0)) >= prelude_base_lo and
                    to_integer(fr_cells(i).addr(15 downto 0)) < prelude_base_lo + n_pre
+                then
+                    case_skipped := true;
+                end if;
+            end loop;
+            -- Reset-vector collision: bench writes $00:FFFC/D last so the
+            -- prelude can boot, which clobbers any case init.ram cell at
+            -- those addresses. Skip cases that read or write those bytes.
+            for i in 0 to n_ir - 1 loop
+                if ir_cells(i).addr(23 downto 16) = x"00" and
+                   (to_integer(ir_cells(i).addr(15 downto 0)) = 16#FFFC# or
+                    to_integer(ir_cells(i).addr(15 downto 0)) = 16#FFFD#)
+                then
+                    case_skipped := true;
+                end if;
+            end loop;
+            for i in 0 to n_fr - 1 loop
+                if fr_cells(i).addr(23 downto 16) = x"00" and
+                   (to_integer(fr_cells(i).addr(15 downto 0)) = 16#FFFC# or
+                    to_integer(fr_cells(i).addr(15 downto 0)) = 16#FFFD#)
+                then
+                    case_skipped := true;
+                end if;
+            end loop;
+            -- Stack-collision skip: prelude PHA in step 10 transiently
+            -- writes to one stack byte ($01:S_lo for emu, $00:S for native).
+            -- If the case lists that address as test RAM, the case value
+            -- is clobbered. Two addresses kept (over-conservative) for
+            -- safety against future prelude tweaks that touch a 2nd byte.
+            -- ALSO: in native mode, if init_s points INTO the prelude byte
+            -- range $00:FE00..FE00+n_pre, PHA self-corrupts the prelude
+            -- and the JML never fires (ARM timeout). Skip those too.
+            if init_e = 1 then
+                stk_top   := 16#100# + (init_s mod 256);
+                stk_below := 16#100# + ((init_s - 1) mod 256);
+            else
+                stk_top   := init_s mod 65536;
+                stk_below := (init_s - 1) mod 65536;
+                if stk_top  >= prelude_base_lo and stk_top  < prelude_base_lo + n_pre then
+                    case_skipped := true;
+                end if;
+                if stk_below >= prelude_base_lo and stk_below < prelude_base_lo + n_pre then
+                    case_skipped := true;
+                end if;
+            end if;
+            for i in 0 to n_ir - 1 loop
+                if ir_cells(i).addr(23 downto 16) = x"00" and
+                   (to_integer(ir_cells(i).addr(15 downto 0)) = stk_top or
+                    to_integer(ir_cells(i).addr(15 downto 0)) = stk_below)
+                then
+                    case_skipped := true;
+                end if;
+            end loop;
+            for i in 0 to n_fr - 1 loop
+                if fr_cells(i).addr(23 downto 16) = x"00" and
+                   (to_integer(fr_cells(i).addr(15 downto 0)) = stk_top or
+                    to_integer(fr_cells(i).addr(15 downto 0)) = stk_below)
                 then
                     case_skipped := true;
                 end if;

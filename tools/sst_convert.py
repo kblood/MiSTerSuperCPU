@@ -58,18 +58,22 @@ def make_prelude(init):
       7. LDX #x16        — set X
       8. LDY #y16        — set Y
       9. (if e=1): SEC; XCE — back to emu (forces S high=$01, clobbers C)
-     10. SEP #$20; LDA #p; PHA; PLP — set P last so PLP fixes any
+     10. SEP #$20; LDA #p; PHA; LDA #a_lo; PLP
+                                       set P last so PLP fixes any
                                        C/D/Z/etc. that XCE perturbed
      11. JML pbr:pc
 
-    PLP-last is critical: XCE-to-emu sets new C = old E = 0, clobbering
-    the case's intended C flag. Doing PLP AFTER the final XCE restores
-    the full P (including C) to case.p.
+    PLP-last is critical: every other instruction (LDA, PLA, XCE) updates
+    N/Z, and XCE-to-emu sets new C = old E = 0. Putting PLP at the end
+    forces the case's full P (including N, Z, C, D) to be the last write.
 
-    Caveat: PHA in step 10 transiently writes 1 byte at $01:(S_low). If
-    case.initial.ram lists that exact address as a test cell, the value
-    gets overwritten with case.p. Small failure rate for Phase 0/1; can
-    be mitigated by saving/restoring that cell in Phase 2+.
+    The mid-step LDA #a_lo restores A_low after LDA #p clobbered it.
+    LDA #a16 in step 6 already loaded both bytes; this 8-bit reload only
+    fixes A_lo without touching B (high byte of C). Its N/Z side-effect
+    is overwritten by the trailing PLP.
+
+    Stack footprint: 1 transient byte at $01:(S_low). If case.initial.ram
+    lists that address, the case is skipped by the bench.
     """
     code = []
     s_lo = init['s'] & 0xFF
@@ -108,11 +112,19 @@ def make_prelude(init):
     # 9. (if e=1) SEC; XCE -> back to emu (clobbers C)
     if init['e'] == 1:
         code += [0x38, 0xFB]
-    # 10. SEP #$20; LDA #p; PHA; PLP -- set P AFTER final XCE so PLP
-    #     restores C/D/Z/etc. that XCE just perturbed
+    # 10. SEP #$20; LDA #p; PHA; LDA #a_lo; PLP
+    #     PLP is the LAST instruction before JML so case.p (including
+    #     N and Z) is the final write to P. Earlier prelude form ended
+    #     with PLA, which updated N/Z from a_lo and broke ~50% of
+    #     TSB/TRB cases (any with a_lo[7]=1 had N flag wrong).
+    #     LDA #a_lo re-loads A_low after LDA #p clobbered it; in 8-bit
+    #     M mode this preserves B (A_high). One transient stack byte
+    #     is touched at $01:(S_low).
     code += [0xE2, 0x20]                       # SEP #$20 (8-bit A)
     code += [0xA9, init['p']]                  # LDA #p
-    code += [0x48, 0x28]                       # PHA, PLP
+    code += [0x48]                             # PHA (push p)
+    code += [0xA9, a_lo]                       # LDA #a_lo (restore A_lo)
+    code += [0x28]                             # PLP (final write to P)
     # 11. JML pbr:pc
     code += [0x5C, pc_lo, pc_hi, init['pbr']]
     return code
@@ -181,7 +193,14 @@ def main():
     ap.add_argument('mode',   nargs='?', help="e or n")
     ap.add_argument('--max',  type=int, help="max cases (truncate for testing)")
     ap.add_argument('--rmw',  action='store_true', help="convert all 28 RMW opcodes both modes")
+    ap.add_argument('--all',  action='store_true', help="convert all 256 opcodes both modes (Phase 2)")
     args = ap.parse_args()
+
+    if args.all:
+        for op in range(256):
+            for mode in ('e', 'n'):
+                convert_one(op, mode, args.max)
+        return
 
     if args.rmw:
         for op in RMW_OPCODES:
