@@ -80,13 +80,18 @@ module debug_uart_pool_fmt
 	reg [15:0] lat_c30, lat_c97;
 	reg  [7:0] lat_w5c0, lat_w5c1, lat_w5c2, lat_w5c3;
 	reg [15:0] lat_w5cN;
+	// v263: IRQ-source confirmation
+	reg [15:0] lat_irq_fall;
+	reg [15:0] lat_irq_vec;
+	reg  [7:0] lat_d019_rd;
+	reg  [3:0] lat_d019_seen;
 
 	// -----------------------------------------------------------------
 	// Send FSM: drive tx_send for one cycle whenever tx is idle and the
 	// next byte hasn't been issued yet. byte_idx indexes the line bytes
 	// 0..LINE_LEN-1; LINE_LEN signals "line done, idle until next vblank".
 	// -----------------------------------------------------------------
-	localparam LINE_LEN = 8'd187;
+	localparam LINE_LEN = 8'd214;
 
 	reg [7:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -322,8 +327,43 @@ module debug_uart_pool_fmt
 			8'd184: line_byte = hex_nibble(lat_w5cN[7:4]);
 			8'd185: line_byte = hex_nibble(lat_w5cN[3:0]);
 
+			// v263: " IF:####" irq_fall_count (source IRQ_N falling edges)
+			8'd186: line_byte = " ";
+			8'd187: line_byte = "I";
+			8'd188: line_byte = "F";
+			8'd189: line_byte = ":";
+			8'd190: line_byte = hex_nibble(lat_irq_fall[15:12]);
+			8'd191: line_byte = hex_nibble(lat_irq_fall[11:8]);
+			8'd192: line_byte = hex_nibble(lat_irq_fall[7:4]);
+			8'd193: line_byte = hex_nibble(lat_irq_fall[3:0]);
+
+			// v263: " VC:####" irq_vec_count ($FFFE/$FFFF reads)
+			8'd194: line_byte = " ";
+			8'd195: line_byte = "V";
+			8'd196: line_byte = "C";
+			8'd197: line_byte = ":";
+			8'd198: line_byte = hex_nibble(lat_irq_vec[15:12]);
+			8'd199: line_byte = hex_nibble(lat_irq_vec[11:8]);
+			8'd200: line_byte = hex_nibble(lat_irq_vec[7:4]);
+			8'd201: line_byte = hex_nibble(lat_irq_vec[3:0]);
+
+			// v263: " DR:##" d019_last_read (value handler READS from $D019)
+			8'd202: line_byte = " ";
+			8'd203: line_byte = "D";
+			8'd204: line_byte = "R";
+			8'd205: line_byte = ":";
+			8'd206: line_byte = hex_nibble(lat_d019_rd[7:4]);
+			8'd207: line_byte = hex_nibble(lat_d019_rd[3:0]);
+
+			// v263: " DS:#" d019_seen_bits (cumulative OR of source bits 0..3)
+			8'd208: line_byte = " ";
+			8'd209: line_byte = "D";
+			8'd210: line_byte = "S";
+			8'd211: line_byte = ":";
+			8'd212: line_byte = hex_nibble(lat_d019_seen);
+
 			// newline (LINE_LEN-1)
-			8'd186: line_byte = 8'h0A;
+			8'd213: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -376,6 +416,10 @@ module debug_uart_pool_fmt
 				lat_w5c2    <= pool.wr5C_v2;
 				lat_w5c3    <= pool.wr5C_v3;
 				lat_w5cN    <= pool.cnt_wr5C;
+				lat_irq_fall  <= pool.irq_fall_count;
+				lat_irq_vec   <= pool.irq_vec_count;
+				lat_d019_rd   <= pool.d019_last_read;
+				lat_d019_seen <= pool.d019_seen_bits;
 				byte_idx  <= 8'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin

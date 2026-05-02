@@ -35,6 +35,7 @@ LINE_RE = re.compile(
     r"(?:\s+G:(?P<g40>[0-9A-F]+)\s+(?P<g44>[0-9A-F]+)\s+(?P<g5c>[0-9A-F]+))?"
     r"(?:\s+N:(?P<n>[0-9A-F]+)\s+I:(?P<ii>[0-9A-F]+)\s+B:(?P<b>[0-9A-F]+)\s+C3:(?P<c3>[0-9A-F]+)\s+C9:(?P<c9>[0-9A-F]+))?"
     r"(?:\s+W5:(?P<w5c0>[0-9A-F]+)\s+(?P<w5c1>[0-9A-F]+)\s+(?P<w5c2>[0-9A-F]+)\s+(?P<w5c3>[0-9A-F]+)\s+N5:(?P<n5>[0-9A-F]+))?"
+    r"(?:\s+IF:(?P<irf>[0-9A-F]+)\s+VC:(?P<ivc>[0-9A-F]+)\s+DR:(?P<dr>[0-9A-F]+)\s+DS:(?P<ds>[0-9A-F]+))?"
 )
 
 
@@ -62,6 +63,11 @@ def load(path):
         if m['w5c0'] is not None:
             row['w5c'] = [int(m[f'w5c{i}'], 16) for i in range(4)]
             row['n5']  = int(m['n5'], 16)
+        if m['irf'] is not None:
+            row['irf'] = int(m['irf'], 16)
+            row['ivc'] = int(m['ivc'], 16)
+            row['dr']  = int(m['dr'],  16)
+            row['ds']  = int(m['ds'],  16)
         rows.append(row)
     return rows
 
@@ -144,6 +150,29 @@ def report(rows, label):
         print('    first 12 frames raw rings:')
         for i, r in enumerate(rows[:12]):
             print(f'      {i:>3}  {" ".join(f"{v:02X}" for v in r["w5c"])}  N5:{r["n5"]:04X}')
+
+    irf_rows = [r for r in rows if 'irf' in r]
+    if irf_rows:
+        print('  v263 IRQ-source counters + $D019 read-side:')
+        if len(irf_rows) > 1:
+            dif = (irf_rows[-1]['irf'] - irf_rows[0]['irf']) & 0xFFFF
+            div = (irf_rows[-1]['ivc'] - irf_rows[0]['ivc']) & 0xFFFF
+            print(f'    IF delta (IRQ_N falling edges):     {dif:6d} over {len(irf_rows)} frames ({dif/len(irf_rows):.2f}/frame)')
+            print(f'    VC delta ($FFFE/$FFFF vec fetches): {div:6d} over {len(irf_rows)} frames ({div/len(irf_rows):.2f}/frame)')
+            print(f'    VC/IF ratio: {div/max(dif,1):.2f}  (>2.0 means tail-chain on same source pulse; ~1.0 = 1 vec per pulse; ~2.0 = each entry fetches 2 bytes)')
+        dr_dist = collections.Counter(r['dr'] for r in irf_rows)
+        ds_or   = 0
+        for r in irf_rows: ds_or |= r['ds']
+        print(f'    DR ($D019 last-read) top 5: {[(f"${v:02X}", c) for v, c in dr_dist.most_common(5)]}')
+        print(f'    DS (cumulative seen-bits 0..3) sticky-OR across capture: ${ds_or:X}')
+        # Decode DR bit meaning
+        for v, c in dr_dist.most_common(3):
+            bits = []
+            if v & 0x01: bits.append('IRST')
+            if v & 0x02: bits.append('IMBC')
+            if v & 0x04: bits.append('IMMC')
+            if v & 0x08: bits.append('ILP')
+            print(f'      ${v:02X} = {"+".join(bits) if bits else "(no source bits)"}  (top bit is IRQ-pending flag)')
 
 
 def main():
