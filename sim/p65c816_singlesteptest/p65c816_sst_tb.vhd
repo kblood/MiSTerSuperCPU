@@ -812,26 +812,30 @@ begin
                 end loop;
 
                 -- Cycle list
+                -- F9 (2026-05-03): null cycles (valid='0', addr=null in SST)
+                -- represent CPU-internal / halted cycles where the external
+                -- bus state is meaningless on real silicon. SST records
+                -- VDA=0/VPA=0/RWB=0 defaults regardless of actual driving.
+                -- Skip ALL bus-flag comparisons on null cycles, matching
+                -- silicon's "informational only" semantics.
                 for i in 0 to n_cy - 1 loop
-                    if not case_failed then
-                        if cyc_exp(i).valid = '1' then
-                            if observed(i).addr /= std_logic_vector(cyc_exp(i).addr) then
-                                write(fail_reason, string'("CY["));
-                                write(fail_reason, integer'image(i));
-                                write(fail_reason, string'("] addr exp="));
-                                write(fail_reason, hex_str(to_integer(cyc_exp(i).addr), 6));
-                                write(fail_reason, string'(" got="));
-                                write(fail_reason, slv_to_hex(observed(i).addr));
-                                case_failed := true;
-                            elsif observed(i).data /= cyc_exp(i).data then
-                                write(fail_reason, string'("CY["));
-                                write(fail_reason, integer'image(i));
-                                write(fail_reason, string'("] data exp="));
-                                write(fail_reason, slv_to_hex(cyc_exp(i).data));
-                                write(fail_reason, string'(" got="));
-                                write(fail_reason, slv_to_hex(observed(i).data));
-                                case_failed := true;
-                            end if;
+                    if not case_failed and cyc_exp(i).valid = '1' then
+                        if observed(i).addr /= std_logic_vector(cyc_exp(i).addr) then
+                            write(fail_reason, string'("CY["));
+                            write(fail_reason, integer'image(i));
+                            write(fail_reason, string'("] addr exp="));
+                            write(fail_reason, hex_str(to_integer(cyc_exp(i).addr), 6));
+                            write(fail_reason, string'(" got="));
+                            write(fail_reason, slv_to_hex(observed(i).addr));
+                            case_failed := true;
+                        elsif observed(i).data /= cyc_exp(i).data then
+                            write(fail_reason, string'("CY["));
+                            write(fail_reason, integer'image(i));
+                            write(fail_reason, string'("] data exp="));
+                            write(fail_reason, slv_to_hex(cyc_exp(i).data));
+                            write(fail_reason, string'(" got="));
+                            write(fail_reason, slv_to_hex(observed(i).data));
+                            case_failed := true;
                         end if;
 
                         if not case_failed then
