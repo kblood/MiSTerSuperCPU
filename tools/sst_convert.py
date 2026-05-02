@@ -160,10 +160,13 @@ def write_record(out, case_idx, case):
     out.write(f"CY {len(cycles)}\n")
     for cyc in cycles:
         addr, val, flags = cyc
+        # WAI/STP and similar emit cycles with addr=null (no bus driven).
+        # Encode as FFFFFF/XX/0; bench treats valid=0 as "don't compare".
+        addr_str = "FFFFFF" if addr is None else f"{addr:06X}"
         if val is None:
-            out.write(f"  {addr:06X} XX 0 {flags}\n")
+            out.write(f"  {addr_str} XX 0 {flags}\n")
         else:
-            out.write(f"  {addr:06X} {val:02X} 1 {flags}\n")
+            out.write(f"  {addr_str} {val:02X} 1 {flags}\n")
 
     out.write("E\n")
 

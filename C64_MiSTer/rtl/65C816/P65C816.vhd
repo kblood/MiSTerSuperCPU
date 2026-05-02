@@ -33,6 +33,7 @@ entity P65C816 is
 		  DBG_X	: out std_logic_vector(15 downto 0);
 		  DBG_Y	: out std_logic_vector(15 downto 0);
 		  DBG_D	: out std_logic_vector(15 downto 0);
+		  DBG_A	: out std_logic_vector(15 downto 0);
 		  DBG_STATE	: out std_logic_vector(3 downto 0)
     );
 end P65C816;
@@ -333,6 +334,7 @@ begin
 	DBG_X  <= X;
 	DBG_Y  <= Y;
 	DBG_D  <= D;
+	DBG_A  <= A;
 	DBG_STATE <= std_logic_vector(STATE);
 
 	process(CLK, RST_N)

@@ -69,6 +69,7 @@ architecture sim of p65c816_sst_tb is
     signal dbg_x     : std_logic_vector(15 downto 0);
     signal dbg_y     : std_logic_vector(15 downto 0);
     signal dbg_d     : std_logic_vector(15 downto 0);
+    signal dbg_a     : std_logic_vector(15 downto 0);
     signal dbg_state : std_logic_vector(3 downto 0);
 
     constant CLK_PERIOD : time := 31250 ps;  -- 32 MHz
@@ -108,6 +109,7 @@ begin
             DBG_X     => dbg_x,
             DBG_Y     => dbg_y,
             DBG_D     => dbg_d,
+            DBG_A     => dbg_a,
             DBG_STATE => dbg_state
         );
 
@@ -343,6 +345,7 @@ begin
         variable cap_x   : std_logic_vector(15 downto 0);
         variable cap_y   : std_logic_vector(15 downto 0);
         variable cap_d   : std_logic_vector(15 downto 0);
+        variable cap_a   : std_logic_vector(15 downto 0);
         variable cap_pbr : std_logic_vector(7 downto 0);
         variable cap_dbr : std_logic_vector(7 downto 0);
         variable cap_ef  : std_logic;
@@ -663,20 +666,25 @@ begin
                     observed(cyc_idx).ef   := ef_out;
                     observed(cyc_idx).mf   := dbg_p(5);
                     observed(cyc_idx).xf   := dbg_p(4);
-                    if cyc_idx = n_cy - 1 then
-                        cap_pc  := dbg_pc;
-                        cap_sp  := dbg_sp;
-                        cap_p   := dbg_p;
-                        cap_x   := dbg_x;
-                        cap_y   := dbg_y;
-                        cap_d   := dbg_d;
-                        cap_pbr := dbg_pbr;
-                        cap_dbr := dbg_dbr;
-                        cap_ef  := ef_out;
-                    end if;
                     cyc_idx := cyc_idx + 1;
                     wait until rising_edge(clk);
                 end loop;
+                -- Capture final state ONE clock AFTER the last recorded
+                -- cycle. The last SST cycle is always either an operand
+                -- fetch or a memory access; the CPU still has to advance
+                -- PC and commit the next-state register file on the
+                -- following edge. Capturing inside the loop reads the
+                -- pre-commit state and produces a PC off-by-one.
+                cap_pc  := dbg_pc;
+                cap_sp  := dbg_sp;
+                cap_p   := dbg_p;
+                cap_x   := dbg_x;
+                cap_y   := dbg_y;
+                cap_d   := dbg_d;
+                cap_a   := dbg_a;
+                cap_pbr := dbg_pbr;
+                cap_dbr := dbg_dbr;
+                cap_ef  := ef_out;
 
                 -------------------------------------------------------------------
                 -- COMPARE
@@ -758,6 +766,19 @@ begin
                     write(fail_reason, hex_str(fin_d, 4));
                     write(fail_reason, string'(" got="));
                     write(fail_reason, slv_to_hex(cap_d));
+                    case_failed := true;
+                end if;
+
+                -- A register: SST reports the full 16-bit C, which is
+                -- correct regardless of M flag (M=1 8-bit mode preserves
+                -- B in the high byte, and SEP/REP M transitions don't
+                -- destroy the unused half). A 16-bit compare is therefore
+                -- always correct.
+                if not case_failed and cap_a /= slv(fin_a, 16) then
+                    write(fail_reason, string'("A exp="));
+                    write(fail_reason, hex_str(fin_a, 4));
+                    write(fail_reason, string'(" got="));
+                    write(fail_reason, slv_to_hex(cap_a));
                     case_failed := true;
                 end if;
 
@@ -890,6 +911,7 @@ begin
                     write(l, string'("  CAP pc=")); write(l, slv_to_hex(cap_pc));
                     write(l, string'(" sp=")); write(l, slv_to_hex(cap_sp));
                     write(l, string'(" p=")); write(l, slv_to_hex(cap_p));
+                    write(l, string'(" a=")); write(l, slv_to_hex(cap_a));
                     write(l, string'(" x=")); write(l, slv_to_hex(cap_x));
                     write(l, string'(" y=")); write(l, slv_to_hex(cap_y));
                     write(l, string'(" d=")); write(l, slv_to_hex(cap_d));

@@ -119,6 +119,7 @@ begin
 		DBG_X   => localX,
 		DBG_Y   => localY,
 		DBG_D   => localD,
+		DBG_A   => open,
 		DBG_STATE => localSTATE
 	);
 
