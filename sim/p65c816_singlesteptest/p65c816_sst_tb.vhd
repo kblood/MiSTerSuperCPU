@@ -563,14 +563,16 @@ begin
                     case_skipped := true;
                 end if;
             end loop;
-            for i in 0 to n_fr - 1 loop
-                if fr_cells(i).addr(23 downto 16) = x"00" and
-                   (to_integer(fr_cells(i).addr(15 downto 0)) = stk_top or
-                    to_integer(fr_cells(i).addr(15 downto 0)) = stk_below)
-                then
-                    case_skipped := true;
-                end if;
-            end loop;
+            -- F10 (2026-05-03): the previous "skip if FR cell sits at the
+            -- prelude's transient PHA stack byte" check was over-conservative.
+            -- An FR cell at the stack address means SST recorded a CHANGED
+            -- final value, which by definition implies the test instruction
+            -- wrote there. The prelude's stale $BF at stk_top is overwritten
+            -- by that legitimate stack push, so the final state matches.
+            -- The IR-cell loop above remains the real safety net (init.ram
+            -- collisions where the prelude clobbers test setup).
+            -- Without this fix, $FC JSR (abs,X) and similar stack-pushing
+            -- ops at SP=stk_top skipped 100 % of cases.
 
             mem.clear_all;
             -- IR cells first, prelude second, so prelude bytes override any
