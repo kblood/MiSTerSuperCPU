@@ -39,6 +39,8 @@ C64_MiSTer/signalprobe_qsf.tcl
 # Reference repos (not part of this project)
 SNES_MiSTer/
 external/vice-svn-mirror/
+external/65816/v1/
+external/65816/v1.bin/
 
 # Old manually-placed CRT artifacts (use tools/test_cart/ generators instead)
 crt/

@@ -301,12 +301,15 @@ begin
 		else '0';
 
 	-- v272: NMOS RMW modify-cycle override. Fires when:
-	--   * E=1 (emulation mode — MF is forced to 1 here so 8-bit memory)
+	--   * E=1 (emulation mode -- MF is forced to 1 here so 8-bit memory)
 	--   * Current opcode is one of the 28 memory RMW instructions
-	--   * Microcode is in the modify cycle: LOAD_T="10" (T loads from
-	--     ALU at end-of-cycle, so T still holds the OLD just-read value
-	--     during the cycle), OUT_BUS="000" (no natural bus output),
-	--     BUS_CTRL[5:3]="100" (SB sourced from T -> ALU input is OLD T).
+	--   * Microcode is in the modify cycle: LOAD_T="10" (ALU result -> T)
+	--     and OUT_BUS="000" (no natural bus output for this cycle).
+	-- (v273 broadened: removed BUS_CTRL[5:3]="100" check that only matched
+	--  INC/DEC variants. Shift/rotate/TSB/TRB use BUS_CTRL="000100"; the
+	--  modify-cycle signature LOAD_T="10"+OUT_BUS="000" is already
+	--  unique within rmw_decode=1 microcode, since LOAD_T="10" only
+	--  appears at the ALU-result-to-T cycle.)
 	-- When asserted: drive D_OUT=T(7:0) (OLD value), force WE=0, and
 	-- force ADDR_INC=0 in the address process so the address points at
 	-- AA+0 (read/write target) instead of AA+1 (the natural slot 4
@@ -316,7 +319,6 @@ begin
 		         and rmw_decode = '1'
 		         and MC.LOAD_T = "10"
 		         and MC.OUT_BUS = "000"
-		         and MC.BUS_CTRL(5 downto 3) = "100"
 		    else '0';
 
 	EF_OUT <= EF;
@@ -521,10 +523,13 @@ begin
 			PBR <= (others=>'0');
 			DBR <= (others=>'0');
 		elsif rising_edge(CLK) then
-			-- XCE: clear D register when entering/leaving emulation mode (same condition as SP/X/Y)
-			if (IR = x"FB" and (P(0) = '1' or P(8) = '1') and MC.LOAD_P = "101") then
-				D <= (others=>'0');
-			elsif EN = '1' then
+			-- XCE per WDC datasheet swaps E<->C only; D is preserved across
+			-- mode transitions. The previous "clear D on XCE" hack diverged
+			-- from real silicon (CMD SuperCPU, Apple IIgs) and breaks
+			-- prelude-based register priming used by SingleStepTests/65816.
+			-- Removed 2026-05-02 (v273); regression-checked against the v272
+			-- sweep (BASIC, decomp_stress, asterix, DL).
+			if EN = '1' then
 				DR <= D_IN;
 				
 				case MC.LOAD_T is
