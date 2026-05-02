@@ -178,36 +178,73 @@ fix has zero functional effect.
 
 20 K cases. Pure reporting cleanup.
 
-## F5 — X-flag 0→1 high-byte clear (PLP, SEP, also RTI)
+## F5 — X-flag 0→1 high-byte clear (PLP, SEP, also RTI) — FIXED
 
 ### Smoking guns
 
 - 28.n PLP case 10: `X16 exp=00B7 got=A0B7` — high byte $A0 retained.
 - e2.n SEP case 3: `X16 exp=0020 got=8120` — high byte $81 retained.
 
-Both opcodes drop the same bug: when the loaded/forced P has X=1 but
-the previous X was 0, the high bytes of X **and** Y must be zeroed.
+Both opcodes hit the same bug: when the loaded/forced P has X=1 but
+the previous X was 0, the high bytes of X **and** Y must be zeroed
+**at the same edge that P commits** — the previous RTL fired one
+cycle later via an `oldXF` register lag.
 
 ### Mechanism
 
-P65C816's high-byte zeroing for X-flag flips is presumably gated on
-**explicit** P writes (REP/SEP via the P load path) but PLP and SEP
-arrive via different paths in the microcode that bypass the clear.
+`P65C816.vhd:391-395` had:
 
-### Proposed fix
+```vhdl
+oldXF <= XF;
+if XF = '1' and oldXF = '0' and EF = '0' then
+    X(15 downto 8) <= x"00";
+    Y(15 downto 8) <= x"00";
+end if;
+```
 
-Locate the X-flag-edge detector (or the P-write commit path) and route
-PLP/SEP/RTI/RTL through the same high-byte clear logic. A single
-combinational signal `clear_xy_hi <= newP(4) and not P(4);` that all
-four opcodes assert at P-update is the cleanest shape.
+Because `XF` is combinational from `P(4)` and `P` is registered, at the
+edge that `P` commits its new value, `XF` is still the *pre-edge* value.
+The condition `XF=1 AND oldXF=0` fires only on the **next** edge —
+i.e. when the next opcode begins fetching. SST captures `final.x` at
+the same edge that P commits, so the bench sees the unchanged high byte.
 
-Risk: low; the SEP path likely already has the right wiring,
-just needs to be shared.
+### Fix (committed)
 
-### Expected impact
+Compute `next_xf` combinationally from the in-flight P-load path
+(`MC.LOAD_P` + `D_IN(4)` for PLP/RTI, `DR(4)` for SEP/REP) and trigger
+the X/Y high-byte clear on the same edge using `next_xf=1 AND XF=0 AND EF=0`.
 
-2495 cases ($28.n) + 2564 cases ($e2.n) = ~5 K. Will also fix any RTI
-case ($40.n) where the cause is X-flag transition rather than just PC.
+```vhdl
+case MC.LOAD_P is
+    when "011" => next_xf := D_IN(4) or EF;       -- PLP / RTI
+    when "110" =>                                  -- SEP / REP
+        if IR(5) = '1' then
+            next_xf := XF or (DR(4) and not EF);
+        else
+            next_xf := XF and not (DR(4) and not EF);
+        end if;
+    when others => next_xf := XF;
+end case;
+
+oldXF <= next_xf;
+if next_xf = '1' and XF = '0' and EF = '0' then
+    X(15 downto 8) <= x"00";
+    Y(15 downto 8) <= x"00";
+end if;
+```
+
+### Result (sweep_results_f5)
+
+| Op | Pre-fix | Post-fix |
+|---|---|---|
+| 28.e | 9966 / 34 fail | 9966 / 34 fail (unchanged — strays are unrelated bug, see F12) |
+| 28.n | 7499 / 2495 fail | **9993 / 1 fail** |
+| e2.e | 10000 / 0 fail | 10000 / 0 fail |
+| e2.n | 7434 / 2564 fail | **9998 / 0 fail** |
+| c2.e/c2.n (REP) | clean | clean (not affected) |
+
+Net: ~5057 fails eliminated. No regressions on adjacent flag opcodes
+($38 SEC, $f8 SED, $78 SEI, $58 CLI, $b8 CLV, $18 CLC, $d8 CLD all 9989+/0).
 
 ## F9 — WAI / STP halted-cycle RWB
 

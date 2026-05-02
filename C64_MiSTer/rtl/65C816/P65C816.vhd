@@ -338,6 +338,7 @@ begin
 	DBG_STATE <= std_logic_vector(STATE);
 
 	process(CLK, RST_N)
+		variable next_xf : std_logic;
 	begin
 		if RST_N = '0' then
 			A <= (others=>'0');
@@ -388,8 +389,26 @@ begin
 					end if;
 				end if; 
 				
-				oldXF <= XF;
-				if XF = '1' and oldXF = '0' and EF = '0' then
+				-- Predict the XF value that P is about to take this edge so
+				-- the X/Y high-byte clear fires on the SAME edge as the
+				-- XF=0->1 transition. SST/silicon captures final.x with the
+				-- high byte already cleared after the PLP/RTI/SEP commit;
+				-- the previous oldXF-lagged form fired one cycle too late.
+				case MC.LOAD_P is
+					when "011" =>                                   -- PLP / RTI
+						next_xf := D_IN(4) or EF;
+					when "110" =>                                   -- SEP / REP
+						if IR(5) = '1' then
+							next_xf := XF or (DR(4) and not EF);
+						else
+							next_xf := XF and not (DR(4) and not EF);
+						end if;
+					when others =>
+						next_xf := XF;
+				end case;
+
+				oldXF <= next_xf;
+				if next_xf = '1' and XF = '0' and EF = '0' then
 					X(15 downto 8) <= x"00";
 					Y(15 downto 8) <= x"00";
 				end if;
