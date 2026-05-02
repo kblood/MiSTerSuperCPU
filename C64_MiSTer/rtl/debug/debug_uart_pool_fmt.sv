@@ -104,6 +104,9 @@ module debug_uart_pool_fmt
 	reg [23:0] lat_d019_pc;
 	reg  [7:0] lat_d019_val;
 	reg  [7:0] lat_d019_seen_w;
+	// v271: $D019 ack-write counter + ack-write PC.
+	reg [15:0] lat_d019_ack_count;
+	reg [23:0] lat_d019_ack_pc;
 
 	// -----------------------------------------------------------------
 	// Send FSM: drive tx_send for one cycle whenever tx is idle and the
@@ -369,31 +372,34 @@ module debug_uart_pool_fmt
 			8'd200: line_byte = hex_nibble(lat_irq_vec[7:4]);
 			8'd201: line_byte = hex_nibble(lat_irq_vec[3:0]);
 
-			// v270: " D9:## P9:###### S:##" — last $D019 cpuDo, last
-			// writer PC (24-bit), sticky 8-bit OR of all $D019 writes'
-			// cpuDo. Replaces v267 WC/RR/DV slot (saturated; same 21
-			// bytes 202..222). Single-letter S label to fit in 21 bytes.
+			// v271: " AW:#### PA:######   " — count of $D019 writes
+			// with cpuDo bit 0 = 1 (real IRST acks), and PC of the
+			// most-recent ack write. Replaces v270 D9/P9/S. v270 told
+			// us the last write each frame is the cleanup ($F2/$F8);
+			// AW/PA pinpoints the actual ack instruction. Predict T65
+			// AW=1/frame, SCPU AW=0/frame; T65 PA = ack handler PC.
+			// Width = 21 bytes (202..222) including 3 trailing spaces.
 			8'd202: line_byte = " ";
-			8'd203: line_byte = "D";
-			8'd204: line_byte = "9";
+			8'd203: line_byte = "A";
+			8'd204: line_byte = "W";
 			8'd205: line_byte = ":";
-			8'd206: line_byte = hex_nibble(lat_d019_val[7:4]);
-			8'd207: line_byte = hex_nibble(lat_d019_val[3:0]);
-			8'd208: line_byte = " ";
-			8'd209: line_byte = "P";
-			8'd210: line_byte = "9";
-			8'd211: line_byte = ":";
-			8'd212: line_byte = hex_nibble(lat_d019_pc[23:20]);
-			8'd213: line_byte = hex_nibble(lat_d019_pc[19:16]);
-			8'd214: line_byte = hex_nibble(lat_d019_pc[15:12]);
-			8'd215: line_byte = hex_nibble(lat_d019_pc[11:8]);
-			8'd216: line_byte = hex_nibble(lat_d019_pc[7:4]);
-			8'd217: line_byte = hex_nibble(lat_d019_pc[3:0]);
-			8'd218: line_byte = " ";
-			8'd219: line_byte = "S";
-			8'd220: line_byte = ":";
-			8'd221: line_byte = hex_nibble(lat_d019_seen_w[7:4]);
-			8'd222: line_byte = hex_nibble(lat_d019_seen_w[3:0]);
+			8'd206: line_byte = hex_nibble(lat_d019_ack_count[15:12]);
+			8'd207: line_byte = hex_nibble(lat_d019_ack_count[11:8]);
+			8'd208: line_byte = hex_nibble(lat_d019_ack_count[7:4]);
+			8'd209: line_byte = hex_nibble(lat_d019_ack_count[3:0]);
+			8'd210: line_byte = " ";
+			8'd211: line_byte = "P";
+			8'd212: line_byte = "A";
+			8'd213: line_byte = ":";
+			8'd214: line_byte = hex_nibble(lat_d019_ack_pc[23:20]);
+			8'd215: line_byte = hex_nibble(lat_d019_ack_pc[19:16]);
+			8'd216: line_byte = hex_nibble(lat_d019_ack_pc[15:12]);
+			8'd217: line_byte = hex_nibble(lat_d019_ack_pc[11:8]);
+			8'd218: line_byte = hex_nibble(lat_d019_ack_pc[7:4]);
+			8'd219: line_byte = hex_nibble(lat_d019_ack_pc[3:0]);
+			8'd220: line_byte = " ";
+			8'd221: line_byte = " ";
+			8'd222: line_byte = " ";
 
 			// newline (LINE_LEN-1)
 			8'd223: line_byte = 8'h0A;
@@ -472,6 +478,9 @@ module debug_uart_pool_fmt
 				lat_d019_pc      <= pool.d019_last_pc;
 				lat_d019_val     <= pool.d019_last_val;
 				lat_d019_seen_w  <= pool.d019_seen_writes;
+				// v271: $D019 ack-write counter + ack-write PC latches
+				lat_d019_ack_count <= pool.d019_ack_count;
+				lat_d019_ack_pc    <= pool.d019_ack_pc;
 				byte_idx  <= 8'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin

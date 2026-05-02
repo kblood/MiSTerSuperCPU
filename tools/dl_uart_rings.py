@@ -35,7 +35,7 @@ LINE_RE = re.compile(
     r"(?:\s+G:(?P<g40>[0-9A-F]+)\s+(?P<g44>[0-9A-F]+)\s+(?P<g5c>[0-9A-F]+))?"
     r"(?:\s+N:(?P<n>[0-9A-F]+)\s+I:(?P<ii>[0-9A-F]+)\s+B:(?P<b>[0-9A-F]+)(?:\s+C3:(?P<c3>[0-9A-F]+)\s+C9:(?P<c9>[0-9A-F]+))?(?:\s+SP:(?P<sp0x>[0-9A-F]+)\s+(?P<sp0y>[0-9A-F]+)\s+(?P<sp1x>[0-9A-F]+)\s+(?P<sp1y>[0-9A-F]+))?(?:\s+(?:IR|VW):(?P<irc>[0-9A-F]+)\s+(?:IV|AC):(?P<ivr>[0-9A-F]+))?)?"
     r"(?:\s+W5:(?P<w5c0>[0-9A-F]+)\s+(?P<w5c1>[0-9A-F]+)\s+(?P<w5c2>[0-9A-F]+)\s+(?P<w5c3>[0-9A-F]+)\s+N5:(?P<n5>[0-9A-F]+))?"
-    r"(?:\s+IF:(?P<irf>[0-9A-F]+)\s+VC:(?P<ivc>[0-9A-F]+)(?:\s+DR:(?P<dr>[0-9A-F]+)\s+DS:(?P<ds>[0-9A-F]+))?(?:\s+WC:(?P<wc>[0-9A-F]+)\s+RR:(?P<rr>[0-9A-F]+)\s+DV:(?P<dv>[0-9A-F]+))?(?:\s+D9:(?P<d9>[0-9A-F]+)\s+P9:(?P<p9>[0-9A-F]+)\s+S:(?P<s9>[0-9A-F]+))?)?"
+    r"(?:\s+IF:(?P<irf>[0-9A-F]+)\s+VC:(?P<ivc>[0-9A-F]+)(?:\s+DR:(?P<dr>[0-9A-F]+)\s+DS:(?P<ds>[0-9A-F]+))?(?:\s+WC:(?P<wc>[0-9A-F]+)\s+RR:(?P<rr>[0-9A-F]+)\s+DV:(?P<dv>[0-9A-F]+))?(?:\s+D9:(?P<d9>[0-9A-F]+)\s+P9:(?P<p9>[0-9A-F]+)\s+S:(?P<s9>[0-9A-F]+))?(?:\s+AW:(?P<aw>[0-9A-F]+)\s+PA:(?P<pa>[0-9A-F]+))?)?"
 )
 
 
@@ -86,6 +86,9 @@ def load(path):
                 row['d9']  = int(m['d9'], 16)  # last cpuDo on $D019 write
                 row['p9']  = int(m['p9'], 16)  # writer PC of last $D019 write
                 row['s9']  = int(m['s9'], 16)  # sticky 8-bit OR of $D019 cpuDo
+            if m['aw'] is not None:
+                row['aw']  = int(m['aw'], 16)  # ack-write count (cpuDo bit 0 = 1)
+                row['pa']  = int(m['pa'], 16)  # PC of most-recent ack write
         rows.append(row)
     return rows
 
@@ -285,6 +288,26 @@ def report(rows, label):
             print(f'    => SCPU/T65 wrote bit 0 = 1 to $D019 at least once. IRST ack DID happen.')
         else:
             print(f'    => Bit 0 NEVER set in any $D019 write -> handler ALWAYS clears IRST-ack bit before STA.')
+
+    aw_rows = [r for r in rows if 'aw' in r]
+    if aw_rows:
+        print('  v271 $D019 ack-write counter + ack-write PC:')
+        # AW is a free-running counter; per-frame rate = (last - first) / nframes
+        aw_first, aw_last = aw_rows[0]['aw'], aw_rows[-1]['aw']
+        aw_delta = (aw_last - aw_first) & 0xFFFF
+        nf = len(aw_rows)
+        rate = aw_delta / max(nf, 1)
+        print(f'    AW delta (writes with cpuDo bit 0 = 1): {aw_delta} over {nf} frames ({rate:.2f}/frame)')
+        # PA is the most-recent ack PC. If AW=0 across the whole run on SCPU,
+        # PA stays at whatever it was at boot (or 0).
+        pa_top = collections.Counter(r['pa'] for r in aw_rows).most_common(8)
+        print(f'    ack-write PC (PA) top 8: {[(f"${v:06X}", c) for v, c in pa_top]}')
+        if rate < 0.5:
+            print(f'    => AW < 0.5/frame: handler is NOT acking IRST in the steady state.')
+        elif 0.5 <= rate <= 1.5:
+            print(f'    => AW ~1/frame: handler acks IRST once per raster IRQ. Healthy. PA = ack instr PC.')
+        else:
+            print(f'    => AW > 1.5/frame: multiple acks per frame (over-acking or tail-chain).')
 
 
 def main():

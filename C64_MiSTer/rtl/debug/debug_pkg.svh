@@ -559,6 +559,14 @@ typedef struct packed {
   // SCPU, {00,PC} for T65).
   logic [23:0] d019_last_pc;
   logic  [7:0] d019_seen_writes;
+
+  // v271: per-write filter on cpuDo(0). d019_ack_count counts the writes
+  // that actually clear IRST (cpuDo bit 0 = 1); d019_ack_pc latches the
+  // PC of the most-recent ack write. Predicts T65 ~1/frame, SCPU 0/frame.
+  // T65's d019_ack_pc identifies the ack instruction; disasm + cross-ref
+  // SCPU's IRQ-thread PCs from v260 to find the divergent branch.
+  logic [15:0] d019_ack_count;
+  logic [23:0] d019_ack_pc;
 } dbg_pool_t;
 `endif
 

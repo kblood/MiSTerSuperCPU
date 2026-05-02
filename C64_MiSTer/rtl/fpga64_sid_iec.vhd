@@ -604,7 +604,17 @@ port(
 	--                        capture on SCPU ⇒ SCPU NEVER writes a value
 	--                        with bit 0 set ⇒ wrong handler is running.
 	dbg_d019_last_pc           : out std_logic_vector(23 downto 0);
-	dbg_d019_seen_writes       : out std_logic_vector(7 downto 0)
+	dbg_d019_seen_writes       : out std_logic_vector(7 downto 0);
+	-- v271: pinpoint the IRST-ack instruction.
+	--   d019_ack_count : count of $D019 writes with cpuDo(0)=1
+	--                    (the only writes that actually clear IRST).
+	--                    T65 expects ~1/frame; SCPU expects 0/frame.
+	--   d019_ack_pc    : cpu_pc_now at the most-recent ack write.
+	--                    On T65 this points at the actual ack handler;
+	--                    disasm + compare to SCPU's main-IRQ path to find
+	--                    the divergent branch.
+	dbg_d019_ack_count         : out std_logic_vector(15 downto 0);
+	dbg_d019_ack_pc            : out std_logic_vector(23 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -826,6 +836,12 @@ signal vic_resetraster_count_r  : unsigned(15 downto 0) := (others => '0');
 -- v270: writer-PC + sticky write-OR at $D019.
 signal d019_last_pc_r           : std_logic_vector(23 downto 0) := (others => '0');
 signal d019_seen_writes_r       : std_logic_vector(7 downto 0)  := (others => '0');
+-- v271: ack-write counter + ack-write PC latch.
+-- Bumps only when CPU writes $D019 with cpuDo(0)=1 (the IRST-ack pattern).
+-- d019_ack_pc_r captures the PC of the most-recent ack write so we can
+-- disasm the actual ack instruction and find where SCPU branches off.
+signal d019_ack_count_r         : unsigned(15 downto 0) := (others => '0');
+signal d019_ack_pc_r            : std_logic_vector(23 downto 0) := (others => '0');
 signal d002_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d003_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d010_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
@@ -1965,6 +1981,9 @@ begin
 			-- v270: $D019 writer PC + sticky cpuDo-OR
 			d019_last_pc_r              <= (others => '0');
 			d019_seen_writes_r          <= (others => '0');
+			-- v271: ack-write counter + ack-write PC
+			d019_ack_count_r            <= (others => '0');
+			d019_ack_pc_r               <= (others => '0');
 			d002_last_val_r      <= (others => '0');
 			d003_last_val_r      <= (others => '0');
 			d010_last_val_r      <= (others => '0');
@@ -2514,6 +2533,13 @@ begin
 				d019_last_val_r    <= std_logic_vector(cpuDo);
 				d019_last_pc_r     <= cpu_pc_now;
 				d019_seen_writes_r <= d019_seen_writes_r or std_logic_vector(cpuDo);
+				-- v271: a "real" IRST ack write has cpuDo bit 0 = 1.
+				-- Count those separately and capture their PC. v269
+				-- expects T65 ~1/frame, SCPU 0/frame.
+				if cpuDo(0) = '1' then
+					d019_ack_count_r <= d019_ack_count_r + 1;
+					d019_ack_pc_r    <= cpu_pc_now;
+				end if;
 			end if;
 			-- v230: $DC0D read count (CIA1 ICR, read-to-ack).
 			if cs_cia1 = '1' and cpuWe = '0' and cpuAddr(3 downto 0) = "1101" then
@@ -2853,6 +2879,9 @@ dbg_vic_resetraster_count  <= std_logic_vector(vic_resetraster_count_r);
 -- v270 $D019 writer-PC + sticky cpuDo-OR outputs
 dbg_d019_last_pc           <= d019_last_pc_r;
 dbg_d019_seen_writes       <= d019_seen_writes_r;
+-- v271 ack-write counter + ack-write PC outputs
+dbg_d019_ack_count         <= std_logic_vector(d019_ack_count_r);
+dbg_d019_ack_pc            <= d019_ack_pc_r;
 dbg_d002_last_val  <= d002_last_val_r;
 dbg_d003_last_val  <= d003_last_val_r;
 dbg_d010_last_val  <= d010_last_val_r;
