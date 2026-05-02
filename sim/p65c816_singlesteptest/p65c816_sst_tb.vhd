@@ -515,6 +515,21 @@ begin
                     case_skipped := true;
                 end if;
             end loop;
+            -- Reset-stub stack collision: the RTL's reset-interrupt
+            -- microcode runs through the standard 3-push BRK sequence
+            -- (suppressing the actual writes via BUS_CTRL but still
+            -- decrementing SP), leaving SP=$01:FD by the time the
+            -- prelude's first instruction fetches. The prelude's
+            -- first PHA (offset 12 of the prelude, in native mode
+            -- after the first XCE) writes to $00:01:FD to feed PLB.
+            -- That clobbers any case init.ram cell at $00:01:FD.
+            for i in 0 to n_ir - 1 loop
+                if ir_cells(i).addr(23 downto 16) = x"00" and
+                   to_integer(ir_cells(i).addr(15 downto 0)) = 16#01FD#
+                then
+                    case_skipped := true;
+                end if;
+            end loop;
             -- Reset-vector collision: bench writes $00:FFFC/D last so the
             -- prelude can boot, which clobbers any case init.ram cell at
             -- those addresses. Skip cases that read or write those bytes.
