@@ -193,18 +193,14 @@ begin
 					when "011" => AAL <= NewPCWithOffset16(7 downto 0); SavedCarry <= '0';
 					when "100" => DL <= NewAAL(7 downto 0); SavedCarry <= NewAAL(8); 
 					when "101" =>
-						-- 2026-04-21 Emulation-mode stack-relative wrap.
-						-- Gate SavedCarry at source (1-bit) instead of DH (8-bit) to
-						-- avoid the -4ns regression seen with AAHCtrl="110" guard.
-						-- VICE semantics: in emu mode stack-relative loc=(loc&0xff)|0x100
-						-- so SPL+op carry must NOT propagate into DH.
-						-- ABSCtrl="11" marks stack-relative ops; e6502='1' is emu mode.
+						-- Emu stack-relative carry: full 16-bit add, NOT page-1 wrap.
+						-- 2026-04-21 added a SavedCarry='0' guard citing VICE semantics
+						-- (loc & 0xff | 0x100); SST real-hardware traces disagree —
+						-- (S+op) propagates carry into DH, address can leave page 1
+						-- (e.g. S=$01FF + dp=$06 → $00:0205, not $00:0105). Reverting
+						-- to SST/silicon behaviour for Phase 2 family F1.
 						DL <= NewDL(7 downto 0);
-						if e6502 = '1' and ABSCtrl = "11" then
-							SavedCarry <= '0';
-						else
-							SavedCarry <= NewDL(8);
-						end if;
+						SavedCarry <= NewDL(8);
 					when "111" => null;
 					when others => null;
 				end case;
