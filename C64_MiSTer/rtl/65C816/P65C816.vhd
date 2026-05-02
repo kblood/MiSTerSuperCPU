@@ -40,6 +40,7 @@ end P65C816;
 architecture rtl of P65C816 is
 
 	signal A, X, Y, D, SP, T : std_logic_vector(15 downto 0);
+	signal SP_busread        : std_logic_vector(15 downto 0);
 	signal PBR, DBR : std_logic_vector(7 downto 0);
 	signal P    : std_logic_vector(8 downto 0);
 	signal PC    : std_logic_vector(15 downto 0);
@@ -227,13 +228,20 @@ begin
 			 '1' when (MC.LOAD_AXY(1) = '1') and XF = '0' and EF = '0' else
 			 '0';
 			 
+	-- v261: TSC (BUS_CTRL=101) — in emu mode force high byte to $01 so software
+	-- reading SP via TSC sees the page-1-normalized value. Ports iigs commit
+	-- 401ea5e behaviour. Defensive: our SP-write paths already normalise to
+	-- page 1 (lines 347..400), but a stray non-$01 high byte from RST/XCE
+	-- transitions could leak through without this mask.
+	SP_busread <= (x"01" & SP(7 downto 0)) when EF = '1' else SP;
+
 	with MC.BUS_CTRL(5 downto 3) select
 		SB <= A           when "000",
 				X           when "001",
 				Y           when "010",
 				D           when "011",
 				T           when "100",
-				SP          when "101",
+				SP_busread  when "101",
 				x"00" & PBR when "110",
 				x"00" & DBR when "111",
 				x"0000"	   when others;
@@ -423,19 +431,16 @@ begin
 							P(1 downto 0) <= ZO & CO; P(7 downto 6) <= SO & VO; -- ALU
 						end if;
 					when "010" =>
-						-- v253 (2026-05-01): NMOS D-flag preservation in emu
-						-- mode. Per W65C816S datasheet BRK/IRQ/NMI clear D
-						-- in BOTH native and emu mode -- BUT this differs
-						-- from NMOS 6502 (which leaves D unchanged). DL was
-						-- written for stock C64 (NMOS 6510) and may rely on
-						-- D staying as-set across IRQs. In native mode keep
-						-- WDC behaviour; in emu mode (EF=1) match NMOS by
-						-- preserving D.
+						-- v261 (2026-05-02): align with VICE behaviour.
+						-- VICE x64sc (6510core.c:436-475) and xscpu64
+						-- (65816core.c:1724-1754) both clear D on IRQ entry
+						-- in BOTH native and emu mode. v253's NMOS-style
+						-- D-preservation diverged from VICE without fixing
+						-- DL anyway, so we match VICE. See
+						-- docs/cpu_vice_emulation_comparison.md.
 						P(2) <= '1';
-						if EF = '0' then
-							P(3) <= '0';
-						end if;
-						-- BRK/COP
+						P(3) <= '0';
+						-- BRK/COP/IRQ/NMI
 					when "011" => P(7 downto 6) <= D_IN(7 downto 6); P(5) <= D_IN(5) or EF; P(4) <= D_IN(4) or EF; P(3 downto 0) <= D_IN(3 downto 0); -- RTI/PLP
 					when "100" => 
 						case IR(7 downto 6) is
@@ -493,10 +498,17 @@ begin
 				end case;
 				
 				case MC.LOAD_DKB is
-					when "01" => 
+					when "01" =>
 						D <= AluIntR;
-					when "10" => 
-						if IR = x"00" or IR = x"02" then	--BRK/COP reset PBR
+					when "10" =>
+						-- v261: also clear PBR on hardware IRQ/NMI entry to
+						-- match VICE 65816core.c:1753 (`reg_pbr=0` after IRQ
+						-- vector load). Previously only BRK/COP cleared PBR;
+						-- on a hardware interrupt the else-branch loaded PBR
+						-- with the PCL byte from $FFFE — wrong semantically,
+						-- though latent in DL because DL never sets PBR.
+						if IR = x"00" or IR = x"02"
+						   or IsIRQInterrupt = '1' or IsNMIInterrupt = '1' then
 							PBR <= (others=>'0');
 						else
 							PBR <= D_IN;
