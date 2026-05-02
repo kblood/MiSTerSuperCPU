@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Analyze v2/v3 JSR + JMP-indirect rings + (v3) DL gate variables.
+"""Analyze v2/v3/v4 JSR + JMP-indirect rings + DL gate variables.
 
 v2 line format (114 bytes):
   F:#### PC:###### P:## V:## ## ## ## YX:#### WP:###### CG:#### CY:#### J:#### #### #### #### M:#### #### #### ####
 v3 adds " G:## ## ##" (gate variables $40/$44/$5C) -> 125 bytes.
+v4 adds " N:###### I:###### B:## C3:#### C9:####" -> 164 bytes.
+  N  = main-thread PC (last opcode fetch with I-flag clear)
+  I  = IRQ-thread PC  (last opcode fetch with I-flag set)
+  B  = wait-loop variable $0045
+  C3 = opcode-fetch count for page $30 (FLI body)
+  C9 = opcode-fetch count for page $97 (SCPU divergent ROM region)
 
 Reports:
   - Top JSR PCs (4 per frame ring -> 4000 entries / 1000 frames)
@@ -11,6 +17,7 @@ Reports:
   - JSR page distribution per mode
   - First-N frame J/M side-by-side
   - (v3) Gate variable distributions and per-frame bands
+  - (v4) Main-thread PC distribution, IRQ-thread PC, $45 dynamics, C3/C9 deltas
 """
 import sys, re, collections
 
@@ -26,6 +33,7 @@ LINE_RE = re.compile(
     r"J:(?P<j0>[0-9A-F]+)\s+(?P<j1>[0-9A-F]+)\s+(?P<j2>[0-9A-F]+)\s+(?P<j3>[0-9A-F]+)\s+"
     r"M:(?P<m0>[0-9A-F]+)\s+(?P<m1>[0-9A-F]+)\s+(?P<m2>[0-9A-F]+)\s+(?P<m3>[0-9A-F]+)"
     r"(?:\s+G:(?P<g40>[0-9A-F]+)\s+(?P<g44>[0-9A-F]+)\s+(?P<g5c>[0-9A-F]+))?"
+    r"(?:\s+N:(?P<n>[0-9A-F]+)\s+I:(?P<ii>[0-9A-F]+)\s+B:(?P<b>[0-9A-F]+)\s+C3:(?P<c3>[0-9A-F]+)\s+C9:(?P<c9>[0-9A-F]+))?"
 )
 
 
@@ -44,6 +52,12 @@ def load(path):
             row['g40'] = int(m['g40'], 16)
             row['g44'] = int(m['g44'], 16)
             row['g5c'] = int(m['g5c'], 16)
+        if m['n'] is not None:
+            row['n']  = int(m['n'],  16)
+            row['ii'] = int(m['ii'], 16)
+            row['b']  = int(m['b'],  16)
+            row['c3'] = int(m['c3'], 16)
+            row['c9'] = int(m['c9'], 16)
         rows.append(row)
     return rows
 
@@ -82,6 +96,30 @@ def report(rows, label):
         # Gate predicate: game advance fires iff $44 == 0 AND $40 != 0
         n_advance = sum(1 for r in rows if r['g44'] == 0 and r['g40'] != 0)
         print(f'    GAME-ADVANCE-LIKELY frames ($44==0 AND $40!=0): {100*n_advance/len(rows):5.1f}%')
+
+    if rows and 'n' in rows[0]:
+        print('  v4 main/IRQ PC + page counters:')
+        n_pages = collections.Counter((r['n']  >> 8) & 0xFF for r in rows)
+        i_pages = collections.Counter((r['ii'] >> 8) & 0xFF for r in rows)
+        b_dist  = collections.Counter(r['b']  for r in rows)
+        n_top   = collections.Counter(r['n']  for r in rows).most_common(10)
+        i_top   = collections.Counter(r['ii'] for r in rows).most_common(10)
+        print('    main-thread PC top-10 (sampled at vblank):')
+        for pc, c in n_top:
+            print(f'      {pc:06X}  {c:5d}  ({100*c/len(rows):5.1f}%)')
+        print('    main-thread PC page distribution (top 8):')
+        for p, c in sorted(n_pages.items(), key=lambda kv: -kv[1])[:8]:
+            print(f'      page ${p:02X}  {100*c/len(rows):5.1f}%')
+        print('    IRQ-thread PC top-10 (sampled at vblank):')
+        for pc, c in i_top:
+            print(f'      {pc:06X}  {c:5d}  ({100*c/len(rows):5.1f}%)')
+        print(f'    $0045 (wait-loop var): top values: {[(hex(v), c) for v, c in b_dist.most_common(5)]}')
+        # C3/C9 deltas: monotonic counters, take last - first to get total over capture
+        if len(rows) > 1:
+            d3 = (rows[-1]['c3'] - rows[0]['c3']) & 0xFFFF
+            d9 = (rows[-1]['c9'] - rows[0]['c9']) & 0xFFFF
+            print(f'    C3 delta (page $30 opcode fetches): {d3} over {len(rows)} frames ({d3/len(rows):.1f}/frame)')
+            print(f'    C9 delta (page $97 opcode fetches): {d9} over {len(rows)} frames ({d9/len(rows):.1f}/frame)')
 
 
 def main():

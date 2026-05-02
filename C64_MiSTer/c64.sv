@@ -1220,6 +1220,10 @@ wire  [7:0] scpu_dbg_mem_7D, scpu_dbg_mem_7E, scpu_dbg_mem_7F;
 wire [15:0] scpu_dbg_cnt_3200, scpu_dbg_cnt_3100;
 // v259 DL gate variables ($40/$44/$5C)
 wire  [7:0] scpu_dbg_mem_40, scpu_dbg_mem_44, scpu_dbg_mem_5C;
+// v260 main/irq PC split + page counters + mem_45
+wire [23:0] scpu_dbg_pc_main, scpu_dbg_pc_irq;
+wire  [7:0] scpu_dbg_mem_45;
+wire [15:0] scpu_dbg_cnt_pc_30, scpu_dbg_cnt_pc_97;
 // v247 $5B + DF01 + bytes $0080-$008B
 wire  [7:0] scpu_dbg_mem_5B, scpu_dbg_wr5B_val, scpu_dbg_wr_df01_val;
 wire [23:0] scpu_dbg_wr5B_pc, scpu_dbg_wr_df01_pc;
@@ -1588,6 +1592,12 @@ assign dbg_pool.cnt_3100       = scpu_dbg_cnt_3100;
 assign dbg_pool.mem_40         = scpu_dbg_mem_40;
 assign dbg_pool.mem_44         = scpu_dbg_mem_44;
 assign dbg_pool.mem_5C         = scpu_dbg_mem_5C;
+// v260 main/irq PC split + counters + mem_45
+assign dbg_pool.pc_main        = scpu_dbg_pc_main;
+assign dbg_pool.pc_irq         = scpu_dbg_pc_irq;
+assign dbg_pool.mem_45         = scpu_dbg_mem_45;
+assign dbg_pool.cnt_pc_30      = scpu_dbg_cnt_pc_30;
+assign dbg_pool.cnt_pc_97      = scpu_dbg_cnt_pc_97;
 assign dbg_pool.mem_5B         = scpu_dbg_mem_5B;
 assign dbg_pool.wr5B_pc        = scpu_dbg_wr5B_pc;
 assign dbg_pool.wr5B_val       = scpu_dbg_wr5B_val;
@@ -1955,6 +1965,12 @@ fpga64_sid_iec fpga64
 	.dbg_mem_40           (scpu_dbg_mem_40),
 	.dbg_mem_44           (scpu_dbg_mem_44),
 	.dbg_mem_5C           (scpu_dbg_mem_5C),
+	// v260 main/irq PC + counters + mem_45
+	.dbg_pc_main          (scpu_dbg_pc_main),
+	.dbg_pc_irq           (scpu_dbg_pc_irq),
+	.dbg_mem_45           (scpu_dbg_mem_45),
+	.dbg_cnt_pc_30        (scpu_dbg_cnt_pc_30),
+	.dbg_cnt_pc_97        (scpu_dbg_cnt_pc_97),
 	.dbg_mem_5B           (scpu_dbg_mem_5B),
 	.dbg_wr5B_pc          (scpu_dbg_wr5B_pc),
 	.dbg_wr5B_val         (scpu_dbg_wr5B_val),

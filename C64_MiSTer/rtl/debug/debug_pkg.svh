@@ -471,6 +471,18 @@ typedef struct packed {
   logic  [7:0] mem_40;
   logic  [7:0] mem_44;
   logic  [7:0] mem_5C;
+
+  // v260: main-thread vs IRQ-thread PC split. v259 falsified the gate
+  // hypothesis (both modes have $40=$44=$00 always). Divergence is in
+  // main-thread code path. pc_main = PC at last opcode fetch with
+  // I-flag clear; pc_irq = with I-flag set. Plus mem_45 (wait-loop var)
+  // and per-page opcode counters for $30 (T65 FLI body) and $97 (SCPU
+  // mirror) — directly compares time spent in each region.
+  logic [23:0] pc_main;
+  logic [23:0] pc_irq;
+  logic  [7:0] mem_45;
+  logic [15:0] cnt_pc_30;
+  logic [15:0] cnt_pc_97;
 } dbg_pool_t;
 `endif
 

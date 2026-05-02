@@ -496,6 +496,12 @@ port(
 	dbg_mem_40           : out std_logic_vector(7 downto 0);
 	dbg_mem_44           : out std_logic_vector(7 downto 0);
 	dbg_mem_5C           : out std_logic_vector(7 downto 0);
+	-- v260: PC main/irq split + mem_45 + page counters
+	dbg_pc_main          : out std_logic_vector(23 downto 0);
+	dbg_pc_irq           : out std_logic_vector(23 downto 0);
+	dbg_mem_45           : out std_logic_vector(7 downto 0);
+	dbg_cnt_pc_30        : out std_logic_vector(15 downto 0);
+	dbg_cnt_pc_97        : out std_logic_vector(15 downto 0);
 	dbg_mem_5B           : out std_logic_vector(7 downto 0);
 	dbg_wr5B_pc          : out std_logic_vector(23 downto 0);
 	dbg_wr5B_val         : out std_logic_vector(7 downto 0);
@@ -821,6 +827,18 @@ signal cnt_3100_r       : std_logic_vector(15 downto 0)  := (others => '0');
 signal mem_40_r         : std_logic_vector(7 downto 0)   := (others => '0');
 signal mem_44_r         : std_logic_vector(7 downto 0)   := (others => '0');
 signal mem_5C_r         : std_logic_vector(7 downto 0)   := (others => '0');
+-- v260: main-thread vs IRQ-thread PC split. Per v3 finding, gate at
+-- $8108/$810E doesn't discriminate — divergence is in main-thread
+-- code path after $309A->JMP $8F2B. Latch PC at last opcode fetch
+-- gated by I-flag state. Plus mem_45 (wait-loop variable) and
+-- per-page opcode counters for $30 (T65 FLI body) and $97 (SCPU
+-- mirror).
+signal pc_main_r        : std_logic_vector(23 downto 0)  := (others => '0');
+signal pc_irq_r         : std_logic_vector(23 downto 0)  := (others => '0');
+signal mem_45_r         : std_logic_vector(7 downto 0)   := (others => '0');
+signal cnt_pc_30_r      : std_logic_vector(15 downto 0)  := (others => '0');
+signal cnt_pc_97_r      : std_logic_vector(15 downto 0)  := (others => '0');
+signal cpu_p_now        : std_logic_vector(7 downto 0);
 -- v247: $5B + DF01 + bytes $0080-$008B
 signal mem_5B_r         : std_logic_vector(7 downto 0)   := (others => '0');
 signal wr5B_pc_r        : std_logic_vector(23 downto 0)  := (others => '0');
@@ -1906,6 +1924,12 @@ begin
 			mem_40_r             <= (others => '0');
 			mem_44_r             <= (others => '0');
 			mem_5C_r             <= (others => '0');
+			-- v260
+			pc_main_r            <= (others => '0');
+			pc_irq_r             <= (others => '0');
+			mem_45_r             <= (others => '0');
+			cnt_pc_30_r          <= (others => '0');
+			cnt_pc_97_r          <= (others => '0');
 			mem_5B_r             <= (others => '0');
 			wr5B_pc_r            <= (others => '0');
 			wr5B_val_r           <= (others => '0');
@@ -2118,6 +2142,21 @@ begin
 				if cpuAddr_pre = x"0040" then mem_40_r <= std_logic_vector(cpuDi); end if;
 				if cpuAddr_pre = x"0044" then mem_44_r <= std_logic_vector(cpuDi); end if;
 				if cpuAddr_pre = x"005C" then mem_5C_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0045" then mem_45_r <= std_logic_vector(cpuDi); end if;
+				-- v260: PC main/irq split + page counters, gated by opcode_fetch_pulse
+				if opcode_fetch_pulse = '1' then
+					if cpu_p_now(2) = '0' then
+						pc_main_r <= cpu_pc_now;
+					else
+						pc_irq_r <= cpu_pc_now;
+					end if;
+					if cpu_pc_now(15 downto 8) = x"30" then
+						cnt_pc_30_r <= std_logic_vector(unsigned(cnt_pc_30_r) + 1);
+					end if;
+					if cpu_pc_now(15 downto 8) = x"97" then
+						cnt_pc_97_r <= std_logic_vector(unsigned(cnt_pc_97_r) + 1);
+					end if;
+				end if;
 				-- v247: $005B + $0080-$008B byte capture
 				if cpuAddr_pre = x"005B" then mem_5B_r <= std_logic_vector(cpuDi); end if;
 				if cpuAddr_pre = x"0080" then mem_80_r <= std_logic_vector(cpuDi); end if;
@@ -2752,6 +2791,16 @@ dbg_cnt_3100 <= cnt_3100_r;
 dbg_mem_40      <= mem_40_r;
 dbg_mem_44      <= mem_44_r;
 dbg_mem_5C      <= mem_5C_r;
+-- v260: PC main/irq split + page counters
+dbg_pc_main     <= pc_main_r;
+dbg_pc_irq      <= pc_irq_r;
+dbg_mem_45      <= mem_45_r;
+dbg_cnt_pc_30   <= cnt_pc_30_r;
+dbg_cnt_pc_97   <= cnt_pc_97_r;
+-- Muxed P (status flags) for I-flag gating in capture logic above.
+cpu_p_now       <= std_logic_vector(dbg_p_816_i)
+                   when supercpu_en = '1'
+                   else t65_regs(31 downto 24);
 dbg_mem_5B      <= mem_5B_r;
 dbg_wr5B_pc     <= wr5B_pc_r;
 dbg_wr5B_val    <= wr5B_val_r;
