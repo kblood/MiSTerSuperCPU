@@ -983,6 +983,12 @@ signal vicColorIndex: unsigned(3 downto 0);
 signal vicBus       : unsigned(7 downto 0);
 signal vicDi        : unsigned(7 downto 0);
 signal vicDiAec     : unsigned(7 downto 0);
+-- v266: gated diRegisters input to VIC. When SCPU is on, writes to
+-- $D01A force EMBC/EMMC bits to 0 — disables sprite-bgnd and
+-- sprite-sprite collision IRQ enables. v263/v264/v265 chain
+-- diagnosed continuous collision tail-chain on SCPU as proximate
+-- cause of DL rendering corruption. This gate tests the diagnosis.
+signal vicRegsDi    : unsigned(7 downto 0);
 signal vicAddr      : unsigned(15 downto 0);
 signal vicData      : unsigned(7 downto 0);
 signal lastVicDi    : unsigned(7 downto 0);
@@ -1377,6 +1383,13 @@ end process;
 -- $ff as character pointers and
 -- as color information the lower 4 bits of the opcode after the access to $d011.
 vicDiAec <= vicBus when aec = '0' else vicDi;
+
+-- v266 (REVERTED): tested gating CPU writes to $D01A bits 1+2 in SCPU
+-- mode. Hardware result: zero effect on spr0_y, IRQ rate, or W1 PCs
+-- — proved that DL on SCPU is NOT seeing extra collision IRQs
+-- through $D01A. The 3.755 IRQ entries/frame on SCPU come from
+-- raster-IRQ tail-chain timing instead. Reverted to passthrough.
+vicRegsDi <= cpuDo;
 colorDataAec <= cpuDi(3 downto 0) when aec = '0' else colorData;
 
 vic: entity work.video_vicii_656x
@@ -1414,7 +1427,7 @@ port map (
 	lp_n => cia1_pbi(4) or supercpu_en,
 
 	aRegisters => cpuAddr(5 downto 0),
-	diRegisters => cpuDo,
+	diRegisters => vicRegsDi,
 	di => vicDiAec,
 	diColor => colorDataAec,
 	do => vicData,
