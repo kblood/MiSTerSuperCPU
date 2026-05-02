@@ -551,7 +551,14 @@ port(
 	dbg_p_irq_t0         : out std_logic_vector(7 downto 0);
 	dbg_p_irq_t1         : out std_logic_vector(7 downto 0);
 	dbg_p_irq_t2         : out std_logic_vector(7 downto 0);
-	dbg_p_irq_t3         : out std_logic_vector(7 downto 0)
+	dbg_p_irq_t3         : out std_logic_vector(7 downto 0);
+	-- v262: 4-deep ring of values written to $005C (DL IRQ-handler state
+	-- counter) + total-write counter. Reveals $5C cycle directly on hw.
+	dbg_wr5C_v0          : out std_logic_vector(7 downto 0);
+	dbg_wr5C_v1          : out std_logic_vector(7 downto 0);
+	dbg_wr5C_v2          : out std_logic_vector(7 downto 0);
+	dbg_wr5C_v3          : out std_logic_vector(7 downto 0);
+	dbg_cnt_wr5C         : out std_logic_vector(15 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -881,6 +888,12 @@ signal wr02_v2_r        : std_logic_vector(7 downto 0)   := (others => '0');
 signal wr02_v3_r        : std_logic_vector(7 downto 0)   := (others => '0');
 signal wr02_y_r         : std_logic_vector(7 downto 0)   := (others => '0');
 signal wr02_x_r         : std_logic_vector(7 downto 0)   := (others => '0');
+-- v262: 4-deep ring of $005C values (newest=v3) + total-write counter.
+signal wr5C_v0_r        : std_logic_vector(7 downto 0)   := (others => '0');
+signal wr5C_v1_r        : std_logic_vector(7 downto 0)   := (others => '0');
+signal wr5C_v2_r        : std_logic_vector(7 downto 0)   := (others => '0');
+signal wr5C_v3_r        : std_logic_vector(7 downto 0)   := (others => '0');
+signal cnt_wr5C_r       : unsigned(15 downto 0)          := (others => '0');
 -- T65 register file (PC[16] | S[8] | P[8] | Y[8] | X[8] | A[8]).
 signal t65_regs         : std_logic_vector(63 downto 0)  := (others => '0');
 -- P65C816 X/Y register exports (formerly `open`).
@@ -1964,6 +1977,11 @@ begin
 			wr02_v3_r            <= (others => '0');
 			wr02_y_r             <= (others => '0');
 			wr02_x_r             <= (others => '0');
+			wr5C_v0_r            <= (others => '0');     -- v262
+			wr5C_v1_r            <= (others => '0');
+			wr5C_v2_r            <= (others => '0');
+			wr5C_v3_r            <= (others => '0');
+			cnt_wr5C_r           <= (others => '0');
 			p_irq_t0_r           <= (others => '0');
 			p_irq_t1_r           <= (others => '0');
 			p_irq_t2_r           <= (others => '0');
@@ -2288,6 +2306,16 @@ begin
 				if cpuAddr_pre = x"0003" then
 					wr03_pc_r  <= cpu_pc_now;
 					wr03_val_r <= std_logic_vector(cpuDo_pre);
+				end if;
+				-- v262: ring of values written to $005C (DL IRQ counter).
+				-- Writers are STX $5C at $8166 (decremented X) and STA $5C
+				-- at $3343 (setup-time reset). Newest = v3.
+				if cpuAddr_pre = x"005C" then
+					wr5C_v0_r  <= wr5C_v1_r;
+					wr5C_v1_r  <= wr5C_v2_r;
+					wr5C_v2_r  <= wr5C_v3_r;
+					wr5C_v3_r  <= std_logic_vector(cpuDo_pre);
+					cnt_wr5C_r <= cnt_wr5C_r + 1;
 				end if;
 			end if;
 			-- v243: dispatch-target PC. Snapshot the PC at the FIRST
@@ -2840,6 +2868,12 @@ dbg_p_irq_t0  <= p_irq_t0_r;
 dbg_p_irq_t1  <= p_irq_t1_r;
 dbg_p_irq_t2  <= p_irq_t2_r;
 dbg_p_irq_t3  <= p_irq_t3_r;
+-- v262: $005C write-ring + counter
+dbg_wr5C_v0   <= wr5C_v0_r;
+dbg_wr5C_v1   <= wr5C_v1_r;
+dbg_wr5C_v2   <= wr5C_v2_r;
+dbg_wr5C_v3   <= wr5C_v3_r;
+dbg_cnt_wr5C  <= std_logic_vector(cnt_wr5C_r);
 
 -- v211: opcode-fetch pulse + current PC.
 -- T65: SYNC=1 + enableCpu_6510=1 → opcode-fetch cycle, latch cpuAddr_6510.

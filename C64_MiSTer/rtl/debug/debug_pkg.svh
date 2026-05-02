@@ -483,6 +483,21 @@ typedef struct packed {
   logic  [7:0] mem_45;
   logic [15:0] cnt_pc_30;
   logic [15:0] cnt_pc_97;
+
+  // v262: 4-deep ring of values written to $005C (newest = v3) plus a
+  // 16-bit total-write counter. $5C is DL's IRQ-handler state counter,
+  // decremented at $8166 (STX $5C with X = $5C - 1) and reset at $8164
+  // (LDX #$04) and $3343 (STA $5C #$04). VICE x64sc disasm shows T65
+  // expected sequence is 4,3,2,1,0,4,3,2,1,0... (5-cycle). v260 found
+  // SCPU has $5C zero-rate 33% (vs T65's 20%) — points to a 3-cycle
+  // sequence. Direct ring capture shows the actual write values so we
+  // can prove whether DEX is decrementing by 2 (4,2,0,4,2,0) or by 1
+  // with skipped resets (4,3,2,4,3,2) or some other pattern.
+  logic  [7:0] wr5C_v0;
+  logic  [7:0] wr5C_v1;
+  logic  [7:0] wr5C_v2;
+  logic  [7:0] wr5C_v3;
+  logic [15:0] cnt_wr5C;
 } dbg_pool_t;
 `endif
 

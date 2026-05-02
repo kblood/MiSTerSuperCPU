@@ -34,6 +34,7 @@ LINE_RE = re.compile(
     r"M:(?P<m0>[0-9A-F]+)\s+(?P<m1>[0-9A-F]+)\s+(?P<m2>[0-9A-F]+)\s+(?P<m3>[0-9A-F]+)"
     r"(?:\s+G:(?P<g40>[0-9A-F]+)\s+(?P<g44>[0-9A-F]+)\s+(?P<g5c>[0-9A-F]+))?"
     r"(?:\s+N:(?P<n>[0-9A-F]+)\s+I:(?P<ii>[0-9A-F]+)\s+B:(?P<b>[0-9A-F]+)\s+C3:(?P<c3>[0-9A-F]+)\s+C9:(?P<c9>[0-9A-F]+))?"
+    r"(?:\s+W5:(?P<w5c0>[0-9A-F]+)\s+(?P<w5c1>[0-9A-F]+)\s+(?P<w5c2>[0-9A-F]+)\s+(?P<w5c3>[0-9A-F]+)\s+N5:(?P<n5>[0-9A-F]+))?"
 )
 
 
@@ -58,6 +59,9 @@ def load(path):
             row['b']  = int(m['b'],  16)
             row['c3'] = int(m['c3'], 16)
             row['c9'] = int(m['c9'], 16)
+        if m['w5c0'] is not None:
+            row['w5c'] = [int(m[f'w5c{i}'], 16) for i in range(4)]
+            row['n5']  = int(m['n5'], 16)
         rows.append(row)
     return rows
 
@@ -120,6 +124,26 @@ def report(rows, label):
             d9 = (rows[-1]['c9'] - rows[0]['c9']) & 0xFFFF
             print(f'    C3 delta (page $30 opcode fetches): {d3} over {len(rows)} frames ({d3/len(rows):.1f}/frame)')
             print(f'    C9 delta (page $97 opcode fetches): {d9} over {len(rows)} frames ({d9/len(rows):.1f}/frame)')
+
+    if rows and 'w5c' in rows[0]:
+        print('  v262 $005C write-ring (4-deep, oldest..newest) + writes/frame:')
+        # Per-position distributions across all rows
+        for pos in range(4):
+            dist = collections.Counter(r['w5c'][pos] for r in rows)
+            top = [(f'${v:02X}', c) for v, c in dist.most_common(5)]
+            print(f'    pos[{pos}] top: {top}')
+        # Aggregate "what values ever appear in the ring"
+        all_vals = [v for r in rows for v in r['w5c']]
+        all_dist = collections.Counter(all_vals).most_common(8)
+        print(f'    all-positions distribution (top 8): {[(f"${v:02X}", c) for v,c in all_dist]}')
+        # Writes-per-frame from N5 deltas
+        if len(rows) > 1:
+            dn5 = (rows[-1]['n5'] - rows[0]['n5']) & 0xFFFF
+            print(f'    N5 delta (writes to $005C): {dn5} over {len(rows)} frames ({dn5/len(rows):.2f}/frame)')
+        # First-12 raw rings to read the cycle directly
+        print('    first 12 frames raw rings:')
+        for i, r in enumerate(rows[:12]):
+            print(f'      {i:>3}  {" ".join(f"{v:02X}" for v in r["w5c"])}  N5:{r["n5"]:04X}')
 
 
 def main():

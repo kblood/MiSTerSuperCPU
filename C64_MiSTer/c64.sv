@@ -1241,6 +1241,9 @@ wire [15:0] scpu_dbg_cnt_wr02_chg;   // v257
 wire  [7:0] scpu_dbg_wr02_v0, scpu_dbg_wr02_v1, scpu_dbg_wr02_v2, scpu_dbg_wr02_v3;
 wire  [7:0] scpu_dbg_wr02_y,  scpu_dbg_wr02_x;
 wire  [7:0] scpu_dbg_p_irq_t0, scpu_dbg_p_irq_t1, scpu_dbg_p_irq_t2, scpu_dbg_p_irq_t3;
+// v262 — 4-deep ring of values written to $005C + counter
+wire  [7:0] scpu_dbg_wr5C_v0, scpu_dbg_wr5C_v1, scpu_dbg_wr5C_v2, scpu_dbg_wr5C_v3;
+wire [15:0] scpu_dbg_cnt_wr5C;
 
 // ---------------------------------------------------------------------------
 // Layered debug overlay (rtl/debug/) - pool struct + capture stubs.
@@ -1637,6 +1640,12 @@ assign dbg_pool.p_irq_t0       = scpu_dbg_p_irq_t0;
 assign dbg_pool.p_irq_t1       = scpu_dbg_p_irq_t1;
 assign dbg_pool.p_irq_t2       = scpu_dbg_p_irq_t2;
 assign dbg_pool.p_irq_t3       = scpu_dbg_p_irq_t3;
+// v262: $005C write-ring + counter
+assign dbg_pool.wr5C_v0        = scpu_dbg_wr5C_v0;
+assign dbg_pool.wr5C_v1        = scpu_dbg_wr5C_v1;
+assign dbg_pool.wr5C_v2        = scpu_dbg_wr5C_v2;
+assign dbg_pool.wr5C_v3        = scpu_dbg_wr5C_v3;
+assign dbg_pool.cnt_wr5C       = scpu_dbg_cnt_wr5C;
 
 `ifdef DBG_CAP_FRAME
 cap_frame u_cap_frame (
@@ -2008,7 +2017,12 @@ fpga64_sid_iec fpga64
 	.dbg_p_irq_t0         (scpu_dbg_p_irq_t0),
 	.dbg_p_irq_t1         (scpu_dbg_p_irq_t1),
 	.dbg_p_irq_t2         (scpu_dbg_p_irq_t2),
-	.dbg_p_irq_t3         (scpu_dbg_p_irq_t3)
+	.dbg_p_irq_t3         (scpu_dbg_p_irq_t3),
+	.dbg_wr5C_v0          (scpu_dbg_wr5C_v0),
+	.dbg_wr5C_v1          (scpu_dbg_wr5C_v1),
+	.dbg_wr5C_v2          (scpu_dbg_wr5C_v2),
+	.dbg_wr5C_v3          (scpu_dbg_wr5C_v3),
+	.dbg_cnt_wr5C         (scpu_dbg_cnt_wr5C)
 );
 
 wire [7:0] mouse_x;

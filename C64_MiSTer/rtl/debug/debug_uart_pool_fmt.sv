@@ -78,13 +78,15 @@ module debug_uart_pool_fmt
 	reg [23:0] lat_pc_main, lat_pc_irq;
 	reg  [7:0] lat_m45;
 	reg [15:0] lat_c30, lat_c97;
+	reg  [7:0] lat_w5c0, lat_w5c1, lat_w5c2, lat_w5c3;
+	reg [15:0] lat_w5cN;
 
 	// -----------------------------------------------------------------
 	// Send FSM: drive tx_send for one cycle whenever tx is idle and the
 	// next byte hasn't been issued yet. byte_idx indexes the line bytes
 	// 0..LINE_LEN-1; LINE_LEN signals "line done, idle until next vblank".
 	// -----------------------------------------------------------------
-	localparam LINE_LEN = 8'd164;
+	localparam LINE_LEN = 8'd187;
 
 	reg [7:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -293,8 +295,35 @@ module debug_uart_pool_fmt
 			8'd161: line_byte = hex_nibble(lat_c97[7:4]);
 			8'd162: line_byte = hex_nibble(lat_c97[3:0]);
 
-			// newline
-			8'd163: line_byte = 8'h0A;
+			// " W5:## ## ## ##" v262 4-deep ring of writes to $005C
+			8'd163: line_byte = " ";
+			8'd164: line_byte = "W";
+			8'd165: line_byte = "5";
+			8'd166: line_byte = ":";
+			8'd167: line_byte = hex_nibble(lat_w5c0[7:4]);
+			8'd168: line_byte = hex_nibble(lat_w5c0[3:0]);
+			8'd169: line_byte = " ";
+			8'd170: line_byte = hex_nibble(lat_w5c1[7:4]);
+			8'd171: line_byte = hex_nibble(lat_w5c1[3:0]);
+			8'd172: line_byte = " ";
+			8'd173: line_byte = hex_nibble(lat_w5c2[7:4]);
+			8'd174: line_byte = hex_nibble(lat_w5c2[3:0]);
+			8'd175: line_byte = " ";
+			8'd176: line_byte = hex_nibble(lat_w5c3[7:4]);
+			8'd177: line_byte = hex_nibble(lat_w5c3[3:0]);
+
+			// " N5:####" v262 total writes-to-$005C counter
+			8'd178: line_byte = " ";
+			8'd179: line_byte = "N";
+			8'd180: line_byte = "5";
+			8'd181: line_byte = ":";
+			8'd182: line_byte = hex_nibble(lat_w5cN[15:12]);
+			8'd183: line_byte = hex_nibble(lat_w5cN[11:8]);
+			8'd184: line_byte = hex_nibble(lat_w5cN[7:4]);
+			8'd185: line_byte = hex_nibble(lat_w5cN[3:0]);
+
+			// newline (LINE_LEN-1)
+			8'd186: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -342,6 +371,11 @@ module debug_uart_pool_fmt
 				lat_m45     <= pool.mem_45;
 				lat_c30     <= pool.cnt_pc_30;
 				lat_c97     <= pool.cnt_pc_97;
+				lat_w5c0    <= pool.wr5C_v0;
+				lat_w5c1    <= pool.wr5C_v1;
+				lat_w5c2    <= pool.wr5C_v2;
+				lat_w5c3    <= pool.wr5C_v3;
+				lat_w5cN    <= pool.cnt_wr5C;
 				byte_idx  <= 8'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin
