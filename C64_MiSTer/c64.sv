@@ -1258,6 +1258,9 @@ wire [15:0] scpu_dbg_irq_combined_rise_count;
 // v269 — VIC-internal $D019 ack diagnostics
 wire [15:0] scpu_dbg_vic_d019_wr_count;
 wire [15:0] scpu_dbg_vic_resetraster_count;
+// v270 — $D019 writer PC + sticky cpuDo OR
+wire [23:0] scpu_dbg_d019_last_pc;
+wire  [7:0] scpu_dbg_d019_seen_writes;
 
 // ---------------------------------------------------------------------------
 // Layered debug overlay (rtl/debug/) - pool struct + capture stubs.
@@ -1673,6 +1676,9 @@ assign dbg_pool.irq_combined_rise_count = scpu_dbg_irq_combined_rise_count;
 // v269: VIC-internal $D019 ack counters
 assign dbg_pool.vic_d019_wr_count       = scpu_dbg_vic_d019_wr_count;
 assign dbg_pool.vic_resetraster_count   = scpu_dbg_vic_resetraster_count;
+// v270: $D019 writer PC + sticky cpuDo OR
+assign dbg_pool.d019_last_pc            = scpu_dbg_d019_last_pc;
+assign dbg_pool.d019_seen_writes        = scpu_dbg_d019_seen_writes;
 
 `ifdef DBG_CAP_FRAME
 cap_frame u_cap_frame (
@@ -2059,7 +2065,9 @@ fpga64_sid_iec fpga64
 	.dbg_irq_vic_rise_count     (scpu_dbg_irq_vic_rise_count),
 	.dbg_irq_combined_rise_count(scpu_dbg_irq_combined_rise_count),
 	.dbg_vic_d019_wr_count      (scpu_dbg_vic_d019_wr_count),
-	.dbg_vic_resetraster_count  (scpu_dbg_vic_resetraster_count)
+	.dbg_vic_resetraster_count  (scpu_dbg_vic_resetraster_count),
+	.dbg_d019_last_pc           (scpu_dbg_d019_last_pc),
+	.dbg_d019_seen_writes       (scpu_dbg_d019_seen_writes)
 );
 
 wire [7:0] mouse_x;

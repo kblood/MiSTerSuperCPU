@@ -35,7 +35,7 @@ LINE_RE = re.compile(
     r"(?:\s+G:(?P<g40>[0-9A-F]+)\s+(?P<g44>[0-9A-F]+)\s+(?P<g5c>[0-9A-F]+))?"
     r"(?:\s+N:(?P<n>[0-9A-F]+)\s+I:(?P<ii>[0-9A-F]+)\s+B:(?P<b>[0-9A-F]+)(?:\s+C3:(?P<c3>[0-9A-F]+)\s+C9:(?P<c9>[0-9A-F]+))?(?:\s+SP:(?P<sp0x>[0-9A-F]+)\s+(?P<sp0y>[0-9A-F]+)\s+(?P<sp1x>[0-9A-F]+)\s+(?P<sp1y>[0-9A-F]+))?(?:\s+(?:IR|VW):(?P<irc>[0-9A-F]+)\s+(?:IV|AC):(?P<ivr>[0-9A-F]+))?)?"
     r"(?:\s+W5:(?P<w5c0>[0-9A-F]+)\s+(?P<w5c1>[0-9A-F]+)\s+(?P<w5c2>[0-9A-F]+)\s+(?P<w5c3>[0-9A-F]+)\s+N5:(?P<n5>[0-9A-F]+))?"
-    r"(?:\s+IF:(?P<irf>[0-9A-F]+)\s+VC:(?P<ivc>[0-9A-F]+)(?:\s+DR:(?P<dr>[0-9A-F]+)\s+DS:(?P<ds>[0-9A-F]+))?(?:\s+WC:(?P<wc>[0-9A-F]+)\s+RR:(?P<rr>[0-9A-F]+)\s+DV:(?P<dv>[0-9A-F]+))?)?"
+    r"(?:\s+IF:(?P<irf>[0-9A-F]+)\s+VC:(?P<ivc>[0-9A-F]+)(?:\s+DR:(?P<dr>[0-9A-F]+)\s+DS:(?P<ds>[0-9A-F]+))?(?:\s+WC:(?P<wc>[0-9A-F]+)\s+RR:(?P<rr>[0-9A-F]+)\s+DV:(?P<dv>[0-9A-F]+))?(?:\s+D9:(?P<d9>[0-9A-F]+)\s+P9:(?P<p9>[0-9A-F]+)\s+S:(?P<s9>[0-9A-F]+))?)?"
 )
 
 
@@ -82,6 +82,10 @@ def load(path):
                 row['wc']  = int(m['wc'], 16)  # cycles since IRQ_N falling
                 row['rr']  = int(m['rr'], 16)  # raster line at $D012 write
                 row['dv']  = int(m['dv'], 16)  # value written to $D012
+            if m['d9'] is not None:
+                row['d9']  = int(m['d9'], 16)  # last cpuDo on $D019 write
+                row['p9']  = int(m['p9'], 16)  # writer PC of last $D019 write
+                row['s9']  = int(m['s9'], 16)  # sticky 8-bit OR of $D019 cpuDo
         rows.append(row)
     return rows
 
@@ -266,6 +270,21 @@ def report(rows, label):
         print('    first 12 frames raw (WC, RR, DV):')
         for i, r in enumerate(wc_rows[:12]):
             print(f'      {i:>3}  WC:{r["wc"]:04X} RR:{r["rr"]:03X}({r["rr"]:>3d})  DV:{r["dv"]:02X}({r["dv"]:>3d})  diff:{(r["rr"]-r["dv"]):+4d}')
+
+    d9_rows = [r for r in rows if 'd9' in r]
+    if d9_rows:
+        print('  v270 $D019 writer-PC + sticky cpuDo OR:')
+        d9_top = collections.Counter(r['d9'] for r in d9_rows).most_common(8)
+        p9_top = collections.Counter(r['p9'] for r in d9_rows).most_common(8)
+        s9_final = d9_rows[-1]['s9']
+        s9_bits = ', '.join(f'b{i}' for i in range(8) if (s9_final >> i) & 1)
+        print(f'    last cpuDo (D9) top 8: {[(f"${v:02X}", c) for v, c in d9_top]}')
+        print(f'    writer PC (P9) top 8: {[(f"${v:06X}", c) for v, c in p9_top]}')
+        print(f'    sticky 8-bit OR (S9) at end: ${s9_final:02X}  bits set: [{s9_bits if s9_bits else "(none)"}]')
+        if s9_final & 0x01:
+            print(f'    => SCPU/T65 wrote bit 0 = 1 to $D019 at least once. IRST ack DID happen.')
+        else:
+            print(f'    => Bit 0 NEVER set in any $D019 write -> handler ALWAYS clears IRST-ack bit before STA.')
 
 
 def main():

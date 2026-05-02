@@ -596,7 +596,15 @@ port(
 	--                         If SCPU has vic_d019_wr_count>0 but
 	--                         vic_resetraster_count=0 ⇒ data-bit-0 corruption.
 	dbg_vic_d019_wr_count      : out std_logic_vector(15 downto 0);
-	dbg_vic_resetraster_count  : out std_logic_vector(15 downto 0)
+	dbg_vic_resetraster_count  : out std_logic_vector(15 downto 0);
+	-- v270: pinpoint who writes $D019 with bit-0 cleared on SCPU.
+	--   d019_last_pc       : cpu_pc_now at most recent $D019 write.
+	--   d019_seen_writes   : sticky 8-bit OR of cpuDo across all $D019
+	--                        writes. If bit 0 stays 0 across the whole
+	--                        capture on SCPU ⇒ SCPU NEVER writes a value
+	--                        with bit 0 set ⇒ wrong handler is running.
+	dbg_d019_last_pc           : out std_logic_vector(23 downto 0);
+	dbg_d019_seen_writes       : out std_logic_vector(7 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -815,6 +823,9 @@ signal vic_d019_wr_pulse        : std_logic := '0';
 signal vic_resetraster_pulse    : std_logic := '0';
 signal vic_d019_wr_count_r      : unsigned(15 downto 0) := (others => '0');
 signal vic_resetraster_count_r  : unsigned(15 downto 0) := (others => '0');
+-- v270: writer-PC + sticky write-OR at $D019.
+signal d019_last_pc_r           : std_logic_vector(23 downto 0) := (others => '0');
+signal d019_seen_writes_r       : std_logic_vector(7 downto 0)  := (others => '0');
 signal d002_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d003_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d010_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
@@ -1951,6 +1962,9 @@ begin
 			-- v269: VIC-internal $D019 ack diagnostics
 			vic_d019_wr_count_r         <= (others => '0');
 			vic_resetraster_count_r     <= (others => '0');
+			-- v270: $D019 writer PC + sticky cpuDo-OR
+			d019_last_pc_r              <= (others => '0');
+			d019_seen_writes_r          <= (others => '0');
 			d002_last_val_r      <= (others => '0');
 			d003_last_val_r      <= (others => '0');
 			d010_last_val_r      <= (others => '0');
@@ -2492,9 +2506,14 @@ begin
 
 			-- v230: $D019 write count (VIC IRQ ack). cs_vic gated to
 			-- VIC chip-select; cpuWe = active write; offset $19 = D019.
+			-- v270: also latch writer PC and OR cpuDo into a sticky
+			-- accumulator. d019_seen_writes_r reveals whether any write
+			-- in the entire capture had bit 0 set (= valid IRST ack).
 			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "011001" then
-				d019_wr_count_r <= d019_wr_count_r + 1;
-				d019_last_val_r <= std_logic_vector(cpuDo);
+				d019_wr_count_r    <= d019_wr_count_r + 1;
+				d019_last_val_r    <= std_logic_vector(cpuDo);
+				d019_last_pc_r     <= cpu_pc_now;
+				d019_seen_writes_r <= d019_seen_writes_r or std_logic_vector(cpuDo);
 			end if;
 			-- v230: $DC0D read count (CIA1 ICR, read-to-ack).
 			if cs_cia1 = '1' and cpuWe = '0' and cpuAddr(3 downto 0) = "1101" then
@@ -2831,6 +2850,9 @@ dbg_irq_combined_rise_count <= std_logic_vector(irq_combined_rise_count_r);
 -- v269 VIC-internal IRQ ack outputs
 dbg_vic_d019_wr_count      <= std_logic_vector(vic_d019_wr_count_r);
 dbg_vic_resetraster_count  <= std_logic_vector(vic_resetraster_count_r);
+-- v270 $D019 writer-PC + sticky cpuDo-OR outputs
+dbg_d019_last_pc           <= d019_last_pc_r;
+dbg_d019_seen_writes       <= d019_seen_writes_r;
 dbg_d002_last_val  <= d002_last_val_r;
 dbg_d003_last_val  <= d003_last_val_r;
 dbg_d010_last_val  <= d010_last_val_r;

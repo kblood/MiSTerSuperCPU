@@ -100,6 +100,10 @@ module debug_uart_pool_fmt
 	// compatible if needed, but the visible bytes show VR/RR now).
 	reg [15:0] lat_vic_d019_wr;
 	reg [15:0] lat_vic_resetraster;
+	// v270: $D019 writer PC + last cpuDo + sticky cpuDo OR.
+	reg [23:0] lat_d019_pc;
+	reg  [7:0] lat_d019_val;
+	reg  [7:0] lat_d019_seen_w;
 
 	// -----------------------------------------------------------------
 	// Send FSM: drive tx_send for one cycle whenever tx is idle and the
@@ -365,36 +369,31 @@ module debug_uart_pool_fmt
 			8'd200: line_byte = hex_nibble(lat_irq_vec[7:4]);
 			8'd201: line_byte = hex_nibble(lat_irq_vec[3:0]);
 
-			// v267: " WC:####" cycles between IRQ_N falling and last
-			// $D012 write (Path B1 — raster-IRQ tail-chain timing test).
-			// T65 expected ~few hundred clk32, SCPU expected larger.
+			// v270: " D9:## P9:###### S:##" — last $D019 cpuDo, last
+			// writer PC (24-bit), sticky 8-bit OR of all $D019 writes'
+			// cpuDo. Replaces v267 WC/RR/DV slot (saturated; same 21
+			// bytes 202..222). Single-letter S label to fit in 21 bytes.
 			8'd202: line_byte = " ";
-			8'd203: line_byte = "W";
-			8'd204: line_byte = "C";
+			8'd203: line_byte = "D";
+			8'd204: line_byte = "9";
 			8'd205: line_byte = ":";
-			8'd206: line_byte = hex_nibble(lat_d012_wc[15:12]);
-			8'd207: line_byte = hex_nibble(lat_d012_wc[11:8]);
-			8'd208: line_byte = hex_nibble(lat_d012_wc[7:4]);
-			8'd209: line_byte = hex_nibble(lat_d012_wc[3:0]);
-
-			// v267: " RR:###" raster line at $D012 write moment.
-			// Compare to DV: if RR > DV, the new compare value is
-			// BEHIND the beam -> immediate IRST re-fire.
-			8'd210: line_byte = " ";
-			8'd211: line_byte = "R";
-			8'd212: line_byte = "R";
-			8'd213: line_byte = ":";
-			8'd214: line_byte = hex_nibble({3'b0, lat_d012_rr[8]});
-			8'd215: line_byte = hex_nibble(lat_d012_rr[7:4]);
-			8'd216: line_byte = hex_nibble(lat_d012_rr[3:0]);
-
-			// v267: " DV:##" $D012 value written (next-fire raster).
-			8'd217: line_byte = " ";
-			8'd218: line_byte = "D";
-			8'd219: line_byte = "V";
+			8'd206: line_byte = hex_nibble(lat_d019_val[7:4]);
+			8'd207: line_byte = hex_nibble(lat_d019_val[3:0]);
+			8'd208: line_byte = " ";
+			8'd209: line_byte = "P";
+			8'd210: line_byte = "9";
+			8'd211: line_byte = ":";
+			8'd212: line_byte = hex_nibble(lat_d019_pc[23:20]);
+			8'd213: line_byte = hex_nibble(lat_d019_pc[19:16]);
+			8'd214: line_byte = hex_nibble(lat_d019_pc[15:12]);
+			8'd215: line_byte = hex_nibble(lat_d019_pc[11:8]);
+			8'd216: line_byte = hex_nibble(lat_d019_pc[7:4]);
+			8'd217: line_byte = hex_nibble(lat_d019_pc[3:0]);
+			8'd218: line_byte = " ";
+			8'd219: line_byte = "S";
 			8'd220: line_byte = ":";
-			8'd221: line_byte = hex_nibble(lat_d012_dv[7:4]);
-			8'd222: line_byte = hex_nibble(lat_d012_dv[3:0]);
+			8'd221: line_byte = hex_nibble(lat_d019_seen_w[7:4]);
+			8'd222: line_byte = hex_nibble(lat_d019_seen_w[3:0]);
 
 			// newline (LINE_LEN-1)
 			8'd223: line_byte = 8'h0A;
@@ -469,6 +468,10 @@ module debug_uart_pool_fmt
 				// v269: VIC-internal $D019 ack diagnostic latches
 				lat_vic_d019_wr       <= pool.vic_d019_wr_count;
 				lat_vic_resetraster   <= pool.vic_resetraster_count;
+				// v270: $D019 writer-PC + sticky cpuDo OR latches
+				lat_d019_pc      <= pool.d019_last_pc;
+				lat_d019_val     <= pool.d019_last_val;
+				lat_d019_seen_w  <= pool.d019_seen_writes;
 				byte_idx  <= 8'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin

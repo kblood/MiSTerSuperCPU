@@ -551,6 +551,14 @@ typedef struct packed {
   //                           vic_d019_wr_count when di_r(0)=1 each time.
   logic [15:0] vic_d019_wr_count;
   logic [15:0] vic_resetraster_count;
+
+  // v270: $D019 writer PC + sticky cpuDo OR. v269 confirmed di_r(0) is
+  // always 0 at SCPU $D019 writes. d019_seen_writes shows whether bit 0
+  // of cpuDo is EVER set across the whole capture; d019_last_pc points
+  // at the most recent $D019 writer's instruction (24-bit {PBR,PC} for
+  // SCPU, {00,PC} for T65).
+  logic [23:0] d019_last_pc;
+  logic  [7:0] d019_seen_writes;
 } dbg_pool_t;
 `endif
 
