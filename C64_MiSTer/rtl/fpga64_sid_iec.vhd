@@ -559,7 +559,28 @@ port(
 	dbg_wr5C_v1          : out std_logic_vector(7 downto 0);
 	dbg_wr5C_v2          : out std_logic_vector(7 downto 0);
 	dbg_wr5C_v3          : out std_logic_vector(7 downto 0);
-	dbg_cnt_wr5C         : out std_logic_vector(15 downto 0)
+	dbg_cnt_wr5C         : out std_logic_vector(15 downto 0);
+	-- v267: $D012 raster-IRQ tail-chain timing (Path B1).
+	-- v266 ruled out collision-IRQ as the cause of SCPU's 3.755 IRQ
+	-- entries/frame. Hypothesis: SCPU's slower emu-mode IRQ handler
+	-- updates $D012 (raster compare) AFTER the raster has advanced
+	-- past the new compare, so IRST re-asserts immediately and the
+	-- CPU tail-chains on a single source pulse. These four signals
+	-- snapshot the most recent CPU write to $D012:
+	--   d012_write_cycles : clk32 cycles since LAST IRQ_N falling
+	--                       edge (saturating at 0xFFFF). T65 ~ 320,
+	--                       SCPU expected larger.
+	--   d012_last_val     : value written.
+	--   raster_at_d012    : raster line (0..311 PAL) at write moment.
+	--                       If raster_at_d012 > d012_last_val,
+	--                       compare register is BEHIND the beam.
+	--   d012_last_pc      : writer PC (confirms IRQ-handler writer).
+	-- d012_wr_count delta-per-frame quantifies write rate.
+	dbg_d012_write_cycles : out std_logic_vector(15 downto 0);
+	dbg_d012_last_val     : out std_logic_vector(7 downto 0);
+	dbg_raster_at_d012    : out std_logic_vector(8 downto 0);
+	dbg_d012_last_pc      : out std_logic_vector(23 downto 0);
+	dbg_d012_wr_count     : out std_logic_vector(15 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -755,6 +776,13 @@ signal d01d_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d000_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d001_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d001_last_pc_r   : std_logic_vector(23 downto 0) := (others => '0');
+-- v267: $D012 raster-IRQ tail-chain timing.
+signal cycles_since_irq_fall_r : unsigned(15 downto 0)         := (others => '0');
+signal d012_write_cycles_r     : std_logic_vector(15 downto 0) := (others => '0');
+signal d012_last_val_r         : std_logic_vector(7 downto 0)  := (others => '0');
+signal raster_at_d012_r        : std_logic_vector(8 downto 0)  := (others => '0');
+signal d012_last_pc_r          : std_logic_vector(23 downto 0) := (others => '0');
+signal d012_wr_count_r         : unsigned(15 downto 0)         := (others => '0');
 signal d002_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d003_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d010_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
@@ -1873,6 +1901,13 @@ begin
 			d000_last_val_r      <= (others => '0');
 			d001_last_val_r      <= (others => '0');
 			d001_last_pc_r       <= (others => '0');
+			-- v267: $D012 timing probe
+			cycles_since_irq_fall_r <= (others => '0');
+			d012_write_cycles_r     <= (others => '0');
+			d012_last_val_r         <= (others => '0');
+			raster_at_d012_r        <= (others => '0');
+			d012_last_pc_r          <= (others => '0');
+			d012_wr_count_r         <= (others => '0');
 			d002_last_val_r      <= (others => '0');
 			d003_last_val_r      <= (others => '0');
 			d010_last_val_r      <= (others => '0');
@@ -2480,6 +2515,16 @@ begin
 				d001_last_val_r <= std_logic_vector(cpuDo);
 				d001_last_pc_r  <= cpu_pc_now;
 			end if;
+			-- v267: $D012 (raster compare) write capture for tail-chain
+			-- timing analysis. Snapshot cycles since last IRQ_N falling
+			-- edge, value being written, current raster line, writer PC.
+			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "010010" then
+				d012_write_cycles_r <= std_logic_vector(cycles_since_irq_fall_r);
+				d012_last_val_r     <= std_logic_vector(cpuDo);
+				raster_at_d012_r    <= std_logic_vector(dbg_raster_y);
+				d012_last_pc_r      <= cpu_pc_now;
+				d012_wr_count_r     <= d012_wr_count_r + 1;
+			end if;
 			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "000010" then
 				d002_last_val_r <= std_logic_vector(cpuDo);
 			end if;
@@ -2520,9 +2565,15 @@ begin
 			-- Each true raster IRQ produces one 1->0 edge; tail-chain inside
 			-- CPU doesn't move this counter. T65 IV/2 should match this; if
 			-- SCPU IV/2 >> this, CPU is re-entering on a single source pulse.
+			-- v267: also reset cycles_since_irq_fall_r on the same edge so
+			-- the next $D012 write captures wall-clock time spent in the
+			-- handler before raster compare gets re-armed.
 			irq_combined_d <= irq_combined;
 			if irq_combined_d = '1' and irq_combined = '0' then
-				irq_fall_count_r <= irq_fall_count_r + 1;
+				irq_fall_count_r        <= irq_fall_count_r + 1;
+				cycles_since_irq_fall_r <= (others => '0');
+			elsif cycles_since_irq_fall_r /= x"FFFF" then
+				cycles_since_irq_fall_r <= cycles_since_irq_fall_r + 1;
 			end if;
 
 			-- v211: PC ring buffer push on opcode-fetch pulses, only while
@@ -2700,6 +2751,12 @@ dbg_d01d_last_val  <= d01d_last_val_r;
 dbg_d000_last_val  <= d000_last_val_r;
 dbg_d001_last_val  <= d001_last_val_r;
 dbg_d001_last_pc   <= d001_last_pc_r;
+-- v267 $D012 timing outputs
+dbg_d012_write_cycles <= d012_write_cycles_r;
+dbg_d012_last_val     <= d012_last_val_r;
+dbg_raster_at_d012    <= raster_at_d012_r;
+dbg_d012_last_pc      <= d012_last_pc_r;
+dbg_d012_wr_count     <= std_logic_vector(d012_wr_count_r);
 dbg_d002_last_val  <= d002_last_val_r;
 dbg_d003_last_val  <= d003_last_val_r;
 dbg_d010_last_val  <= d010_last_val_r;

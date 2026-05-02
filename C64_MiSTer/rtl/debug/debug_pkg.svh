@@ -503,6 +503,29 @@ typedef struct packed {
   logic  [7:0] wr5C_v2;
   logic  [7:0] wr5C_v3;
   logic [15:0] cnt_wr5C;
+
+  // v267: $D012 raster-IRQ tail-chain timing probe (Path B1).
+  // v266 ruled out collision-IRQ as cause of SCPU's 3.755 IRQ
+  // entries/frame. Hypothesis: SCPU emu-mode IRQ handler updates
+  // $D012 (raster compare) AFTER the raster has advanced past the
+  // new compare value, causing IRST to re-assert immediately on
+  // the $D012 write -> level-IRQ tail-chain re-entries.
+  // Fields snapshot the most-recent CPU write to $D012:
+  //   d012_write_cycles : clk32 cycles since last IRQ_N falling
+  //                       (saturating). T65 expected ~few hundred,
+  //                       SCPU expected larger.
+  //   d012_last_val     : value written.
+  //   raster_at_d012    : raster line at write moment. If
+  //                       raster_at_d012 > d012_last_val, the
+  //                       compare register is BEHIND the beam.
+  //   d012_last_pc      : writer PC (24-bit).
+  //   d012_wr_count     : total $D012 writes (delta-per-frame =
+  //                       compare-arms per frame).
+  logic [15:0] d012_write_cycles;
+  logic  [7:0] d012_last_val;
+  logic  [8:0] raster_at_d012;
+  logic [23:0] d012_last_pc;
+  logic [15:0] d012_wr_count;
 } dbg_pool_t;
 `endif
 

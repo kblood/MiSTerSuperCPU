@@ -35,7 +35,7 @@ LINE_RE = re.compile(
     r"(?:\s+G:(?P<g40>[0-9A-F]+)\s+(?P<g44>[0-9A-F]+)\s+(?P<g5c>[0-9A-F]+))?"
     r"(?:\s+N:(?P<n>[0-9A-F]+)\s+I:(?P<ii>[0-9A-F]+)\s+B:(?P<b>[0-9A-F]+)(?:\s+C3:(?P<c3>[0-9A-F]+)\s+C9:(?P<c9>[0-9A-F]+))?(?:\s+SP:(?P<sp0x>[0-9A-F]+)\s+(?P<sp0y>[0-9A-F]+)\s+(?P<sp1x>[0-9A-F]+)\s+(?P<sp1y>[0-9A-F]+))?)?"
     r"(?:\s+W5:(?P<w5c0>[0-9A-F]+)\s+(?P<w5c1>[0-9A-F]+)\s+(?P<w5c2>[0-9A-F]+)\s+(?P<w5c3>[0-9A-F]+)\s+N5:(?P<n5>[0-9A-F]+))?"
-    r"(?:\s+IF:(?P<irf>[0-9A-F]+)\s+VC:(?P<ivc>[0-9A-F]+)\s+DR:(?P<dr>[0-9A-F]+)\s+DS:(?P<ds>[0-9A-F]+))?"
+    r"(?:\s+IF:(?P<irf>[0-9A-F]+)\s+VC:(?P<ivc>[0-9A-F]+)(?:\s+DR:(?P<dr>[0-9A-F]+)\s+DS:(?P<ds>[0-9A-F]+))?(?:\s+WC:(?P<wc>[0-9A-F]+)\s+RR:(?P<rr>[0-9A-F]+)\s+DV:(?P<dv>[0-9A-F]+))?)?"
 )
 
 
@@ -72,8 +72,13 @@ def load(path):
         if m['irf'] is not None:
             row['irf'] = int(m['irf'], 16)
             row['ivc'] = int(m['ivc'], 16)
-            row['dr']  = int(m['dr'],  16)
-            row['ds']  = int(m['ds'],  16)
+            if m['dr'] is not None:
+                row['dr']  = int(m['dr'],  16)
+                row['ds']  = int(m['ds'],  16)
+            if m['wc'] is not None:
+                row['wc']  = int(m['wc'], 16)  # cycles since IRQ_N falling
+                row['rr']  = int(m['rr'], 16)  # raster line at $D012 write
+                row['dv']  = int(m['dv'], 16)  # value written to $D012
         rows.append(row)
     return rows
 
@@ -190,19 +195,52 @@ def report(rows, label):
             print(f'    IF delta (IRQ_N falling edges):     {dif:6d} over {len(irf_rows)} frames ({dif/len(irf_rows):.2f}/frame)')
             print(f'    VC delta ($FFFE/$FFFF vec fetches): {div:6d} over {len(irf_rows)} frames ({div/len(irf_rows):.2f}/frame)')
             print(f'    VC/IF ratio: {div/max(dif,1):.2f}  (>2.0 means tail-chain on same source pulse; ~1.0 = 1 vec per pulse; ~2.0 = each entry fetches 2 bytes)')
-        dr_dist = collections.Counter(r['dr'] for r in irf_rows)
-        ds_or   = 0
-        for r in irf_rows: ds_or |= r['ds']
-        print(f'    DR ($D019 last-read) top 5: {[(f"${v:02X}", c) for v, c in dr_dist.most_common(5)]}')
-        print(f'    DS (cumulative seen-bits 0..3) sticky-OR across capture: ${ds_or:X}')
-        # Decode DR bit meaning
-        for v, c in dr_dist.most_common(3):
-            bits = []
-            if v & 0x01: bits.append('IRST')
-            if v & 0x02: bits.append('IMBC')
-            if v & 0x04: bits.append('IMMC')
-            if v & 0x08: bits.append('ILP')
-            print(f'      ${v:02X} = {"+".join(bits) if bits else "(no source bits)"}  (top bit is IRQ-pending flag)')
+        if 'dr' in irf_rows[0]:
+            dr_dist = collections.Counter(r['dr'] for r in irf_rows)
+            ds_or   = 0
+            for r in irf_rows: ds_or |= r['ds']
+            print(f'    DR ($D019 last-read) top 5: {[(f"${v:02X}", c) for v, c in dr_dist.most_common(5)]}')
+            print(f'    DS (cumulative seen-bits 0..3) sticky-OR across capture: ${ds_or:X}')
+            for v, c in dr_dist.most_common(3):
+                bits = []
+                if v & 0x01: bits.append('IRST')
+                if v & 0x02: bits.append('IMBC')
+                if v & 0x04: bits.append('IMMC')
+                if v & 0x08: bits.append('ILP')
+                print(f'      ${v:02X} = {"+".join(bits) if bits else "(no source bits)"}  (top bit is IRQ-pending flag)')
+
+    wc_rows = [r for r in rows if 'wc' in r]
+    if wc_rows:
+        print('  v267 $D012 raster-IRQ tail-chain timing (Path B1):')
+        wc_vals = [r['wc'] for r in wc_rows]
+        rr_vals = [r['rr'] for r in wc_rows]
+        dv_vals = [r['dv'] for r in wc_rows]
+        # WC = clk32 cycles between LAST IRQ_N falling and LAST $D012 write.
+        # At 32 MHz clk32, 1 cycle = 31.25 ns; 1 raster line ~63 us = 2016 clk32.
+        wc_avg = sum(wc_vals)/len(wc_vals)
+        wc_min = min(wc_vals)
+        wc_max = max(wc_vals)
+        print(f'    WC (cycles since IRQ_N fall to $D012 write):')
+        print(f'      min  = {wc_min:5d} clk32 ({wc_min/32:.1f} us)')
+        print(f'      avg  = {wc_avg:7.1f} clk32 ({wc_avg/32:.1f} us)')
+        print(f'      max  = {wc_max:5d} clk32 ({wc_max/32:.1f} us)')
+        print(f'      0xFFFF saturation count (no IRQ in capture window): {sum(1 for v in wc_vals if v == 0xFFFF)}')
+        wc_top = collections.Counter(wc_vals).most_common(8)
+        print(f'    WC top values: {[(v, c) for v, c in wc_top]}')
+        # raster-vs-compare diff
+        diffs = [(rr - dv) & 0xFFF for rr, dv in zip(rr_vals, dv_vals)]
+        # signed diff: rr - dv (rr can wrap 0..311; small positive = behind beam = bad)
+        signed_diffs = [(rr - dv) for rr, dv in zip(rr_vals, dv_vals)]
+        behind = sum(1 for d in signed_diffs if d > 0 and d < 64)
+        ahead  = sum(1 for d in signed_diffs if d <= 0 or d >= 64)
+        print(f'    Raster vs $D012 compare value:')
+        print(f'      RR (current raster at write) top 5: {[(v, c) for v, c in collections.Counter(rr_vals).most_common(5)]}')
+        print(f'      DV ($D012 value written) top 5:     {[(v, c) for v, c in collections.Counter(dv_vals).most_common(5)]}')
+        print(f'      "behind beam" count (RR>DV, RR-DV<64): {behind}/{len(wc_rows)} ({100*behind/max(len(wc_rows),1):.1f}%)')
+        print(f'      "ahead of beam" count: {ahead}/{len(wc_rows)} ({100*ahead/max(len(wc_rows),1):.1f}%)')
+        print('    first 12 frames raw (WC, RR, DV):')
+        for i, r in enumerate(wc_rows[:12]):
+            print(f'      {i:>3}  WC:{r["wc"]:04X} RR:{r["rr"]:03X}({r["rr"]:>3d})  DV:{r["dv"]:02X}({r["dv"]:>3d})  diff:{(r["rr"]-r["dv"]):+4d}')
 
 
 def main():

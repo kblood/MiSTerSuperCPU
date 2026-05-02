@@ -88,13 +88,17 @@ module debug_uart_pool_fmt
 	reg [15:0] lat_irq_vec;
 	reg  [7:0] lat_d019_rd;
 	reg  [3:0] lat_d019_seen;
+	// v267: $D012 raster-IRQ tail-chain timing (replaces DR/DS in line).
+	reg [15:0] lat_d012_wc;     // d012_write_cycles (clk32 cycles)
+	reg  [8:0] lat_d012_rr;     // raster_at_d012 (line 0..311 PAL)
+	reg  [7:0] lat_d012_dv;     // d012_last_val (compare value)
 
 	// -----------------------------------------------------------------
 	// Send FSM: drive tx_send for one cycle whenever tx is idle and the
 	// next byte hasn't been issued yet. byte_idx indexes the line bytes
 	// 0..LINE_LEN-1; LINE_LEN signals "line done, idle until next vblank".
 	// -----------------------------------------------------------------
-	localparam LINE_LEN = 8'd214;
+	localparam LINE_LEN = 8'd224;
 
 	reg [7:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -351,23 +355,39 @@ module debug_uart_pool_fmt
 			8'd200: line_byte = hex_nibble(lat_irq_vec[7:4]);
 			8'd201: line_byte = hex_nibble(lat_irq_vec[3:0]);
 
-			// v263: " DR:##" d019_last_read (value handler READS from $D019)
+			// v267: " WC:####" cycles between IRQ_N falling and last
+			// $D012 write (Path B1 — raster-IRQ tail-chain timing test).
+			// T65 expected ~few hundred clk32, SCPU expected larger.
 			8'd202: line_byte = " ";
-			8'd203: line_byte = "D";
-			8'd204: line_byte = "R";
+			8'd203: line_byte = "W";
+			8'd204: line_byte = "C";
 			8'd205: line_byte = ":";
-			8'd206: line_byte = hex_nibble(lat_d019_rd[7:4]);
-			8'd207: line_byte = hex_nibble(lat_d019_rd[3:0]);
+			8'd206: line_byte = hex_nibble(lat_d012_wc[15:12]);
+			8'd207: line_byte = hex_nibble(lat_d012_wc[11:8]);
+			8'd208: line_byte = hex_nibble(lat_d012_wc[7:4]);
+			8'd209: line_byte = hex_nibble(lat_d012_wc[3:0]);
 
-			// v263: " DS:#" d019_seen_bits (cumulative OR of source bits 0..3)
-			8'd208: line_byte = " ";
-			8'd209: line_byte = "D";
-			8'd210: line_byte = "S";
-			8'd211: line_byte = ":";
-			8'd212: line_byte = hex_nibble(lat_d019_seen);
+			// v267: " RR:###" raster line at $D012 write moment.
+			// Compare to DV: if RR > DV, the new compare value is
+			// BEHIND the beam -> immediate IRST re-fire.
+			8'd210: line_byte = " ";
+			8'd211: line_byte = "R";
+			8'd212: line_byte = "R";
+			8'd213: line_byte = ":";
+			8'd214: line_byte = hex_nibble({3'b0, lat_d012_rr[8]});
+			8'd215: line_byte = hex_nibble(lat_d012_rr[7:4]);
+			8'd216: line_byte = hex_nibble(lat_d012_rr[3:0]);
+
+			// v267: " DV:##" $D012 value written (next-fire raster).
+			8'd217: line_byte = " ";
+			8'd218: line_byte = "D";
+			8'd219: line_byte = "V";
+			8'd220: line_byte = ":";
+			8'd221: line_byte = hex_nibble(lat_d012_dv[7:4]);
+			8'd222: line_byte = hex_nibble(lat_d012_dv[3:0]);
 
 			// newline (LINE_LEN-1)
-			8'd213: line_byte = 8'h0A;
+			8'd223: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -429,6 +449,10 @@ module debug_uart_pool_fmt
 				lat_irq_vec   <= pool.irq_vec_count;
 				lat_d019_rd   <= pool.d019_last_read;
 				lat_d019_seen <= pool.d019_seen_bits;
+				// v267: $D012 raster-IRQ tail-chain timing latches
+				lat_d012_wc   <= pool.d012_write_cycles;
+				lat_d012_rr   <= pool.raster_at_d012;
+				lat_d012_dv   <= pool.d012_last_val;
 				byte_idx  <= 8'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin

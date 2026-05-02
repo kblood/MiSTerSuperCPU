@@ -1246,6 +1246,12 @@ wire  [7:0] scpu_dbg_p_irq_t0, scpu_dbg_p_irq_t1, scpu_dbg_p_irq_t2, scpu_dbg_p_
 // v262 — 4-deep ring of values written to $005C + counter
 wire  [7:0] scpu_dbg_wr5C_v0, scpu_dbg_wr5C_v1, scpu_dbg_wr5C_v2, scpu_dbg_wr5C_v3;
 wire [15:0] scpu_dbg_cnt_wr5C;
+// v267 — $D012 raster-IRQ tail-chain timing probe
+wire [15:0] scpu_dbg_d012_write_cycles;
+wire  [7:0] scpu_dbg_d012_last_val;
+wire  [8:0] scpu_dbg_raster_at_d012;
+wire [23:0] scpu_dbg_d012_last_pc;
+wire [15:0] scpu_dbg_d012_wr_count;
 
 // ---------------------------------------------------------------------------
 // Layered debug overlay (rtl/debug/) - pool struct + capture stubs.
@@ -1649,6 +1655,12 @@ assign dbg_pool.wr5C_v1        = scpu_dbg_wr5C_v1;
 assign dbg_pool.wr5C_v2        = scpu_dbg_wr5C_v2;
 assign dbg_pool.wr5C_v3        = scpu_dbg_wr5C_v3;
 assign dbg_pool.cnt_wr5C       = scpu_dbg_cnt_wr5C;
+// v267: $D012 raster-IRQ tail-chain timing probe (Path B1)
+assign dbg_pool.d012_write_cycles = scpu_dbg_d012_write_cycles;
+assign dbg_pool.d012_last_val     = scpu_dbg_d012_last_val;
+assign dbg_pool.raster_at_d012    = scpu_dbg_raster_at_d012;
+assign dbg_pool.d012_last_pc      = scpu_dbg_d012_last_pc;
+assign dbg_pool.d012_wr_count     = scpu_dbg_d012_wr_count;
 
 `ifdef DBG_CAP_FRAME
 cap_frame u_cap_frame (
@@ -2026,7 +2038,12 @@ fpga64_sid_iec fpga64
 	.dbg_wr5C_v1          (scpu_dbg_wr5C_v1),
 	.dbg_wr5C_v2          (scpu_dbg_wr5C_v2),
 	.dbg_wr5C_v3          (scpu_dbg_wr5C_v3),
-	.dbg_cnt_wr5C         (scpu_dbg_cnt_wr5C)
+	.dbg_cnt_wr5C         (scpu_dbg_cnt_wr5C),
+	.dbg_d012_write_cycles(scpu_dbg_d012_write_cycles),
+	.dbg_d012_last_val    (scpu_dbg_d012_last_val),
+	.dbg_raster_at_d012   (scpu_dbg_raster_at_d012),
+	.dbg_d012_last_pc     (scpu_dbg_d012_last_pc),
+	.dbg_d012_wr_count    (scpu_dbg_d012_wr_count)
 );
 
 wire [7:0] mouse_x;
