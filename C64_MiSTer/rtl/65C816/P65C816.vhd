@@ -62,6 +62,16 @@ architecture rtl of P65C816 is
 	signal WAIExec, STPExec : std_logic;
 	signal NMI_SYNC : std_logic;
 	signal NMI_ACTIVE, IRQ_ACTIVE : std_logic;
+	-- v272: NMOS RMW double-write detection. rmw_decode='1' for the 28
+	-- read-modify-write opcodes that operate on memory (matches the
+	-- existing process-local `rmw` variable used for MLB). The modify
+	-- cycle of those opcodes follows a unique microcode pattern
+	-- (LOAD_T="10", OUT_BUS="000", BUS_CTRL[5:3]="100"); when EF=1 we
+	-- need to inject an OLD-value write at that cycle to mimic the
+	-- NMOS 6502 RMW double-write semantic that DL relies on for VIC
+	-- IRQ ack via INC $D019.
+	signal rmw_decode       : std_logic;
+	signal rmw_modify_cycle : std_logic;
 	signal OLD_NMI_N, OLD_NMI2_N : std_logic;
 	signal RDY_IN_DELAYED : std_logic;
 	signal ADDR_BUS : std_logic_vector(23 downto 0);
@@ -276,6 +286,38 @@ begin
 	MF <= P(5);
 	XF <= P(4);
 	EF <= P(8);
+
+	-- v272: RMW opcode decode (mirrors the per-process `rmw` variable
+	-- at the VPB/MLB stage below). Excludes accumulator-mode INC/DEC
+	-- ($1A, $3A) which never touch memory.
+	rmw_decode <=
+		'1' when IR = x"06" or IR = x"0E" or IR = x"16" or IR = x"1E" or
+		         IR = x"C6" or IR = x"CE" or IR = x"D6" or IR = x"DE" or
+		         IR = x"E6" or IR = x"EE" or IR = x"F6" or IR = x"FE" or
+		         IR = x"46" or IR = x"4E" or IR = x"56" or IR = x"5E" or
+		         IR = x"26" or IR = x"2E" or IR = x"36" or IR = x"3E" or
+		         IR = x"66" or IR = x"6E" or IR = x"76" or IR = x"7E" or
+		         IR = x"14" or IR = x"1C" or IR = x"04" or IR = x"0C"
+		else '0';
+
+	-- v272: NMOS RMW modify-cycle override. Fires when:
+	--   * E=1 (emulation mode — MF is forced to 1 here so 8-bit memory)
+	--   * Current opcode is one of the 28 memory RMW instructions
+	--   * Microcode is in the modify cycle: LOAD_T="10" (T loads from
+	--     ALU at end-of-cycle, so T still holds the OLD just-read value
+	--     during the cycle), OUT_BUS="000" (no natural bus output),
+	--     BUS_CTRL[5:3]="100" (SB sourced from T -> ALU input is OLD T).
+	-- When asserted: drive D_OUT=T(7:0) (OLD value), force WE=0, and
+	-- force ADDR_INC=0 in the address process so the address points at
+	-- AA+0 (read/write target) instead of AA+1 (the natural slot 4
+	-- address used by the 16-bit-mode read of the high byte).
+	rmw_modify_cycle <=
+		'1' when EF = '1'
+		         and rmw_decode = '1'
+		         and MC.LOAD_T = "10"
+		         and MC.OUT_BUS = "000"
+		         and MC.BUS_CTRL(5 downto 3) = "100"
+		    else '0';
 
 	EF_OUT <= EF;
 	DBG_PC <= PC;
@@ -526,7 +568,11 @@ begin
 	end process;
 	
 	--Data bus
-	D_OUT <= P(7) & P(6) & (P(5) or EF) & ((P(4) or (not GotInterrupt and EF)) and not (GotInterrupt and (IsIRQInterrupt or IsNMIInterrupt) and EF)) & P(3 downto 0) when MC.OUT_BUS = "001" else
+	-- v272: override with OLD T(7:0) during NMOS RMW modify cycle. T
+	-- has not yet latched the ALU result this cycle, so T(7:0) is the
+	-- value just read in the previous cycle.
+	D_OUT <= T(7 downto 0) when rmw_modify_cycle = '1' else
+				P(7) & P(6) & (P(5) or EF) & ((P(4) or (not GotInterrupt and EF)) and not (GotInterrupt and (IsIRQInterrupt or IsNMIInterrupt) and EF)) & P(3 downto 0) when MC.OUT_BUS = "001" else
 				PC(15 downto 8) when MC.OUT_BUS = "010" and MC.BYTE_SEL(1) = '1' else
 				PC(7 downto 0) when MC.OUT_BUS = "010" and MC.BYTE_SEL(1) = '0' else
 				AA(15 downto 8) when MC.OUT_BUS = "011" and MC.BYTE_SEL(1) = '1' else
@@ -537,10 +583,12 @@ begin
 				DR when MC.OUT_BUS = "110" else
 				x"00";
 		
-	process(MC, IsResetInterrupt)
+	process(MC, IsResetInterrupt, rmw_modify_cycle)
 	begin
 		WE <= '1';
-		if MC.OUT_BUS /= "000" and IsResetInterrupt = '0' then
+		-- v272: NMOS RMW modify cycle is normally OUT_BUS="000" (no
+		-- write); force WE=0 to issue the OLD-value write.
+		if (MC.OUT_BUS /= "000" or rmw_modify_cycle = '1') and IsResetInterrupt = '0' then
 			WE <= '0';
 		end if;
 	end process;
@@ -625,10 +673,16 @@ begin
 	
 	
 	--Address bus
-	process(MC, PC, AA, DX, SP, EF, PBR, DBR, AB, IsResetInterrupt, IsABORTInterrupt, IsNMIInterrupt, IsIRQInterrupt, IsCOPInterrupt)
+	process(MC, PC, AA, DX, SP, EF, PBR, DBR, AB, IsResetInterrupt, IsABORTInterrupt, IsNMIInterrupt, IsIRQInterrupt, IsCOPInterrupt, rmw_modify_cycle)
 	variable ADDR_INC : unsigned(15 downto 0);
 	begin
 		ADDR_INC := (15 downto 2 => '0', 1 => MC.ADDR_INC(1), 0 => MC.ADDR_INC(0));
+		-- v272: NMOS RMW double-write addresses AA+0 (the operand byte),
+		-- not AA+1 (which is the slot 4 default for 16-bit second-byte
+		-- access). Zero ADDR_INC so the address mux below produces base+0.
+		if rmw_modify_cycle = '1' then
+			ADDR_INC := (others => '0');
+		end if;
 		case MC.ADDR_BUS is
 			when "0000" => 
 				ADDR_BUS <= PBR & PC; 
