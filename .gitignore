@@ -77,6 +77,33 @@ tools/vice_diff/*.raw_chunks.log
 # SCPU library sweep CSV outputs (regenerable from tools/scpu_library_sweep.py)
 /logs/
 
+# Historical per-version DL screenshot dirs (v200..v258 etc.) — superseded
+# by tools/dl_screens_v272_scpu/ which is the post-fix evidence.
+tools/dl_screens_*/
+!tools/dl_screens_v272_scpu/
+
+# Historical per-session UART captures — keep tools/dl_uart_baseline_v272_*
+# as v272 fix evidence. Earlier baselines are superseded.
+tools/dl_uart_scpu_*.txt
+tools/dl_uart_t65_*.txt
+tools/dl_uart_baseline_*/
+!tools/dl_uart_baseline_v272_*/
+
+# v272 sweep intermediate outputs (regenerable from tools/v272_sweep*.py).
+# Keep tools/v272_sweep2/ for the DL/asterix-on-SCPU screenshot evidence
+# referenced from the v272 memory notes.
+tools/v272_regress/
+tools/v272_sweep/
+!tools/v272_sweep2/
+
+# Local-only large game asset dump (16 MB REU; not source).
+dlair_assets/
+tools/dl00.reu
+
+# Per-version DL triage screenshot dumps from v200..v258 era — superseded
+# by v272 fix evidence under tools/dl_screens_v272_scpu/.
+docs/dl_triage/
+
 # GHDL/sim work directories (compile cache, not source)
 sim/**/work/
 sim/**/work_*/
