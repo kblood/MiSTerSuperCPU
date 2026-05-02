@@ -28,7 +28,7 @@ LINE_RE = re.compile(
     r"V:(?P<v0>[0-9A-F]+)\s+(?P<v1>[0-9A-F]+)\s+(?P<v2>[0-9A-F]+)\s+(?P<v3>[0-9A-F]+)\s+"
     r"YX:(?P<yx>[0-9A-F]+)\s+"
     r"WP:(?P<wp>[0-9A-F]+)\s+"
-    r"CG:(?P<cg>[0-9A-F]+)\s+"
+    r"(?:CG|W1):(?P<cg>[0-9A-F]+)\s+"
     r"CY:(?P<cy>[0-9A-F]+)\s+"
     r"J:(?P<j0>[0-9A-F]+)\s+(?P<j1>[0-9A-F]+)\s+(?P<j2>[0-9A-F]+)\s+(?P<j3>[0-9A-F]+)\s+"
     r"M:(?P<m0>[0-9A-F]+)\s+(?P<m1>[0-9A-F]+)\s+(?P<m2>[0-9A-F]+)\s+(?P<m3>[0-9A-F]+)"
@@ -136,6 +136,16 @@ def report(rows, label):
             d9 = (rows[-1]['c9'] - rows[0]['c9']) & 0xFFFF
             print(f'    C3 delta (page $30 opcode fetches): {d3} over {len(rows)} frames ({d3/len(rows):.1f}/frame)')
             print(f'    C9 delta (page $97 opcode fetches): {d9} over {len(rows)} frames ({d9/len(rows):.1f}/frame)')
+
+    # v265: d001_last_pc surfaces in CG slot — only meaningful with d001 writes.
+    # Use the field as a generic "last-CG-slot value" reporter.
+    if rows and 'cg' in rows[0]:
+        cg_dist = collections.Counter(r['cg'] for r in rows if 'cg' in r)
+        cg_top = cg_dist.most_common(8)
+        if cg_top:
+            print('  v265 CG-slot (= W1 = d001_last_pc[15:0] in v265+ builds):')
+            for v, c in cg_top:
+                print(f'    ${v:04X}  {c:5d}  ({100*c/len(rows):5.1f}%)')
 
     # v264: sprite-position last-write values
     sp_rows = [r for r in rows if 'sp0x' in r]

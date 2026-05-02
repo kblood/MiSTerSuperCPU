@@ -276,6 +276,11 @@ typedef struct packed {
   logic  [7:0] d002_last_val;
   logic  [7:0] d003_last_val;
   logic  [7:0] d010_last_val;
+  // v265: d001 writer PC. cpu_pc_now latched at the cycle that
+  // wrote $D001 (sprite0_y). v264 found SCPU writes Y=$AA every
+  // ~3rd frame, T65 keeps Y=$D4. The writer PC tells us which DL
+  // routine performs the bad $AA store.
+  logic [23:0] d001_last_pc;
 
   // v238: I-flag edge probes (sampled at opcode_fetch only).
   // p_set_pc/clr_pc identify the first instruction that observed the

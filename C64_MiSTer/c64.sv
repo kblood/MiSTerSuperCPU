@@ -1146,6 +1146,8 @@ wire  [7:0] scpu_dbg_d01d_last_val;
 // v236 sprite-position probe wires
 wire  [7:0] scpu_dbg_d000_last_val;
 wire  [7:0] scpu_dbg_d001_last_val;
+wire [23:0] scpu_dbg_d001_last_pc;
+
 wire  [7:0] scpu_dbg_d002_last_val;
 wire  [7:0] scpu_dbg_d003_last_val;
 wire  [7:0] scpu_dbg_d010_last_val;
@@ -1459,6 +1461,7 @@ assign dbg_pool.d01d_last_val  = scpu_dbg_d01d_last_val;
 // v236 sprite-position writes
 assign dbg_pool.d000_last_val  = scpu_dbg_d000_last_val;
 assign dbg_pool.d001_last_val  = scpu_dbg_d001_last_val;
+assign dbg_pool.d001_last_pc   = scpu_dbg_d001_last_pc;
 assign dbg_pool.d002_last_val  = scpu_dbg_d002_last_val;
 assign dbg_pool.d003_last_val  = scpu_dbg_d003_last_val;
 assign dbg_pool.d010_last_val  = scpu_dbg_d010_last_val;
@@ -1845,6 +1848,7 @@ fpga64_sid_iec fpga64
 	.dbg_d01d_last_val    (scpu_dbg_d01d_last_val),
 	.dbg_d000_last_val    (scpu_dbg_d000_last_val),
 	.dbg_d001_last_val    (scpu_dbg_d001_last_val),
+	.dbg_d001_last_pc     (scpu_dbg_d001_last_pc),
 	.dbg_d002_last_val    (scpu_dbg_d002_last_val),
 	.dbg_d003_last_val    (scpu_dbg_d003_last_val),
 	.dbg_d010_last_val    (scpu_dbg_d010_last_val),

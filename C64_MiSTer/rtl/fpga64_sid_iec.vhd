@@ -307,6 +307,7 @@ port(
 	-- $D010 (high-X bits) added so we can disambiguate X >= $100.
 	dbg_d000_last_val    : out std_logic_vector(7 downto 0);
 	dbg_d001_last_val    : out std_logic_vector(7 downto 0);
+	dbg_d001_last_pc     : out std_logic_vector(23 downto 0);
 	dbg_d002_last_val    : out std_logic_vector(7 downto 0);
 	dbg_d003_last_val    : out std_logic_vector(7 downto 0);
 	dbg_d010_last_val    : out std_logic_vector(7 downto 0);
@@ -753,6 +754,7 @@ signal d01d_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 -- v236 sprite-position write probes
 signal d000_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d001_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
+signal d001_last_pc_r   : std_logic_vector(23 downto 0) := (others => '0');
 signal d002_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d003_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d010_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
@@ -1857,6 +1859,7 @@ begin
 			d01d_last_val_r      <= (others => '0');
 			d000_last_val_r      <= (others => '0');
 			d001_last_val_r      <= (others => '0');
+			d001_last_pc_r       <= (others => '0');
 			d002_last_val_r      <= (others => '0');
 			d003_last_val_r      <= (others => '0');
 			d010_last_val_r      <= (others => '0');
@@ -2462,6 +2465,7 @@ begin
 			end if;
 			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "000001" then
 				d001_last_val_r <= std_logic_vector(cpuDo);
+				d001_last_pc_r  <= cpu_pc_now;
 			end if;
 			if cs_vic = '1' and cpuWe = '1' and cpuAddr(5 downto 0) = "000010" then
 				d002_last_val_r <= std_logic_vector(cpuDo);
@@ -2682,6 +2686,7 @@ dbg_d01d_last_val  <= d01d_last_val_r;
 -- v236 sprite-position outputs
 dbg_d000_last_val  <= d000_last_val_r;
 dbg_d001_last_val  <= d001_last_val_r;
+dbg_d001_last_pc   <= d001_last_pc_r;
 dbg_d002_last_val  <= d002_last_val_r;
 dbg_d003_last_val  <= d003_last_val_r;
 dbg_d010_last_val  <= d010_last_val_r;

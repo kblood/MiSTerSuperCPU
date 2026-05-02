@@ -70,7 +70,8 @@ module debug_uart_pool_fmt
 	reg  [7:0] lat_v0, lat_v1, lat_v2, lat_v3;
 	reg  [7:0] lat_y, lat_x;
 	reg [23:0] lat_wp;
-	reg [15:0] lat_cg;
+	reg [15:0] lat_cg;     // v257 cnt_wr02_chg (now repurposed as W1)
+	reg [15:0] lat_w1;     // v265 d001_last_pc[15:0] — writer PC of $D001
 	reg [15:0] lat_cy;
 	reg [15:0] lat_jsr0, lat_jsr1, lat_jsr2, lat_jsr3;
 	reg [15:0] lat_jmp0, lat_jmp1, lat_jmp2, lat_jmp3;
@@ -173,14 +174,14 @@ module debug_uart_pool_fmt
 			8'd52: line_byte = hex_nibble(lat_wp[3:0]);
 			8'd53: line_byte = " ";
 
-			// "CG:####"
-			8'd54: line_byte = "C";
-			8'd55: line_byte = "G";
+			// v265: "W1:####" — d001_last_pc[15:0], writer PC of $D001 (sprite0 Y)
+			8'd54: line_byte = "W";
+			8'd55: line_byte = "1";
 			8'd56: line_byte = ":";
-			8'd57: line_byte = hex_nibble(lat_cg[15:12]);
-			8'd58: line_byte = hex_nibble(lat_cg[11:8]);
-			8'd59: line_byte = hex_nibble(lat_cg[7:4]);
-			8'd60: line_byte = hex_nibble(lat_cg[3:0]);
+			8'd57: line_byte = hex_nibble(lat_w1[15:12]);
+			8'd58: line_byte = hex_nibble(lat_w1[11:8]);
+			8'd59: line_byte = hex_nibble(lat_w1[7:4]);
+			8'd60: line_byte = hex_nibble(lat_w1[3:0]);
 			8'd61: line_byte = " ";
 
 			// "CY:####"
@@ -397,6 +398,7 @@ module debug_uart_pool_fmt
 				lat_x     <= pool.wr02_x;
 				lat_wp    <= pool.wr02_pc;
 				lat_cg    <= pool.cnt_wr02_chg;
+				lat_w1    <= pool.d001_last_pc[15:0];
 				lat_cy    <= pool.cnt_wr02;
 				lat_jsr0  <= pool.jsr_pc_t0;
 				lat_jsr1  <= pool.jsr_pc_t1;
