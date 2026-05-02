@@ -78,6 +78,8 @@ module debug_uart_pool_fmt
 	reg [23:0] lat_pc_main, lat_pc_irq;
 	reg  [7:0] lat_m45;
 	reg [15:0] lat_c30, lat_c97;
+	// v264: sprite-position last-write probes (replaces C3/C9 in line)
+	reg  [7:0] lat_d000, lat_d001, lat_d002, lat_d003;
 	reg  [7:0] lat_w5c0, lat_w5c1, lat_w5c2, lat_w5c3;
 	reg [15:0] lat_w5cN;
 	// v263: IRQ-source confirmation
@@ -280,25 +282,26 @@ module debug_uart_pool_fmt
 			8'd145: line_byte = hex_nibble(lat_m45[7:4]);
 			8'd146: line_byte = hex_nibble(lat_m45[3:0]);
 
-			// " C3:#### " count of opcode fetches in page $30
+			// v264: " SP:## ## ## ##" sprite0/1 X/Y last-written values
+			// (replaces C3/C9 page fetch counters — those signatures
+			// already locked in via v260 baseline; sprite positions
+			// are the live divergence-finder.)
 			8'd147: line_byte = " ";
-			8'd148: line_byte = "C";
-			8'd149: line_byte = "3";
+			8'd148: line_byte = "S";
+			8'd149: line_byte = "P";
 			8'd150: line_byte = ":";
-			8'd151: line_byte = hex_nibble(lat_c30[15:12]);
-			8'd152: line_byte = hex_nibble(lat_c30[11:8]);
-			8'd153: line_byte = hex_nibble(lat_c30[7:4]);
-			8'd154: line_byte = hex_nibble(lat_c30[3:0]);
-
-			// " C9:####" count of opcode fetches in page $97
-			8'd155: line_byte = " ";
-			8'd156: line_byte = "C";
-			8'd157: line_byte = "9";
-			8'd158: line_byte = ":";
-			8'd159: line_byte = hex_nibble(lat_c97[15:12]);
-			8'd160: line_byte = hex_nibble(lat_c97[11:8]);
-			8'd161: line_byte = hex_nibble(lat_c97[7:4]);
-			8'd162: line_byte = hex_nibble(lat_c97[3:0]);
+			8'd151: line_byte = hex_nibble(lat_d000[7:4]);
+			8'd152: line_byte = hex_nibble(lat_d000[3:0]);
+			8'd153: line_byte = " ";
+			8'd154: line_byte = hex_nibble(lat_d001[7:4]);
+			8'd155: line_byte = hex_nibble(lat_d001[3:0]);
+			8'd156: line_byte = " ";
+			8'd157: line_byte = hex_nibble(lat_d002[7:4]);
+			8'd158: line_byte = hex_nibble(lat_d002[3:0]);
+			8'd159: line_byte = " ";
+			8'd160: line_byte = hex_nibble(lat_d003[7:4]);
+			8'd161: line_byte = hex_nibble(lat_d003[3:0]);
+			8'd162: line_byte = " ";
 
 			// " W5:## ## ## ##" v262 4-deep ring of writes to $005C
 			8'd163: line_byte = " ";
@@ -411,6 +414,10 @@ module debug_uart_pool_fmt
 				lat_m45     <= pool.mem_45;
 				lat_c30     <= pool.cnt_pc_30;
 				lat_c97     <= pool.cnt_pc_97;
+				lat_d000    <= pool.d000_last_val;
+				lat_d001    <= pool.d001_last_val;
+				lat_d002    <= pool.d002_last_val;
+				lat_d003    <= pool.d003_last_val;
 				lat_w5c0    <= pool.wr5C_v0;
 				lat_w5c1    <= pool.wr5C_v1;
 				lat_w5c2    <= pool.wr5C_v2;

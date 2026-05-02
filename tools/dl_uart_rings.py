@@ -33,7 +33,7 @@ LINE_RE = re.compile(
     r"J:(?P<j0>[0-9A-F]+)\s+(?P<j1>[0-9A-F]+)\s+(?P<j2>[0-9A-F]+)\s+(?P<j3>[0-9A-F]+)\s+"
     r"M:(?P<m0>[0-9A-F]+)\s+(?P<m1>[0-9A-F]+)\s+(?P<m2>[0-9A-F]+)\s+(?P<m3>[0-9A-F]+)"
     r"(?:\s+G:(?P<g40>[0-9A-F]+)\s+(?P<g44>[0-9A-F]+)\s+(?P<g5c>[0-9A-F]+))?"
-    r"(?:\s+N:(?P<n>[0-9A-F]+)\s+I:(?P<ii>[0-9A-F]+)\s+B:(?P<b>[0-9A-F]+)\s+C3:(?P<c3>[0-9A-F]+)\s+C9:(?P<c9>[0-9A-F]+))?"
+    r"(?:\s+N:(?P<n>[0-9A-F]+)\s+I:(?P<ii>[0-9A-F]+)\s+B:(?P<b>[0-9A-F]+)(?:\s+C3:(?P<c3>[0-9A-F]+)\s+C9:(?P<c9>[0-9A-F]+))?(?:\s+SP:(?P<sp0x>[0-9A-F]+)\s+(?P<sp0y>[0-9A-F]+)\s+(?P<sp1x>[0-9A-F]+)\s+(?P<sp1y>[0-9A-F]+))?)?"
     r"(?:\s+W5:(?P<w5c0>[0-9A-F]+)\s+(?P<w5c1>[0-9A-F]+)\s+(?P<w5c2>[0-9A-F]+)\s+(?P<w5c3>[0-9A-F]+)\s+N5:(?P<n5>[0-9A-F]+))?"
     r"(?:\s+IF:(?P<irf>[0-9A-F]+)\s+VC:(?P<ivc>[0-9A-F]+)\s+DR:(?P<dr>[0-9A-F]+)\s+DS:(?P<ds>[0-9A-F]+))?"
 )
@@ -58,8 +58,14 @@ def load(path):
             row['n']  = int(m['n'],  16)
             row['ii'] = int(m['ii'], 16)
             row['b']  = int(m['b'],  16)
-            row['c3'] = int(m['c3'], 16)
-            row['c9'] = int(m['c9'], 16)
+            if m['c3'] is not None:
+                row['c3'] = int(m['c3'], 16)
+                row['c9'] = int(m['c9'], 16)
+            if m['sp0x'] is not None:
+                row['sp0x'] = int(m['sp0x'], 16)
+                row['sp0y'] = int(m['sp0y'], 16)
+                row['sp1x'] = int(m['sp1x'], 16)
+                row['sp1y'] = int(m['sp1y'], 16)
         if m['w5c0'] is not None:
             row['w5c'] = [int(m[f'w5c{i}'], 16) for i in range(4)]
             row['n5']  = int(m['n5'], 16)
@@ -125,11 +131,25 @@ def report(rows, label):
             print(f'      {pc:06X}  {c:5d}  ({100*c/len(rows):5.1f}%)')
         print(f'    $0045 (wait-loop var): top values: {[(hex(v), c) for v, c in b_dist.most_common(5)]}')
         # C3/C9 deltas: monotonic counters, take last - first to get total over capture
-        if len(rows) > 1:
+        if len(rows) > 1 and 'c3' in rows[0]:
             d3 = (rows[-1]['c3'] - rows[0]['c3']) & 0xFFFF
             d9 = (rows[-1]['c9'] - rows[0]['c9']) & 0xFFFF
             print(f'    C3 delta (page $30 opcode fetches): {d3} over {len(rows)} frames ({d3/len(rows):.1f}/frame)')
             print(f'    C9 delta (page $97 opcode fetches): {d9} over {len(rows)} frames ({d9/len(rows):.1f}/frame)')
+
+    # v264: sprite-position last-write values
+    sp_rows = [r for r in rows if 'sp0x' in r]
+    if sp_rows:
+        print('  v264 sprite positions ($D000=spr0_x, $D001=spr0_y, $D002=spr1_x, $D003=spr1_y):')
+        for key, label in [('sp0x','spr0_x'),('sp0y','spr0_y'),('sp1x','spr1_x'),('sp1y','spr1_y')]:
+            dist = collections.Counter(r[key] for r in sp_rows)
+            top = [(f'${v:02X}', c) for v, c in dist.most_common(8)]
+            uniq = len(dist)
+            print(f'    {label} unique:{uniq:3d}  top: {top}')
+        # First-12 frames sprite snapshot
+        print('    first 12 frames spr0_x spr0_y / spr1_x spr1_y:')
+        for i, r in enumerate(sp_rows[:12]):
+            print(f'      {i:>3}  {r["sp0x"]:02X} {r["sp0y"]:02X}  /  {r["sp1x"]:02X} {r["sp1y"]:02X}')
 
     if rows and 'w5c' in rows[0]:
         print('  v262 $005C write-ring (4-deep, oldest..newest) + writes/frame:')
