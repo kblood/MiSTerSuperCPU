@@ -71,7 +71,14 @@ entity video_vicii_656x is
 		debugX  : out unsigned(9 downto 0);
 		debugY  : out unsigned(8 downto 0);
 		vicRefresh : out std_logic;
-		addrValid : out std_logic
+		addrValid : out std_logic;
+
+		-- v269: VIC-internal IRQ ack diagnostics. Pulse high for one clk32
+		-- cycle when myWr_a fires with addr_r=$D019 (regardless of data),
+		-- and when resetRasterIrq actually pulses (IRST is being cleared).
+		-- Used to triangulate why SCPU's $D019 ack writes don't clear IRST.
+		dbg_d019_wr_pulse    : out std_logic;
+		dbg_resetraster_pulse: out std_logic
 	);
 end entity;
 
@@ -301,6 +308,10 @@ begin
 	myWr_a <= '1' when we_r = '1' and enaPixel = '1' and rasterX(2 downto 0) = "011" else '0';
 	myWr_b <= '1' when we_r = '1' and enaPixel = '1' and rasterX(2 downto 0) = "100" else '0';
 	myWr_c <= '1' when we_r = '1' and enaPixel = '1' and rasterX(2 downto 0) = "101" else '0';
+
+	-- v269 IRQ ack diagnostics
+	dbg_d019_wr_pulse     <= '1' when myWr_a = '1' and addr_r = "011001" else '0';
+	dbg_resetraster_pulse <= resetRasterIrq;
 	-- timing of the read is only important for the collision register reads
 	myRd   <= '1' when cs = '1' and phi = '1' and we = '0' and enaPixel = '1' and rasterX(1 downto 0) = "01" else '0';
 

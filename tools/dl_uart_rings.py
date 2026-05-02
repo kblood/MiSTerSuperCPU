@@ -33,7 +33,7 @@ LINE_RE = re.compile(
     r"J:(?P<j0>[0-9A-F]+)\s+(?P<j1>[0-9A-F]+)\s+(?P<j2>[0-9A-F]+)\s+(?P<j3>[0-9A-F]+)\s+"
     r"M:(?P<m0>[0-9A-F]+)\s+(?P<m1>[0-9A-F]+)\s+(?P<m2>[0-9A-F]+)\s+(?P<m3>[0-9A-F]+)"
     r"(?:\s+G:(?P<g40>[0-9A-F]+)\s+(?P<g44>[0-9A-F]+)\s+(?P<g5c>[0-9A-F]+))?"
-    r"(?:\s+N:(?P<n>[0-9A-F]+)\s+I:(?P<ii>[0-9A-F]+)\s+B:(?P<b>[0-9A-F]+)(?:\s+C3:(?P<c3>[0-9A-F]+)\s+C9:(?P<c9>[0-9A-F]+))?(?:\s+SP:(?P<sp0x>[0-9A-F]+)\s+(?P<sp0y>[0-9A-F]+)\s+(?P<sp1x>[0-9A-F]+)\s+(?P<sp1y>[0-9A-F]+))?(?:\s+IR:(?P<irc>[0-9A-F]+)\s+IV:(?P<ivr>[0-9A-F]+))?)?"
+    r"(?:\s+N:(?P<n>[0-9A-F]+)\s+I:(?P<ii>[0-9A-F]+)\s+B:(?P<b>[0-9A-F]+)(?:\s+C3:(?P<c3>[0-9A-F]+)\s+C9:(?P<c9>[0-9A-F]+))?(?:\s+SP:(?P<sp0x>[0-9A-F]+)\s+(?P<sp0y>[0-9A-F]+)\s+(?P<sp1x>[0-9A-F]+)\s+(?P<sp1y>[0-9A-F]+))?(?:\s+(?:IR|VW):(?P<irc>[0-9A-F]+)\s+(?:IV|AC):(?P<ivr>[0-9A-F]+))?)?"
     r"(?:\s+W5:(?P<w5c0>[0-9A-F]+)\s+(?P<w5c1>[0-9A-F]+)\s+(?P<w5c2>[0-9A-F]+)\s+(?P<w5c3>[0-9A-F]+)\s+N5:(?P<n5>[0-9A-F]+))?"
     r"(?:\s+IF:(?P<irf>[0-9A-F]+)\s+VC:(?P<ivc>[0-9A-F]+)(?:\s+DR:(?P<dr>[0-9A-F]+)\s+DS:(?P<ds>[0-9A-F]+))?(?:\s+WC:(?P<wc>[0-9A-F]+)\s+RR:(?P<rr>[0-9A-F]+)\s+DV:(?P<dv>[0-9A-F]+))?)?"
 )
@@ -215,20 +215,24 @@ def report(rows, label):
 
     irc_rows = [r for r in rows if 'irc' in r]
     if irc_rows and len(irc_rows) > 1:
-        print('  v268 IRQ rising-edge counters (does ack reach VIC?):')
+        # In v269 builds: irc=vic_d019_wr (myWr_a $D019), ivr=vic_resetraster
+        # In v268 builds: irc=irq_combined rises, ivr=irq_vic rises
+        # Reporter prints both interpretations.
+        print('  v269 VIC-internal IRQ ack diagnostics (also v268 IRQ rise counters):')
         dirc = (irc_rows[-1]['irc'] - irc_rows[0]['irc']) & 0xFFFF
         divr = (irc_rows[-1]['ivr'] - irc_rows[0]['ivr']) & 0xFFFF
         n = len(irc_rows)
-        print(f'    IR delta (irq_combined rising edges): {dirc:6d} ({dirc/n:.2f}/frame)')
-        print(f'    IV delta (irq_vic rising edges):       {divr:6d} ({divr/n:.2f}/frame)')
-        if dirc == 0 and divr == 0:
-            print('    => irq_vic NEVER rises -> VIC IRST never clears.')
-            print('       SCPU $D019 ack writes are NOT reaching the VIC.')
-        elif divr > 0 and dirc == 0:
-            print('    => irq_vic rises but irq_combined does not.')
-            print('       Some other source on the AND-chain holds combined low.')
-        elif divr > 0 and dirc > 0:
-            print('    => Normal: VIC ack works AND combined rises.')
+        print(f'    VW=IR delta (myWr_a $D019 hits / irq_combined rises): {dirc:6d} ({dirc/n:.2f}/frame)')
+        print(f'    AC=IV delta (resetRasterIrq pulses / irq_vic rises):  {divr:6d} ({divr/n:.2f}/frame)')
+        # v269 interpretation
+        if dirc == 0:
+            print('    => v269: myWr_a never fires for $D019 -> ALIGNMENT failure (write doesnt reach VIC).')
+        elif dirc > 0 and divr == 0:
+            print('    => v269: myWr_a fires but resetRasterIrq never pulses -> di_r(0)=0 (DATA bit-0 corruption).')
+        elif dirc > 0 and divr > 0 and dirc != divr:
+            print('    => v269: counts diverge -> some myWr_a $D019 hits had di_r(0)=0 -> partial DATA corruption.')
+        elif dirc > 0 and divr > 0:
+            print('    => v269: ack reaches VIC (alignment + data fine). IRST race elsewhere.')
 
     wc_rows = [r for r in rows if 'wc' in r]
     if wc_rows:

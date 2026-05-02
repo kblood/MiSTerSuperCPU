@@ -583,7 +583,20 @@ port(
 	dbg_d012_wr_count     : out std_logic_vector(15 downto 0);
 	-- v268: irq_vic rising-edge counter + combined rising-edge counter.
 	dbg_irq_vic_rise_count   : out std_logic_vector(15 downto 0);
-	dbg_irq_combined_rise_count : out std_logic_vector(15 downto 0)
+	dbg_irq_combined_rise_count : out std_logic_vector(15 downto 0);
+	-- v269: VIC-internal IRQ ack diagnostics.
+	--   vic_d019_wr_count   : myWr_a fires AND addr_r=$D019 inside the VIC
+	--                         (regardless of di_r(0)). Distinct from the
+	--                         existing dbg_d019_wr_count which counts CPU-side
+	--                         attempts. T65 expected ~1/frame; SCPU=0 ⇒
+	--                         alignment failure (write doesn't reach VIC's
+	--                         myWr_a path at all).
+	--   vic_resetraster_count : resetRasterIrq pulses (IRST being cleared).
+	--                         T65 expected ~1/frame == vic_d019_wr_count.
+	--                         If SCPU has vic_d019_wr_count>0 but
+	--                         vic_resetraster_count=0 ⇒ data-bit-0 corruption.
+	dbg_vic_d019_wr_count      : out std_logic_vector(15 downto 0);
+	dbg_vic_resetraster_count  : out std_logic_vector(15 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -797,6 +810,11 @@ signal d012_wr_count_r         : unsigned(15 downto 0)         := (others => '0'
 signal irq_vic_d              : std_logic := '1';
 signal irq_vic_rise_count_r   : unsigned(15 downto 0) := (others => '0');
 signal irq_combined_rise_count_r : unsigned(15 downto 0) := (others => '0');
+-- v269: VIC-internal $D019 ack diagnostics
+signal vic_d019_wr_pulse        : std_logic := '0';
+signal vic_resetraster_pulse    : std_logic := '0';
+signal vic_d019_wr_count_r      : unsigned(15 downto 0) := (others => '0');
+signal vic_resetraster_count_r  : unsigned(15 downto 0) := (others => '0');
 signal d002_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d003_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d010_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
@@ -1483,7 +1501,11 @@ port map (
 
 	debugY => dbg_raster_y,
 
-	irq_n => irq_vic
+	irq_n => irq_vic,
+
+	-- v269 VIC-internal IRQ ack diagnostics
+	dbg_d019_wr_pulse     => vic_d019_wr_pulse,
+	dbg_resetraster_pulse => vic_resetraster_pulse
 );
 
 c64colors: entity work.fpga64_rgbcolor
@@ -1926,6 +1948,9 @@ begin
 			irq_vic_d                   <= '1';
 			irq_vic_rise_count_r        <= (others => '0');
 			irq_combined_rise_count_r   <= (others => '0');
+			-- v269: VIC-internal $D019 ack diagnostics
+			vic_d019_wr_count_r         <= (others => '0');
+			vic_resetraster_count_r     <= (others => '0');
 			d002_last_val_r      <= (others => '0');
 			d003_last_val_r      <= (others => '0');
 			d010_last_val_r      <= (others => '0');
@@ -2607,6 +2632,18 @@ begin
 				irq_vic_rise_count_r <= irq_vic_rise_count_r + 1;
 			end if;
 
+			-- v269: VIC-internal $D019 ack diagnostics. Both signals are
+			-- 1-clk32 pulses generated inside the VIC. vic_d019_wr_count
+			-- ticks every time myWr_a fires with addr_r=$D019 regardless
+			-- of di_r(0). vic_resetraster_count ticks every time the VIC's
+			-- internal resetRasterIrq pulses (IRST clear).
+			if vic_d019_wr_pulse = '1' then
+				vic_d019_wr_count_r <= vic_d019_wr_count_r + 1;
+			end if;
+			if vic_resetraster_pulse = '1' then
+				vic_resetraster_count_r <= vic_resetraster_count_r + 1;
+			end if;
+
 			-- v211: PC ring buffer push on opcode-fetch pulses, only while
 			-- not frozen. cpu_pc_now / opcode_fetch_pulse are concurrent.
 			-- v223: parallel opcode-byte ring captures cpuDi at the same
@@ -2791,6 +2828,9 @@ dbg_d012_wr_count     <= std_logic_vector(d012_wr_count_r);
 -- v268 IRQ rising-edge outputs
 dbg_irq_vic_rise_count      <= std_logic_vector(irq_vic_rise_count_r);
 dbg_irq_combined_rise_count <= std_logic_vector(irq_combined_rise_count_r);
+-- v269 VIC-internal IRQ ack outputs
+dbg_vic_d019_wr_count      <= std_logic_vector(vic_d019_wr_count_r);
+dbg_vic_resetraster_count  <= std_logic_vector(vic_resetraster_count_r);
 dbg_d002_last_val  <= d002_last_val_r;
 dbg_d003_last_val  <= d003_last_val_r;
 dbg_d010_last_val  <= d010_last_val_r;

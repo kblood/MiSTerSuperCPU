@@ -539,6 +539,18 @@ typedef struct packed {
   //                                   on the AND chain holds combined low.
   logic [15:0] irq_vic_rise_count;
   logic [15:0] irq_combined_rise_count;
+
+  // v269: VIC-internal IRQ ack diagnostics. v268 confirmed irq_vic
+  // never rises on SCPU. These two counters peek inside the VIC to
+  // distinguish where the $D019 ack write fails:
+  //   vic_d019_wr_count     : myWr_a fires AND addr_r=$D019 (regardless
+  //                           of di_r(0)). Cf. dbg_pool.d019_wr_count
+  //                           which counts CPU-side attempts.
+  //   vic_resetraster_count : resetRasterIrq pulses (IRST clear path
+  //                           actually fires). Should equal
+  //                           vic_d019_wr_count when di_r(0)=1 each time.
+  logic [15:0] vic_d019_wr_count;
+  logic [15:0] vic_resetraster_count;
 } dbg_pool_t;
 `endif
 
