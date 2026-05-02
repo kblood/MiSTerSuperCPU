@@ -246,105 +246,194 @@ end if;
 Net: ~5057 fails eliminated. No regressions on adjacent flag opcodes
 ($38 SEC, $f8 SED, $78 SEI, $58 CLI, $b8 CLV, $18 CLC, $d8 CLD all 9989+/0).
 
-## F9 — WAI / STP halted-cycle RWB
+## F9 — WAI / STP / WDM null-cycle bus-flag compares — FIXED
 
-### Smoking gun
+### Smoking guns
 
-cb.e (WAI) case 0: `CY[3] RWB exp=0 got_we=1`. SST's null cycles have
-addr=null in JSON; converter writes `FFFFFF XX 0 ........` and the
-bench skips addr/data when valid=0. But it still compares the cycle
-flags including RWB.
-
-### Mechanism
-
-When CPU is halted, RWB is meaningless on real silicon — SST records
-RWB=0 (read default) in those cycle slots regardless of what the
-silicon drives. Our RTL drives WE=1 (write asserted) on the entry
-cycle, then ought to settle. Bench compares anyway → universal fail.
-
-### Proposed fix
-
-Bench-side: when `valid=0` (null cycle), skip RWB / VDA / VPA / VPB /
-MLB comparisons too — only compare the bus-level flags on real bus
-cycles.
-
-Risk: trivial.
-
-### Expected impact
-
-~40 K cases ($cb + $db both modes). Pure cosmetic — no real-world
-software depends on WAI/STP cycle-flag semantics.
-
-## F10 — JSR (abs,X) prelude collision
-
-### Smoking gun
-
-fc.e and fc.n: 0 pass / 0 fail / **10 000 skip** each. Prelude's
-case_skipped predicate fires for every case.
+- cb.e (WAI) case 0: `CY[3] RWB exp=0 got_we=1`.
+- 42.e (WDM) case 0: `CY[1] VPA exp=0 got=1` (folded in: F4 was the
+  same root cause).
 
 ### Mechanism
 
-JSR (abs,X) reads its indirect pointer from `$00:(operand + X)` after
-pushing the return address to stack. SST cases place the indirect
-pointer somewhere benign, but the prelude's PHA scratch byte at
-`$01:(S_low)` apparently overlaps with what the bench checks. More
-likely: the converter is emitting a prelude byte at an address that
-happens to be the JSR (abs,X) target, and the skip predicate triggers.
+SST's null cycles have addr=null in the JSON; the converter writes
+`FFFFFF XX 0 ........` and the bench's `valid` field is '0'. Bus-flag
+fields (VDA/VPA/RWB/MLB) are informational-only on real silicon during
+those cycles, so SST records the default RWB=0/VDA=0/VPA=0 regardless
+of what the chip is actually driving. Previous bench gated only
+addr+data on `valid='1'` but still compared flags on null cycles,
+causing universal fail on $cb (WAI), $db (STP), $42 (WDM), and partial
+fails on every opcode whose cycle trace contains a null IO cycle.
 
-Worth verifying: the converter unconditionally adds 35-byte prelude;
-case .ram entries in init that overlap the prelude region cause skip.
-JSR (abs,X) likely places its operand high byte exactly there for many
-cases.
+### Fix (committed)
 
-### Proposed fix
+`p65c816_sst_tb.vhd` — wrap the entire VDA/VPA/RWB/MLB block in
+`if cyc_exp(i).valid = '1'`.
 
-Investigate: dump one fc.e case's prelude span vs case.ram. If the
-overlap is benign (prelude byte and case byte happen to match), tighten
-the skip predicate to skip only on **content mismatch**, not
-unconditional overlap.
+### Result
 
-Risk: low; the predicate is local to the bench.
+| Op | Pre-fix | Post-fix |
+|---|---|---|
+| cb.e WAI | 0 / 10000 | 10000 / 0 |
+| cb.n WAI | 0 / 10000 (-3 skip) | 9995 / 0 |
+| db.e STP | 0 / 10000 | 10000 / 0 |
+| db.n STP | 0 / 10000 (-11 skip) | 9989 / 0 |
+| 42.e WDM | 0 / 10000 | 10000 / 0 |
+| 42.n WDM | 0 / 10000 (-7 skip) | 9993 / 0 |
 
-### Expected impact
+Net: **~60 K** cases eliminated. Subsumes F4 as a duplicate.
 
-20 K cases (will move from skip to pass column once predicate is
-tighter; some may turn into real fails that need separate triage).
+## F10 — FR-cells stack-collision skip predicate over-conservative — FIXED
 
-## F6, F7, F8, F11, F12 — small / individual
+### Smoking gun
 
-These are smaller in count; characterize during a single follow-up
-commit after the big families are gone.
+fc.e and fc.n: 0 pass / 0 fail / **10 000 skip** each.
 
-- **F6 PLD ($2B)** — 181 fails: D=81, P=100. PLD pulls D from stack;
-  small subset of cases differ. Likely flag-derivation issue
-  (D≠0 → Z=0 / D[15] → N).
-- **F7 RTL ($6B)** — 219 fails: PBR mismatch on subset. Probably PBR
-  pulled from wrong stack offset, or RTL in emu mode.
-- **F8 PLY ($7A.e 36, $7A.n 1)** — small subset: pulled byte wrong.
-  Could be prelude scratch-byte collision the bench's `case_skipped`
-  predicate doesn't cover.
-- **F11 RTS scattered ($60.e 92)** — most cases pass; failures are
-  scattered. Not the simple +1 PC bug from RTI; cases like
-  `exp=A950 got=4050` differ in PCH by tens of bytes — pulled wrong
-  bytes from stack in some specific patterns.
-- **F12 single-case strays** — many opcodes show 1-100 fails each
-  ($57, $65, $77, $87, $91, $93.n, $97, $a4, $b2, $b7, $c1, $c6, $d2,
-  $d5, $d6, $e5, $f2, $f6, $f7, etc.). Mostly P-flag or RAM mismatches
-  on edge-case data. Investigate after big families to see if any
-  share a common root cause.
+### Mechanism
 
-## Fix order (impact-weighted)
+The bench's skip predicate flagged a collision when any final.ram
+(FR) cell sat at `$00:(stk_top)` or `$00:(stk_below)`, the addresses
+the prelude transiently writes for its PHA/PLP. But an FR cell at the
+stack address means SST recorded a CHANGED final value, which by
+definition implies the test instruction wrote there. The prelude's
+stale byte at stk_top is overwritten by that legitimate stack push,
+so the final state matches.
 
-| Step | Family | Effort | Wipes |
+### Fix (committed)
+
+Removed the FR-cells loop in the skip predicate. Kept the IR-cells
+(init.ram) collision check as the real safety net for cases where
+the prelude clobbers explicitly-set test setup bytes.
+
+### Result
+
+| Op | Pre-fix | Post-fix |
+|---|---|---|
+| 20.e JSR | 0 / 10000 skip | 10000 / 0 / 0 |
+| 20.n JSR | 0 / 10000 skip | 9994 / 0 / 6 |
+| 22.n JSL | 0 / 10000 skip | 9993 / 0 / 7 |
+| 60.n RTS | 0 / 10000 skip | 9991 / 0 / 9 |
+| fc.e JSR(abs,X) | 0 / 10000 skip | (revealed VDA bug, fixed by F2-like microcode) |
+
+Combined with the FC microcode fix (cycles 6,7 VA="01"→"10", same
+shape as F2), $fc clean both modes.
+
+## F2 — \$FC JSR (abs,X) indirect-read VDA — FIXED
+
+Same shape as the original F2 ($7C JMP (abs,X)) fix: cycles 6 and 7
+of $fc fetch the indirect target through PBR:AA, which is a data read
+(VDA=1, VPA=0). MCode VA field changed from "01" to "10".
+
+`fc.e: 0 / 10000 → 10000 / 0`  
+`fc.n: 0 / 9995 → 9995 / 0` (5 prelude-skip)
+
+## F8 — Reset-stub clobbers prelude PHA target at \$00:01:FD — FIXED
+
+### Smoking gun
+
+7a.e PLY case 188: `Y8 exp=E9 got=CE`. Y received $CE which is the
+case A_hi byte the prelude pushed via its first PHA. Verbose run
+showed PLY read at correct address $0001FD but `mem[$01FD]=$CE`,
+not $E9 from the IR cell.
+
+### Mechanism
+
+The RTL's reset-interrupt microcode runs the standard 3-push BRK
+sequence — BUS_CTRL suppresses the actual writes but SP still
+decrements three times. With reset SP=$0100 and emu-mode wrap, the
+prelude entry sees SP=$01:FD. The prelude's first PHA (offset 12, in
+native mode after the first XCE) writes the case's DBR-priming byte
+to $00:01:FD. Any case init.ram cell at $00:01:FD therefore gets
+clobbered before the test instruction runs.
+
+### Fix (committed)
+
+Bench-side: extend the prelude/IR collision check to skip cases with
+init.ram cells at $00:01:FD.
+
+### Result
+
+| Op | Pre-fix | Post-fix |
+|---|---|---|
+| 7a.e PLY | 9930 / 188 / 0 | 9964 / 0 / 36 |
+| 2b.e PLD | 9819 / 181 / 0 | 9819 / 99 / 82 |
+| 6b.e RTL | 9781 / 219 / 0 | 9781 / 100 / 119 |
+
+## F6, F7 (residual) — SuperCPU emu-mode page-1 stack wrap
+
+The remaining ~100 fails on $2B/$6B/etc are the deliberate SuperCPU
+compatibility deviation from WDC silicon. New-65816 opcodes
+(JSL/PHD/PLD/RTL/PEA/PEI/PER/JSR (abs,X)) on a real WDC chip do NOT
+wrap stack to page 1 in emu mode — SP can decrement into $00FF, $00FE.
+Our RTL forces page-1 wrap (per `LOAD_SP="110"/"111"` emu branches
+in P65C816.vhd:436-456) to match VICE/CMD SuperCPU semantics, which
+real C64 software (Asterix decompressor) depends on.
+
+This is **not a bug** but a documented compatibility tradeoff. SST
+will continue to flag these cases against pure WDC silicon. Marked
+as expected deviation.
+
+## F3 — RTI PC++ — DEFERRED
+
+### Smoking guns
+
+- 40.e: `PBR:PC exp=1A:ED07 got=1A:ED08` — PC off by 1.
+- 40.n: `CY[3] addr exp=0081CC got=0081CD` — addr off by 1.
+
+### Mechanism (deeper than initially diagnosed)
+
+Real WDC RTI uses **pre-read SP++** semantics: each pull cycle
+increments SP first, then reads at the new SP. Our microcode uses
+**post-read SP++** (the `LOAD_SP="001"` register file commits SP at
+end of cycle). The cycle shapes diverge:
+
+```
+Real silicon native RTI (7 cycles):
+  CY0 opcode | CY1 dummy fetch | CY2 dummy IO | CY3 read P (SP+1)
+  | CY4 read PCL (SP+2) | CY5 read PCH (SP+3) | CY6 read PBR (SP+4)
+  Final SP = init_SP + 4
+
+Our microcode (7 cycles, off by ONE internal cycle at start):
+  CY0 opcode | CY1 SP++ no-read | CY2 read P (SP+1) | ...
+```
+
+To realign: insert a true no-op cycle at state 1, push everything by
+one. But then the SP++ for the PBR read in native must be conditional
+(emu terminates after PCH read with SP at PCH-addr; native needs one
+more SP++ before PBR read). This requires either a new microcode
+LOAD_SP code that conditions on EF, or restructuring the SP-based
+ADDR_BUS to support pre-read SP+1 semantics.
+
+### Fix order
+
+Deferred until the bench's other low-hanging RTL fixes are landed.
+Option A: redesign microcode + custom LOAD_SP code.
+Option B: redefine `addrBus="1100"` to use SP+1 for the read address
+and have post-read SP++ commit to SP+1, matching pre-read silicon.
+Option B is simpler but has wider blast radius (every SP-based read
+in microcode would need re-checking).
+
+## F11, F12 — single-case strays
+
+A few opcodes have small straggler counts left after the big families
+landed (e.g., $60 RTS emu 92, $28 PLP emu 34). The patterns differ
+per-op; investigate one at a time after the v3 sweep lands.
+
+## Fix order — landed
+
+| Step | Family | Commit | Wipes |
 |---|---|---|---|
-| 1 | F1 dp,S carry | 1 line revert + HW regression | ~80 K |
-| 2 | F9 bench RWB on null cycles | bench 1 line | ~40 K |
-| 3 | F3 RTI PC | diag first; either side small | ~20 K |
-| 4 | F2 JMP (abs,X) VDA | MCode row tweak | 20 K |
-| 5 | F4 WDM VPA | MCode row tweak | 20 K (cosmetic) |
-| 6 | F10 JSR (abs,X) skip predicate | bench predicate | 20 K skip→pass |
-| 7 | F5 X-flag clear (PLP+SEP+RTI) | RegFile branch share | ~5 K |
-| 8 | F6/F7/F8/F11/F12 | per-op investigation | <1 K |
+| 1 | F1 dp,S carry | b7b2c68 | ~80 K |
+| 2 | F2 JMP (abs,X) VDA | 8ab6722 | ~20 K |
+| 3 | F5 X-flag 0->1 high-byte clear | a866b0f | ~5 K |
+| 4 | F9 + F4 null-cycle flag compares | 2c02f48 | ~60 K |
+| 5 | F10 FR-cells skip | 5bdeec8 | unblocks ~50 K |
+| 6 | F2 ($FC) JSR (abs,X) VDA | df52690 | ~20 K |
+| 7 | F8 reset-stub $01:FD clobber | a3ed66e | ~500 |
+| -- | **Total wiped** | | **~185 K of 187 K** |
+| (deferred) | F3 RTI PC++ | -- | 20 K (microcode restructure) |
+| (deviation) | F6/F7 SuperCPU page-1 stack wrap | -- | ~300 (intentional) |
+| (residual) | F11/F12 single-case strays | -- | <500 |
 
 ## Iteration loop
 
