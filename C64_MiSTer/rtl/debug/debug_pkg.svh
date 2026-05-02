@@ -526,6 +526,19 @@ typedef struct packed {
   logic  [8:0] raster_at_d012;
   logic [23:0] d012_last_pc;
   logic [15:0] d012_wr_count;
+
+  // v268: IRQ rising-edge counters. v267 ruled out per-IRQ $D012
+  // updates — bug is now "irq_combined never rises after first fall
+  // on SCPU." This probe distinguishes:
+  //   irq_vic_rise_count       == 0 -> VIC IRST never clears -> ack
+  //                                   write doesn't reach VIC OR
+  //                                   resetRasterIrq pulse doesn't
+  //                                   align with phi=1 sample window.
+  //   irq_combined_rise_count  == 0 but irq_vic_rise_count > 0 -> VIC
+  //                                   ack works but another irq source
+  //                                   on the AND chain holds combined low.
+  logic [15:0] irq_vic_rise_count;
+  logic [15:0] irq_combined_rise_count;
 } dbg_pool_t;
 `endif
 

@@ -33,7 +33,7 @@ LINE_RE = re.compile(
     r"J:(?P<j0>[0-9A-F]+)\s+(?P<j1>[0-9A-F]+)\s+(?P<j2>[0-9A-F]+)\s+(?P<j3>[0-9A-F]+)\s+"
     r"M:(?P<m0>[0-9A-F]+)\s+(?P<m1>[0-9A-F]+)\s+(?P<m2>[0-9A-F]+)\s+(?P<m3>[0-9A-F]+)"
     r"(?:\s+G:(?P<g40>[0-9A-F]+)\s+(?P<g44>[0-9A-F]+)\s+(?P<g5c>[0-9A-F]+))?"
-    r"(?:\s+N:(?P<n>[0-9A-F]+)\s+I:(?P<ii>[0-9A-F]+)\s+B:(?P<b>[0-9A-F]+)(?:\s+C3:(?P<c3>[0-9A-F]+)\s+C9:(?P<c9>[0-9A-F]+))?(?:\s+SP:(?P<sp0x>[0-9A-F]+)\s+(?P<sp0y>[0-9A-F]+)\s+(?P<sp1x>[0-9A-F]+)\s+(?P<sp1y>[0-9A-F]+))?)?"
+    r"(?:\s+N:(?P<n>[0-9A-F]+)\s+I:(?P<ii>[0-9A-F]+)\s+B:(?P<b>[0-9A-F]+)(?:\s+C3:(?P<c3>[0-9A-F]+)\s+C9:(?P<c9>[0-9A-F]+))?(?:\s+SP:(?P<sp0x>[0-9A-F]+)\s+(?P<sp0y>[0-9A-F]+)\s+(?P<sp1x>[0-9A-F]+)\s+(?P<sp1y>[0-9A-F]+))?(?:\s+IR:(?P<irc>[0-9A-F]+)\s+IV:(?P<ivr>[0-9A-F]+))?)?"
     r"(?:\s+W5:(?P<w5c0>[0-9A-F]+)\s+(?P<w5c1>[0-9A-F]+)\s+(?P<w5c2>[0-9A-F]+)\s+(?P<w5c3>[0-9A-F]+)\s+N5:(?P<n5>[0-9A-F]+))?"
     r"(?:\s+IF:(?P<irf>[0-9A-F]+)\s+VC:(?P<ivc>[0-9A-F]+)(?:\s+DR:(?P<dr>[0-9A-F]+)\s+DS:(?P<ds>[0-9A-F]+))?(?:\s+WC:(?P<wc>[0-9A-F]+)\s+RR:(?P<rr>[0-9A-F]+)\s+DV:(?P<dv>[0-9A-F]+))?)?"
 )
@@ -66,6 +66,9 @@ def load(path):
                 row['sp0y'] = int(m['sp0y'], 16)
                 row['sp1x'] = int(m['sp1x'], 16)
                 row['sp1y'] = int(m['sp1y'], 16)
+            if m['irc'] is not None:
+                row['irc'] = int(m['irc'], 16)  # irq_combined rise count
+                row['ivr'] = int(m['ivr'], 16)  # irq_vic rise count
         if m['w5c0'] is not None:
             row['w5c'] = [int(m[f'w5c{i}'], 16) for i in range(4)]
             row['n5']  = int(m['n5'], 16)
@@ -166,24 +169,25 @@ def report(rows, label):
         for i, r in enumerate(sp_rows[:12]):
             print(f'      {i:>3}  {r["sp0x"]:02X} {r["sp0y"]:02X}  /  {r["sp1x"]:02X} {r["sp1y"]:02X}')
 
-    if rows and 'w5c' in rows[0]:
+    w5_rows = [r for r in rows if 'w5c' in r]
+    if w5_rows:
         print('  v262 $005C write-ring (4-deep, oldest..newest) + writes/frame:')
         # Per-position distributions across all rows
         for pos in range(4):
-            dist = collections.Counter(r['w5c'][pos] for r in rows)
+            dist = collections.Counter(r['w5c'][pos] for r in w5_rows)
             top = [(f'${v:02X}', c) for v, c in dist.most_common(5)]
             print(f'    pos[{pos}] top: {top}')
         # Aggregate "what values ever appear in the ring"
-        all_vals = [v for r in rows for v in r['w5c']]
+        all_vals = [v for r in w5_rows for v in r['w5c']]
         all_dist = collections.Counter(all_vals).most_common(8)
         print(f'    all-positions distribution (top 8): {[(f"${v:02X}", c) for v,c in all_dist]}')
         # Writes-per-frame from N5 deltas
-        if len(rows) > 1:
-            dn5 = (rows[-1]['n5'] - rows[0]['n5']) & 0xFFFF
-            print(f'    N5 delta (writes to $005C): {dn5} over {len(rows)} frames ({dn5/len(rows):.2f}/frame)')
+        if len(w5_rows) > 1:
+            dn5 = (w5_rows[-1]['n5'] - w5_rows[0]['n5']) & 0xFFFF
+            print(f'    N5 delta (writes to $005C): {dn5} over {len(w5_rows)} frames ({dn5/len(w5_rows):.2f}/frame)')
         # First-12 raw rings to read the cycle directly
         print('    first 12 frames raw rings:')
-        for i, r in enumerate(rows[:12]):
+        for i, r in enumerate(w5_rows[:12]):
             print(f'      {i:>3}  {" ".join(f"{v:02X}" for v in r["w5c"])}  N5:{r["n5"]:04X}')
 
     irf_rows = [r for r in rows if 'irf' in r]
@@ -208,6 +212,23 @@ def report(rows, label):
                 if v & 0x04: bits.append('IMMC')
                 if v & 0x08: bits.append('ILP')
                 print(f'      ${v:02X} = {"+".join(bits) if bits else "(no source bits)"}  (top bit is IRQ-pending flag)')
+
+    irc_rows = [r for r in rows if 'irc' in r]
+    if irc_rows and len(irc_rows) > 1:
+        print('  v268 IRQ rising-edge counters (does ack reach VIC?):')
+        dirc = (irc_rows[-1]['irc'] - irc_rows[0]['irc']) & 0xFFFF
+        divr = (irc_rows[-1]['ivr'] - irc_rows[0]['ivr']) & 0xFFFF
+        n = len(irc_rows)
+        print(f'    IR delta (irq_combined rising edges): {dirc:6d} ({dirc/n:.2f}/frame)')
+        print(f'    IV delta (irq_vic rising edges):       {divr:6d} ({divr/n:.2f}/frame)')
+        if dirc == 0 and divr == 0:
+            print('    => irq_vic NEVER rises -> VIC IRST never clears.')
+            print('       SCPU $D019 ack writes are NOT reaching the VIC.')
+        elif divr > 0 and dirc == 0:
+            print('    => irq_vic rises but irq_combined does not.')
+            print('       Some other source on the AND-chain holds combined low.')
+        elif divr > 0 and dirc > 0:
+            print('    => Normal: VIC ack works AND combined rises.')
 
     wc_rows = [r for r in rows if 'wc' in r]
     if wc_rows:

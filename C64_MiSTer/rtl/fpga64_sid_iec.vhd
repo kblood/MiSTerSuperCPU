@@ -580,7 +580,10 @@ port(
 	dbg_d012_last_val     : out std_logic_vector(7 downto 0);
 	dbg_raster_at_d012    : out std_logic_vector(8 downto 0);
 	dbg_d012_last_pc      : out std_logic_vector(23 downto 0);
-	dbg_d012_wr_count     : out std_logic_vector(15 downto 0)
+	dbg_d012_wr_count     : out std_logic_vector(15 downto 0);
+	-- v268: irq_vic rising-edge counter + combined rising-edge counter.
+	dbg_irq_vic_rise_count   : out std_logic_vector(15 downto 0);
+	dbg_irq_combined_rise_count : out std_logic_vector(15 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -783,6 +786,17 @@ signal d012_last_val_r         : std_logic_vector(7 downto 0)  := (others => '0'
 signal raster_at_d012_r        : std_logic_vector(8 downto 0)  := (others => '0');
 signal d012_last_pc_r          : std_logic_vector(23 downto 0) := (others => '0');
 signal d012_wr_count_r         : unsigned(15 downto 0)         := (others => '0');
+-- v268: VIC irq line rising-edge counter. v267 falsified the
+-- "compare written behind beam" hypothesis. Direct test now: does
+-- irq_vic actually rise on SCPU after $D019 ack? IF (combined) is
+-- 0/frame on SCPU; counting irq_vic specifically isolates whether
+-- the VIC's own IRST latch clears or whether some other source on
+-- the irq_combined OR-chain holds combined low. Expected T65 rise
+-- count == fall count. Expected SCPU rise count = 0 if IRST never
+-- clears at VIC level.
+signal irq_vic_d              : std_logic := '1';
+signal irq_vic_rise_count_r   : unsigned(15 downto 0) := (others => '0');
+signal irq_combined_rise_count_r : unsigned(15 downto 0) := (others => '0');
 signal d002_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d003_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
 signal d010_last_val_r  : std_logic_vector(7 downto 0)  := (others => '0');
@@ -1908,6 +1922,10 @@ begin
 			raster_at_d012_r        <= (others => '0');
 			d012_last_pc_r          <= (others => '0');
 			d012_wr_count_r         <= (others => '0');
+			-- v268: VIC IRQ rising-edge probes
+			irq_vic_d                   <= '1';
+			irq_vic_rise_count_r        <= (others => '0');
+			irq_combined_rise_count_r   <= (others => '0');
 			d002_last_val_r      <= (others => '0');
 			d003_last_val_r      <= (others => '0');
 			d010_last_val_r      <= (others => '0');
@@ -2575,6 +2593,19 @@ begin
 			elsif cycles_since_irq_fall_r /= x"FFFF" then
 				cycles_since_irq_fall_r <= cycles_since_irq_fall_r + 1;
 			end if;
+			-- v268: irq_combined rising-edge counter (0->1 transitions).
+			if irq_combined_d = '0' and irq_combined = '1' then
+				irq_combined_rise_count_r <= irq_combined_rise_count_r + 1;
+			end if;
+			-- v268: irq_vic rising-edge counter (specifically the VIC's
+			-- own IRQ output line, before AND with cia1/nmi/external).
+			-- If irq_vic rises, VIC IRST has been cleared. If irq_vic
+			-- never rises after the first fall, $D019 ack writes are
+			-- not reaching the VIC's resetRasterIrq pulse path.
+			irq_vic_d <= irq_vic;
+			if irq_vic_d = '0' and irq_vic = '1' then
+				irq_vic_rise_count_r <= irq_vic_rise_count_r + 1;
+			end if;
 
 			-- v211: PC ring buffer push on opcode-fetch pulses, only while
 			-- not frozen. cpu_pc_now / opcode_fetch_pulse are concurrent.
@@ -2757,6 +2788,9 @@ dbg_d012_last_val     <= d012_last_val_r;
 dbg_raster_at_d012    <= raster_at_d012_r;
 dbg_d012_last_pc      <= d012_last_pc_r;
 dbg_d012_wr_count     <= std_logic_vector(d012_wr_count_r);
+-- v268 IRQ rising-edge outputs
+dbg_irq_vic_rise_count      <= std_logic_vector(irq_vic_rise_count_r);
+dbg_irq_combined_rise_count <= std_logic_vector(irq_combined_rise_count_r);
 dbg_d002_last_val  <= d002_last_val_r;
 dbg_d003_last_val  <= d003_last_val_r;
 dbg_d010_last_val  <= d010_last_val_r;

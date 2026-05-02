@@ -1252,6 +1252,9 @@ wire  [7:0] scpu_dbg_d012_last_val;
 wire  [8:0] scpu_dbg_raster_at_d012;
 wire [23:0] scpu_dbg_d012_last_pc;
 wire [15:0] scpu_dbg_d012_wr_count;
+// v268 — IRQ rising-edge counters
+wire [15:0] scpu_dbg_irq_vic_rise_count;
+wire [15:0] scpu_dbg_irq_combined_rise_count;
 
 // ---------------------------------------------------------------------------
 // Layered debug overlay (rtl/debug/) - pool struct + capture stubs.
@@ -1661,6 +1664,9 @@ assign dbg_pool.d012_last_val     = scpu_dbg_d012_last_val;
 assign dbg_pool.raster_at_d012    = scpu_dbg_raster_at_d012;
 assign dbg_pool.d012_last_pc      = scpu_dbg_d012_last_pc;
 assign dbg_pool.d012_wr_count     = scpu_dbg_d012_wr_count;
+// v268: IRQ rising-edge counters
+assign dbg_pool.irq_vic_rise_count      = scpu_dbg_irq_vic_rise_count;
+assign dbg_pool.irq_combined_rise_count = scpu_dbg_irq_combined_rise_count;
 
 `ifdef DBG_CAP_FRAME
 cap_frame u_cap_frame (
@@ -2043,7 +2049,9 @@ fpga64_sid_iec fpga64
 	.dbg_d012_last_val    (scpu_dbg_d012_last_val),
 	.dbg_raster_at_d012   (scpu_dbg_raster_at_d012),
 	.dbg_d012_last_pc     (scpu_dbg_d012_last_pc),
-	.dbg_d012_wr_count    (scpu_dbg_d012_wr_count)
+	.dbg_d012_wr_count    (scpu_dbg_d012_wr_count),
+	.dbg_irq_vic_rise_count     (scpu_dbg_irq_vic_rise_count),
+	.dbg_irq_combined_rise_count(scpu_dbg_irq_combined_rise_count)
 );
 
 wire [7:0] mouse_x;

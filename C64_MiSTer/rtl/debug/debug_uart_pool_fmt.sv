@@ -92,6 +92,9 @@ module debug_uart_pool_fmt
 	reg [15:0] lat_d012_wc;     // d012_write_cycles (clk32 cycles)
 	reg  [8:0] lat_d012_rr;     // raster_at_d012 (line 0..311 PAL)
 	reg  [7:0] lat_d012_dv;     // d012_last_val (compare value)
+	// v268: IRQ rising-edge counters (replaces SP:## ## ## ## in line).
+	reg [15:0] lat_irq_rise_combined;
+	reg [15:0] lat_irq_rise_vic;
 
 	// -----------------------------------------------------------------
 	// Send FSM: drive tx_send for one cycle whenever tx is idle and the
@@ -287,26 +290,26 @@ module debug_uart_pool_fmt
 			8'd145: line_byte = hex_nibble(lat_m45[7:4]);
 			8'd146: line_byte = hex_nibble(lat_m45[3:0]);
 
-			// v264: " SP:## ## ## ##" sprite0/1 X/Y last-written values
-			// (replaces C3/C9 page fetch counters — those signatures
-			// already locked in via v260 baseline; sprite positions
-			// are the live divergence-finder.)
+			// v268: " IR:####" irq_combined rising-edge count + " IV:####"
+			// irq_vic rising-edge count (replaces v264 SP fields — those
+			// values are signature-stable: T65 always D4/D4, SCPU bouncing
+			// AA/D4. Live divergence-finder is now ack reception at VIC.)
 			8'd147: line_byte = " ";
-			8'd148: line_byte = "S";
-			8'd149: line_byte = "P";
+			8'd148: line_byte = "I";
+			8'd149: line_byte = "R";
 			8'd150: line_byte = ":";
-			8'd151: line_byte = hex_nibble(lat_d000[7:4]);
-			8'd152: line_byte = hex_nibble(lat_d000[3:0]);
-			8'd153: line_byte = " ";
-			8'd154: line_byte = hex_nibble(lat_d001[7:4]);
-			8'd155: line_byte = hex_nibble(lat_d001[3:0]);
-			8'd156: line_byte = " ";
-			8'd157: line_byte = hex_nibble(lat_d002[7:4]);
-			8'd158: line_byte = hex_nibble(lat_d002[3:0]);
-			8'd159: line_byte = " ";
-			8'd160: line_byte = hex_nibble(lat_d003[7:4]);
-			8'd161: line_byte = hex_nibble(lat_d003[3:0]);
-			8'd162: line_byte = " ";
+			8'd151: line_byte = hex_nibble(lat_irq_rise_combined[15:12]);
+			8'd152: line_byte = hex_nibble(lat_irq_rise_combined[11:8]);
+			8'd153: line_byte = hex_nibble(lat_irq_rise_combined[7:4]);
+			8'd154: line_byte = hex_nibble(lat_irq_rise_combined[3:0]);
+			8'd155: line_byte = " ";
+			8'd156: line_byte = "I";
+			8'd157: line_byte = "V";
+			8'd158: line_byte = ":";
+			8'd159: line_byte = hex_nibble(lat_irq_rise_vic[15:12]);
+			8'd160: line_byte = hex_nibble(lat_irq_rise_vic[11:8]);
+			8'd161: line_byte = hex_nibble(lat_irq_rise_vic[7:4]);
+			8'd162: line_byte = hex_nibble(lat_irq_rise_vic[3:0]);
 
 			// " W5:## ## ## ##" v262 4-deep ring of writes to $005C
 			8'd163: line_byte = " ";
@@ -453,6 +456,9 @@ module debug_uart_pool_fmt
 				lat_d012_wc   <= pool.d012_write_cycles;
 				lat_d012_rr   <= pool.raster_at_d012;
 				lat_d012_dv   <= pool.d012_last_val;
+				// v268: IRQ rising-edge counter latches
+				lat_irq_rise_combined <= pool.irq_combined_rise_count;
+				lat_irq_rise_vic      <= pool.irq_vic_rise_count;
 				byte_idx  <= 8'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin
