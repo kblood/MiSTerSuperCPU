@@ -734,8 +734,15 @@ begin
 					ADDR_BUS <= x"00" & std_logic_vector(unsigned(AA(15 downto 0)) + ADDR_INC);
 				end if;
 				
-			when "0011" | "0111" => 
-				if EF = '0' or MC.ADDR_BUS(2) = '0' then
+			when "0011" | "0111" =>
+				-- DP indirect pointer-byte read. ADDR_BUS="0111" requests
+				-- NMOS-style emu-mode page wrap on the +1 byte. Real WDC
+				-- silicon (per SST traces) only wraps when DPL=0 (DP is
+				-- page-aligned); when DPL!=0 the ptr+1 increment is full
+				-- 16-bit and may cross a page boundary. Gate the wrap on
+				-- D(7:0)=0 to match silicon. Fixes ~262 fails across the
+				-- 8 (DP,X) opcodes (ORA/AND/EOR/ADC/STA/LDA/CMP/SBC).
+				if EF = '0' or MC.ADDR_BUS(2) = '0' or D(7 downto 0) /= x"00" then
 					ADDR_BUS <= x"00" & std_logic_vector(unsigned(DX) + ADDR_INC);
 				else
 					ADDR_BUS <= x"00" & DX(15 downto 8) & std_logic_vector(unsigned(DX(7 downto 0)) + ADDR_INC(7 downto 0));
