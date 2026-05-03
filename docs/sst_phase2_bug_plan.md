@@ -435,30 +435,30 @@ per-op; investigate one at a time after the v3 sweep lands.
 | (deviation) | F6/F7 SuperCPU page-1 stack wrap | -- | ~500 (intentional) |
 | (residual) | DP-wrap (DP,X) cluster | -- | ~270 (edge cases) |
 
-## Phase 2 final result (sweep_results_v3, 2026-05-03)
+## Phase 2 / 3 sweep results
 
-| Metric | v1 (baseline) | v3 (post-fix) |
-|---|---|---|
-| pass | 4,589,284 | **5,053,595** |
-| fail | 186,587 | **20,747** |
-| skip | 304,129 | 5,658 |
-| total | 5,080,000 | 5,080,000 |
-| **pass %** | **90.34 %** | **99.48 %** |
+| Metric | v1 (baseline) | v3 (Phase 2 close) | v4 (Phase 3.1, 2026-05-03) |
+|---|---|---|---|
+| pass | 4,589,284 | 5,053,595 | **5,053,857** |
+| fail | 186,587 | 20,747 | **20,485** |
+| skip | 304,129 | 5,658 | 5,658 |
+| total | 5,080,000 | 5,080,000 | 5,080,000 |
+| **pass %** | **90.34 %** | **99.48 %** | **99.485 %** |
 
-Excluding deferred F3 RTI (19,901 fails): **99.87 % pass** on the
-remaining 5,060,000 cases — 846 strays across 18 opcodes, all
-pinpointed to either the documented SuperCPU page-1 stack-wrap
-deviation or DP zero-page wrap edge cases in (DP,X) addressing.
+Phase 3.1 wiped 262 fails (commit `e6d983e`, the (DP,X) DP-wrap gate).
+Excluding deferred F3 RTI (19,901 fails): **99.88 % pass** on the
+remaining 5,060,000 cases — 584 strays across 18 opcodes, all
+pinpointed to documented SuperCPU page-1 stack-wrap deviations and
+a single $E1.e flag-bit stray.
 
-### Remaining fails by category
+### Remaining fails by category (v4)
 
 | Category | Ops | Fails |
 |---|---|---|
 | **F3 RTI** (deferred — microcode restructure) | $40 (e+n) | 19,901 |
-| **SuperCPU emu-mode page-1 stack wrap** (intentional deviation from WDC silicon, matches CMD SuperCPU and VICE; required for Asterix decompressor) | $6B RTL, $2B PLD, $22 JSL, $0B PHD, $62 PER, $D4 PEI, $F4 PEA, $AB PLB, $DC JML(abs) | ~538 |
-| **DP-wrap (DP,X) edge cases** | $01 ORA, $21 AND, $41 EOR, $61 ADC, $81 STA, $A1 LDA, $C1 CMP, $E1 SBC | ~262 |
+| **SuperCPU emu-mode page-1 stack wrap** (intentional deviation from WDC silicon, matches CMD SuperCPU and VICE; required for Asterix decompressor) | $6B RTL, $2B PLD, $22 JSL, $0B PHD, $62 PER, $D4 PEI, $F4 PEA, $AB PLB, $DC JML(abs) | ~547 |
 | **NMOS JMP ($xxFF) page-wrap** (intentional, mirrors 6502/VICE) | $6C JMP(abs) emu | 36 |
-| **Single-case strays** (e.g. $28.e PLP) | ~5 ops | <50 |
+| **$E1.e single stray** (case 8668; flag bit C, unrelated to addressing) | $E1 SBC (DP,X) | 1 |
 
 ## Iteration loop
 
