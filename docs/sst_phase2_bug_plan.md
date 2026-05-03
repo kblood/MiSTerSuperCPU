@@ -512,12 +512,35 @@ before Phase 2 closes:
 Cosmetic-only fixes (F4 WDM VPA) don't need this — verify with sweep
 only and call out the limited scope in the commit message.
 
+### Result (v273 build, 2026-05-03, RBF md5 `a547db9f35a4dc136fcb39e8c1af5022`)
+
+Build with F1 + F2 + F5 + $FC RTL changes deployed to MiSTer.
+
+| Test | T65 | SCPU | vs v272 baseline |
+|---|---|---|---|
+| Cold boot → BASIC READY | PASS | PASS | identical screens |
+| decomp_stress (autorun_test slot) | top `42e97f1552e7` mid `d3ac8b12b8d2` | top `42e97f1552e7` mid `d3ac8b12b8d2` | bit-identical T65=SCPU; **bit-identical to v272** |
+| Asterix title screen | top `6800907e36a4` | top `6800907e36a4` | visually identical to v272 (overlay state shifted only) |
+| Dragon's Lair (35 s settle) | castle intro renders | castle intro renders | SCPU=on still works (v272 NMOS-RMW fix preserved) |
+| Doom | top `ba3cdf17b8a3` | top `ba3cdf17b8a3` | top bit-identical to v272 (loader phase) |
+| synthmark64 | bit-identical T65=SCPU | bit-identical T65=SCPU | **bit-identical to v272** |
+| scputest | bit-identical T65=SCPU | bit-identical T65=SCPU | **bit-identical to v272** |
+| autorun_test (final slot) | bit-identical T65=SCPU | bit-identical T65=SCPU | **bit-identical to v272** |
+
+**Phase 2 closes regression-clean.** No hardware regressions from F1
+(`b7b2c68`), F2 (`8ab6722`), F5 (`a866b0f`), or $FC (`df52690`).
+Resource cost: +344 ALMs (26,300 → 26,644, 64% utilization).
+Capture set: `tools/v272_sweep2/*_v273*.png` and `tools/v272_regress/*.png`.
+
 ## Status
 
-- **Phase 2 first sweep complete** — 4 589 284 / 5 080 000 pass (90.34 %).
-- Doc updated with final triage and fix order.
-- **Next**: enter Step 1 of the loop with F1 (dp,S carry). Suspect line:
-  `AddrGen.vhd:202-207` — drop the `e6502 = '1' and ABSCtrl = "11"`
-  carry suppression; HW-regress on T65=SCPU `decomp_stress.prg` + DL +
-  Asterix to confirm the original 2026-04-21 motivating regression
-  doesn't reappear.
+- **Phase 2 CLOSED** — v273 build (`a547db9f...`) deployed and HW-regressed.
+- Final SST score: **5,053,595 / 5,080,000 = 99.48 %** (90.34 % baseline).
+  Excluding deferred F3 RTI: **99.87 % pass** on 5.06 M cases.
+- Hardware regression: cold-boot + decomp_stress + Asterix + DL + Doom +
+  synthmark64 + scputest + autorun_test all GREEN both modes.
+- **Deferred to a Phase 3 (out-of-scope here):**
+  - F3 RTI PC++ — needs invasive microcode/addressing restructure (~20 K SST fails)
+  - F6/F7 SuperCPU page-1 stack wrap — intentional deviation, matches CMD SuperCPU + VICE (~538 fails)
+  - DP-wrap (DP,X) edge cases (~262 fails)
+  - $6C JMP NMOS wrap on emu (36 fails) — intentional, mirrors VICE
