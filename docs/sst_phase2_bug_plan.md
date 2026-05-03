@@ -539,8 +539,23 @@ Capture set: `tools/v272_sweep2/*_v273*.png` and `tools/v272_regress/*.png`.
   Excluding deferred F3 RTI: **99.87 % pass** on 5.06 M cases.
 - Hardware regression: cold-boot + decomp_stress + Asterix + DL + Doom +
   synthmark64 + scputest + autorun_test all GREEN both modes.
-- **Deferred to a Phase 3 (out-of-scope here):**
+
+### Phase 3 increments (in progress)
+
+| # | Family | Commit | RTL change | Wipe |
+|---|---|---|---|---|
+| 1 | DP-wrap (DP,X) | `e6d983e` | `P65C816.vhd` ADDR_BUS="0111" gate emu wrap on `D(7:0)=0` | ~261 fails |
+
+Phase 3.1 build: **v274** (RBF md5 `3dd7c057831c0ff7ff6c75a3d0e5d07d`),
+26,640 ALMs (-4 vs v273). Hardware regression GREEN: cold-boot READY
+both modes; Asterix / DL / Doom / synthmark64 / scputest / autorun_test
+all visually correct; DL castle intro renders with SCPU=on (35 s
+settle). Focused SST regression on 8 (DP,X) ops:
+**99.90 % pass, 1 stray** (`e1.e` case 8668 — flag bit, unrelated).
+Sibling regression on 14 control opcodes: 280 K cases, 0 fails.
+
+- **Still deferred:**
   - F3 RTI PC++ — needs invasive microcode/addressing restructure (~20 K SST fails)
   - F6/F7 SuperCPU page-1 stack wrap — intentional deviation, matches CMD SuperCPU + VICE (~538 fails)
-  - DP-wrap (DP,X) edge cases (~262 fails)
   - $6C JMP NMOS wrap on emu (36 fails) — intentional, mirrors VICE
+  - Single-case strays (~50 across ~5 ops)
