@@ -1,0 +1,36 @@
+mode: scpu
+max_min: 15
+shots: 29
+frozen_at: 911s (time-cap)
+final md5: c6de08ac9343
+
+series:
+  t=    0s  00_after_run.png  md5=ceb66063dcc0
+  t=   29s  0029s.png  md5=ea525b642fbc
+  t=   62s  0062s.png  md5=7565d010dd8b
+  t=   95s  0095s.png  md5=64b2949aa456
+  t=  127s  0127s.png  md5=78a7dfcd5902
+  t=  160s  0160s.png  md5=cb13df61896e
+  t=  193s  0193s.png  md5=9e3c07673eac
+  t=  225s  0225s.png  md5=3800e5ef5258
+  t=  258s  0258s.png  md5=bf43e2ae4f33
+  t=  291s  0291s.png  md5=bfe148a93cbf
+  t=  323s  0323s.png  md5=b9a2b3601196
+  t=  356s  0356s.png  md5=5720582fa610
+  t=  389s  0389s.png  md5=a42bf95f104d
+  t=  421s  0421s.png  md5=f4ae54e4e5c3
+  t=  454s  0454s.png  md5=ed2b38969fc4
+  t=  486s  0486s.png  md5=9d948e11ed29
+  t=  519s  0519s.png  md5=3221dff263e2
+  t=  552s  0552s.png  md5=a249d74b31c4
+  t=  584s  0584s.png  md5=3c7ec4812de3
+  t=  617s  0617s.png  md5=09658a8353aa
+  t=  649s  0649s.png  md5=815768df090c
+  t=  682s  0682s.png  md5=a78ea6c4b58f
+  t=  715s  0715s.png  md5=a0b9339156a3
+  t=  747s  0747s.png  md5=e9e7c82f72dd
+  t=  780s  0780s.png  md5=91957a6ffa58
+  t=  813s  0813s.png  md5=68ea82d26691
+  t=  845s  0845s.png  md5=693960cdf1fa
+  t=  878s  0878s.png  md5=0b7fafdcc522
+  t=  911s  0911s.png  md5=fc8d6bb1ddbd

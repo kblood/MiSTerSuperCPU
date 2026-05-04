@@ -289,6 +289,7 @@ localparam CONF_STR = {
 	"d6O[49:48],Turbo speed,2x,3x,4x;",
 	"-;",
 	"O[82],SuperCPU (65C816),Off,On;",
+	"O[83],Debug Overlay,Off,On;",
 	"O[87],Debug UART,Off,On;",
 	"-;",
 	"R[0],Reset;",

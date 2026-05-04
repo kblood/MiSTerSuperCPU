@@ -1,0 +1,36 @@
+mode: t65
+max_min: 15
+shots: 29
+frozen_at: 910s (time-cap)
+final md5: 763f937b9044
+
+series:
+  t=    0s  00_after_run.png  md5=81082fc77812
+  t=   29s  0029s.png  md5=b31e413ed193
+  t=   62s  0062s.png  md5=fe749c1914b0
+  t=   95s  0095s.png  md5=bab7914eef2a
+  t=  127s  0127s.png  md5=654bc9badc1d
+  t=  160s  0160s.png  md5=869565fd2d61
+  t=  193s  0193s.png  md5=3a119d0e95d4
+  t=  225s  0225s.png  md5=acbfe5d23119
+  t=  258s  0258s.png  md5=86e94bbf73df
+  t=  290s  0290s.png  md5=c04ed291fea5
+  t=  323s  0323s.png  md5=20e95b616fa3
+  t=  356s  0356s.png  md5=fa085c158ea1
+  t=  388s  0388s.png  md5=29a16b798e53
+  t=  421s  0421s.png  md5=3c653625ccbf
+  t=  454s  0454s.png  md5=bfe8394b6571
+  t=  486s  0486s.png  md5=9988123683f3
+  t=  519s  0519s.png  md5=d823ee26194b
+  t=  552s  0552s.png  md5=ab911fa4ea07
+  t=  584s  0584s.png  md5=36ab2743356c
+  t=  617s  0617s.png  md5=5fe28cd5fafa
+  t=  649s  0649s.png  md5=2e5417f1747c
+  t=  682s  0682s.png  md5=af375df0cbc7
+  t=  715s  0715s.png  md5=b4c94f10388c
+  t=  747s  0747s.png  md5=df4f5b6a51ae
+  t=  780s  0780s.png  md5=a93fbc67e358
+  t=  813s  0813s.png  md5=cf132f408553
+  t=  845s  0845s.png  md5=c49aa52c1b17
+  t=  878s  0878s.png  md5=a3b4dadd0bb4
+  t=  910s  0910s.png  md5=8438cbb383d0
