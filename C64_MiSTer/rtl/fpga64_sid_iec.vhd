@@ -2470,16 +2470,25 @@ begin
 				-- to bank $00:$6C00..$6C07 (Doom's stuck-region). If a write happens
 				-- here, WP shows the PC of the writing instruction, telling us who
 				-- corrupted bank $00:$6C00 (currently $AB) or $6C03 ($00 BRK).
-				-- v283 doom triage: first-writer-PC + DATA for $00:$6C03 (latch-once).
-				-- All-zero readout in mem_40/44/5C/45 means nobody ever wrote.
-				if addr_hi_816 = x"00" and cpuAddr_pre = x"6C03"
-				   and scpu_hwenable = '1'
-				   and first_w6c03_latched_r = '0' then
-					mem_40_r              <= cpu_pc_now(7 downto 0);
-					mem_44_r              <= cpu_pc_now(15 downto 8);
-					mem_5C_r              <= cpu_pc_now(23 downto 16);
-					mem_45_r              <= std_logic_vector(cpuDo_pre);
-					first_w6c03_latched_r <= '1';
+				-- v287 doom triage: latch $00:$0074..$0076 (JML [$0074] dispatch ptr).
+				-- v286 RTI sink unblocked the BRK loop — Doom now halts via
+				-- JML [$0074] → $2C:$A95C after printing "Bad music number -9".
+				-- mem_40/44/5C show what dispatch ptr Doom installed; G:## ## ##
+				-- in UART = $0074 / $0075 / $0076 = full 24-bit JML target.
+				-- (Earlier v283 first-writer-PC latch retired — it established
+				-- G:00 00 00 so Doom never writes $6C03; that's now in commit
+				-- 906bc0c memory.)
+				if addr_hi_816 = x"00" and cpuAddr_pre = x"0074" then
+					mem_40_r <= std_logic_vector(cpuDo_pre);
+				end if;
+				if addr_hi_816 = x"00" and cpuAddr_pre = x"0075" then
+					mem_44_r <= std_logic_vector(cpuDo_pre);
+				end if;
+				if addr_hi_816 = x"00" and cpuAddr_pre = x"0076" then
+					mem_5C_r <= std_logic_vector(cpuDo_pre);
+				end if;
+				if addr_hi_816 = x"00" and cpuAddr_pre = x"0045" then
+					mem_45_r <= std_logic_vector(cpuDo_pre);
 				end if;
 				if addr_hi_816 = x"00"
 				   and cpuAddr_pre(15 downto 8) = x"6C"
