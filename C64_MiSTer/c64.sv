@@ -1265,6 +1265,7 @@ wire  [7:0] scpu_dbg_d019_seen_writes;
 // v271 — $D019 ack-write counter + ack-write PC
 wire [15:0] scpu_dbg_d019_ack_count;
 wire [23:0] scpu_dbg_d019_ack_pc;
+wire [15:0] scpu_dbg_cpu_sp;          // v280 doom triage: 16-bit SP
 
 // ---------------------------------------------------------------------------
 // Layered debug overlay (rtl/debug/) - pool struct + capture stubs.
@@ -1686,6 +1687,7 @@ assign dbg_pool.d019_seen_writes        = scpu_dbg_d019_seen_writes;
 // v271: $D019 ack-write counter + ack-write PC
 assign dbg_pool.d019_ack_count          = scpu_dbg_d019_ack_count;
 assign dbg_pool.d019_ack_pc             = scpu_dbg_d019_ack_pc;
+assign dbg_pool.cpu_sp                  = scpu_dbg_cpu_sp;
 
 `ifdef DBG_CAP_FRAME
 cap_frame u_cap_frame (
@@ -2076,7 +2078,8 @@ fpga64_sid_iec fpga64
 	.dbg_d019_last_pc           (scpu_dbg_d019_last_pc),
 	.dbg_d019_seen_writes       (scpu_dbg_d019_seen_writes),
 	.dbg_d019_ack_count         (scpu_dbg_d019_ack_count),
-	.dbg_d019_ack_pc            (scpu_dbg_d019_ack_pc)
+	.dbg_d019_ack_pc            (scpu_dbg_d019_ack_pc),
+	.dbg_cpu_sp                 (scpu_dbg_cpu_sp)
 );
 
 wire [7:0] mouse_x;

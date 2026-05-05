@@ -614,7 +614,10 @@ port(
 	--                    disasm + compare to SCPU's main-IRQ path to find
 	--                    the divergent branch.
 	dbg_d019_ack_count         : out std_logic_vector(15 downto 0);
-	dbg_d019_ack_pc            : out std_logic_vector(23 downto 0)
+	dbg_d019_ack_pc            : out std_logic_vector(23 downto 0);
+	-- v280 doom triage: P65C816 stack pointer (16-bit), live every cycle.
+	-- Confirms whether SP=$6C0X at the BRK loop in Doom.
+	dbg_cpu_sp                 : out std_logic_vector(15 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -988,6 +991,7 @@ signal t65_regs         : std_logic_vector(63 downto 0)  := (others => '0');
 -- P65C816 X/Y register exports (formerly `open`).
 signal dbg_x_816_i      : unsigned(15 downto 0);
 signal dbg_y_816_i      : unsigned(15 downto 0);
+signal dbg_sp_816_i     : unsigned(15 downto 0);
 -- Muxed CPU X/Y at current cycle (zero-extends 8-bit T65 values).
 signal cpu_x_now        : std_logic_vector(7 downto 0);
 signal cpu_y_now        : std_logic_vector(7 downto 0);
@@ -1801,7 +1805,7 @@ port map (
 	vda            => vda_816,
 
 	dbg_pc    => dbg_pc_816_i,
-	dbg_sp    => open,
+	dbg_sp    => dbg_sp_816_i,
 	dbg_p     => dbg_p_816_i,
 	dbg_ir    => open,
 	dbg_pbr   => dbg_pbr_816_i,
@@ -2282,12 +2286,17 @@ begin
 				if cpuAddr_pre = x"007D" then mem_7D_r <= std_logic_vector(cpuDi); end if;
 				if cpuAddr_pre = x"007E" then mem_7E_r <= std_logic_vector(cpuDi); end if;
 				if cpuAddr_pre = x"007F" then mem_7F_r <= std_logic_vector(cpuDi); end if;
-				-- v259: DL gate variables. Latch on any cycle (read or write)
-				-- where the bus targets these zero-page addresses.
-				if cpuAddr_pre = x"0040" then mem_40_r <= std_logic_vector(cpuDi); end if;
-				if cpuAddr_pre = x"0044" then mem_44_r <= std_logic_vector(cpuDi); end if;
-				if cpuAddr_pre = x"005C" then mem_5C_r <= std_logic_vector(cpuDi); end if;
-				if cpuAddr_pre = x"0045" then mem_45_r <= std_logic_vector(cpuDi); end if;
+				-- v279 doom triage: capture BRK vector + next-byte after stuck PC.
+				-- Goal: confirm whether PC=$6C03 BRK loop is via emu BRK vector pointing
+				-- back to $6C03 area, AND see whether $6C05 holds RTI handler or another BRK.
+				-- UART G: byte 1 = bank $00:$FFFE (mem_40 = emu BRK vec lo)
+				-- UART G: byte 2 = bank $00:$FFFF (mem_44 = emu BRK vec hi)
+				-- UART G: byte 3 = bank $00:$6C05 (mem_5C = first byte after BRK push)
+				-- UART B: byte   = bank $00:$6C03 (mem_45 = current BRK opcode, unchanged)
+				if addr_hi_816 = x"00" and cpuAddr_pre = x"FFFE" then mem_40_r <= std_logic_vector(cpuDi); end if;
+				if addr_hi_816 = x"00" and cpuAddr_pre = x"FFFF" then mem_44_r <= std_logic_vector(cpuDi); end if;
+				if addr_hi_816 = x"00" and cpuAddr_pre = x"6C05" then mem_5C_r <= std_logic_vector(cpuDi); end if;
+				if addr_hi_816 = x"00" and cpuAddr_pre = x"6C03" then mem_45_r <= std_logic_vector(cpuDi); end if;
 				-- v260: PC main/irq split + page counters, gated by opcode_fetch_pulse
 				if opcode_fetch_pulse = '1' then
 					if cpu_p_now(2) = '0' then
@@ -2412,10 +2421,16 @@ begin
 				-- v249: writers to $0002 / $0003 (the JMP ($0002) target ptr
 				-- if mem_8C=$00). Whoever wrote to these bytes upstream
 				-- defined the IRQ dispatch destination.
-				if cpuAddr_pre = x"0002" then
+				-- v279 doom triage: WP repurposed — capture writer-PC of any write
+				-- to bank $00:$6C00..$6C07 (Doom's stuck-region). If a write happens
+				-- here, WP shows the PC of the writing instruction, telling us who
+				-- corrupted bank $00:$6C00 (currently $AB) or $6C03 ($00 BRK).
+				if addr_hi_816 = x"00"
+				   and cpuAddr_pre(15 downto 8) = x"6C"
+				   and cpuAddr_pre(7 downto 3) = "00000" then
 					wr02_pc_r  <= cpu_pc_now;
 					wr02_val_r <= std_logic_vector(cpuDo_pre);
-					cnt_wr02_r <= cnt_wr02_r + 1;     -- v256
+					cnt_wr02_r <= cnt_wr02_r + 1;
 					-- v257: increment chg counter only when new ≠ previous.
 					-- wr02_val_r still holds the previous-cycle value here.
 					if std_logic_vector(cpuDo_pre) /= wr02_val_r then
@@ -3099,6 +3114,12 @@ cpu_x_now <= std_logic_vector(dbg_x_816_i(7 downto 0))
 cpu_y_now <= std_logic_vector(dbg_y_816_i(7 downto 0))
              when supercpu_en = '1'
              else t65_regs(23 downto 16);
+
+-- v280: 16-bit SP for UART pool. SCPU = full 16-bit SP. T65 S is 16-bit
+-- but only low byte is meaningful for 6510; high byte is forced $01.
+dbg_cpu_sp <= std_logic_vector(dbg_sp_816_i)
+              when supercpu_en = '1'
+              else x"01" & t65_regs(39 downto 32);
 
 -- Compose 24-bit "current PC" for $DD00 write capture: PBR:PC for SCPU,
 -- $00:t65_pc_latch (last opcode-fetch address) for T65.

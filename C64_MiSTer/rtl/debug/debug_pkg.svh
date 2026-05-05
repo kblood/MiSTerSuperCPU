@@ -567,6 +567,12 @@ typedef struct packed {
   // SCPU's IRQ-thread PCs from v260 to find the divergent branch.
   logic [15:0] d019_ack_count;
   logic [23:0] d019_ack_pc;
+
+  // v280: 16-bit P65C816 stack pointer. Doom v274 PC-stuck at $006C03
+  // shows V-ring `00 6C 05 04` matching native-mode BRK 4-byte push to
+  // $00:$6C04..$6C01 — so SP appears to live in $6C0X. Direct readback
+  // confirms or refutes the SP-in-$6C0X hypothesis.
+  logic [15:0] cpu_sp;
 } dbg_pool_t;
 `endif
 

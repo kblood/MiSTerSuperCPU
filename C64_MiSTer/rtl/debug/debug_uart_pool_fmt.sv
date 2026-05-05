@@ -69,6 +69,7 @@ module debug_uart_pool_fmt
 	reg  [7:0] lat_p;
 	reg  [7:0] lat_v0, lat_v1, lat_v2, lat_v3;
 	reg  [7:0] lat_y, lat_x;
+	reg [15:0] lat_sp;          // v280 doom triage: 16-bit SP
 	reg [23:0] lat_wp;
 	reg [15:0] lat_cg;     // v257 cnt_wr02_chg (now repurposed as W1)
 	reg [15:0] lat_w1;     // v265 d001_last_pc[15:0] — writer PC of $D001
@@ -171,14 +172,15 @@ module debug_uart_pool_fmt
 			8'd34: line_byte = hex_nibble(lat_v3[3:0]);
 			8'd35: line_byte = " ";
 
-			// "YX:####"
-			8'd36: line_byte = "Y";
-			8'd37: line_byte = "X";
+			// v280: "SP:####" — 16-bit P65C816 stack pointer (replaces YX).
+			// Confirms whether SP=$6C0X at the BRK loop in Doom v274.
+			8'd36: line_byte = "S";
+			8'd37: line_byte = "P";
 			8'd38: line_byte = ":";
-			8'd39: line_byte = hex_nibble(lat_y[7:4]);
-			8'd40: line_byte = hex_nibble(lat_y[3:0]);
-			8'd41: line_byte = hex_nibble(lat_x[7:4]);
-			8'd42: line_byte = hex_nibble(lat_x[3:0]);
+			8'd39: line_byte = hex_nibble(lat_sp[15:12]);
+			8'd40: line_byte = hex_nibble(lat_sp[11:8]);
+			8'd41: line_byte = hex_nibble(lat_sp[7:4]);
+			8'd42: line_byte = hex_nibble(lat_sp[3:0]);
 			8'd43: line_byte = " ";
 
 			// "WP:######"
@@ -431,6 +433,7 @@ module debug_uart_pool_fmt
 				lat_v3    <= pool.wr02_v3;
 				lat_y     <= pool.wr02_y;
 				lat_x     <= pool.wr02_x;
+				lat_sp    <= pool.cpu_sp;     // v280 doom triage
 				lat_wp    <= pool.wr02_pc;
 				lat_cg    <= pool.cnt_wr02_chg;
 				lat_w1    <= pool.d001_last_pc[15:0];
