@@ -78,8 +78,13 @@ def main():
     print(run(c, 'cat ' + MGL_REMOTE))
 
     # cfg byte 10: SCPU(0x04) + Debug UART(0x80) = 0x84
-    run(c, "printf '\\x84' | dd of=" + CFG + " bs=1 count=1 seek=10 conv=notrunc 2>/dev/null")
-    print('cfg byte 10 = 0x84')
+    # Use SFTP, not printf-via-paramiko — printf silently mangles 0x84 to 0xC2.
+    sftp = c.open_sftp()
+    with sftp.open(CFG, 'rb+') as f:
+        f.seek(10); f.write(bytes([0x84]))
+    sftp.close()
+    cfg_dump = run(c, 'xxd ' + CFG + ' | head -1')
+    print('cfg byte 10 = 0x84 (verify):', cfg_dump.strip())
 
     print('reloading core ...')
     run(c, 'echo load_core ' + RBF + ' > /dev/MiSTer_cmd')
