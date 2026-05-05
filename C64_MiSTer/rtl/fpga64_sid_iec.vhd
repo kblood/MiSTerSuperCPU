@@ -935,6 +935,8 @@ signal mem_5C_r         : std_logic_vector(7 downto 0)   := (others => '0');
 signal pc_main_r        : std_logic_vector(23 downto 0)  := (others => '0');
 signal pc_irq_r         : std_logic_vector(23 downto 0)  := (others => '0');
 signal mem_45_r         : std_logic_vector(7 downto 0)   := (others => '0');
+-- v283 doom triage: latch-once first-writer-PC + DATA for $00:$6C03 writes.
+signal first_w6c03_latched_r : std_logic := '0';
 signal cnt_pc_30_r      : std_logic_vector(15 downto 0)  := (others => '0');
 signal cnt_pc_97_r      : std_logic_vector(15 downto 0)  := (others => '0');
 signal cpu_p_now        : std_logic_vector(7 downto 0);
@@ -1380,6 +1382,53 @@ cpuDi <= ("00000" & scpu_optim_mode & '1')
             when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B6" and scpu_regs_enabled = '1') else
          (scpu_rom_vis & "0000000")
             when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
+         -- v285 — Native vector intercept + RTI sink (mini SCPU ROM stub).
+         --
+         -- All native vectors at $00:$FFE4..$FFEF point to $00:$FF00, which
+         -- we mux to return $40 (RTI). On BRK/COP/ABORT/NMI/IRQ in native
+         -- mode the CPU pushes 4 bytes, fetches the vector, jumps to $FF00,
+         -- finds RTI, and silently returns. SP stays balanced.
+         --
+         -- Without this, $00:$FFE6/E7 reads C64 KERNAL ROM ($03 $6C), the
+         -- BRK vector resolves to $00:$6C03 (RAM byte $00 = BRK opcode), and
+         -- the CPU enters an unrecoverable BRK→push→fetch→BRK loop. Doom
+         -- triggers a native BRK during boot/init and dies; v284 capture
+         -- proved Doom never writes to $6C03, so no Doom-side fix exists.
+         --
+         -- Real SCPU has $FCxx trampolines (JML $00:$80xx) reached via the
+         -- $FFExx vectors, with SCPU OS handlers RAM-loaded at $00:$80xx
+         -- by the SCPU boot ROM. We have neither the boot ROM nor the OS
+         -- image, so the RTI sink is the safest fallback.
+         --
+         -- Gated on emu_mode_816_i='0' (native mode only). Vanilla 6510/T65
+         -- and SCPU emulation mode see KERNAL ROM bytes unchanged. Native
+         -- mode is the only mode that fetches from $FFE0..$FFEF; emu mode
+         -- BRK uses $FFFE/FF (untouched, normal C64 KERNAL flow).
+         -- (Earlier scpu_hwenable gate was wrong — Doom's prologue does
+         -- STA $D07F right after STA $D07E, clearing hwenable, so the
+         -- override never fired during Doom's BRK.)
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFE4") else  -- COP  L → $00:$FF00
+         x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFE5") else  -- COP  H
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFE6") else  -- BRK  L → $00:$FF00
+         x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFE7") else  -- BRK  H
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFE8") else  -- ABORT L → $00:$FF00
+         x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFE9") else  -- ABORT H
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEA") else  -- NMI  L → $00:$FF00
+         x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEB") else  -- NMI  H
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEE") else  -- IRQ  L → $00:$FF00
+         x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEF") else  -- IRQ  H
+         x"40" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF00") else  -- RTI sink at $00:$FF00
          cpuDi_raw;
 
 -- ----------------------------------------------------------------------
@@ -2072,6 +2121,7 @@ begin
 			pc_main_r            <= (others => '0');
 			pc_irq_r             <= (others => '0');
 			mem_45_r             <= (others => '0');
+			first_w6c03_latched_r <= '0';
 			cnt_pc_30_r          <= (others => '0');
 			cnt_pc_97_r          <= (others => '0');
 			mem_5B_r             <= (others => '0');
@@ -2286,17 +2336,12 @@ begin
 				if cpuAddr_pre = x"007D" then mem_7D_r <= std_logic_vector(cpuDi); end if;
 				if cpuAddr_pre = x"007E" then mem_7E_r <= std_logic_vector(cpuDi); end if;
 				if cpuAddr_pre = x"007F" then mem_7F_r <= std_logic_vector(cpuDi); end if;
-				-- v279 doom triage: capture BRK vector + next-byte after stuck PC.
-				-- Goal: confirm whether PC=$6C03 BRK loop is via emu BRK vector pointing
-				-- back to $6C03 area, AND see whether $6C05 holds RTI handler or another BRK.
-				-- UART G: byte 1 = bank $00:$FFFE (mem_40 = emu BRK vec lo)
-				-- UART G: byte 2 = bank $00:$FFFF (mem_44 = emu BRK vec hi)
-				-- UART G: byte 3 = bank $00:$6C05 (mem_5C = first byte after BRK push)
-				-- UART B: byte   = bank $00:$6C03 (mem_45 = current BRK opcode, unchanged)
-				if addr_hi_816 = x"00" and cpuAddr_pre = x"FFFE" then mem_40_r <= std_logic_vector(cpuDi); end if;
-				if addr_hi_816 = x"00" and cpuAddr_pre = x"FFFF" then mem_44_r <= std_logic_vector(cpuDi); end if;
-				if addr_hi_816 = x"00" and cpuAddr_pre = x"6C05" then mem_5C_r <= std_logic_vector(cpuDi); end if;
-				if addr_hi_816 = x"00" and cpuAddr_pre = x"6C03" then mem_45_r <= std_logic_vector(cpuDi); end if;
+				-- v282 doom triage: latch SuperRAM bank $01:$6C00/$6C03/$6C05 reads
+				-- via cpuDi. (Bank-$01-mirror hypothesis was disproven 2026-05-05:
+				-- bank $01:$6C00..$6C07 readout was all $00, plus bank $00 BRAM is
+				-- reset on core reload so a peek-PRG cannot read post-Doom $00:$6Cxx.)
+				-- v283 latch-once first-writer-PC for $00:$6C03 lives in the
+				-- cpuWe_pre='1' block below (around the wr02_pc_r area).
 				-- v260: PC main/irq split + page counters, gated by opcode_fetch_pulse
 				if opcode_fetch_pulse = '1' then
 					if cpu_p_now(2) = '0' then
@@ -2425,6 +2470,17 @@ begin
 				-- to bank $00:$6C00..$6C07 (Doom's stuck-region). If a write happens
 				-- here, WP shows the PC of the writing instruction, telling us who
 				-- corrupted bank $00:$6C00 (currently $AB) or $6C03 ($00 BRK).
+				-- v283 doom triage: first-writer-PC + DATA for $00:$6C03 (latch-once).
+				-- All-zero readout in mem_40/44/5C/45 means nobody ever wrote.
+				if addr_hi_816 = x"00" and cpuAddr_pre = x"6C03"
+				   and scpu_hwenable = '1'
+				   and first_w6c03_latched_r = '0' then
+					mem_40_r              <= cpu_pc_now(7 downto 0);
+					mem_44_r              <= cpu_pc_now(15 downto 8);
+					mem_5C_r              <= cpu_pc_now(23 downto 16);
+					mem_45_r              <= std_logic_vector(cpuDo_pre);
+					first_w6c03_latched_r <= '1';
+				end if;
 				if addr_hi_816 = x"00"
 				   and cpuAddr_pre(15 downto 8) = x"6C"
 				   and cpuAddr_pre(7 downto 3) = "00000" then
