@@ -175,3 +175,7 @@ sim/cocotb/results.xml
 sim/cocotb/p65c816
 sim/cocotb/*.log
 sim/cocotb/.tmp_*
+
+# VICE oracle gameplay snapshot artifact (~9 MB, regenerable via
+# tools/vice_dump_gameplay_state.py --warp-secs 90)
+tools/vice_oracle/gameplay/

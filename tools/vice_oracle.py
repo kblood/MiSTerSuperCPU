@@ -156,6 +156,8 @@ def _parse_regs_dump(out: str) -> dict:
             "x":   (int(m["xh"], 16) << 8) | int(m["xl"], 16),
             "y":   (int(m["yh"], 16) << 8) | int(m["yl"], 16),
             "sp":  int(m["sp"], 16),
+            "d":   int(m["dpre"], 16),
+            "db":  int(m["db"], 16),
             "p":   int(m["flags"], 2),
             "e":   int(m["e"]),
         }
@@ -169,6 +171,8 @@ def _parse_regs_dump(out: str) -> dict:
             "x":   int(m["x"], 16),
             "y":   int(m["y"], 16),
             "sp":  int(m["sp"], 16),
+            "d":   int(m["dpre"], 16),
+            "db":  int(m["db"], 16),
             "p":   int(m["flags"], 2),
             "e":   int(m["e"]),
         }
@@ -182,6 +186,8 @@ def _parse_regs_dump(out: str) -> dict:
             "x":   int(m["xl"], 16),
             "y":   int(m["yl"], 16),
             "sp":  int(m["sp"], 16),
+            "d":   int(m["dpre"], 16),
+            "db":  int(m["db"], 16),
             "p":   int(m["flags"], 2),
             "e":   int(m["e"]),
         }
@@ -662,6 +668,99 @@ class ViceOracle:
         """Like regs() but uses min_idle=0.05 for stepwise capture loops."""
         out = self._cmd("r", timeout=5.0, min_idle=0.05)
         return _parse_regs_dump(out)
+
+    def load_bank_file(self, bank: int, host_path: str,
+                       addr: int = 0x0000) -> None:
+        """bload `host_path` into bank:addr via VICE's monitor `bload`.
+
+        VICE 3.10's monitor lacks save_snapshot/load_snapshot; bulk byte
+        transfer goes through `bload "<path>" <device> <addr>` (device 0
+        = host filesystem). Each call sends one TCP message and VICE
+        does the file read locally — far faster than the 64-byte `>`
+        pokes used by load_bytes_direct (~0.2s vs ~50s per 64KB).
+
+        Bank routing:
+          * bank == 0: bload twice — once to default cpu memspace
+            (motherboard RAM, where the CPU reads in EMULATION mode
+            before SCPU is enabled) AND once to `bank ram00` (SCPU SRAM,
+            where the CPU reads in NATIVE+SCPU mode). This matches the
+            bank20 test's pattern of dual-write so reads are correct
+            regardless of which mode the CPU happens to be in.
+          * bank > 0: bload via `bank ramXX` switch (SCPU SuperRAM).
+            Restore `bank cpu` after.
+        """
+        # VICE wants forward slashes inside the quoted path. Backslash
+        # escaping inside the monitor parser is unreliable.
+        path_str = str(host_path).replace("\\", "/")
+        # Precheck only for Linux-style paths; a Windows-style "C:/..."
+        # path (passed in from WSL2 cocotb when VICE.exe runs natively
+        # on Windows) is unreachable via Path() from WSL but IS what
+        # VICE needs. Trust VICE's error response in that case.
+        if not (len(path_str) >= 2 and path_str[1] == ":"):
+            if not Path(path_str).exists():
+                raise ViceOracleError(f"bload source missing: {path_str}")
+        if bank == 0:
+            # 1) motherboard (default cpu memspace)
+            self._cmd(f'bload "{path_str}" 0 ${addr:04x}',
+                      timeout=15.0, min_idle=0.3)
+            # 2) SCPU SRAM bank ram00
+            self._cmd("bank ram00", timeout=5.0)
+            try:
+                self._cmd(f'bload "{path_str}" 0 ${addr:04x}',
+                          timeout=15.0, min_idle=0.3)
+            finally:
+                self._cmd("bank cpu", timeout=5.0)
+        else:
+            self._cmd(f"bank ram{bank:02x}", timeout=5.0)
+            try:
+                self._cmd(f'bload "{path_str}" 0 ${addr:04x}',
+                          timeout=15.0, min_idle=0.3)
+            finally:
+                self._cmd("bank cpu", timeout=5.0)
+
+    def capture_trace_from_current(
+        self,
+        max_instr: int,
+        mask_irq: bool = True,
+    ) -> list[TraceLine]:
+        """Stepwise trace from VICE's current paused state.
+
+        Unlike capture_trace_stepwise(), this does NOT install a start
+        breakpoint or `g` to it. VICE is assumed already paused at the
+        desired starting PC (e.g. just after load_snapshot()). Captures
+        the snapshot regs as the first TraceLine, then `z`-steps for
+        max_instr-1 more lines.
+
+        Use for: VICE state restored from .vsf, diff vs a DUT that
+        bootstrapped to the same PC.
+        """
+        if self._sock is None:
+            raise ViceOracleError("not connected")
+
+        if mask_irq:
+            cur = self._regs_fast()
+            new_p = cur["p"] | 0x04
+            self._cmd(f"r p=${new_p:02x}", timeout=5.0, min_idle=0.05)
+
+        out: list[TraceLine] = []
+        seq = 0
+        r = self._regs_fast()
+        out.append(TraceLine(
+            seq=seq, pbr=r["pbr"], pc=r["pc"], ir=0,
+            p=r["p"], sp=r["sp"],
+            raw=f"{seq}:{r['pbr']:02x}:{r['pc']:04x}:00:{r['p']:02x}:{r['sp']:04x}",
+        ))
+        seq += 1
+        while seq < max_instr:
+            self._cmd("z", timeout=5.0, min_idle=0.05)
+            r = self._regs_fast()
+            out.append(TraceLine(
+                seq=seq, pbr=r["pbr"], pc=r["pc"], ir=0,
+                p=r["p"], sp=r["sp"],
+                raw=f"{seq}:{r['pbr']:02x}:{r['pc']:04x}:00:{r['p']:02x}:{r['sp']:04x}",
+            ))
+            seq += 1
+        return out
 
     def run_to(
         self,

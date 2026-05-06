@@ -80,5 +80,15 @@ test-doom-loader:
 test-doom-bank20:
 	$(MAKE) sim MODULE=tests.test_doom_bank20_diff LAYER_A_SKIP_VICE=$${LAYER_A_SKIP_VICE:-0}
 
+# Doom mid-gameplay diff — uses VICE's full mid-gameplay snapshot
+# (captured by tools/vice_dump_gameplay_state.py) to start both DUT and
+# VICE at PC=$2A:$55A9 (or wherever VICE landed after warp). Steps both
+# for ~5000 instructions and reports first divergence. If MATCH, the
+# music_num=-9 bug is in the loader phase; if DIVERGE, it's a real CPU
+# bug on a gameplay-only opcode path that the bank-$20 dispatcher walk
+# didn't trigger.
+test-doom-gameplay:
+	$(MAKE) sim MODULE=tests.test_doom_gameplay_diff LAYER_A_SKIP_VICE=$${LAYER_A_SKIP_VICE:-0}
+
 clean-all:
 	rm -rf sim_build __pycache__ tests/__pycache__ results.xml
