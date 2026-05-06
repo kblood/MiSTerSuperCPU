@@ -71,13 +71,13 @@ DOOM_REU_PATH = REPO / "doom.reu"
 BANK20_LEN    = 0x1000              # 4 KB — covers $20:$0000..$0FFF
 BOOT_ADDR     = 0x0800
 BANK20_ENTRY  = 0x20_0000           # 24-bit: PB=$20, PC=$0000
-# Stop at $2D:$06A0 — first arrival in bank $2D via JML at $20:$040E.
-# Trail so far: $00:$0800 (bootstrap) → JML $20:$0000 (prologue) →
-# JML $80:$005C (bank-80 copy chain) → JMP [$00:$00FC] → $20:$03EA
-# (continue setup) → JML $2D:$06A0 (this stop). Confirms cross-bank
-# JML to a third bank works.
-STOP_PC       = 0x06A0
-STOP_PBR      = 0x2D
+# Stop at $2C:$A719 — first arrival in bank $2C via JML at $2D:$06C4.
+# Full trail: $00:$0800 (bootstrap) → JML $20:$0000 (prologue, 5 patches)
+# → JML $80:$005C (3-loop copy chain, 3 patches) → JMP [$00:$00FC] →
+# $20:$03EA (continue setup) → JML $2D:$06A0 → ($2D:$06A0..$06C4 setup)
+# → JML $2C:$A719 (this stop).
+STOP_PC       = 0xA719
+STOP_PBR      = 0x2C
 
 # Bootstrap in bank $00: SEI; CLC; XCE; JML $20:$0000
 BOOTSTRAP = bytes([
@@ -180,6 +180,10 @@ EXTRA_BANKS: list[tuple[int, int]] = [
     # (which targets $2C:$A719). 8 KB is overkill for the stopping point
     # but lets the harness see context and decide where to halt next.
     (0x2D, 0x2000),
+    # Bank $2C — full 64 KB. The JML target $A719 is 43 KB into the bank,
+    # and bank $2C also holds many more code paths Doom reaches later.
+    # Poke time ~51 s; acceptable next to the ~8 min stepwise capture.
+    (0x2C, 0x10000),
 ]
 
 
