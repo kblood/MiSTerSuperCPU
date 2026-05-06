@@ -95,7 +95,57 @@ def main():
         if not _peek(v, "after patches"):
             return 1
 
-        print("ALL STAGES OK — bootstrap survived full load sequence.")
+        # New: replay capture_trace_stepwise's setup steps and check
+        # bootstrap bytes again at each transition.
+        print("STAGE: set_breakpoint")
+        bp = v.set_breakpoint(BOOT_ADDR)
+        _peek(v, f"after BP #{bp}")
+
+        print("STAGE: g $0800 (resume; expect BP to fire immediately)")
+        import socket
+        v._sock.sendall(f"g ${BOOT_ADDR:04x}\r\n".encode())
+        v._sock.settimeout(0.5)
+        import time as _t
+        end = _t.time() + 30.0
+        buf = b""
+        from vice_oracle import PROMPT  # type: ignore
+        seen_break = False
+        while _t.time() < end:
+            try:
+                ch = v._sock.recv(65536)
+            except socket.timeout:
+                continue
+            if not ch:
+                break
+            buf += ch
+            if PROMPT in buf and (b"BREAK" in buf or b"Stop" in buf):
+                seen_break = True
+                break
+        print(f"  BP fired: {seen_break}")
+        _peek(v, "after BP fire")
+
+        # mask_irq's r p=$NN
+        print("STAGE: mask_irq (r p=$NN)")
+        cur = v._regs_fast()
+        new_p = cur["p"] | 0x04
+        v._cmd(f"r p=${new_p:02x}", timeout=5.0, min_idle=0.05)
+        _peek(v, "after mask_irq")
+
+        print("STAGE: first z step")
+        v._cmd("z", timeout=5.0, min_idle=0.05)
+        m = v.mem(BOOT_ADDR, 7)
+        regs = v._regs_fast()
+        print(f"  $0800..$0806 = {m.hex(' ')}")
+        print(f"  PC=${regs['pc']:04x} P=${regs['p']:02x} SP=${regs['sp']:04x}")
+
+        print("STAGE: second z step")
+        v._cmd("z", timeout=5.0, min_idle=0.05)
+        m = v.mem(BOOT_ADDR, 7)
+        regs = v._regs_fast()
+        print(f"  $0800..$0806 = {m.hex(' ')}")
+        print(f"  PC=${regs['pc']:04x} P=${regs['p']:02x} SP=${regs['sp']:04x}")
+
+        v.delete_breakpoint(bp)
         return 0
     finally:
         v.shutdown()

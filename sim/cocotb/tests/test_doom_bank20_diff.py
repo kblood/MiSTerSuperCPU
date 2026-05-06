@@ -222,16 +222,24 @@ def _vice_oracle_capture_doom(bank20_bytes: bytes,
     with ViceOracle(vice_exe=exe) as v:
         v._cmd("reset 0", timeout=10.0)
         # 0) optional bank $00 post-loader snapshot. Split around the
-        #    bootstrap region so the 64KB poke can't race with the
-        #    bootstrap overlay (an earlier 30-min run saw VICE execute
-        #    snapshot bytes at $0800 instead of bootstrap, presumably
-        #    because some chunk in the 1024-chunk write got reordered or
-        #    silently dropped).
+        #    bootstrap region AND the IO area at $D000-$DFFF AND the
+        #    6510 port registers $0000-$0001. CRITICAL: VICE's `>`
+        #    command writes through the CPU bus, so pokes to $D000-$DFFF
+        #    fire device-register writes (CIA/VIC/SID, AND the SuperCPU
+        #    registers at $D070-$D07F). Snapshot data at $D078/$D07E
+        #    silently enabled SuperCPU mode mid-load, switching the CPU
+        #    to read from empty SRAM at $00:$0801 (= BRK), even though
+        #    motherboard RAM correctly held the bootstrap byte $18.
+        #    Confirmed via tools/vice_diagnostic_full_seq.py — `m`
+        #    consistently showed $0800..$0806 = 78 18 fb 5c 00 00 20
+        #    while the CPU still executed $00 (BRK) at $0801.
         if bank00_snapshot is not None:
             boot_start = BOOT_ADDR
             boot_end = BOOT_ADDR + len(BOOTSTRAP)
-            v.load_bytes_direct(0x0000, bank00_snapshot[:boot_start])
-            v.load_bytes_direct(boot_end, bank00_snapshot[boot_end:])
+            # Three skips: zp port pair, bootstrap region, IO range.
+            v.load_bytes_direct(0x0002, bank00_snapshot[0x0002:boot_start])
+            v.load_bytes_direct(boot_end, bank00_snapshot[boot_end:0xD000])
+            v.load_bytes_direct(0xE000, bank00_snapshot[0xE000:])
         # 1) bootstrap in bank 0 + reset vector — guaranteed last write
         #    to $0800-$0806, so VICE executes our SEI/CLC/XCE/JML, not
         #    snapshot bytes.
