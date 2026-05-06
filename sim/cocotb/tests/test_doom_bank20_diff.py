@@ -71,12 +71,12 @@ DOOM_REU_PATH = REPO / "doom.reu"
 BANK20_LEN    = 0x1000              # 4 KB — covers $20:$0000..$0FFF
 BOOT_ADDR     = 0x0800
 BANK20_ENTRY  = 0x20_0000           # 24-bit: PB=$20, PC=$0000
-# Stop at $2C:$A719 — first arrival in bank $2C via JML at $2D:$06C4.
-# Full trail: $00:$0800 (bootstrap) → JML $20:$0000 (prologue, 5 patches)
-# → JML $80:$005C (3-loop copy chain, 3 patches) → JMP [$00:$00FC] →
-# $20:$03EA (continue setup) → JML $2D:$06A0 → ($2D:$06A0..$06C4 setup)
-# → JML $2C:$A719 (this stop).
-STOP_PC       = 0xA719
+# Stop at $2C:$A792 — the JML $00:$0E0C at end of bank $2C entry code
+# (after $87 reads/writes). This is the architectural ceiling: the JML
+# target $00:$0E0C is in motherboard RAM where VICE has BASIC content
+# but DUT has only $EA — pushing past requires either bulk-poke into
+# VICE bank $0 or attaching doom.reu as REU image to VICE.
+STOP_PC       = 0xA792
 STOP_PBR      = 0x2C
 
 # Bootstrap in bank $00: SEI; CLC; XCE; JML $20:$0000
@@ -184,6 +184,11 @@ EXTRA_BANKS: list[tuple[int, int]] = [
     # and bank $2C also holds many more code paths Doom reaches later.
     # Poke time ~51 s; acceptable next to the ~8 min stepwise capture.
     (0x2C, 0x10000),
+    # Bank $87 — data bank, mostly zero in doom.reu. Bank $2C code at
+    # $A733-$A75A reads/writes $87:$E954-$E957 (state flags). With zero
+    # content on both sides the BEQ at $A743 is taken identically so the
+    # diff stays consistent. 64KB load to be safe — pokes ~51 s of zeros.
+    (0x87, 0x10000),
 ]
 
 
