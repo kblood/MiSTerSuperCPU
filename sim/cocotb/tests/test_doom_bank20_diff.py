@@ -71,12 +71,13 @@ DOOM_REU_PATH = REPO / "doom.reu"
 BANK20_LEN    = 0x1000              # 4 KB — covers $20:$0000..$0FFF
 BOOT_ADDR     = 0x0800
 BANK20_ENTRY  = 0x20_0000           # 24-bit: PB=$20, PC=$0000
-# Stop at $20:$03EA — first arrival back in bank $20 after the
-# JML $80:$005C → bank-80 copy-loop chain → JMP [$00:$00FC]. Reaching
-# $03EA proves the cross-bank transition + indirect-long-JMP work on the
-# P65C816 vs VICE.
-STOP_PC       = 0x03EA
-STOP_PBR      = 0x20
+# Stop at $2D:$06A0 — first arrival in bank $2D via JML at $20:$040E.
+# Trail so far: $00:$0800 (bootstrap) → JML $20:$0000 (prologue) →
+# JML $80:$005C (bank-80 copy chain) → JMP [$00:$00FC] → $20:$03EA
+# (continue setup) → JML $2D:$06A0 (this stop). Confirms cross-bank
+# JML to a third bank works.
+STOP_PC       = 0x06A0
+STOP_PBR      = 0x2D
 
 # Bootstrap in bank $00: SEI; CLC; XCE; JML $20:$0000
 BOOTSTRAP = bytes([
@@ -174,6 +175,11 @@ EXTRA_BANKS: list[tuple[int, int]] = [
     # Bank $80 — first 16 KB covers code at $005C..$0099 plus the data
     # source ranges $05D9..$1A9B used by the copy loops at $80:$0061..$0096.
     (0x80, 0x4000),
+    # Bank $2D — load enough to cover the JML target at $06A0 plus a few
+    # instructions of code before the next cross-bank JML at $2D:$06C4
+    # (which targets $2C:$A719). 8 KB is overkill for the stopping point
+    # but lets the harness see context and decide where to halt next.
+    (0x2D, 0x2000),
 ]
 
 
