@@ -167,3 +167,11 @@ C64_MiSTer/cr_ie_info.json
 /*.D64
 /*.d64
 /*.reu
+
+# cocotb verification environment — ignore venv, build dir, run logs, binary
+sim/cocotb/.venv/
+sim/cocotb/sim_build/
+sim/cocotb/results.xml
+sim/cocotb/p65c816
+sim/cocotb/*.log
+sim/cocotb/.tmp_*
