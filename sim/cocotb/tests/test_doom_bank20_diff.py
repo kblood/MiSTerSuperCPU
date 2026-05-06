@@ -221,25 +221,33 @@ def _vice_oracle_capture_doom(bank20_bytes: bytes,
         exe = "/mnt/" + drv + exe[2:].replace("\\", "/")
     with ViceOracle(vice_exe=exe) as v:
         v._cmd("reset 0", timeout=10.0)
-        # 0) optional bank $00 post-loader snapshot. Split around the
-        #    bootstrap region AND the IO area at $D000-$DFFF AND the
-        #    6510 port registers $0000-$0001. CRITICAL: VICE's `>`
-        #    command writes through the CPU bus, so pokes to $D000-$DFFF
-        #    fire device-register writes (CIA/VIC/SID, AND the SuperCPU
-        #    registers at $D070-$D07F). Snapshot data at $D078/$D07E
-        #    silently enabled SuperCPU mode mid-load, switching the CPU
-        #    to read from empty SRAM at $00:$0801 (= BRK), even though
-        #    motherboard RAM correctly held the bootstrap byte $18.
-        #    Confirmed via tools/vice_diagnostic_full_seq.py — `m`
-        #    consistently showed $0800..$0806 = 78 18 fb 5c 00 00 20
-        #    while the CPU still executed $00 (BRK) at $0801.
+        # 0) optional bank $00 post-loader snapshot. CRITICAL: load via
+        #    `bank ram00` (SuperCPU SRAM bank $00) — NOT `bank cpu`. The
+        #    `bank cpu` view writes through the CPU bus, so pokes to
+        #    $D000-$DFFF fire device-register side effects, including
+        #    silently enabling SuperCPU mode via writes to $D078/$D07E.
+        #    `bank ram00` writes to bare SRAM with no side effects.
+        #    Once SCPU is naturally enabled by bank $20 prologue's
+        #    native-mode entry, CPU reads bank $00 from this SRAM.
+        #    Skip $0800-$0806 — bootstrap goes there via `bank cpu` so
+        #    the *motherboard RAM* has the SEI/CLC/XCE/JML, executed in
+        #    emulation mode before SCPU is enabled.
         if bank00_snapshot is not None:
-            boot_start = BOOT_ADDR
-            boot_end = BOOT_ADDR + len(BOOTSTRAP)
-            # Three skips: zp port pair, bootstrap region, IO range.
-            v.load_bytes_direct(0x0002, bank00_snapshot[0x0002:boot_start])
-            v.load_bytes_direct(boot_end, bank00_snapshot[boot_end:0xD000])
-            v.load_bytes_direct(0xE000, bank00_snapshot[0xE000:])
+            v._cmd("bank ram00", timeout=5.0)
+            try:
+                chunk = 64
+                regions = [(0x0000, BOOT_ADDR),
+                           (BOOT_ADDR + len(BOOTSTRAP), 0x10000)]
+                for start, end in regions:
+                    i = start
+                    while i < end:
+                        piece = bank00_snapshot[i:min(i + chunk, end)]
+                        byte_str = " ".join(f"{b:02x}" for b in piece)
+                        v._cmd(f"> ${i:04x} {byte_str}",
+                               timeout=5.0, min_idle=0.05)
+                        i += chunk
+            finally:
+                v._cmd("bank cpu", timeout=5.0)
         # 1) bootstrap in bank 0 + reset vector — guaranteed last write
         #    to $0800-$0806, so VICE executes our SEI/CLC/XCE/JML, not
         #    snapshot bytes.
