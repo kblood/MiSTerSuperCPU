@@ -71,13 +71,23 @@ DOOM_REU_PATH = REPO / "doom.reu"
 BANK20_LEN    = 0x1000              # 4 KB — covers $20:$0000..$0FFF
 BOOT_ADDR     = 0x0800
 BANK20_ENTRY  = 0x20_0000           # 24-bit: PB=$20, PC=$0000
-# Stop at $2C:$A792 — the JML $00:$0E0C at end of bank $2C entry code
-# (after $87 reads/writes). This is the architectural ceiling: the JML
-# target $00:$0E0C is in motherboard RAM where VICE has BASIC content
-# but DUT has only $EA — pushing past requires either bulk-poke into
-# VICE bank $0 or attaching doom.reu as REU image to VICE.
-STOP_PC       = 0xA792
-STOP_PBR      = 0x2C
+# Optional bank $00 snapshot (post-loader motherboard RAM image captured
+# from VICE running loader.prg + REU). If present, both DUT and VICE
+# preload it before bootstrap, lifting the JML $00:$0E0C ceiling.
+# Capture via: tools/vice_dump_postloader_bank00.py
+BANK00_SNAPSHOT_PATH = REPO / "tools" / "vice_oracle" / "postloader_bank00.bin"
+
+# When the bank $00 snapshot is loaded, the diff can push past the
+# previous architectural ceiling at $2C:$A792 → $00:$0E0C. Stop after a
+# handful of instructions inside the JML target to confirm the diff
+# survives the cross-bank entry into populated motherboard RAM.
+# Without the snapshot, fall back to the old ceiling at $2C:$A792.
+if BANK00_SNAPSHOT_PATH.exists():
+    STOP_PC   = 0x0E18              # 4 instructions past $0E0C
+    STOP_PBR  = 0x00
+else:
+    STOP_PC   = 0xA792               # architectural ceiling without snapshot
+    STOP_PBR  = 0x2C
 
 # Bootstrap in bank $00: SEI; CLC; XCE; JML $20:$0000
 BOOTSTRAP = bytes([
@@ -201,7 +211,8 @@ def _extract_bank(bank: int, length: int) -> bytes:
 
 
 def _vice_oracle_capture_doom(bank20_bytes: bytes,
-                                extra_banks: list[tuple[int, bytes]]):
+                                extra_banks: list[tuple[int, bytes]],
+                                bank00_snapshot: Optional[bytes] = None):
     """Launch VICE, plant bootstrap + bank $20 + extras, capture trace."""
     from vice_oracle import ViceOracle, VICE_EXE_DEFAULT
     exe = VICE_EXE_DEFAULT
@@ -210,8 +221,34 @@ def _vice_oracle_capture_doom(bank20_bytes: bytes,
         exe = "/mnt/" + drv + exe[2:].replace("\\", "/")
     with ViceOracle(vice_exe=exe) as v:
         v._cmd("reset 0", timeout=10.0)
-        # 1) bootstrap in bank 0 + reset vector
+        # 0) optional bank $00 post-loader snapshot. Split around the
+        #    bootstrap region so the 64KB poke can't race with the
+        #    bootstrap overlay (an earlier 30-min run saw VICE execute
+        #    snapshot bytes at $0800 instead of bootstrap, presumably
+        #    because some chunk in the 1024-chunk write got reordered or
+        #    silently dropped).
+        if bank00_snapshot is not None:
+            boot_start = BOOT_ADDR
+            boot_end = BOOT_ADDR + len(BOOTSTRAP)
+            v.load_bytes_direct(0x0000, bank00_snapshot[:boot_start])
+            v.load_bytes_direct(boot_end, bank00_snapshot[boot_end:])
+        # 1) bootstrap in bank 0 + reset vector — guaranteed last write
+        #    to $0800-$0806, so VICE executes our SEI/CLC/XCE/JML, not
+        #    snapshot bytes.
         v.load_bytes_direct(BOOT_ADDR, BOOTSTRAP)
+
+        # 1b) sanity-check the bootstrap landed (defense vs VICE silently
+        #     dropping a poke chunk; saw this once in a 64KB snapshot run).
+        for retry in range(3):
+            check = v.mem(BOOT_ADDR, len(BOOTSTRAP))
+            if check == BOOTSTRAP:
+                break
+            v.load_bytes_direct(BOOT_ADDR, BOOTSTRAP)
+        else:
+            raise RuntimeError(
+                f"VICE bootstrap failed to land at ${BOOT_ADDR:04x}: "
+                f"expected {BOOTSTRAP.hex()} got {check.hex()}"
+            )
         # 2) bank $20 prologue
         v.load_bytes_direct(BANK20_ENTRY, bank20_bytes)
         # 3) extra banks (data-faithful regime)
@@ -224,7 +261,7 @@ def _vice_oracle_capture_doom(bank20_bytes: bytes,
             start_pc=BOOT_ADDR,
             stop_pc=STOP_PC,
             stop_pbr=STOP_PBR,
-            max_instr=10000,
+            max_instr=12000,
         )
 
 
@@ -265,8 +302,16 @@ async def test_doom_bank20_prologue(dut):
         extra_banks_data.append((bank, data))
         dut._log.info(f"Loaded {len(data)} bytes of doom.reu bank ${bank:02x}")
 
+    bank00_snapshot: Optional[bytes] = None
+    if BANK00_SNAPSHOT_PATH.exists():
+        bank00_snapshot = BANK00_SNAPSHOT_PATH.read_bytes()
+        dut._log.info(f"Loaded {len(bank00_snapshot)}-byte bank $00 "
+                      f"snapshot from {BANK00_SNAPSHOT_PATH.name}")
+
     # 1) DUT
     fix = DutFixture(dut, clk_period_ns=31.25)
+    if bank00_snapshot is not None:
+        fix.load_bytes(0x00, 0x0000, bank00_snapshot)
     fix.load_bytes(0x00, BOOT_ADDR, BOOTSTRAP)
     fix.load_bytes(0x20, 0x0000, bank20_bytes)
     for bank, data in extra_banks_data:
@@ -284,8 +329,9 @@ async def test_doom_bank20_prologue(dut):
 
     cocotb.start_soon(fix.clock_and_bus_loop())
     await fix.reset(cycles=8)
-    # Allow up to ~12000 instructions to reach STOP_PC.
-    await fix.run_n_instructions(12000)
+    # Allow up to ~14000 instructions to reach STOP_PC. Headroom for
+    # the new bank $00 entry path past the JML at $2C:$A792 → $00:$0E0C.
+    await fix.run_n_instructions(14000)
 
     dut_trace_full = fix.get_trace()
     # Truncate at first arrival at PB=$20 PC=$0030 (the stop).
@@ -305,7 +351,8 @@ async def test_doom_bank20_prologue(dut):
 
     # 2) VICE
     try:
-        oracle_trace = _vice_oracle_capture_doom(bank20_bytes, extra_banks_data)
+        oracle_trace = _vice_oracle_capture_doom(
+            bank20_bytes, extra_banks_data, bank00_snapshot=bank00_snapshot)
     except Exception as e:
         dut._log.warning(f"SKIP {test_name}: VICE capture failed: {e}")
         _emit_layer_a_json({
