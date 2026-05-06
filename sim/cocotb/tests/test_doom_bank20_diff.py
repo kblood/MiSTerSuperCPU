@@ -78,13 +78,16 @@ BANK20_ENTRY  = 0x20_0000           # 24-bit: PB=$20, PC=$0000
 BANK00_SNAPSHOT_PATH = REPO / "tools" / "vice_oracle" / "postloader_bank00.bin"
 
 # When the bank $00 snapshot is loaded, the diff can push past the
-# previous architectural ceiling at $2C:$A792 → $00:$0E0C. Stop after a
-# handful of instructions inside the JML target to confirm the diff
-# survives the cross-bank entry into populated motherboard RAM.
+# previous architectural ceiling at $2C:$A792 → $00:$0E0C. With $0E18
+# confirmed MATCH, target Doom's actual end-state — the error trap at
+# $2C:$A95C ("Bad music number -9" is reached via JML to here). If the
+# DUT diverges from VICE on the way there, this captures the FIRST
+# divergence; if Doom reaches the trap unbroken, the bug manifests
+# further along (in code after the trap or via VICE-only side state).
 # Without the snapshot, fall back to the old ceiling at $2C:$A792.
 if BANK00_SNAPSHOT_PATH.exists():
-    STOP_PC   = 0x0E18              # 4 instructions past $0E0C
-    STOP_PBR  = 0x00
+    STOP_PC   = 0xA95C              # Doom's "Bad music number" error trap
+    STOP_PBR  = 0x2C
 else:
     STOP_PC   = 0xA792               # architectural ceiling without snapshot
     STOP_PBR  = 0x2C
@@ -199,6 +202,41 @@ EXTRA_BANKS: list[tuple[int, int]] = [
     # content on both sides the BEQ at $A743 is taken identically so the
     # diff stays consistent. 64KB load to be safe — pokes ~51 s of zeros.
     (0x87, 0x10000),
+    # Bank $2B — Doom dispatcher / printf arg-walker (per memory: music_num
+    # consumer is at $2B:$245A). With STOP_PC=$2C:$A95C, the bank $00 game
+    # code at $0E26 issues `JML $2B:$D9A8` — without this bank loaded, both
+    # sides land in unequal default memory ($00 vs $EA) and diverge as a
+    # *memory-model artifact*. Loading 64KB lets the diff continue into
+    # real bank $2B Doom code. Verified non-zero at $D9A8 in doom.reu.
+    (0x2B, 0x10000),
+    # Bank $2A — `JML [zp]` from bank $2B at $DA3A lands at $2A:$0E2A.
+    # Same memory artifact as $2B without this loaded. Per memory: $2A is
+    # also on the music-error dispatcher path.
+    (0x2A, 0x10000),
+    # Bank $84 — per memory, the sole `JML $2B:$1A23` is at $84:$CE5C,
+    # which is the entry point into the printf/dispatcher chain that
+    # eventually reaches the music_num consumer. Pre-load to avoid yet
+    # another iteration of memory-artifact divergence.
+    (0x84, 0x10000),
+    # Banks $85, $86 — per memory, function pointer table at $85:$65A0+
+    # and music data structures span $85/$86. Cheap to pre-load (~51s each)
+    # and saves an iteration if execution lands here.
+    (0x85, 0x10000),
+    (0x86, 0x10000),
+    # Banks $21-$29 — Doom dispatcher region. Each iteration of the diff
+    # has revealed another bank in this range (trail visited $2C, $2B, $2A,
+    # $29 so far). Load the full $21..$29 range up front to avoid 8 more
+    # iterations chasing one bank at a time. ~51s × 9 = ~7.6 min added
+    # startup, saves ~9 hours of stepwise iterations.
+    (0x21, 0x10000),
+    (0x22, 0x10000),
+    (0x23, 0x10000),
+    (0x24, 0x10000),
+    (0x25, 0x10000),
+    (0x26, 0x10000),
+    (0x27, 0x10000),
+    (0x28, 0x10000),
+    (0x29, 0x10000),
 ]
 
 
@@ -272,12 +310,14 @@ def _vice_oracle_capture_doom(bank20_bytes: bytes,
             v.load_bytes_direct((bank << 16), data)
         # 4) loop short-circuit patches (must match DUT exactly)
         _apply_vice_patches(v)
-        # 5) capture: start at bootstrap, stop at STOP_PC
+        # 5) capture: start at bootstrap, stop at STOP_PC. Bumped past
+        #    12000 since 12000 MATCHed all-clean — if the bug exists in
+        #    CPU microcode it must surface further along the dispatcher.
         return v.capture_trace_stepwise(
             start_pc=BOOT_ADDR,
             stop_pc=STOP_PC,
             stop_pbr=STOP_PBR,
-            max_instr=12000,
+            max_instr=24000,
         )
 
 
@@ -345,9 +385,10 @@ async def test_doom_bank20_prologue(dut):
 
     cocotb.start_soon(fix.clock_and_bus_loop())
     await fix.reset(cycles=8)
-    # Allow up to ~14000 instructions to reach STOP_PC. Headroom for
-    # the new bank $00 entry path past the JML at $2C:$A792 → $00:$0E0C.
-    await fix.run_n_instructions(14000)
+    # Allow up to ~28000 instructions to reach STOP_PC. Headroom past
+    # the prior 12000-MATCH run; bug locus is past that, if present in
+    # CPU microcode.
+    await fix.run_n_instructions(28000)
 
     dut_trace_full = fix.get_trace()
     # Truncate at first arrival at PB=$20 PC=$0030 (the stop).

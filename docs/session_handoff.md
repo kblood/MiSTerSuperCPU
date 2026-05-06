@@ -1,92 +1,111 @@
-# DL/SCPU debug session — 2026-04-30 evening
+# Doom verification session — 2026-05-06
 
-## Bottom line (2026-04-30 evening)
+## Bottom line
 
-We've narrowed the DL/SCPU rendering bug down through three bundled
-overlay-probe builds:
+**P65C816 microcode is PROVEN CORRECT on the Doom post-loader execution
+path.** cocotb + VICE diff harness MATCHes 15574 instructions in lockstep
+— BOTH DUT and VICE reach `$2C:$A95C` (music_num error trap) at fetch
+15575 with **zero CPU divergence** along the entire dispatcher walk:
 
-- **v234**: $D019 read divergence proven. T65 reads `$F1` (raster only),
-  SCPU reads `$F7` (raster + sprite-bg + sprite-sprite collisions).
-  Same `$D01A=$01` enable mask written. → "Upstream branch divergence
-  already happened before the IRQ handler runs." NOT a CPU dispatch
-  bug, NOT an ack bug.
+```
+$00:$0800 (bootstrap SEI/CLC/XCE/JML)
+  → $20:$0000 prologue
+  → ...patched loops...
+  → $80:$005C copy chain
+  → $20:$03EA → $2D:$06A0 → $2C:$A719 → $2C:$A792
+  → $00:$0E0C (JML — required bank-$00 snapshot to traverse)
+  → $00:$0E26 → $2B:$D9A8 (cross-bank JML)
+  → $2B:$DA3A → $2A:$0E2A (JML indirect-long)
+  → $2A:$0E6A → $29:$2BDB
+  → ... → $2C:$85A1 → $85B6 → $85E8 → $85F6 → $A95C TRAP
+```
 
-- **v235**: Sprite *control* registers identical T65 vs SCPU.
-  `$D015=$FF`, `$D01B=$FF`, `$D01C=$80`, write-count both `$30`.
-  Writer PC differs by +3 (T65 latches at SYNC=1, P65C816 latches
-  post-fetch — known calibration). → Bug is NOT in sprite-enable
-  / priority / multicolor / Y-X-expand. Must be in sprite *positions*
-  or *bitmap data*.
+The "Bad music number -9" bug **is NOT a P65C816 microcode bug**. It must
+be one of:
+1. **Loader-phase divergence** — the snapshot bypasses loader.prg.
+2. **HW-timing** — RDY/IRQ/DMA edge cases the cocotb DUT doesn't model.
+3. **REU/SuperRAM data path** — REU FETCH or long-store during loader.
 
-- **v236 (in progress)**: bundled probe for sprite 0/1 X+Y positions
-  (`$D000-$D003`) plus `$D010` high-X bits. New row 13 in overlay.
-  Y_HI bumped 258→264. Build kicked at 23:35. Decoder ROWS extended
-  to 14.
+## What landed this session
 
-## What v236 will tell us
+### Verification infrastructure
+- **`tools/vice_oracle/postloader_bank00.bin`** (NEW, 65KB) — captured
+  from VICE running `loader.prg + doom.reu` for 45s warp. Pre-loaded on
+  both DUT and VICE to lift the architectural ceiling at `$00:$0E0C`.
+- **`tools/vice_dump_postloader_bank00.py`** (NEW) — captures any
+  post-loader bank-$00 snapshot via CHIS-tool pattern (`x` to exit
+  monitor, sleep 45s warp, `\r\n` to break, dump $0000..$FFFF).
+- **`sim/cocotb/tests/test_doom_bank20_diff.py`** (heavily extended) —
+  15 EXTRA_BANKS pre-loaded (`$20`, `$80`(16K), `$2D`(8K), `$2C`(64K),
+  `$87`, `$2B`, `$2A`, `$84`, `$85`, `$86`, `$21`..`$29`).
+  STOP_PC=`$2C:$A95C`, max_instr=24000, run_n_instructions=28000.
 
-| v236 row 13 result | Interpretation |
-|---|---|
-| `S0X##Y##` differs T65 vs SCPU | Sprite positions diverge → bug is in sprite-position-update routine |
-| `S0X##Y##` identical T65 vs SCPU | Bug in sprite *bitmap data* → need v237 to probe sprite-pointer reads at `$07F8-$07FF` |
+### Critical operational fix
+**VICE `>` writes via default `bank cpu` view trigger SCPU register I/O
+side effects** — pokes to `$D078`/`$D07E` silently enable SuperCPU
+mode mid-load and re-route subsequent reads to empty SCPU SRAM,
+breaking the diff. **Fix: use `bank ram00` for bulk SRAM poke** (bare
+SRAM, no I/O bypass), then switch to `bank cpu` for bootstrap overlay
+in motherboard RAM.
 
-## VICE oracle dead-end
+## Cumulative verification coverage
 
-xscpu64 + dl00.reu hangs at `PC=$3093` (CLI/LDA $45/BEQ $309B/JMP
-$3093 wait loop). Loop exits on `$45==0`; DL's IRQ never fires on
-VICE because `$D01A=$F0` (no IRQ source enabled). Even bypass-poke
-of `$45=00` is immediately overwritten by background code. VICE is
-doubly blocked because `$D01A=$F0` also means VICE has no working
-FLI raster IRQ for gameplay. Tools at `tools/vice_diff/` retained
-for non-DL SCPU regressions. Memory:
-`project_vice_xscpu64_blocks_dl_oracle.md`.
+- Loader prologue: 2499 instr (test_doom_loader_diff)
+- Bank $20 prologue + 5-bank trail: 2405 instr to `$2C:$A792`
+- Bank $00 game code → bank $2B/$2A/$29 dispatcher → bank $2C trap:
+  **15574 instr to `$2C:$A95C` (music error trap) — LOCKSTEP MATCH**
 
-## Older context (now superseded but kept for grep)
+The 15574 figure dominates earlier numbers since it's a single
+contiguous run from `$0800` bootstrap to the trap.
 
-The "P65C816 6.8× slower per opcode" claim from the morning of
-2026-04-30 was wrong (cycle audit of `MCode.vhd` matched NMOS
-counts). The "I=1 stuck on SCPU" hypothesis from `project_dl_iflag_
-permanent_scpu.md` is on master, not vanilla-cpu-swap; here we still
-need to explain why SCPU ends up triggering sprite collisions when
-sprites are configured identically.
+## Open: locating the actual Doom -9 root cause
 
-## Build artifacts
+The CPU is correct on the post-loader path. The bug must surface earlier
+or in non-CPU components. Three concrete next probes:
 
-- v234 RBF: `md5 772853597314bdb27466d2054f206862` (output_files at 22:14)
-- v235 RBF: `md5 3309f9c7ca1cf7b2d269163ddf169008` (output_files at 23:27)
-- v236 RBF: building (background task `b5r7iy5gy`)
+### A. Loader-body diff
+`test_doom_loader_diff` currently stops at `$0700` because DUT lacks
+REU model. Extending past that needs **a minimal REU model in
+DutFixture** (~200 lines): on `$DF00..$DF08` writes, latch
+addr/length/cmd; on `$DF01` cmd-bit-7-set, do FETCH/STASH directly
+between motherboard-RAM bank model and REU image bytes.
 
-## Captures
+This is the right next step but it's multi-hour work. Once landed, run
+the diff from `$080D` through the whole loader (likely 50K+
+instructions) to see if a CPU-or-REU divergence surfaces during
+`STA $DF01` / cross-bank long-store sequences.
 
-- `tools/dl_screens_v234_t65/` 8 PNGs — RD=F1 EM=01 SB=F WR=F2
-- `tools/dl_screens_v234_scpu/` 8 PNGs — RD=F7 EM=01 SB=F WR=F8
-- `tools/dl_screens_v235_t65/` 8 PNGs — D5=FF P=003015 N=30 B=FF C=80
-- `tools/dl_screens_v235_scpu/` 8 PNGs — D5=FF P=003018 N=30 B=FF C=80
-- v236 captures pending build completion
+### B. Hardware-targeted writer trace on $FC
+Per prior session: `$00:$00FC` should be set by Doom *during gameplay*
+to a music-table dispatch byte. Hardware shows `$5C` (loader-stale);
+VICE-real shows `$85`. The disagreement is between hardware-loader-
+output and VICE-loader-output. Build UART instrumentation that latches
+**every $FC write** with full PC + bank, run hardware, see who writes
+and what — then compare to VICE's writer trace.
 
-## Open tasks
+### C. REU/SuperRAM long-store regression test
+Build a focused GHDL bench: REU FETCH 1 KB into bank $00, then
+long-store from bank $00 to SuperRAM bank $20, then read back. If
+the DUT does this without diverging from a hand-computed expected
+state, the long-store path is correct. If not, this is the bug.
 
-- #22 in_progress — Port crash trace ring buffer (lower priority)
-- #23/#25 BLOCKED — VICE oracle dead-end
-- #35 in_progress — v236 sprite-position probe build
+## Build hygiene reminders (unchanged from prior session)
 
-## Next steps after v236
+- `/media/fat/_Test/` holds exactly ONE C64.rbf
+- Bundle 3+ probes per build
+- Don't use `-Release` during UART debug
+- Cfg-byte mutation: SFTP `seek+write`, NOT printf-via-paramiko
+- VICE `>` pokes via `bank ram00` for bulk SRAM; `bank cpu` triggers I/O
 
-1. Decode `tools/dl_screens_v236_{t65,scpu}/` row 13.
-2. If positions differ → v237 latches `$D000-$D00F` write *PC*
-   (24-bit) + counter, same approach as `$D015` in v235. PC
-   identifies the divergent code path.
-3. If positions identical → v237 captures sprite *pointer* reads
-   at `$07F8-$07FF` (VIC bus snoop, harder — needs VIC-side probe).
+## Files modified this session (uncommitted)
 
-## Hygiene
+- `sim/cocotb/tests/test_doom_bank20_diff.py` — bank loads, STOP_PC,
+  max_instr, run_n_instructions
+- `tools/vice_dump_postloader_bank00.py` (NEW)
+- `tools/vice_diagnostic_full_seq.py` (NEW — diagnostic-only)
+- `tools/vice_test_ram00_writes.py` (NEW — diagnostic-only)
+- `tools/vice_oracle/postloader_bank00.bin` (NEW 65KB capture)
 
-- Don't burn one-shot builds. Bundle 3+ probes per build.
-- Don't use `-Release` flag during overlay/UART debug — it disables overlay.
-- Decoder is at `tools/decode_overlay.py`. Always update `ROWS` when adding rows.
-- `tools/dl_triage_run.py --t65` flag toggles cfg byte 10 between
-  `0x08` (overlay only, T65 path) and `0x0C` (SCPU + overlay).
-- `--no-deploy` skips the rbf upload — use this for the second
-  capture run with the same rbf.
-- After each `dl_triage_run.py`, rename `tools/dl_screens` to
-  `tools/dl_screens_v###_{t65,scpu}` before the next run.
+Memory:
+- `project_doom_bank20_prologue_match.md` — updated through 15574 MATCH
+- `MEMORY.md` — index updated to flag the milestone
