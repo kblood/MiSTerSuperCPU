@@ -1,0 +1,10 @@
+VICE $00FC writer reference (180.0s warp)
+============================================================
+
+Total events: 0
+
+Writer PBR:PC frequency:
+
+Last 10 values: []
+
+HW Probe B baseline: CY=23389 V=E8 E8 F6 0E WP=$2C:8605 G=$00:077D
