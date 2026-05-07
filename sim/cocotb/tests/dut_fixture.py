@@ -151,6 +151,18 @@ class DutFixture:
         # Clock object (started by reset()).
         self._clock: Optional[Clock] = None
 
+        # ---- Minimal REU model (bank $00, offsets $DF00..$DF0A) ----
+        # Inactive until attach_reu() is called. When active, intercepts
+        # reads/writes in the bus loop to that range; other addresses
+        # fall through to the flat memory model.
+        self._reu_active: bool = False
+        self._reu_image: bytes = b""
+        # 11 regs: $DF00 status, $DF01 cmd, $DF02-03 c64 addr, $DF04-06
+        # REU addr (24-bit), $DF07-08 length, $DF09 irq mask, $DF0A
+        # addr-control. Power-on values: status = $10 (chip present, ready).
+        self._reu_regs: bytearray = bytearray(11)
+        self._reu_regs[0] = 0x10
+
     # ------------------------------------------------------------------
     # Memory helpers
     # ------------------------------------------------------------------
@@ -173,6 +185,73 @@ class DutFixture:
 
     def get_mem_byte(self, bank: int, offset: int) -> int:
         return self._mem[bank][offset & 0xFFFF]
+
+    # ------------------------------------------------------------------
+    # REU model — minimal subset matching VICE's xscpu64 REU emulation
+    # for the doom.reu loader workload (FETCH only, length auto-loads).
+    # ------------------------------------------------------------------
+
+    def attach_reu(self, image_path: str) -> None:
+        """Bind a 16 MB doom.reu-style image as the REU backing store.
+
+        After this call, bus-loop accesses to bank $00 offset $DF00..$DF0A
+        are intercepted: writes latch into self._reu_regs, reads return
+        the latched byte (status from $DF00 reflects end-of-block bit
+        $40 after the last command). A write to $DF01 with bit 7 set
+        executes the command immediately — only FETCH (mode 1) is
+        modeled, since loader.prg only emits cmd $91. STASH/SWAP raise.
+        """
+        with open(image_path, "rb") as f:
+            self._reu_image = f.read()
+        self._reu_active = True
+
+    def _reu_execute(self, cmd: int) -> None:
+        """Execute REU command latched in $DF01. Only FETCH (mode 1)
+        is supported; the loader uses cmd $91 = exec + immediate +
+        FETCH (REU→C64).
+        """
+        mode = cmd & 0x03
+        c64_addr = self._reu_regs[2] | (self._reu_regs[3] << 8)
+        reu_addr = (
+            self._reu_regs[4]
+            | (self._reu_regs[5] << 8)
+            | (self._reu_regs[6] << 16)
+        )
+        length = self._reu_regs[7] | (self._reu_regs[8] << 8)
+        if length == 0:
+            length = 0x10000
+        img_len = len(self._reu_image)
+        if mode == 1:  # FETCH: REU → C64 (motherboard bank $00)
+            if img_len == 0:
+                # Nothing attached — fill with zeros, behave like absent.
+                for i in range(length):
+                    self._mem[0][(c64_addr + i) & 0xFFFF] = 0
+            else:
+                # Fast path: slice-copy. Falls through to per-byte if the
+                # FETCH wraps either C64 page or REU image.
+                src_end = reu_addr + length
+                dst_end = c64_addr + length
+                if src_end <= img_len and dst_end <= 0x10000:
+                    self._mem[0][c64_addr:dst_end] = (
+                        self._reu_image[reu_addr:src_end]
+                    )
+                else:
+                    for i in range(length):
+                        src = (reu_addr + i) % img_len
+                        self._mem[0][(c64_addr + i) & 0xFFFF] = (
+                            self._reu_image[src]
+                        )
+        else:
+            raise NotImplementedError(
+                f"REU cmd mode {mode} not modeled (cmd byte ${cmd:02x})"
+            )
+        # Length auto-loads to $FFFF after completion (per VICE/CMD spec).
+        self._reu_regs[7] = 0xFF
+        self._reu_regs[8] = 0xFF
+        # Set end-of-block + transfer-complete bits in status.
+        self._reu_regs[0] = (self._reu_regs[0] & 0x1F) | 0x40
+        # Clear the execute bit in cmd to mirror real REU behavior.
+        self._reu_regs[1] = cmd & 0x7F
 
     # ------------------------------------------------------------------
     # Bus + trace background task
@@ -224,13 +303,32 @@ class DutFixture:
             bank = (addr >> 16) & 0xFF
             off = addr & 0xFFFF
 
+            # REU intercept: bank $00, offsets $DF00..$DF0A. Active only
+            # after attach_reu(); otherwise the writes/reads pass through
+            # to the flat memory model below as raw RAM.
+            reu_hit = (
+                self._reu_active
+                and bank == 0x00
+                and 0xDF00 <= off <= 0xDF0A
+            )
+
             if we_n == 0:
                 # Write cycle — capture the byte the DUT is putting out.
                 d_out = _to_int(dut.D_OUT) & 0xFF
-                self._mem[bank][off] = d_out
+                if reu_hit:
+                    reg_idx = off - 0xDF00
+                    self._reu_regs[reg_idx] = d_out
+                    # Cmd reg with bit 7 set → execute.
+                    if off == 0xDF01 and (d_out & 0x80):
+                        self._reu_execute(d_out)
+                else:
+                    self._mem[bank][off] = d_out
             else:
                 # Read cycle — drive D_IN with our memory contents.
-                d_byte = self._mem[bank][off]
+                if reu_hit:
+                    d_byte = self._reu_regs[off - 0xDF00]
+                else:
+                    d_byte = self._mem[bank][off]
 
                 # Instruction-fetch boundary: VPA=1 AND VDA=1 AND WE=1.
                 # The opcode is the byte WE are about to feed in.
@@ -255,7 +353,12 @@ class DutFixture:
             # Move out of read-only region, then drive D_IN for next edge.
             await NextTimeStep()
             if we_n != 0:
-                dut.D_IN.value = self._mem[bank][off]
+                dut.D_IN.value = d_byte
+                # Reading $DF00 clears its sticky bits AFTER the byte is
+                # latched out — per CMD REU spec: bits 5,6,7 (irq/end/fault)
+                # auto-clear on the read access.
+                if reu_hit and off == 0xDF00:
+                    self._reu_regs[0] &= 0x1F
             # On write cycles D_IN doesn't matter; leave it whatever it was.
 
     # ------------------------------------------------------------------

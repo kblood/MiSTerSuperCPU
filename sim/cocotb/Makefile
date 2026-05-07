@@ -75,6 +75,13 @@ test-diff-check:
 test-doom-loader:
 	$(MAKE) sim MODULE=tests.test_doom_loader_diff LAYER_A_SKIP_VICE=$${LAYER_A_SKIP_VICE:-0}
 
+# Doom loader BODY (Probe A) — extends loader-prologue diff past $0700
+# into the REU FETCH + long-store loop. Uses DutFixture's new REU model
+# and launches VICE with `-reu -reuimage doom.reu`. Default 3000 instr
+# past $0700; override with LOADER_BODY_INSTR=N.
+test-doom-loader-body:
+	$(MAKE) sim MODULE=tests.test_doom_loader_body LAYER_A_SKIP_VICE=$${LAYER_A_SKIP_VICE:-0}
+
 # Doom bank $20 game-code probe — first localization step into the actual
 # Doom game banks (where the -9 microcode bug lives).
 test-doom-bank20:
