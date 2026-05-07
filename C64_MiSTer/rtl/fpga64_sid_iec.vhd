@@ -937,6 +937,14 @@ signal pc_irq_r         : std_logic_vector(23 downto 0)  := (others => '0');
 signal mem_45_r         : std_logic_vector(7 downto 0)   := (others => '0');
 -- v283 doom triage: latch-once first-writer-PC + DATA for $00:$6C03 writes.
 signal first_w6c03_latched_r : std_logic := '0';
+-- v290: capture writer-PC of any "$F7 → $00:$0090" store. Doom hardcodes
+-- music_num=-9 ($FFF7) at $2C:$5D78 and $2C:$712C with `LDA #$FFF7; STA $90`.
+-- Pins which literal-load site (or other code) writes -9 at runtime.
+-- Last-write-wins: Doom halts after music error so last $F7→$90 store is
+-- the music store. Printer overwrites $90 with $C0 (string offset) but
+-- that doesn't match the cpuDo_pre=$F7 filter.
+signal wr90_F7_pc_r     : std_logic_vector(23 downto 0) := (others => '0');
+signal wr90_F7_count_r  : unsigned(7 downto 0) := (others => '0');
 signal cnt_pc_30_r      : std_logic_vector(15 downto 0)  := (others => '0');
 signal cnt_pc_97_r      : std_logic_vector(15 downto 0)  := (others => '0');
 signal cpu_p_now        : std_logic_vector(7 downto 0);
@@ -2122,6 +2130,8 @@ begin
 			pc_irq_r             <= (others => '0');
 			mem_45_r             <= (others => '0');
 			first_w6c03_latched_r <= '0';
+			wr90_F7_pc_r         <= (others => '0');
+			wr90_F7_count_r      <= (others => '0');
 			cnt_pc_30_r          <= (others => '0');
 			cnt_pc_97_r          <= (others => '0');
 			mem_5B_r             <= (others => '0');
@@ -2478,35 +2488,65 @@ begin
 				-- (Earlier v283 first-writer-PC latch retired — it established
 				-- G:00 00 00 so Doom never writes $6C03; that's now in commit
 				-- 906bc0c memory.)
-				if addr_hi_816 = x"00" and cpuAddr_pre = x"0074" then
-					mem_40_r <= std_logic_vector(cpuDo_pre);
+				-- v291 — refine v290 writer-PC capture by gating on PBR=$2C.
+				-- v290 result: ALL-PBR last writer was $2B:$245C with count
+				-- 245 — a noisy generic Doom state-machine (NOT music_num).
+				-- Refined PBR=$2C filter answers: do the literal-load sites
+				-- $2C:$5D78 / $2C:$712C ever fire? If yes, mem_40/44/5C holds
+				-- writer PC ≈ $2C:$5D7B or $2C:$712F. If count (B:) = 0, the
+				-- literal-load is dead code on this run; music_num=-9 must
+				-- arrive at print via a different bank ($86? printf via
+				-- [$88]+$0C indirect from a different banked routine?).
+				-- v292 — capture writer-PC of last STORE to $00:$00FC with
+				-- value $5C (LO byte of $A95C trap). VICE Doom oracle proves
+				-- divergence: VICE Doom runs past, hardware halts at $2C:$A95C
+				-- via JML[$74]. The dispatcher trampoline does
+				-- `LDA $FC; STA $74; LDA $FE; STA $76; JML [$74]`, so the
+				-- WRONG value arrives via earlier `STA $FC` from an upstream
+				-- handler. Catch that store to pinpoint the buggy code path.
+				-- doom.reu has NO `LDA #$A95C` literal, so the value $A95C
+				-- must come from a table lookup or computation.
+				-- Filter: $FC writes with value=$5C (LO byte). On halt-cycle
+				-- the LO half of dispatch ptr is $5C ($A95C low byte).
+				if addr_hi_816 = x"00" and cpuAddr_pre = x"00FC"
+				   and cpuDo_pre = x"5C" then
+					wr90_F7_pc_r    <= cpu_pc_now;
+					wr90_F7_count_r <= wr90_F7_count_r + 1;
+					mem_40_r        <= cpu_pc_now(7 downto 0);
+					mem_44_r        <= cpu_pc_now(15 downto 8);
+					mem_5C_r        <= cpu_pc_now(23 downto 16);
+					mem_45_r        <= std_logic_vector(wr90_F7_count_r + 1);
 				end if;
-				if addr_hi_816 = x"00" and cpuAddr_pre = x"0075" then
-					mem_44_r <= std_logic_vector(cpuDo_pre);
-				end if;
-				if addr_hi_816 = x"00" and cpuAddr_pre = x"0076" then
-					mem_5C_r <= std_logic_vector(cpuDo_pre);
-				end if;
-				if addr_hi_816 = x"00" and cpuAddr_pre = x"0045" then
-					mem_45_r <= std_logic_vector(cpuDo_pre);
-				end if;
-				if addr_hi_816 = x"00"
-				   and cpuAddr_pre(15 downto 8) = x"6C"
-				   and cpuAddr_pre(7 downto 3) = "00000" then
+				-- v293 doom triage: REPURPOSE wr02_* from old $00:$6C00..$6C07
+				-- BRK-loop region (resolved by v286 RTI sink) to ALL writes
+				-- of bank $00:$00FC — the JML [$0074] dispatcher LO byte.
+				-- v292 already captured the $5C-filtered writer (88 firings,
+				-- writer = LOADER $00:$077D); this UNFILTERED ring + count +
+				-- value trail tells us whether Doom EVER overwrites $00FC
+				-- with a non-$5C value on hardware (VICE oracle proves it
+				-- does on x64sc — divergence is HW-only). UART fields:
+				--   V:  ring of last 4 values written to $00:$00FC
+				--   YX: Y/X at most recent write
+				--   WP: writer-PC (PBR:PC) of most recent write
+				--   CG: count of writes where new value ≠ previous
+				--   CY: total writes
+				-- If hardware shows CY = 88 (matching v292's $5C count) and
+				-- CG = 1 (only the very first write was a "change"), then
+				-- the loader's 88×$5C writes are the ONLY writes Doom ever
+				-- makes to $00:$00FC on hardware — bug is "missing Doom
+				-- overwrite". If CY > 88 or CG > 1, hardware DOES write
+				-- non-$5C values and the V ring shows what they are.
+				if addr_hi_816 = x"00" and cpuAddr_pre = x"00FC" then
 					wr02_pc_r  <= cpu_pc_now;
 					wr02_val_r <= std_logic_vector(cpuDo_pre);
 					cnt_wr02_r <= cnt_wr02_r + 1;
-					-- v257: increment chg counter only when new ≠ previous.
-					-- wr02_val_r still holds the previous-cycle value here.
 					if std_logic_vector(cpuDo_pre) /= wr02_val_r then
 						cnt_wr02_chg_r <= cnt_wr02_chg_r + 1;
 					end if;
-					-- v258: push value into 4-deep ring (newest = v3).
 					wr02_v0_r <= wr02_v1_r;
 					wr02_v1_r <= wr02_v2_r;
 					wr02_v2_r <= wr02_v3_r;
 					wr02_v3_r <= std_logic_vector(cpuDo_pre);
-					-- v258: latch register state at the write.
 					wr02_y_r  <= cpu_y_now;
 					wr02_x_r  <= cpu_x_now;
 				end if;
