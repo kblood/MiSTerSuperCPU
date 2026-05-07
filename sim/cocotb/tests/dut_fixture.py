@@ -163,6 +163,22 @@ class DutFixture:
         self._reu_regs: bytearray = bytearray(11)
         self._reu_regs[0] = 0x10
 
+        # ---- Timing-aware DMA stall ----
+        # When > 0, the bus loop drives dut.CE.value = 0 to halt the CPU,
+        # decrementing each cycle. Hardware stalls the SCPU via the
+        # `enableCpu_816 <= enableCpu and not dma_active` AND-gate
+        # (fpga64_sid_iec.vhd:1817-1818) — REU/SuperRAM DMA is invisible
+        # to the CPU's RDY_IN, instead it gets the CE input pulled low.
+        # 20 clk32 per byte (4 RAM-read + 16 C64-DMA, per reu.v state
+        # machine survey) — see project_doom_loader_body_match_500.md
+        # follow-up notes.
+        self._dma_stall_cycles: int = 0
+        # Tracks the CE value the CPU saw at the most recent rising edge.
+        # Needed to gate trace capture during a stall: with CE=0, the CPU
+        # FFs don't advance, so VPA/VDA/A_OUT stay stable; the bus loop
+        # would otherwise record duplicate fetch entries every cycle.
+        self._cpu_was_enabled: bool = True
+
     # ------------------------------------------------------------------
     # Memory helpers
     # ------------------------------------------------------------------
@@ -252,6 +268,12 @@ class DutFixture:
         self._reu_regs[0] = (self._reu_regs[0] & 0x1F) | 0x40
         # Clear the execute bit in cmd to mirror real REU behavior.
         self._reu_regs[1] = cmd & 0x7F
+        # Schedule the CE=0 stall to model the per-byte transfer cycles.
+        # `length` was already promoted from 0 → 0x10000 above. Memory
+        # contents are already final from the CPU's POV because the CPU
+        # is stalled the entire duration — order doesn't matter, only
+        # that it's done by the time CE rises again.
+        self._dma_stall_cycles += 20 * length
 
     # ------------------------------------------------------------------
     # Bus + trace background task
@@ -283,6 +305,21 @@ class DutFixture:
             # combinationally based on its FF state.
             await RisingEdge(dut.CLK)
             self._cycle += 1
+
+            # DMA stall: model the `enableCpu_816 <= enableCpu and not
+            # dma_active` AND-gate by pulling CE low. CPU's internal EN
+            # = RDY_IN AND CE — with CE=0 it freezes mid-cycle. The CE
+            # decision here applies to the NEXT rising edge; the value
+            # the CPU just clocked with at THIS edge was decided in the
+            # previous iteration (tracked by self._cpu_was_enabled).
+            cpu_advanced_this_edge = self._cpu_was_enabled
+            if self._dma_stall_cycles > 0:
+                dut.CE.value = 0
+                self._dma_stall_cycles -= 1
+                self._cpu_was_enabled = False
+            else:
+                dut.CE.value = 1
+                self._cpu_was_enabled = True
 
             # ReadOnly trigger: lets all delta deltas propagate so we see
             # the post-edge A_OUT/VPA/VDA/WE before driving D_IN for the
@@ -331,8 +368,12 @@ class DutFixture:
                     d_byte = self._mem[bank][off]
 
                 # Instruction-fetch boundary: VPA=1 AND VDA=1 AND WE=1.
-                # The opcode is the byte WE are about to feed in.
-                if vpa == 1 and vda == 1:
+                # The opcode is the byte WE are about to feed in. Gated on
+                # cpu_advanced_this_edge: during a CE=0 DMA stall, the CPU
+                # FFs don't clock, so VPA/VDA/PC stay stable across many
+                # cycles — without the gate we'd record thousands of
+                # duplicate fetch entries.
+                if vpa == 1 and vda == 1 and cpu_advanced_this_edge:
                     self._seq += 1
                     entry = TraceEntry(
                         seq=self._seq,
@@ -404,11 +445,15 @@ class DutFixture:
         """Run until the next instruction-fetch cycle is captured."""
         before = len(self._trace)
         # Cap to a generous instruction-cycle limit (BRK, MVN/MVP need many).
-        for _ in range(200):
+        # A 256-byte REU FETCH triggers a ~5120-cycle CE=0 stall in the
+        # timing-aware bus model; 8000 covers that plus normal multi-cycle
+        # opcodes. For larger DMAs (e.g. a 65536-byte FETCH = ~1.3M cycles)
+        # callers should use run_cycles + manual trace-watch instead.
+        for _ in range(8000):
             await RisingEdge(self.dut.CLK)
             if len(self._trace) > before:
                 return self._trace[-1]
-        raise TimeoutError("step_instruction: no fetch within 200 cycles")
+        raise TimeoutError("step_instruction: no fetch within 8000 cycles")
 
     async def run_n_instructions(self, n: int) -> list[TraceEntry]:
         """Step `n` instructions and return their TraceEntry list."""
