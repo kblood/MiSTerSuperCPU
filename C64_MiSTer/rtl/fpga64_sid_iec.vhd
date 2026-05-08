@@ -1464,8 +1464,90 @@ cpuDi <= ("00000" & scpu_optim_mode & '1')
                      and cpuAddr = x"FFEE") else  -- IRQ  L → $00:$FF00
          x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
                      and cpuAddr = x"FFEF") else  -- IRQ  H
+         -- ----------------------------------------------------------------
+         -- IRQ ack stub at $00:$FF00..$FF16 (replaces bare RTI sink).
+         --
+         -- Real CMD SuperCPU EPROM ($F0-$FF) contains IRQ handler stubs
+         -- at $00:$8000+ reached via JML trampolines at $00:$FCxx, themselves
+         -- reached via the native vectors at $00:$FFE4..$FFEF. Those handlers
+         -- ack the IRQ source ($D019 for VIC, $DC0D/$DD0D for CIA1/CIA2)
+         -- before RTI. We have neither the EPROM nor the OS image, so the
+         -- previous v285 RTI-only sink left IRQ sources un-acked, causing
+         -- IRQ storms (every cycle: vector→$FF00→RTI→IRQ refires).
+         --
+         -- Symptom: Wolf3D wedges with PC pegged at $00:$FF00 + J ring
+         -- bouncing through bank $2C functions — IRQ source kept refiring.
+         --
+         -- IMPORTANT — must use LONG addressing (opcode $AF/$8F):
+         -- Wolf3D's IRQs fire with Data Bank = $2B (B:2B in UART). Plain
+         -- absolute mode (LDA/STA $D019) would resolve to $2B:$D019,
+         -- which is SuperRAM, NOT the VIC chip. Long mode (LDA $00D019)
+         -- always targets bank $00 regardless of B.
+         --
+         -- Likewise SEP #$20 (not #$30) — only force M=1, leave X
+         -- alone. Setting X=1 zeroes the upper 8 bits of X/Y per the
+         -- W65C816 spec, which would corrupt user index registers.
+         --
+         -- Sequence (native mode, 23 bytes, balanced stack):
+         --   $FF00  08            PHP                ; save P (M bit etc.)
+         --   $FF01  E2 20         SEP #$20           ; force M=1 (8-bit A)
+         --   $FF03  48            PHA                ; save A (1 byte)
+         --   $FF04  AF 19 D0 00   LDA $00D019        ; read VIC IRQ status
+         --   $FF08  8F 19 D0 00   STA $00D019        ; ack (write 1s back)
+         --   $FF0C  AF 0D DC 00   LDA $00DC0D        ; ack CIA1 (read clears)
+         --   $FF10  AF 0D DD 00   LDA $00DD0D        ; ack CIA2 (read clears)
+         --   $FF14  68            PLA                ; restore A
+         --   $FF15  28            PLP                ; restore P
+         --   $FF16  40            RTI
+         --
+         -- Stack consumption: IRQ entry 4 + PHP 1 + PHA 1 = 6 pushed,
+         -- popped same. Native mode only (gated emu_mode_816_i='0').
+         x"08" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF00") else  -- PHP
+         x"E2" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF01") else  -- SEP imm
+         x"20" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF02") else  -- imm = $20 (M=1, X untouched)
+         x"48" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF03") else  -- PHA
+         x"AF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF04") else  -- LDA long
+         x"19" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF05") else  -- L
+         x"D0" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF06") else  -- M
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF07") else  -- bank = $00
+         x"8F" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF08") else  -- STA long
+         x"19" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF09") else  -- L
+         x"D0" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF0A") else  -- M
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF0B") else  -- bank = $00
+         x"AF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF0C") else  -- LDA long
+         x"0D" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF0D") else  -- L (CIA1 ICR)
+         x"DC" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF0E") else  -- M
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF0F") else  -- bank = $00
+         x"AF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF10") else  -- LDA long
+         x"0D" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF11") else  -- L (CIA2 ICR)
+         x"DD" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF12") else  -- M
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF13") else  -- bank = $00
+         x"68" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF14") else  -- PLA
+         x"28" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF15") else  -- PLP
          x"40" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF00") else  -- RTI sink at $00:$FF00
+                     and cpuAddr = x"FF16") else  -- RTI
          cpuDi_raw;
 
 -- ----------------------------------------------------------------------
