@@ -114,6 +114,23 @@ When working on a debugging task (build → deploy → test → iterate loops), 
 - **Only stop when an explicit exit condition is met:** the user says stop, the stated goal is achieved, or you have concrete evidence no local probe can make progress (e.g., need upstream docs, physical hardware access, or a decision only the user can make).
 - **Session handoff doc pattern.** Full state lives in `docs/session_handoff.md` (overwritten each session). Update that file when stopping; do not restate its contents in chat.
 
+## Shared MiSTer cooperation
+The MiSTer at 192.168.50.130 is shared with another Claude agent working on
+CD32/Minimig from `C:\LLM\MiSTer\CD32\`. **Before any disruptive action**
+(load_core, deploy, killall, send keys), check ownership:
+```python
+# via paramiko: cat /tmp/CORENAME and /tmp/mister_session.lock
+```
+- `CORENAME=C64` → mine, free to proceed
+- `CORENAME=Minimig` → other agent loaded; back off to off-device work
+- empty / no file → no core loaded yet, OK to proceed
+- A non-empty `/tmp/mister_session.lock` older than 30 min is OK to ignore
+- For long disruptive sessions, write a lockfile:
+  `echo "agent=c64 task='...' since=$(date -Iseconds)" > /tmp/mister_session.lock`
+
+Full protocol: `docs/agent-cooperation.md`. Read it before any cross-slice
+operation (replacing `/media/fat/MiSTer`, killing daemon, etc.).
+
 ## Code Conventions
 - VHDL signals: lowercase with underscores (e.g., cpu_data_out)
 - VHDL entities: PascalCase (e.g., T65, VIC_II)

@@ -1050,6 +1050,7 @@ signal scpu_regs_enabled : std_logic := '1';                            -- $D07E
 signal scpu_hwenable     : std_logic := '0';                            -- ANY write to $D07E sets; $D07F/$D07D clears
 signal scpu_bootmap      : std_logic := '1';                            -- '1' at reset (EPROM at $8000-$FFFF)
 signal scpu_optim_mode   : unsigned(1 downto 0) := "11";                -- $D074-$D077 select; "11" = no optimization
+signal scpu_irq_tramp_installed : std_logic := '0';                     -- '1' once software has written to $00:$FCEE-$FCF1 (user IRQ handler installed); '0' = use default JML stub
 signal cpuDi_raw         : unsigned(7 downto 0);                        -- raw bus data; SuperCPU regs mux ahead of this
 signal io_data_i    : unsigned(7 downto 0);
 signal ioe_i        : std_logic;
@@ -1460,10 +1461,52 @@ cpuDi <= ("00000" & scpu_optim_mode & '1')
                      and cpuAddr = x"FFEA") else  -- NMI  L → $00:$FF00
          x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
                      and cpuAddr = x"FFEB") else  -- NMI  H
-         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFEE") else  -- IRQ  L → $00:$FF00
-         x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         -- IRQ vector now points at $00:$FCEE (user-rewritable JML
+         -- trampoline) instead of straight to $00:$FF00. Real CMD
+         -- SuperCPU dispatches all native vectors through $00:$FCxx
+         -- JML trampolines so software can install custom handlers
+         -- (music tick, raster effect, input scanner). See $FCEE-$FCF1
+         -- intercept + scpu_irq_tramp_installed latch below.
+         x"EE" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEE") else  -- IRQ  L → $00:$FCEE
+         x"FC" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
                      and cpuAddr = x"FFEF") else  -- IRQ  H
+         -- ----------------------------------------------------------------
+         -- IRQ JML trampoline at $00:$FCEE..$FCF1 (4 bytes, RAM-backed).
+         --
+         -- Default (scpu_irq_tramp_installed = '0'): synthesized as
+         --   JML $00:$FF00 (5C 00 FF 00) → our ack stub at $FF00.
+         -- Once software writes any byte in $FCEE-$FCF1, the latch flips
+         -- to '1' and reads thereafter return whatever software has put
+         -- in RAM (i.e. its own JML target).
+         --
+         -- Software install pattern (typical):
+         --   SEI                  ; mask IRQs while patching
+         --   LDA #$5C : STA $FCEE ; JML opcode (sets latch)
+         --   LDA #lo  : STA $FCEF
+         --   LDA #mid : STA $FCF0
+         --   LDA #hi  : STA $FCF1
+         --   CLI
+         --
+         -- After install, on every IRQ:
+         --   $FFEE/EF returns $EE/$FC → CPU jumps to $00:$FCEE
+         --   $00:$FCEE..$FCF1 reads return user's JML (software-RAM)
+         --   CPU executes JML to user handler
+         --   User handler does its own ack + RTI
+         -- emu_mode_816_i='0' gate is mandatory: in emu mode the KERNAL
+         -- ROM at $FCEE-$FCF1 contains real code (`$FD 20 5B FF` =
+         -- operand-high of JSR $FD15, then JSR $FF5B). Overriding it
+         -- corrupts KERNAL cold-start init and hangs the C64. Trampoline
+         -- only matters in native mode anyway (native IRQ vector points
+         -- here), so emu-mode invisible is correct.
+         x"5C" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FCEE" and scpu_irq_tramp_installed = '0') else  -- JML opcode
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FCEF" and scpu_irq_tramp_installed = '0') else  -- target L = $00
+         x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FCF0" and scpu_irq_tramp_installed = '0') else  -- target M = $FF
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FCF1" and scpu_irq_tramp_installed = '0') else  -- target bank = $00
          -- ----------------------------------------------------------------
          -- IRQ ack stub at $00:$FF00..$FF16 (replaces bare RTI sink).
          --
@@ -1567,6 +1610,7 @@ begin
 			scpu_hwenable     <= '0';
 			scpu_bootmap      <= '1';
 			scpu_optim_mode   <= "11";
+			scpu_irq_tramp_installed <= '0';
 		elsif supercpu_en = '1' and cpuWe = '1' and addr_hi_816 = x"00" then
 			-- $D072/$D073: system 1MHz (works even with regs disabled)
 			if cpuAddr = x"D072" then
@@ -1605,6 +1649,14 @@ begin
 				elsif cpuAddr = x"D0B7" then
 					scpu_bootmap <= '1';
 				end if;
+			end if;
+			-- IRQ JML trampoline install latch.
+			-- Any write into $FCEE..$FCF1 (the IRQ JML trampoline area)
+			-- means software is installing its own handler — switch the
+			-- read mux off the synthesized default and over to RAM.
+			if cpuAddr = x"FCEE" or cpuAddr = x"FCEF"
+			or cpuAddr = x"FCF0" or cpuAddr = x"FCF1" then
+				scpu_irq_tramp_installed <= '1';
 			end if;
 		end if;
 	end if;
