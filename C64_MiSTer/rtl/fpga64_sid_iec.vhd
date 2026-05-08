@@ -1390,6 +1390,35 @@ cpuDi <= ("00000" & scpu_optim_mode & '1')
             when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B6" and scpu_regs_enabled = '1') else
          (scpu_rom_vis & "0000000")
             when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
+         -- ----------------------------------------------------------------
+         -- SuperRAM extent variables ($D27C-$D27F) — User Guide spec.
+         -- Real CMD SuperCPU firmware writes these into the $D200-$D3FF
+         -- 512-byte SCPU sysram during boot so software can read the
+         -- installed-RAM extent. AmiDog's MIPS-recompiler runtime
+         -- plausibly polls these to size its Z_Malloc heap; all-zeros
+         -- signals "no expansion installed" and may scope allocation
+         -- to bank $00 only (breaks Doom/Wolf3D).
+         --
+         -- This branch removed the $D200-$D3FF SCPU sysram (Phase C
+         -- decision: dprom disturbs vanilla fitter), so $D2xx reads
+         -- currently fall through to VIC-mirror garbage. We restore
+         -- spec compliance for these 4 specific bytes via the read mux.
+         --
+         --   $D27C = first available page low byte    = $00
+         --   $D27D = bank of first available page     = $02 (SuperRAM start)
+         --   $D27E = last available page+1 low byte   = $00
+         --   $D27F = bank of last available page+1    = $F6 (= $F5 + 1)
+         --
+         -- Intentionally NOT gated on scpu_regs_enabled — real HW SRAM
+         -- is permanently present, not subject to $D07E hwenable.
+         x"00"
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"27C") else
+         x"02"
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"27D") else
+         x"00"
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"27E") else
+         x"F6"
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"27F") else
          -- v285 — Native vector intercept + RTI sink (mini SCPU ROM stub).
          --
          -- All native vectors at $00:$FFE4..$FFEF point to $00:$FF00, which
