@@ -1,154 +1,174 @@
-# SuperCPU spec-gap implementation session — 2026-05-09
+# SuperCPU spec-gap implementation session — 2026-05-09 (continued)
 
-## Bottom line — Doom + Wolf3D unblocked at CPU level via 6 commits
+## Bottom line
 
-This session implemented 6 SuperCPU spec gaps in sequence on the
-`vanilla-cpu-swap` branch, each unblocking a downstream wedge:
+8 commits this session on `vanilla-cpu-swap`. The most recent two
+(`edd36b5` narrow bank-$Fx stub, `095b176` NMI vector RAM-back v2)
+**unblock the JML[$74] dispatcher trap** but Doom still wedges in a
+tight wait loop at `$41:$DB93` polling some condition that never
+becomes true. Wolf3D regression-clean across all 8 commits (still
+renders title-screen content, no advancement).
 
-1. **9a84085** — Populate `$D27C-$D27F` SuperRAM extent variables.
-   ($00, $02, $00, $F6) so MIPS-recompiler runtime can size the heap.
-2. **8d017b1** — IRQ ack stub at `$00:$FF00` (23 bytes, long-mode
-   $D019/$DC0D/$DD0D ack + RTI). Doom past `music_num=-9` trap.
-   Wolf3D past IRQ-storm wedge.
-3. **246bd3c** — Native IRQ JML trampoline at `$00:$FCEE-$FCF1`
-   (default `5C 00 FF 00` = JML to ack stub; latch flips on writes
-   for software-installed handlers). Critical `emu_mode_816_i='0'`
-   gate because KERNAL ROM has cold-start code at `$FCEE-$FCF1`.
-4. **d179e1b** — Bank-$00 SRAM ROM-shadow (native-mode-gated). New
-   buslogic clause routes SCPU CPU bank-$00 reads at ROM-shadowed
-   windows ($A000/$D000/$E000+) to RAM-under-ROM instead of
-   KERNAL/BASIC/CHARGEN bytes. **The big one** — fixes Doom's RTI
-   from upper-page native stack returning to KERNAL bytes instead
-   of pushed PC.
-5. **e8cbf39** — Bank-$01 SRAM ROM shadow (Tier 2.1). When SCPU CPU
-   reads bank $01 in native mode at ROM areas, return KERNAL/BASIC/
-   CHARGEN bytes instead of SuperRAM SDRAM zeros. Defensive
-   spec-compliance — non-regressive against sweep, didn't change
-   Doom's blank-screen behavior, but matches real CMD's bank-$01
-   pre-loaded SRAM mirror.
-6. **c591d33** — Bank $F0-$FF $6B-RTL stub + VIC bank-select UART
-   probe. Real CMD has CMD-OS ROM in banks $F0-$FF; ours had SDRAM
-   zeros, so Doom JMLs to e.g. $FC:$85A1 walked SDRAM zeros executing
-   $00=BRK forever (pc_main pegged at $FC:$EE6D..$EEF9). New buslogic
-   clause returns $6B (RTL) for SCPU CPU reads at bank $F0-$FF in
-   native mode — JSL frames bounce back, JML targets pop a recent
-   return. Doom's main thread escapes the bank-$FC wedge; now writes
-   $D011=$00 ($DEN=0$ display BLANKED, mid-config), $D018=$10 (screen
-   $C400), $DD00=$10 (VIC bank 3). pc_main moves to $00:$0074 — the
-   JML[$74] dispatcher scratchpad. The $6B byte appears in V ring as
-   data corruption of dispatch targets — Doom reads bank-$Fx as data,
-   gets stub byte, computes wrong dispatch. Companion VIC-bank probe
-   adds `D1:## D8:## C2:##` to UART line (reuses obsolete AW/PA bytes).
+## Commit chain (tip last)
 
-Final RBF: `ae0df95c8fac88a9a2b80adb5dbe055c`, ALM 64% (26,744 / 41,910).
-T65 + SCPU cold boot READY both modes. Wolf3D regression-free (still
-renders title-screen content). Sweep 9/10 PASS (same single
+1. `9a84085` — `$D27C-$D27F` SuperRAM extent variables
+2. `8d017b1` — IRQ ack stub at `$00:$FF00..$FF16`
+3. `246bd3c` — IRQ JML trampoline at `$00:$FCEE-$FCF1`
+4. `d179e1b` — Bank-$00 SRAM ROM-shadow (native-mode-gated)
+5. `e8cbf39` — Bank-$01 SRAM ROM shadow (Tier 2.1)
+6. `c591d33` — Bank `$F0-$FF` $6B-RTL stub (broad — REVERTED logically)
+7. `edd36b5` — Narrowed stub to `$F6-$FF` only (heap survives in `$F0-$F5`)
+8. `095b176` — NMI vector at `$00:$FFEA/$FFEB` RAM-backed via shadow
+   register, captures writes from bank `$00` AND bank `$FF` (per
+   `.databank $ff` in `recomp_research/hello/native.s`)
+
+Final RBF: `7614312678cf9726562957aa746bdbff` (095b176), ALM 26,762
+/ 41,910 = 64 %. T65 + SCPU cold boot READY. Sweep 9/10 PASS (single
 pre-existing `vanilla_basic` UART-format fail).
 
-## Doom result
+## Current Doom state (post-095b176)
 
-- Pre-shadow (commit 8d017b1): wedged in tight loop at `$59:$4252-$4278`
-  executing data tables. SP wandered to `$00:$FFF9`; RTI was popping
-  KERNAL ROM bytes instead of pushed PC.
-- Post-shadow (commit d179e1b, 11-min extended test):
-  - PC at `$00:$FF00..$FF16` (ack stub) cycling correctly
-  - SP `$01F8`-`$FFE9` works (upper-page stack pops RAM bytes)
-  - J ring `EE0B / EE37 / EE75 / EE87 / EEC9 / EED5` — Doom installed
-    multiple JML targets via the RAM-backed trampoline at `$FCEE`
-  - AC counter advances `0001 → 5329` over 11 min = active execution
-  - Screen: cleared dark blue, no game frame visible, no error text
+UART pattern (240 s into run, byte-identical to bank-Fx-narrow
+baseline):
 
-- Post-bank-$01 + bank-$Fx stub (commit c591d33): pc_main moved
-  $FC:$EE6D → $00:$0074 (JML[$74] dispatcher). VIC config NOW
-  reached: D1=$00 ($DEN=0$), D8=$10 (screen $C400), C2=$10 (VIC
-  bank 3). Screen pure black (display blanked mid-config). V ring
-  shows $6B (RTL stub byte) being read as data and corrupting
-  dispatch. Forward progress, NEW blocker = data-byte reads from
-  bank $F0-$FF need real CMD ROM contents.
+| Field | Value | Notes |
+|-------|-------|-------|
+| PC    | `$00:$FF17` | RTI in IRQ ack stub |
+| N     | `$41:$DB93` | main thread last-fetch PC, fixed |
+| SP    | `$FFEF` | native upper-page IRQ stack |
+| WP    | `$2C:$8570` | recompiled JAL trampoline (writer to `$0002`) |
+| J ring | `FCEE FCEE FCEE FCEE` | only IRQ trampoline target |
+| M ring | `854E 854E 854E 854E` | only one indirect-jump target (the JAL prologue) |
+| AC    | `0x2232` (~50/sec) | VIC raster-IRQ ack count, sane |
+| VW    | `0xEA0B` (~245/sec) | vblank-write count, sane |
+| VIC   | D1=`9B`, D8=`17`, C2=`97` | text mode default — **no bitmap config attempted** |
 
-Hypothesis for blank screen (current, 2026-05-09 c591d33): Doom calls
-CMD ROM library routines that compute results consumed downstream.
-Our $6B stub means routines "return" without effect; A/X/Y stay
-garbage; subsequent `STA $0074 / STX $0075 / JML [$74]` lands at
-garbage. VICE's open SCPU64 v0.07 ROM (md5 006862e9...) is mostly
-$FF past $84FF — no usable substitute; the proprietary CMD ROM is
-required for Doom to render.
+The NMI v2 fix (095b176) made **zero observable difference** —
+Doom does not write to `$FFEA/$FFEB` from either bank `$00` or `$FF`,
+so it isn't using AmiDog's `_tick_install` recipe.
 
-## Wolf3D result
+## What the wait loop is NOT
 
-- Pre-shadow: `$00:$FF00` IRQ-storm wedge.
-- Post-shadow: PC progressed `loader → bank $20 → $2C → IRQ handler at
-  $XX:$0047/$0069`. **Renders title-screen content** — dense PETSCII
-  "C" wall pattern + text block in VIC text mode. Color palette
-  shifts between snapshots = ongoing VIC writes. No advancement past
-  title screen (input-wait?).
+Ruled out via tests this session:
+- Not waiting for keyboard input (`tools/doom_input_probe.py` injected
+  SPACE/RETURN/Y/ESC/F1 — zero AC/WP/VIC change).
+- Not waiting for `_tick_count` (NMI vector v2 had no effect; no
+  `STA $FFEA/$FFEB` writes detected in the trace).
+- Not stuck in dispatcher trap at `$00:$0074` — that's pre-narrow
+  behavior (`c591d33`); narrow stub (`edd36b5`) escaped to bank `$41`.
+- Not init/bss-clear loop — duration is steady-rate for 11 minutes
+  in `tools/doom_extended/`; init loops finish in seconds.
+- VIC bitmap config never reached, so it's not stuck inside Doom's
+  render path either.
+
+## Disassembly clue at `$41:$DB93`
+
+`tools/dis65816.py doom.reu 41:DB93 60` (with offset adjustments) shows
+a recurring 10-byte recompiled-MIPS-instruction emit pattern:
+
+```
+41:DB94  00 00                pad
+41:DB96  df 07 07 00          CMP $00:$0707, X
+41:DB9A  b0 03                BCS +3 → $DB9F  (skip wedge if [mem] >= A)
+41:DB9C  d0 fe                BNE -2 → $DB9C  (self-loop if [mem] != A)
+41:DB9E  00 00                pad
+41:DBA0  d2 07                CMP ($07)
+41:DBA2  07 00                ORA [$00]
+...
+```
+
+The `BCS skip ; BNE *` pattern is the recompiler's standard emit for
+"wait until memory equals A" — a polling loop. `$00:$0707` is just an
+example operand; the X register selects which slot. The address space
+`$0400-$FFFF` is "Unused" per `recomp_research/recomp.txt`, so
+`$00:$07xx` is Doom-specific scratch.
+
+`grep` of doom.reu for storer patterns (`8F/9F 07 07 00`) gives only
+1 hit (at `$74:$FD2F`) which sits inside what looks like asset-data
+bytes, not code. So the storer that should set the wait variable is
+unidentified — likely produced by another code path Doom doesn't
+take in our emulation, or is mis-decoded MIPS data.
+
+## Possible non-MiSTer next probes
+
+(All can be done off-device; pick up when MiSTer is free again.)
+
+### A. RTL probe: latch the actual wait-loop READ address
+
+Current UART pool tracks WRITES; we need the address being READ in
+the spin loop. Two minimal additions:
+
+```vhdl
+signal dbg_last_read_addr : std_logic_vector(23 downto 0);
+signal dbg_last_read_data : std_logic_vector(7 downto 0);
+-- on every cpu fetch where cpuWe='0', latch supercpu_bank & cpuAddr
+-- + the data byte returned. Surface as new UART field "RD:bbaaaa=dd".
+```
+
+If the field locks at `$00:$07xx=00` we've identified the wait
+condition. If it cycles, the loop is doing more reads than the
+self-loop alone implies.
+
+### B. Recompiler output reverse-engineering
+
+`tools/recomp_research/recomp.exe -opt` can take a MIPS binary and
+emit its 65816 translation. If we had Doom's MIPS source binary we
+could decode the recompiler's emit patterns symbolically. Since we
+don't, but we DO have the example `hello/main.c` + `hello/bin/`,
+running `recomp.exe` on it and comparing the output to `hello.s` would
+tell us which emit pattern corresponds to which MIPS opcode — letting
+us decode the bytes around `$41:$DB93` definitively. **Cheap and
+local.**
+
+### C. VICE oracle for Doom (still BLOCKED)
+
+`xscpu64` hangs DL at `$3093`; current cocotb/VICE-oracle setup can
+only diff individual instruction sequences, not the full Doom run.
+Per `project_doom_loader_body_match_500.md` we already know the CPU
+microcode is correct on Doom paths. The bug is data-path (REU stores,
+SuperRAM mapping, or hardware-only timing) — not CPU. So VICE diff
+will keep matching even though hardware halts.
+
+### D. `tools/doom_vice_*.py` — write a writer-PC tracer for `$00:$0707`
+
+Adapt `tools/doom_vice_74_writers.py` (which traced `$0074-$0076`)
+to `$00:$0707`. Run on hardware (when free) with the patched `loader.prg`
+that breaks before the wedge. Identifies who SHOULD write the wait
+variable and confirm whether it ever happens at all.
 
 ## What NOT to do next
 
-- Don't pursue REU coherency snoop (Tier 1.1) — REU DMA writes go
-  through the same `cpuAddr/cpuDo/cpuWe` mux as CPU writes and land
-  in `c64_ram64k` via `cs_ramLoc`. Already coherent.
-- Don't pursue bank $F6-$F7 reservation (Tier 1.3) — Doom only writes
-  banks $02-$87 per `doom.reu` non-zero analysis. Out of scope.
-- Don't push trampoline-install path further until bank-$01 ROM shadow
-  is in place — install location matters for game compatibility.
+- Don't pursue another RBF rebuild for "more vector backing" — NMI v2
+  proved Doom isn't using vector installs. Adding more backed vectors
+  is no-op.
+- Don't keep guessing what `$0707` is from disassembly alone — the
+  recompiler emits MIPS-load addresses based on its own RAM map. Get
+  the ground truth from `recomp.exe` output (probe B above).
+- Don't try `recomp_research/recomp.d81` boot sequence on hardware —
+  the recompiler IS the runtime; running it as an app isn't useful.
 
-## Recommended next steps (in order)
+## Files modified this session (final 8 commits)
 
-1. **Last-bank-$Fx-call probe.** Add latches in `fpga64_sid_iec.vhd`
-   that capture the JML/JSL operand bytes (target bank $Fx + addr +
-   caller PC) on every cross-bank fetch into bank $F0-$FF. Surface in
-   UART. Identifies the small set of CMD ROM routines Doom actually
-   invokes at runtime (most static $5C/$22 occurrences in REU are
-   noise from data bytes mistaken for opcodes). If <20 distinct
-   routines, hand-written shims are feasible. If hundreds, dead end.
-
-2. **Joystick injection for Wolf3D.** Wolf3D shows title screen but
-   doesn't advance — likely waiting for fire button. Investigate
-   joy_0 wire in c64.sv, see if MiSTer cfg bits or keyboard sequence
-   can trigger CIA1 PRA1 bit 4 (fire).
-
-3. **CMD SCPU64 ROM acquisition.** Open V0.07 ROM (VICE) is mostly
-   `$FF` past `$84FF`. Real CMD ROM is proprietary (CMD/CMD-Maurice
-   Randall). Without it, Doom cannot complete its CMD-OS dependency
-   chain. Possible paths: (a) implement enough CMD-OS routines as
-   hand-written 65C816 stubs in an embedded ROM, (b) acquire the
-   real ROM image (legal status unclear).
-
-4. **Cocotb diff harness for Doom's specific failure.** Per existing
-   memory, P65C816 microcode is proven correct on Doom paths via
-   lockstep with VICE. If we narrow to the specific instruction
-   sequence around the JML[$74] dispatcher confusion, we may find
-   a CPU-level divergence the lockstep harness missed. Lower-priority
-   than (1).
-
-## Files modified this session
-
-- `C64_MiSTer/rtl/fpga64_sid_iec.vhd` — IRQ ack stub, trampoline,
-  scpu_native_mode wiring, $D27C-$D27F clauses, $D011 latch + port
-- `C64_MiSTer/rtl/fpga64_buslogic.vhd` — bank-$00 ROM-shadow clause,
-  bank-$01 ROM-shadow clause, bank-$Fx $6B-RTL stub clause,
-  scpu_native_mode port
-- `C64_MiSTer/rtl/debug/{debug_pkg.svh, debug_uart_pool_fmt.sv,
-  capture/cap_vic_wr.sv}` — VIC-bank probe (D1/D8/C2 in UART)
-- `C64_MiSTer/c64.sv` — wires for `scpu_dbg_d011`
-- `CLAUDE.md` — agent cooperation section
-- `docs/agent-cooperation.md` — copied from CD32 project
+| Commit | File(s) | Purpose |
+|--------|---------|---------|
+| `9a84085` | `fpga64_sid_iec.vhd` | `$D27C-$D27F` SuperRAM extent |
+| `8d017b1` | `fpga64_sid_iec.vhd` | IRQ ack stub bytes |
+| `246bd3c` | `fpga64_sid_iec.vhd` | IRQ trampoline bytes + install latch |
+| `d179e1b` | `fpga64_buslogic.vhd` + `fpga64_sid_iec.vhd` | bank-$00 ROM shadow |
+| `e8cbf39` | `fpga64_buslogic.vhd` | bank-$01 ROM shadow |
+| `c591d33` | `fpga64_buslogic.vhd` + debug | bank-$Fx broad $6B-RTL stub |
+| `edd36b5` | `fpga64_buslogic.vhd` | narrow stub to $F6-$FF |
+| `095b176` | `fpga64_sid_iec.vhd` | NMI vector RAM-back v2 |
 
 ## Test artifacts
 
-- `tools/doom_full/{shot,uart}_*` — 4-min Doom test (latest = post-c591d33)
+- `tools/doom_full/{shot,uart}_*` — 4-min Doom test (latest = NMI v2)
+- `tools/doom_input_probe/{shot,uart}_*` — keyboard injection probe
 - `tools/doom_extended/{shot,uart}_*` — 11-min Doom test (post-shadow)
-- `tools/doom_vic_probe_baseline/{shot,uart}_*` — pre-bank-$Fx-stub baseline
-- `tools/doom_bank_fx_stub/{shot,uart}_*` — post-bank-$Fx-stub evidence
-- `tools/wolf3d_full/{shot,uart}_*` — 4-min Wolf3D test (post-c591d33)
-- `tools/rom_shadow_test/boot_{t65,scpu}.png` — cold boot READY
-- `tools/doom_vic_probe.py`, `tools/find_jml_bank_fx.py`,
-  `tools/find_ee1d_xrefs.py` — analysis tooling
-- `logs/scpu_sweep_20260509T024329.csv` — regression sweep 9/10 PASS
-  (post-shadow)
-- `logs/scpu_sweep_20260509T091508.csv` — regression sweep 9/10 PASS
-  (post-bank-$Fx-stub)
-- `rbf_archive/rom_shadow_native_5ef026f9.rbf` — bank-$00 shadow RBF
-- `rbf_archive/bank01_shadow_29dd242c.rbf` — bank-$01 shadow RBF
-- `rbf_archive/bank_fx_rtl_stub_ae0df95c.rbf` — final shipped RBF (c591d33)
+- `logs/scpu_sweep_20260509T222751.csv` — sweep 9/10 PASS (post-NMI-v2)
+
+## Memory updates needed before next session
+
+- Add entry for `095b176` NMI v2 (RAM-back, no Doom impact): file
+  `project_nmi_vector_v2_no_doom_impact.md` — captures the
+  ".databank $ff" hypothesis and its refutation.
