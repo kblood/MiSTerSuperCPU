@@ -65,10 +65,9 @@ Ruled out via tests this session:
 - VIC bitmap config never reached, so it's not stuck inside Doom's
   render path either.
 
-## Disassembly clue at `$41:$DB93`
+## Disassembly clue at `$41:$DB93` — INTERPRETATION SUSPECT (2026-05-09 update)
 
-`tools/dis65816.py doom.reu 41:DB93 60` (with offset adjustments) shows
-a recurring 10-byte recompiled-MIPS-instruction emit pattern:
+Original handoff disasm (`tools/dis65816.py doom.reu 41:DB93 60`):
 
 ```
 41:DB94  00 00                pad
@@ -78,20 +77,52 @@ a recurring 10-byte recompiled-MIPS-instruction emit pattern:
 41:DB9E  00 00                pad
 41:DBA0  d2 07                CMP ($07)
 41:DBA2  07 00                ORA [$00]
-...
 ```
 
-The `BCS skip ; BNE *` pattern is the recompiler's standard emit for
-"wait until memory equals A" — a polling loop. `$00:$0707` is just an
-example operand; the X register selects which slot. The address space
-`$0400-$FFFF` is "Unused" per `recomp_research/recomp.txt`, so
-`$00:$07xx` is Doom-specific scratch.
+**Off-device cross-checks (2026-05-09) cast doubt on this disasm.**
 
-`grep` of doom.reu for storer patterns (`8F/9F 07 07 00`) gives only
-1 hit (at `$74:$FD2F`) which sits inside what looks like asset-data
-bytes, not code. So the storer that should set the wait variable is
-unidentified — likely produced by another code path Doom doesn't
-take in our emulation, or is mis-decoded MIPS data.
+1. **PC=$DB93 is mid-instruction**, not an opcode boundary. Linear hand-disasm
+   from $DB80 places $DB93 as the second byte of `BPL +0` at $DB92. Either
+   the entry point is different, or `pc_main_r` latch is capturing a non-opcode
+   address.
+
+2. **Real recompiler output (hello.bin.scpu, 6,424 bytes) has ZERO instances
+   of `df 07 07 00` and ZERO instances of `b0 03 d0 fe`.** So this is not the
+   recompiler's standard "wait until memory equals A" emit — it's either Doom-
+   specific code or bytes inside a data table that happen to match opcode
+   prefixes.
+
+3. **Zero real producers of $00:$0707 in all of doom.reu.** Searched 256 banks
+   for STA/STZ/STX/STY abs/long/long-X variants targeting $0707/$0706+1/etc.
+   All 14 candidate hits are false positives — verified by hexdump 16 bytes
+   before/after each: every "writer" is inside a sprite/color/text/WAD data
+   table, not inside recompiled code. (See `project_doom_0707_no_real_producers.md`.)
+
+4. **Banks $10-$1F in doom.reu are entirely zero** (32 banks, 2 MB of NULs).
+   recomp.txt says recompiled code lives in $00100000-$007FFFFF, but Doom's
+   actual code starts at bank $20. Banks $10-$1F may be a "code reservation"
+   the recompiler sized for but Doom doesn't fill.
+
+5. **Bank $41:$DBxx structural stats**: 25-29% zero-byte density (vs ~2% for
+   real code at $20:$0000), top byte = $07 (25 hits in 256 bytes), branch-
+   pattern density 0.05/byte (highest among samples). Either it IS code that
+   uses $00:$0707 region heavily, or it's a data table with $07 as a recurring
+   byte. Without symbol info or runtime trace, ambiguous.
+
+**Implication for Probe A (R7 field, commit 74e9c74):**
+
+When the build deploys and we capture R7, two possible outcomes:
+- R7 shows traffic to $00:$07xx → wait-loop interpretation is right; need to
+  find external agent that should bump $0707 (kernel timer? unbuilt loader
+  init?)
+- R7 shows NO traffic OR traffic to a different address range → PC=$DB93 is
+  bogus or a frozen latch; need a different probe approach.
+
+**Probe B (NEW, recommended for the next build):** wire existing `trace_op0..3`
+opcode-byte ring (fpga64_sid_iec.vhd:746) into the UART pool format. This will
+tell us the actual byte at the latched PC, confirming whether $DB93 is being
+fetched and what opcode the CPU sees there. Bundle it with the R7 build to
+avoid two separate ~12-min Quartus runs.
 
 ## Possible non-MiSTer next probes
 
