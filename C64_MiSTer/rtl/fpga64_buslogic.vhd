@@ -220,10 +220,29 @@ begin
 			  supercpu_en, supercpu_bank, scpu_native_mode)
 	begin
 		dataToCpu <= lastVicData;
+		-- Bank-$01 SRAM ROM shadow (Tier 2.1 spec gap). Real CMD SuperCPU's
+		-- bank $01 SRAM is pre-loaded with KERNAL/BASIC/CHARGEN ROM copies
+		-- so SCPU CPU reads at $01:$E000-$FFFF return KERNAL bytes,
+		-- $01:$A000-$BFFF return BASIC bytes, etc. Our bank $01 = SuperRAM
+		-- SDRAM (zeros at boot). MIPS-recompiler runtimes that read bank $01
+		-- ROM areas for KERNAL data get garbage. This clause synthesizes the
+		-- ROM bytes for those reads. Writes to $01:$Exxx still go to SDRAM
+		-- via the cs_ram path (effectively read-only ROM, since the shadow
+		-- always wins on reads — matches "ROM" semantics, slight divergence
+		-- from real CMD which has writable SRAM but with KERNAL pre-loaded).
+		-- Native mode only (scpu_native_mode='1') because emu mode never
+		-- emits bank-$01 reads (no DBR effect, no long addressing).
+		if supercpu_en = '1' and scpu_native_mode = '1' and supercpu_bank = x"01"
+		                    and (cs_romLoc = '1' or cs_CharLoc = '1') then
+			if cs_CharLoc = '1' then
+				dataToCpu <= unsigned(charData);
+			else
+				dataToCpu <= unsigned(romData);
+			end if;
 		-- Phase C: in SuperCPU mode, bank ≠ $00 reads come from SuperRAM
 		-- (SDRAM path; Phase D mux in c64.sv selects which SDRAM bank).
 		-- All other clauses fall through to the vanilla else-chain.
-		if supercpu_en = '1' and supercpu_bank /= x"00" then
+		elsif supercpu_en = '1' and supercpu_bank /= x"00" then
 			dataToCpu <= ramData;
 		-- Bank-$00 SRAM ROM shadow for SCPU CPU reads, native mode only.
 		-- Real CMD SuperCPU has 128KB SRAM mirroring banks $00-$01 that
