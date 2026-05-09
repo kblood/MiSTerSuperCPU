@@ -32,6 +32,11 @@ LINE_RE = {
     # 2026-05-09 doom-wait probe (commit 74e9c74) — last $00:$07xx read.
     # Field replaces VC. R7=AABB where AA = low byte of addr, BB = data byte.
     'R7': re.compile(r'R7:([0-9A-F]+)'),
+    # 2026-05-10 doom-wait Probe B — last 2 opcode bytes the SCPU fetched.
+    # Replaces W1. OP=hhll where hh=trace_op2 (one-back), ll=trace_op3 (newest).
+    # Locked OP across vblanks while N stays fixed = real tight loop.
+    # Cycling OP while N stays fixed = N is a frozen latch.
+    'OP': re.compile(r'OP:([0-9A-F]+)'),
 }
 
 def grab(line, key):
@@ -42,7 +47,7 @@ def analyze(path):
     last = {k: None for k in LINE_RE}
     pc_banks = set(); n_banks = set(); n_addrs = set(); wp_set = set()
     j_set = set(); m_set = set(); vic_tuples = set(); w5_set = set()
-    r7_set = set()
+    r7_set = set(); op_set = set()
     line_count = 0
     with open(path, encoding='utf-8', errors='replace') as f:
         for line in f:
@@ -69,13 +74,15 @@ def analyze(path):
             if w5: w5_set.add(w5.strip())
             r7 = grab(line, 'R7')
             if r7: r7_set.add(r7)
+            op = grab(line, 'OP')
+            if op: op_set.add(op)
     return {
         'lines': line_count, 'last': last,
         'pc_banks': sorted(pc_banks), 'n_banks': sorted(n_banks),
         'n_addrs': sorted(n_addrs), 'wp_set': sorted(wp_set),
         'j_set': sorted(j_set), 'm_set': sorted(m_set),
         'vic_tuples': sorted(vic_tuples), 'w5_set': sorted(w5_set),
-        'r7_set': sorted(r7_set),
+        'r7_set': sorted(r7_set), 'op_set': sorted(op_set),
     }
 
 def main():
@@ -104,6 +111,11 @@ def main():
         # Locked = wait condition pinned. Cycling = inner loop has structure.
         if r.get('r7_set'):
             print(f'  R7 distinct ({len(r["r7_set"])}): {r["r7_set"][:8]}{"..." if len(r["r7_set"])>8 else ""}')
+        # 2026-05-10 doom-wait Probe B — shows distinct {trace_op2,trace_op3} pairs.
+        # OP locked across vblanks while N stays fixed = real tight loop.
+        # OP cycling while N stays fixed = N is a frozen latch (not a real loop).
+        if r.get('op_set'):
+            print(f'  OP distinct ({len(r["op_set"])}): {r["op_set"][:8]}{"..." if len(r["op_set"])>8 else ""}')
         print()
 
     # AC growth summary

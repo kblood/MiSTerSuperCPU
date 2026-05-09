@@ -72,7 +72,13 @@ module debug_uart_pool_fmt
 	reg [15:0] lat_sp;          // v280 doom triage: 16-bit SP
 	reg [23:0] lat_wp;
 	reg [15:0] lat_cg;     // v257 cnt_wr02_chg (now repurposed as W1)
-	reg [15:0] lat_w1;     // v265 d001_last_pc[15:0] — writer PC of $D001
+	// 2026-05-10 doom-wait probe (Probe B): repurpose W1 slot to surface the
+	// last-2 opcodes the SCPU actually fetched. Layout is now `OP:hh ll` where
+	// hh = trace_op2 (one-back) and ll = trace_op3 (newest). Pairs with N
+	// (last-fetch-PC main-thread) to confirm whether pc_main is a real
+	// instruction or a frozen latch. Doom doesn't write $D001, so dropping
+	// the d001_last_pc display loses no useful Doom signal.
+	reg [15:0] lat_w1;     // now: {trace_op2, trace_op3} — opcode bytes
 	reg [15:0] lat_cy;
 	reg [15:0] lat_jsr0, lat_jsr1, lat_jsr2, lat_jsr3;
 	reg [15:0] lat_jmp0, lat_jmp1, lat_jmp2, lat_jmp3;
@@ -207,8 +213,11 @@ module debug_uart_pool_fmt
 			8'd53: line_byte = " ";
 
 			// v265: "W1:####" — d001_last_pc[15:0], writer PC of $D001 (sprite0 Y)
-			8'd54: line_byte = "W";
-			8'd55: line_byte = "1";
+			// 2026-05-10: "OP:####" doom-wait Probe B. Was W1=d001_last_pc.
+			// hh = trace_op2 (one-back), ll = trace_op3 (newest fetched
+			// opcode byte). Pairs with N to confirm pc_main is real.
+			8'd54: line_byte = "O";
+			8'd55: line_byte = "P";
 			8'd56: line_byte = ":";
 			8'd57: line_byte = hex_nibble(lat_w1[15:12]);
 			8'd58: line_byte = hex_nibble(lat_w1[11:8]);
@@ -454,7 +463,7 @@ module debug_uart_pool_fmt
 				lat_sp    <= pool.cpu_sp;     // v280 doom triage
 				lat_wp    <= pool.wr02_pc;
 				lat_cg    <= pool.cnt_wr02_chg;
-				lat_w1    <= pool.d001_last_pc[15:0];
+				lat_w1    <= {pool.trace_op2, pool.trace_op3};  // OP probe (2026-05-10)
 				lat_cy    <= pool.cnt_wr02;
 				lat_jsr0  <= pool.jsr_pc_t0;
 				lat_jsr1  <= pool.jsr_pc_t1;
