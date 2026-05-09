@@ -88,6 +88,7 @@ typedef struct packed {
   logic  [7:0] vic_d018;         // screen + char-bitmap pointer
   logic  [7:0] vic_d016;         // X-scroll + control2
   logic  [7:0] vic_dd00;         // CIA2 PA - VIC bank select
+  logic  [7:0] vic_d011;         // VIC ctl1 (bit5=BMM, bit4=DEN, bit6=ECM)
   logic [11:0] vic_raster;       // raster line decimal (0..311 PAL)
 
   // CPU domain

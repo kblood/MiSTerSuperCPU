@@ -12,6 +12,7 @@ module cap_vic_wr (
 	input  logic  [7:0] in_d018,
 	input  logic  [7:0] in_d016,
 	input  logic  [7:0] in_dd00,
+	input  logic  [7:0] in_d011,
 	input  logic  [8:0] in_raster,
 	input  logic [23:0] in_dd00_pc,
 	input  logic  [7:0] in_dd00_count,
@@ -54,6 +55,7 @@ module cap_vic_wr (
 	output logic  [7:0] o_d018,
 	output logic  [7:0] o_d016,
 	output logic  [7:0] o_dd00,
+	output logic  [7:0] o_d011,
 	output logic [11:0] o_raster,
 	output logic [23:0] o_dd00_pc,
 	output logic  [7:0] o_dd00_count,
@@ -97,6 +99,7 @@ module cap_vic_wr (
 	assign o_d018        = in_d018;
 	assign o_d016        = in_d016;
 	assign o_dd00        = in_dd00;
+	assign o_d011        = in_d011;
 	assign o_raster      = {3'b000, in_raster};
 	assign o_dd00_pc     = in_dd00_pc;
 	assign o_dd00_count  = in_dd00_count;

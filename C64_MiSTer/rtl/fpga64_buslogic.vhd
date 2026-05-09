@@ -220,6 +220,30 @@ begin
 			  supercpu_en, supercpu_bank, scpu_native_mode)
 	begin
 		dataToCpu <= lastVicData;
+		-- 2026-05-09 vanilla-cpu-swap: CMD bootmap stub for banks $F0-$FF.
+		-- Real CMD SuperCPU has ROM in banks $F0-$FF (bootmap with KERNAL,
+		-- CMD library routines, init code). Our MiSTer has nothing there
+		-- (SuperRAM SDRAM zeros). Doom JSLs into a CMD library routine
+		-- (e.g. JSL $FC:EE1D) and lands in zeros — every $00 fetched is a
+		-- BRK, which traps to $FF00 ack stub, RTI returns PC+2, and the
+		-- main thread walks bank $FC executing BRKs forever (observed in
+		-- doom_full UART t=240s, pc_main = $FC:$EE6D..$EEF9, J ring all
+		-- $XXEE1D).
+		--
+		-- Stub fix: return $6B (RTL opcode) for ALL reads in bank $F0-$FF
+		-- in native SCPU mode. Effect: any JSL into bank $F0-$FF lands on
+		-- a 1-byte RTL that pops the long return address from stack and
+		-- bounces straight back to the caller. Doom doesn't get the real
+		-- routine's effect, but it also doesn't wedge — caller can take
+		-- the next code path and we see what blocks Doom NEXT.
+		--
+		-- Highest priority clause (above bank-$01 shadow + bank-≠-$00 SDRAM)
+		-- because supercpu_bank=$Fx falls into the bank-≠-$00 SDRAM path
+		-- otherwise. Native-mode-only — emu mode never emits bank-$F0+ reads.
+		-- Data loads from bank $F0+ also return $6B; tolerated since real
+		-- code paths in this region don't exist on our chip anyway.
+		if supercpu_en = '1' and scpu_native_mode = '1' and supercpu_bank(7 downto 4) = x"F" then
+			dataToCpu <= x"6B";
 		-- Bank-$01 SRAM ROM shadow (Tier 2.1 spec gap). Real CMD SuperCPU's
 		-- bank $01 SRAM is pre-loaded with KERNAL/BASIC/CHARGEN ROM copies
 		-- so SCPU CPU reads at $01:$E000-$FFFF return KERNAL bytes,
@@ -232,7 +256,7 @@ begin
 		-- from real CMD which has writable SRAM but with KERNAL pre-loaded).
 		-- Native mode only (scpu_native_mode='1') because emu mode never
 		-- emits bank-$01 reads (no DBR effect, no long addressing).
-		if supercpu_en = '1' and scpu_native_mode = '1' and supercpu_bank = x"01"
+		elsif supercpu_en = '1' and scpu_native_mode = '1' and supercpu_bank = x"01"
 		                    and (cs_romLoc = '1' or cs_CharLoc = '1') then
 			if cs_CharLoc = '1' then
 				dataToCpu <= unsigned(charData);

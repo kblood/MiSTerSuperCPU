@@ -178,6 +178,7 @@ port(
 	dbg_d018        : out std_logic_vector(7 downto 0); -- last cpuDo to $D018
 	dbg_d016        : out std_logic_vector(7 downto 0); -- last cpuDo to $D016
 	dbg_dd00        : out std_logic_vector(7 downto 0); -- last cpuDo to $DD00
+	dbg_d011        : out std_logic_vector(7 downto 0); -- last cpuDo to $D011 (VIC ctl1)
 	dbg_cpu_pc_24   : out std_logic_vector(23 downto 0); -- {PBR,PC} for SCPU, {x"00",PC} for T65 (uses cpuAddr_6510 as PC proxy)
 	-- P65C816-only diagnostics (zero when T65 active). When SCPU=on, dbg_p
 	-- exposes P (NV-MX-DIZC) and dbg_dbr the data bank register. Both are
@@ -704,6 +705,7 @@ signal enableCpu_816  : std_logic;
 signal dbg_d018_r     : std_logic_vector(7 downto 0) := (others => '0');
 signal dbg_d016_r     : std_logic_vector(7 downto 0) := (others => '0');
 signal dbg_dd00_r     : std_logic_vector(7 downto 0) := (others => '0');
+signal dbg_d011_r     : std_logic_vector(7 downto 0) := (others => '0');
 -- 2026-04-30 DL triage extension: PC + count on each $DD00 write
 signal dbg_dd00_pc_r    : std_logic_vector(23 downto 0) := (others => '0');
 signal dbg_dd00_count_r : std_logic_vector(7 downto 0)  := (others => '0');
@@ -2139,6 +2141,7 @@ begin
 			dbg_d018_r <= (others => '0');
 			dbg_d016_r <= (others => '0');
 			dbg_dd00_r <= (others => '0');
+			dbg_d011_r <= (others => '0');
 			dbg_dd00_pc_r    <= (others => '0');
 			dbg_dd00_count_r <= (others => '0');
 			dbg_dd00_pc_v0_r <= (others => '0');
@@ -2372,6 +2375,8 @@ begin
 					end if;
 				elsif cpuAddr(5 downto 0) = "010110" then
 					dbg_d016_r <= std_logic_vector(cpuDo);
+				elsif cpuAddr(5 downto 0) = "010001" then
+					dbg_d011_r <= std_logic_vector(cpuDo);
 				end if;
 			end if;
 
@@ -3063,6 +3068,7 @@ end process;
 dbg_d018        <= dbg_d018_r;
 dbg_d016        <= dbg_d016_r;
 dbg_dd00        <= dbg_dd00_r;
+dbg_d011        <= dbg_d011_r;
 dbg_raster_line <= std_logic_vector(dbg_raster_y);
 
 dbg_cpu_pc_24   <= std_logic_vector(dbg_pbr_816_i) & std_logic_vector(dbg_pc_816_i)

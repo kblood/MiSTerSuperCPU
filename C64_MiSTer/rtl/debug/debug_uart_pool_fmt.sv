@@ -4,7 +4,7 @@
 // vblank rising edge containing the dbg_pool fields most relevant for
 // the Dragon's Lair / SCPU-emu-mode investigation:
 //
-//   F:#### PC:###### P:## V:## ## ## ## YX:#### WP:###### CG:#### CY:#### J:#### #### #### #### M:#### #### #### #### G:## ## ## N:###### I:###### B:## C3:#### C9:####\n
+//   F:#### PC:###### P:## V:## ## ## ## YX:#### WP:###### CG:#### CY:#### J:#### #### #### #### M:#### #### #### #### G:## ## ## N:###### I:###### B:## C3:#### C9:#### D1:## D8:## C2:##\n
 //
 // J = 4-deep JSR-PC ring (low 16 bits)         from pool.jsr_pc_t0..t3
 // M = 4-deep JMP-indirect target ring          from pool.jmp_tgt_t0..t3
@@ -108,6 +108,14 @@ module debug_uart_pool_fmt
 	// v271: $D019 ack-write counter + ack-write PC.
 	reg [15:0] lat_d019_ack_count;
 	reg [23:0] lat_d019_ack_pc;
+	// 2026-05-09 vanilla-cpu-swap: VIC bank-select probes (replaces AW/PA
+	// in line bytes 202..219). D1 = $D011 (bit5=bitmap mode, bit4=DEN,
+	// bit6=ECM), D8 = $D018 (screen+char/bitmap base), C2 = $DD00
+	// (CIA2 PRA bits 0-1 = VIC bank). Together these tell us which 16KB
+	// region VIC sees + whether Doom switched to bitmap mode for rendering.
+	reg  [7:0] lat_d011v;
+	reg  [7:0] lat_d018v;
+	reg  [7:0] lat_dd00v;
 
 	// -----------------------------------------------------------------
 	// Send FSM: drive tx_send for one cycle whenever tx is idle and the
@@ -374,31 +382,32 @@ module debug_uart_pool_fmt
 			8'd200: line_byte = hex_nibble(lat_irq_vec[7:4]);
 			8'd201: line_byte = hex_nibble(lat_irq_vec[3:0]);
 
-			// v271: " AW:#### PA:######   " — count of $D019 writes
-			// with cpuDo bit 0 = 1 (real IRST acks), and PC of the
-			// most-recent ack write. Replaces v270 D9/P9/S. v270 told
-			// us the last write each frame is the cleanup ($F2/$F8);
-			// AW/PA pinpoints the actual ack instruction. Predict T65
-			// AW=1/frame, SCPU AW=0/frame; T65 PA = ack handler PC.
+			// 2026-05-09 vanilla-cpu-swap: VIC bank-select probes
+			// (replaces v271 AW/PA). " D1:## D8:## C2:##   " — last
+			// CPU writes to $D011 (bitmap-mode bit), $D018 (screen+
+			// char/bitmap base), $DD00 (CIA2 PRA = VIC bank select).
+			// Goal: explain Doom's blank screen — does VIC see the
+			// region Doom writes bitmap data into? DL bug is fixed
+			// in master so AW/PA are obsolete here.
 			// Width = 21 bytes (202..222) including 3 trailing spaces.
 			8'd202: line_byte = " ";
-			8'd203: line_byte = "A";
-			8'd204: line_byte = "W";
+			8'd203: line_byte = "D";
+			8'd204: line_byte = "1";
 			8'd205: line_byte = ":";
-			8'd206: line_byte = hex_nibble(lat_d019_ack_count[15:12]);
-			8'd207: line_byte = hex_nibble(lat_d019_ack_count[11:8]);
-			8'd208: line_byte = hex_nibble(lat_d019_ack_count[7:4]);
-			8'd209: line_byte = hex_nibble(lat_d019_ack_count[3:0]);
-			8'd210: line_byte = " ";
-			8'd211: line_byte = "P";
-			8'd212: line_byte = "A";
-			8'd213: line_byte = ":";
-			8'd214: line_byte = hex_nibble(lat_d019_ack_pc[23:20]);
-			8'd215: line_byte = hex_nibble(lat_d019_ack_pc[19:16]);
-			8'd216: line_byte = hex_nibble(lat_d019_ack_pc[15:12]);
-			8'd217: line_byte = hex_nibble(lat_d019_ack_pc[11:8]);
-			8'd218: line_byte = hex_nibble(lat_d019_ack_pc[7:4]);
-			8'd219: line_byte = hex_nibble(lat_d019_ack_pc[3:0]);
+			8'd206: line_byte = hex_nibble(lat_d011v[7:4]);
+			8'd207: line_byte = hex_nibble(lat_d011v[3:0]);
+			8'd208: line_byte = " ";
+			8'd209: line_byte = "D";
+			8'd210: line_byte = "8";
+			8'd211: line_byte = ":";
+			8'd212: line_byte = hex_nibble(lat_d018v[7:4]);
+			8'd213: line_byte = hex_nibble(lat_d018v[3:0]);
+			8'd214: line_byte = " ";
+			8'd215: line_byte = "C";
+			8'd216: line_byte = "2";
+			8'd217: line_byte = ":";
+			8'd218: line_byte = hex_nibble(lat_dd00v[7:4]);
+			8'd219: line_byte = hex_nibble(lat_dd00v[3:0]);
 			8'd220: line_byte = " ";
 			8'd221: line_byte = " ";
 			8'd222: line_byte = " ";
@@ -484,6 +493,10 @@ module debug_uart_pool_fmt
 				// v271: $D019 ack-write counter + ack-write PC latches
 				lat_d019_ack_count <= pool.d019_ack_count;
 				lat_d019_ack_pc    <= pool.d019_ack_pc;
+				// 2026-05-09 vanilla-cpu-swap: VIC-bank probe latches
+				lat_d011v <= pool.vic_d011;
+				lat_d018v <= pool.vic_d018;
+				lat_dd00v <= pool.vic_dd00;
 				byte_idx  <= 8'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin

@@ -1077,6 +1077,7 @@ wire  [8:0] scpu_dbg_raster;
 wire  [7:0] scpu_dbg_d018;
 wire  [7:0] scpu_dbg_d016;
 wire  [7:0] scpu_dbg_dd00;
+wire  [7:0] scpu_dbg_d011;
 wire [23:0] scpu_dbg_cpu_pc;
 wire  [7:0] scpu_dbg_p;
 wire  [7:0] scpu_dbg_dbr;
@@ -1305,6 +1306,7 @@ cap_vic_wr u_cap_vic_wr (
 	.in_d018       (scpu_dbg_d018),
 	.in_d016       (scpu_dbg_d016),
 	.in_dd00       (scpu_dbg_dd00),
+	.in_d011       (scpu_dbg_d011),
 	.in_raster     (scpu_dbg_raster),
 	.in_dd00_pc    (scpu_dbg_dd00_pc),
 	.in_dd00_count (scpu_dbg_dd00_count),
@@ -1346,6 +1348,7 @@ cap_vic_wr u_cap_vic_wr (
 	.o_d018        (dbg_pool.vic_d018),
 	.o_d016        (dbg_pool.vic_d016),
 	.o_dd00        (dbg_pool.vic_dd00),
+	.o_d011        (dbg_pool.vic_d011),
 	.o_raster      (dbg_pool.vic_raster),
 	.o_dd00_pc     (dbg_pool.dd00_write_pc),
 	.o_dd00_count  (dbg_pool.dd00_write_count),
@@ -1389,6 +1392,7 @@ cap_vic_wr u_cap_vic_wr (
 assign dbg_pool.vic_d018         = '0;
 assign dbg_pool.vic_d016         = '0;
 assign dbg_pool.vic_dd00         = '0;
+assign dbg_pool.vic_d011         = '0;
 assign dbg_pool.vic_raster       = '0;
 assign dbg_pool.dd00_write_pc    = '0;
 assign dbg_pool.dd00_write_count = '0;
@@ -1822,6 +1826,7 @@ fpga64_sid_iec fpga64
 	.dbg_d018       (scpu_dbg_d018),
 	.dbg_d016       (scpu_dbg_d016),
 	.dbg_dd00       (scpu_dbg_dd00),
+	.dbg_d011       (scpu_dbg_d011),
 	.dbg_cpu_pc_24  (scpu_dbg_cpu_pc),
 	.dbg_p          (scpu_dbg_p),
 	.dbg_dbr        (scpu_dbg_dbr),
