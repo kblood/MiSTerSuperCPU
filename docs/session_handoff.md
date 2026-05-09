@@ -118,11 +118,28 @@ When the build deploys and we capture R7, two possible outcomes:
 - R7 shows NO traffic OR traffic to a different address range → PC=$DB93 is
   bogus or a frozen latch; need a different probe approach.
 
-**Probe B (NEW, recommended for the next build):** wire existing `trace_op0..3`
-opcode-byte ring (fpga64_sid_iec.vhd:746) into the UART pool format. This will
-tell us the actual byte at the latched PC, confirming whether $DB93 is being
-fetched and what opcode the CPU sees there. Bundle it with the R7 build to
-avoid two separate ~12-min Quartus runs.
+**Probe B (LANDED in commit 5e8f85a):** repurposed W1 slot (was d001_last_pc,
+unused on Doom) to surface `OP:hhll` where `hh=trace_op2` and `ll=trace_op3`
+— the 2 most recent opcode bytes the SCPU fetched. Single-line change in
+`debug_uart_pool_fmt.sv`; syntax-checked clean. Bundled with R7 (74e9c74)
+in the next build.
+
+Reading the OP+R7 combo:
+- R7 traffic + OP locked → real wait loop (pre-handoff thesis stands)
+- R7 silent + OP cycling → N is a frozen latch (need a different probe)
+- R7 traffic + OP cycling → inner loop has structure beyond CMP/BNE-2
+
+`tools/doom_uart_analyze.py` learns the OP field and prints distinct-set
+count under R7 (same pattern).
+
+**Final commit chain (off-device session continuation 2026-05-10):**
+  74e9c74 → 1a049a6 → 2645049 → 8a13a69 → b0c29fc → 5e8f85a
+
+Next session, the build/deploy/test sequence becomes:
+  1. `.\build_c64.ps1` (~12 min)
+  2. `python tools/mister_debug.py deploy`
+  3. `python tools/doom_full_run.py`
+  4. `python tools/doom_uart_analyze.py tools/doom_full/` — read OP + R7
 
 ## Possible non-MiSTer next probes
 
