@@ -1053,6 +1053,14 @@ signal scpu_hwenable     : std_logic := '0';                            -- ANY w
 signal scpu_bootmap      : std_logic := '1';                            -- '1' at reset (EPROM at $8000-$FFFF)
 signal scpu_optim_mode   : unsigned(1 downto 0) := "11";                -- $D074-$D077 select; "11" = no optimization
 signal scpu_irq_tramp_installed : std_logic := '0';                     -- '1' once software has written to $00:$FCEE-$FCF1 (user IRQ handler installed); '0' = use default JML stub
+-- v2 of NMI install path (2026-05-09): hold a 16-bit register that
+-- shadows whatever software wrote to $XX:$FFEA/$FFEB (XX=$00 or $FF —
+-- per AmiDog recomp's `.databank $ff` hint, the runtime may write the
+-- NMI vector with DBR=$FF, not DBR=$00). Native NMI vector reads at
+-- $00:$FFEA/$FFEB always return this register, defaulted to the safe
+-- $FF00 ack stub at cold boot.
+signal scpu_nmi_vec_lo : std_logic_vector(7 downto 0) := x"00";
+signal scpu_nmi_vec_hi : std_logic_vector(7 downto 0) := x"FF";
 signal cpuDi_raw         : unsigned(7 downto 0);                        -- raw bus data; SuperCPU regs mux ahead of this
 signal io_data_i    : unsigned(7 downto 0);
 signal ioe_i        : std_logic;
@@ -1460,10 +1468,24 @@ cpuDi <= ("00000" & scpu_optim_mode & '1')
                      and cpuAddr = x"FFE8") else  -- ABORT L → $00:$FF00
          x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
                      and cpuAddr = x"FFE9") else  -- ABORT H
-         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFEA") else  -- NMI  L → $00:$FF00
-         x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFEB") else  -- NMI  H
+         -- NMI vector at $00:$FFEA/$FFEB — register-backed (v2). AmiDog
+         -- recompiler runtime (`hello/native.s` _tick_install lines 90-93)
+         -- writes _tick_irq address directly to $FFEA/$FFEB. CIA2 timer A
+         -- IRQ routes to NMI on the C64 → without honoring the user
+         -- handler, _tick_count never advances and Doom's wait-for-tick
+         -- loop hangs (see project_bank_fx_narrow_unblocks_doom_dispatcher).
+         --
+         -- v1 (boolean latch gated on addr_hi_816=$00) didn't help.
+         -- Hypothesis: native.s's `.databank $ff` hint causes Doom to
+         -- write the vector via DBR=$FF — i.e. STA $FFEA targets
+         -- $FF:$FFEA rather than $00:$FFEA. v2 captures writes from
+         -- EITHER bank $00 or $FF (see latch logic below) and ALWAYS
+         -- returns the register value here, no gate. Defaults are
+         -- $00/$FF (= ack stub at $00:$FF00) so cold-boot NMI is safe.
+         unsigned(scpu_nmi_vec_lo) when (supercpu_en = '1' and emu_mode_816_i = '0'
+                     and addr_hi_816 = x"00" and cpuAddr = x"FFEA") else  -- NMI L
+         unsigned(scpu_nmi_vec_hi) when (supercpu_en = '1' and emu_mode_816_i = '0'
+                     and addr_hi_816 = x"00" and cpuAddr = x"FFEB") else  -- NMI H
          -- IRQ vector now points at $00:$FCEE (user-rewritable JML
          -- trampoline) instead of straight to $00:$FF00. Real CMD
          -- SuperCPU dispatches all native vectors through $00:$FCxx
@@ -1614,6 +1636,8 @@ begin
 			scpu_bootmap      <= '1';
 			scpu_optim_mode   <= "11";
 			scpu_irq_tramp_installed <= '0';
+			scpu_nmi_vec_lo   <= x"00";
+			scpu_nmi_vec_hi   <= x"FF";
 		elsif supercpu_en = '1' and cpuWe = '1' and addr_hi_816 = x"00" then
 			-- $D072/$D073: system 1MHz (works even with regs disabled)
 			if cpuAddr = x"D072" then
@@ -1660,6 +1684,34 @@ begin
 			if cpuAddr = x"FCEE" or cpuAddr = x"FCEF"
 			or cpuAddr = x"FCF0" or cpuAddr = x"FCF1" then
 				scpu_irq_tramp_installed <= '1';
+			end if;
+			-- NMI vector capture (bank $00 path).
+			-- AmiDog recompiler's `_tick_install` (`hello/native.s`
+			-- lines 90-93) writes `_tick_irq` address to $FFEA/$FFEB.
+			-- Capture into our shadow register so subsequent NMI fetches
+			-- at $00:$FFEA/$FFEB return the user's installed vector.
+			-- CIA2 timer A IRQ routes to NMI on the C64; without a
+			-- working NMI install path, _tick_count never advances and
+			-- Doom's wait-for-tick loop hangs after entering recompiled
+			-- code.  See project_bank_fx_narrow_unblocks_doom_dispatcher.
+			if cpuAddr = x"FFEA" then
+				scpu_nmi_vec_lo <= std_logic_vector(cpuDo);
+			elsif cpuAddr = x"FFEB" then
+				scpu_nmi_vec_hi <= std_logic_vector(cpuDo);
+			end if;
+		end if;
+		-- NMI vector capture (bank $FF path) — parallel to the bank-$00
+		-- elsif above. Per native.s `.databank $ff ; fixme`, the recomp
+		-- runtime may execute STA $FFEA with DBR=$FF, in which case the
+		-- absolute-mode address resolves to $FF:$FFEA, not $00:$FFEA.
+		-- We grab both, since the actual NMI vector fetch is always at
+		-- $00:$FFEA/$FFEB regardless of whose write installed it.
+		if reset = '0' and supercpu_en = '1' and cpuWe = '1'
+		   and addr_hi_816 = x"FF" then
+			if cpuAddr = x"FFEA" then
+				scpu_nmi_vec_lo <= std_logic_vector(cpuDo);
+			elsif cpuAddr = x"FFEB" then
+				scpu_nmi_vec_hi <= std_logic_vector(cpuDo);
 			end if;
 		end if;
 	end if;
