@@ -21,8 +21,12 @@ renders title-screen content, no advancement).
 8. `095b176` — NMI vector at `$00:$FFEA/$FFEB` RAM-backed via shadow
    register, captures writes from bank `$00` AND bank `$FF` (per
    `.databank $ff` in `recomp_research/hello/native.s`)
+9. `2645049` — docs+tools: NMI v2 session handoff + `recomp_analyze_emit.py`
+10. `74e9c74` — debug/uart: `$00:$0707` read-capture probe (R7:#### field).
+    Syntax-checked, NOT YET BUILT/DEPLOYED — gated on MiSTer availability.
+11. `1a049a6` — `tools/doom_uart_analyze.py` learns R7 field.
 
-Final RBF: `7614312678cf9726562957aa746bdbff` (095b176), ALM 26,762
+Last built RBF: `7614312678cf9726562957aa746bdbff` (095b176), ALM 26,762
 / 41,910 = 64 %. T65 + SCPU cold boot READY. Sweep 9/10 PASS (single
 pre-existing `vanilla_basic` UART-format fail).
 
@@ -93,10 +97,25 @@ take in our emulation, or is mis-decoded MIPS data.
 
 (All can be done off-device; pick up when MiSTer is free again.)
 
-### A. RTL probe: latch the actual wait-loop READ address
+### A. RTL probe — DONE in commit 74e9c74. Build + deploy needed.
 
-Current UART pool tracks WRITES; we need the address being READ in
-the spin loop. Two minimal additions:
+`R7:#### ` field (positions 194-201) replaces VC. Format `R7:LLDD`
+where LL is the low byte of the last $00:$07xx read addr and DD is
+the byte returned. Locked = wait condition pinned. Cycling = inner
+loop has structure.
+
+Sequence:
+1. Re-build (Quartus full, ~12 min — code path unchanged from
+   095b176 + ~62 lines).
+2. Deploy via `python tools/mister_debug.py deploy`.
+3. Run `python tools/doom_full_run.py`.
+4. Run `python tools/doom_uart_analyze.py tools/doom_full/` —
+   look at the R7 distinct-set count.
+
+Original probe spec: was at `docs/probe_plan_07xx_read_capture.md`.
+Implemented per spec; minor variation: instead of building dbg_pool
+fields with new byte names, reused `lat_irq_vec` slot (with the
+old VC field still latched off-line for backward compatibility).
 
 ```vhdl
 signal dbg_last_read_addr : std_logic_vector(23 downto 0);
