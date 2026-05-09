@@ -87,6 +87,9 @@ module debug_uart_pool_fmt
 	// v263: IRQ-source confirmation
 	reg [15:0] lat_irq_fall;
 	reg [15:0] lat_irq_vec;
+	// 2026-05-09 doom-wait probe — last $00:$07xx read addr + data
+	reg  [7:0] lat_rd07addr;
+	reg  [7:0] lat_rd07data;
 	reg  [7:0] lat_d019_rd;
 	reg  [3:0] lat_d019_seen;
 	// v267: $D012 raster-IRQ tail-chain timing (replaces DR/DS in line).
@@ -372,15 +375,21 @@ module debug_uart_pool_fmt
 			8'd192: line_byte = hex_nibble(lat_irq_fall[7:4]);
 			8'd193: line_byte = hex_nibble(lat_irq_fall[3:0]);
 
-			// v263: " VC:####" irq_vec_count ($FFFE/$FFFF reads)
+			// 2026-05-09 doom-wait probe: " R7:####" — replaces VC:####.
+			// First 2 hex digits = low byte of last $00:$07xx read addr;
+			// last 2 hex digits = data byte returned. e.g. R7:0700FF
+			// means "last fetch from $00:$0700 returned $FF".
+			// Sample at vblank rising edge (50/60 Hz). lat_irq_vec is
+			// no longer surfaced in the line but still latched (above)
+			// in case a future field needs it.
 			8'd194: line_byte = " ";
-			8'd195: line_byte = "V";
-			8'd196: line_byte = "C";
+			8'd195: line_byte = "R";
+			8'd196: line_byte = "7";
 			8'd197: line_byte = ":";
-			8'd198: line_byte = hex_nibble(lat_irq_vec[15:12]);
-			8'd199: line_byte = hex_nibble(lat_irq_vec[11:8]);
-			8'd200: line_byte = hex_nibble(lat_irq_vec[7:4]);
-			8'd201: line_byte = hex_nibble(lat_irq_vec[3:0]);
+			8'd198: line_byte = hex_nibble(lat_rd07addr[7:4]);
+			8'd199: line_byte = hex_nibble(lat_rd07addr[3:0]);
+			8'd200: line_byte = hex_nibble(lat_rd07data[7:4]);
+			8'd201: line_byte = hex_nibble(lat_rd07data[3:0]);
 
 			// 2026-05-09 vanilla-cpu-swap: VIC bank-select probes
 			// (replaces v271 AW/PA). " D1:## D8:## C2:##   " — last
@@ -474,6 +483,9 @@ module debug_uart_pool_fmt
 				lat_w5cN    <= pool.cnt_wr5C;
 				lat_irq_fall  <= pool.irq_fall_count;
 				lat_irq_vec   <= pool.irq_vec_count;
+				// 2026-05-09 doom-wait probe — last read in $00:$07xx
+				lat_rd07addr  <= pool.rd07xx_addr;
+				lat_rd07data  <= pool.rd07xx_data;
 				lat_d019_rd   <= pool.d019_last_read;
 				lat_d019_seen <= pool.d019_seen_bits;
 				// v267: $D012 raster-IRQ tail-chain timing latches

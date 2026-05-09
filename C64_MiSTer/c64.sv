@@ -1244,6 +1244,8 @@ wire [15:0] scpu_dbg_cnt_wr02_chg;   // v257
 // v258 — 4-deep value ring + register state at $0002 write
 wire  [7:0] scpu_dbg_wr02_v0, scpu_dbg_wr02_v1, scpu_dbg_wr02_v2, scpu_dbg_wr02_v3;
 wire  [7:0] scpu_dbg_wr02_y,  scpu_dbg_wr02_x;
+// 2026-05-09 doom-wait probe — last cpu read in $00:$0700-$07FF
+wire  [7:0] scpu_dbg_rd07xx_addr, scpu_dbg_rd07xx_data;
 wire  [7:0] scpu_dbg_p_irq_t0, scpu_dbg_p_irq_t1, scpu_dbg_p_irq_t2, scpu_dbg_p_irq_t3;
 // v262 — 4-deep ring of values written to $005C + counter
 wire  [7:0] scpu_dbg_wr5C_v0, scpu_dbg_wr5C_v1, scpu_dbg_wr5C_v2, scpu_dbg_wr5C_v3;
@@ -1663,6 +1665,9 @@ assign dbg_pool.wr02_v2        = scpu_dbg_wr02_v2;
 assign dbg_pool.wr02_v3        = scpu_dbg_wr02_v3;
 assign dbg_pool.wr02_y         = scpu_dbg_wr02_y;
 assign dbg_pool.wr02_x         = scpu_dbg_wr02_x;
+// 2026-05-09 doom-wait probe — see project_doom_wait_loop_at_41db9a.md
+assign dbg_pool.rd07xx_addr    = scpu_dbg_rd07xx_addr;
+assign dbg_pool.rd07xx_data    = scpu_dbg_rd07xx_data;
 assign dbg_pool.p_irq_t0       = scpu_dbg_p_irq_t0;
 assign dbg_pool.p_irq_t1       = scpu_dbg_p_irq_t1;
 assign dbg_pool.p_irq_t2       = scpu_dbg_p_irq_t2;
@@ -2062,6 +2067,9 @@ fpga64_sid_iec fpga64
 	.dbg_wr02_v3          (scpu_dbg_wr02_v3),
 	.dbg_wr02_y           (scpu_dbg_wr02_y),
 	.dbg_wr02_x           (scpu_dbg_wr02_x),
+	// 2026-05-09 doom-wait probe
+	.dbg_rd07xx_addr      (scpu_dbg_rd07xx_addr),
+	.dbg_rd07xx_data      (scpu_dbg_rd07xx_data),
 	.dbg_p_irq_t0         (scpu_dbg_p_irq_t0),
 	.dbg_p_irq_t1         (scpu_dbg_p_irq_t1),
 	.dbg_p_irq_t2         (scpu_dbg_p_irq_t2),

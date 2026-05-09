@@ -550,6 +550,10 @@ port(
 	dbg_wr02_v3          : out std_logic_vector(7 downto 0);
 	dbg_wr02_y           : out std_logic_vector(7 downto 0);
 	dbg_wr02_x           : out std_logic_vector(7 downto 0);
+	-- 2026-05-09 doom-wait probe: last cpu read in $00:$0700-$07FF.
+	-- _addr is the low byte of the read address; _data is the byte read.
+	dbg_rd07xx_addr      : out std_logic_vector(7 downto 0);
+	dbg_rd07xx_data      : out std_logic_vector(7 downto 0);
 	dbg_p_irq_t0         : out std_logic_vector(7 downto 0);
 	dbg_p_irq_t1         : out std_logic_vector(7 downto 0);
 	dbg_p_irq_t2         : out std_logic_vector(7 downto 0);
@@ -992,6 +996,17 @@ signal wr02_v2_r        : std_logic_vector(7 downto 0)   := (others => '0');
 signal wr02_v3_r        : std_logic_vector(7 downto 0)   := (others => '0');
 signal wr02_y_r         : std_logic_vector(7 downto 0)   := (others => '0');
 signal wr02_x_r         : std_logic_vector(7 downto 0)   := (others => '0');
+-- 2026-05-09 doom-wait probe: capture the LAST cpu read in $00:$0700-$07FF
+-- (page-$07 is where Doom's wait loop at $41:$DB9A polls $00:$0707+X
+-- via `df 07 07 00 / b0 03 / d0 fe`, and where the recompiler stores
+-- its standard MIPS-jalr indirect pointer used by 58 JML[$0707] sites
+-- + 22 JMP($0707) sites). Field rd07xx_addr captures the low byte of
+-- the read address; rd07xx_data captures the byte returned. Together
+-- they reveal what the wait condition is comparing against.
+-- See docs/probe_plan_07xx_read_capture.md and
+-- project_doom_wait_loop_at_41db9a.md for full context.
+signal rd07xx_addr_r    : std_logic_vector(7 downto 0)   := (others => '0');
+signal rd07xx_data_r    : std_logic_vector(7 downto 0)   := (others => '0');
 -- v262: 4-deep ring of $005C values (newest=v3) + total-write counter.
 signal wr5C_v0_r        : std_logic_vector(7 downto 0)   := (others => '0');
 signal wr5C_v1_r        : std_logic_vector(7 downto 0)   := (others => '0');
@@ -2387,6 +2402,8 @@ begin
 			wr02_v3_r            <= (others => '0');
 			wr02_y_r             <= (others => '0');
 			wr02_x_r             <= (others => '0');
+			rd07xx_addr_r        <= (others => '0');     -- doom-wait probe
+			rd07xx_data_r        <= (others => '0');
 			wr5C_v0_r            <= (others => '0');     -- v262
 			wr5C_v1_r            <= (others => '0');
 			wr5C_v2_r            <= (others => '0');
@@ -2474,6 +2491,16 @@ begin
 			-- *active* CPU's reads populate these regardless of mode. Use
 			-- cpuDi (data into CPU) which is the read result.
 			if enableCpu = '1' and cpuWe_pre = '0' then
+				-- 2026-05-09 doom-wait probe: latch reads in $00:$0700-$07FF
+				-- (Doom main thread polls $00:$0707+X here per
+				-- project_doom_wait_loop_at_41db9a.md).
+				-- Bank gate: when supercpu_en='0' addr_hi_816 isn't meaningful
+				-- so only gate in SCPU mode.
+				if cpuAddr_pre(15 downto 8) = x"07"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					rd07xx_addr_r <= std_logic_vector(cpuAddr_pre(7 downto 0));
+					rd07xx_data_r <= std_logic_vector(cpuDi);
+				end if;
 				if cpuAddr_pre = x"FFFE" then
 					vec_lo_r    <= std_logic_vector(cpuDi);
 					io_at_vec_r <= std_logic_vector(cpuIO(2 downto 0));
@@ -3406,6 +3433,9 @@ dbg_wr02_v2   <= wr02_v2_r;
 dbg_wr02_v3   <= wr02_v3_r;
 dbg_wr02_y    <= wr02_y_r;
 dbg_wr02_x    <= wr02_x_r;
+-- 2026-05-09 doom-wait probe: last cpu read in $00:$0700-$07FF
+dbg_rd07xx_addr <= rd07xx_addr_r;
+dbg_rd07xx_data <= rd07xx_data_r;
 dbg_p_irq_t0  <= p_irq_t0_r;
 dbg_p_irq_t1  <= p_irq_t1_r;
 dbg_p_irq_t2  <= p_irq_t2_r;

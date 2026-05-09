@@ -463,6 +463,11 @@ typedef struct packed {
   logic  [7:0] wr02_v3;
   logic  [7:0] wr02_y;
   logic  [7:0] wr02_x;
+  // 2026-05-09 doom-wait probe — captures last $00:$0700-$07FF read.
+  // _addr is low byte of the read address; _data is the byte returned.
+  // See project_doom_wait_loop_at_41db9a.md.
+  logic  [7:0] rd07xx_addr;
+  logic  [7:0] rd07xx_data;
   logic  [7:0] p_irq_t0;
   logic  [7:0] p_irq_t1;
   logic  [7:0] p_irq_t2;
