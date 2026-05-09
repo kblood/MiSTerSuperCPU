@@ -1,8 +1,8 @@
 # SuperCPU spec-gap implementation session — 2026-05-09
 
-## Bottom line — Doom + Wolf3D unblocked at CPU level via 4 commits
+## Bottom line — Doom + Wolf3D unblocked at CPU level via 5 commits
 
-This session implemented 4 SuperCPU spec gaps in sequence on the
+This session implemented 5 SuperCPU spec gaps in sequence on the
 `vanilla-cpu-swap` branch, each unblocking a downstream wedge:
 
 1. **9a84085** — Populate `$D27C-$D27F` SuperRAM extent variables.
@@ -17,13 +17,19 @@ This session implemented 4 SuperCPU spec gaps in sequence on the
 4. **d179e1b** — Bank-$00 SRAM ROM-shadow (native-mode-gated). New
    buslogic clause routes SCPU CPU bank-$00 reads at ROM-shadowed
    windows ($A000/$D000/$E000+) to RAM-under-ROM instead of
-   KERNAL/BASIC/CHARGEN bytes. The big one — fixes Doom's RTI from
-   upper-page native stack returning to KERNAL bytes instead of
-   pushed PC. Verified non-regressive against 10-title SCPU library
-   sweep (9 PASS, 1 PRE-EXISTING fail).
+   KERNAL/BASIC/CHARGEN bytes. **The big one** — fixes Doom's RTI
+   from upper-page native stack returning to KERNAL bytes instead
+   of pushed PC.
+5. **e8cbf39** — Bank-$01 SRAM ROM shadow (Tier 2.1). When SCPU CPU
+   reads bank $01 in native mode at ROM areas, return KERNAL/BASIC/
+   CHARGEN bytes instead of SuperRAM SDRAM zeros. Defensive
+   spec-compliance — non-regressive against sweep, didn't change
+   Doom's blank-screen behavior, but matches real CMD's bank-$01
+   pre-loaded SRAM mirror.
 
-Final RBF: `5ef026f919b948d6f56271774dc61045`, ALM 64% (26,851 / 41,910).
-T65 + SCPU cold boot READY both modes.
+Final RBF: `29dd242cca7f42146aa4370ca98ce56b`, ALM 64% (26,781 / 41,910).
+T65 + SCPU cold boot READY both modes. Wolf3D regression-free
+(still renders title-screen content with bank-$01 shadow active).
 
 ## Doom result
 
