@@ -89,7 +89,8 @@ entity fpga64_buslogic is
 		supercpu_en      : in std_logic := '0';
 		supercpu_rom     : in std_logic := '0';                          -- '1' = SuperCPU kickstart ROM compiled in (always 1 on this branch)
 		supercpu_rom_vis : in std_logic := '0';                          -- '1' = SuperCPU ROM at $E000-$FFFF; '0' = C64 KERNAL
-		supercpu_bank    : in std_logic_vector(7 downto 0) := x"00"      -- 65C816 bank byte (A23-A16)
+		supercpu_bank    : in std_logic_vector(7 downto 0) := x"00";     -- 65C816 bank byte (A23-A16)
+		scpu_native_mode : in std_logic := '0'                           -- '1' = P65C816 in native mode (E=0); enables bank-$00 ROM-shadow for SCPU CPU reads
 	);
 end fpga64_buslogic;
 
@@ -216,13 +217,40 @@ begin
 			  cs_cia1Loc, cs_cia2Loc, lastVicData,
 			  cs_ioELoc, cs_ioFLoc,
 			  io_rom, io_ext, io_data,
-			  supercpu_en, supercpu_bank)
+			  supercpu_en, supercpu_bank, scpu_native_mode)
 	begin
 		dataToCpu <= lastVicData;
 		-- Phase C: in SuperCPU mode, bank ≠ $00 reads come from SuperRAM
 		-- (SDRAM path; Phase D mux in c64.sv selects which SDRAM bank).
 		-- All other clauses fall through to the vanilla else-chain.
 		if supercpu_en = '1' and supercpu_bank /= x"00" then
+			dataToCpu <= ramData;
+		-- Bank-$00 SRAM ROM shadow for SCPU CPU reads, native mode only.
+		-- Real CMD SuperCPU has 128KB SRAM mirroring banks $00-$01 that
+		-- fully displaces the C64 KERNAL/BASIC/CHARGEN/Cart ROMs from the
+		-- SCPU CPU's read path (writes already go to RAM under ROM in
+		-- vanilla C64; this just makes reads see the RAM too). Required:
+		--   1. Native-mode 16-bit SP can park in $00:$Fxxx without RTI
+		--      popping KERNAL ROM bytes instead of pushed return address
+		--      (Doom symptom — see project_doom_wedge_is_kernal_rom_stack_shadow).
+		--   2. Software-installed JML trampoline at $00:$FCEE-$FCF1 reads
+		--      the user-installed JML target from RAM, not KERNAL bytes.
+		--   3. Bank-$00 SRAM behavior matches real CMD spec.
+		-- ESSENTIAL: gated on scpu_native_mode='1' (E=0). At cold boot the
+		-- CPU is in EMU mode and reads RESET vector at $00:$FFFC ($E2 $FC
+		-- → KERNAL $FCE2). Without the native-mode gate, the shadow returns
+		-- RAM=$00 instead of ROM at boot and the system never starts. The
+		-- gate also keeps EMU-mode KERNAL execution intact.
+		-- The fpga64_sid_iec cpuDi mux still overrides $FF00-$FF16 (ack
+		-- stub), $FCEE-$FCF1 (trampoline default), $D27C-$D27F, and the
+		-- native vector intercepts at higher priority; this clause only
+		-- matters for the rest of the $E000-$FFFF / $A000-$BFFF / $D000-$DFFF
+		-- ROM-mapped windows in native mode.
+		-- VIC and 6510/T65 paths are unaffected — dataToVic uses its own
+		-- mux below, and supercpu_en='0' makes this clause inert.
+		elsif supercpu_en = '1' and scpu_native_mode = '1'
+		                       and (cs_romLoc = '1' or cs_CharLoc = '1'
+		                         or cs_romHLoc = '1' or cs_romLLoc = '1') then
 			dataToCpu <= ramData;
 		elsif cs_CharLoc = '1' then
 			dataToCpu <= unsigned(charData);
