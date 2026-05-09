@@ -230,19 +230,25 @@ begin
 		-- doom_full UART t=240s, pc_main = $FC:$EE6D..$EEF9, J ring all
 		-- $XXEE1D).
 		--
-		-- Stub fix: return $6B (RTL opcode) for ALL reads in bank $F0-$FF
-		-- in native SCPU mode. Effect: any JSL into bank $F0-$FF lands on
-		-- a 1-byte RTL that pops the long return address from stack and
-		-- bounces straight back to the caller. Doom doesn't get the real
-		-- routine's effect, but it also doesn't wedge — caller can take
-		-- the next code path and we see what blocks Doom NEXT.
+		-- Stub fix: return $6B (RTL opcode) for reads in bank $F6-$FF in
+		-- native SCPU mode. Any JSL into this region lands on a 1-byte RTL
+		-- that pops the long return address from stack and bounces straight
+		-- back to the caller. Doom doesn't get the real routine's effect,
+		-- but it also doesn't wedge — caller can take the next code path
+		-- and we see what blocks Doom NEXT.
+		--
+		-- Range $F6-$FF (NOT $F0-$FF): per AmiDog's recomp.txt (the MIPS
+		-- recompiler that produced doom.bin) the memory map is
+		--   $00800000-$00f5ffff  MIPS executable + heap + stack
+		--   $00f60000-$00ffffff  Reserved (SuperCPU system DRAM/ROM)
+		-- Bank $F0-$F5 holds legitimate heap/stack data (linker script
+		-- mips.x: __stack_end = $00f60000) — returning $6B here corrupts
+		-- Doom's heap reads. Only $F6+ should serve the stub.
 		--
 		-- Highest priority clause (above bank-$01 shadow + bank-≠-$00 SDRAM)
-		-- because supercpu_bank=$Fx falls into the bank-≠-$00 SDRAM path
-		-- otherwise. Native-mode-only — emu mode never emits bank-$F0+ reads.
-		-- Data loads from bank $F0+ also return $6B; tolerated since real
-		-- code paths in this region don't exist on our chip anyway.
-		if supercpu_en = '1' and scpu_native_mode = '1' and supercpu_bank(7 downto 4) = x"F" then
+		-- because supercpu_bank=$F6+ falls into the bank-≠-$00 SDRAM path
+		-- otherwise. Native-mode-only — emu mode never emits bank-$F6+ reads.
+		if supercpu_en = '1' and scpu_native_mode = '1' and unsigned(supercpu_bank) >= x"F6" then
 			dataToCpu <= x"6B";
 		-- Bank-$01 SRAM ROM shadow (Tier 2.1 spec gap). Real CMD SuperCPU's
 		-- bank $01 SRAM is pre-loaded with KERNAL/BASIC/CHARGEN ROM copies
