@@ -1,8 +1,8 @@
 # SuperCPU spec-gap implementation session — 2026-05-09
 
-## Bottom line — Doom + Wolf3D unblocked at CPU level via 5 commits
+## Bottom line — Doom + Wolf3D unblocked at CPU level via 6 commits
 
-This session implemented 5 SuperCPU spec gaps in sequence on the
+This session implemented 6 SuperCPU spec gaps in sequence on the
 `vanilla-cpu-swap` branch, each unblocking a downstream wedge:
 
 1. **9a84085** — Populate `$D27C-$D27F` SuperRAM extent variables.
@@ -26,10 +26,24 @@ This session implemented 5 SuperCPU spec gaps in sequence on the
    spec-compliance — non-regressive against sweep, didn't change
    Doom's blank-screen behavior, but matches real CMD's bank-$01
    pre-loaded SRAM mirror.
+6. **c591d33** — Bank $F0-$FF $6B-RTL stub + VIC bank-select UART
+   probe. Real CMD has CMD-OS ROM in banks $F0-$FF; ours had SDRAM
+   zeros, so Doom JMLs to e.g. $FC:$85A1 walked SDRAM zeros executing
+   $00=BRK forever (pc_main pegged at $FC:$EE6D..$EEF9). New buslogic
+   clause returns $6B (RTL) for SCPU CPU reads at bank $F0-$FF in
+   native mode — JSL frames bounce back, JML targets pop a recent
+   return. Doom's main thread escapes the bank-$FC wedge; now writes
+   $D011=$00 ($DEN=0$ display BLANKED, mid-config), $D018=$10 (screen
+   $C400), $DD00=$10 (VIC bank 3). pc_main moves to $00:$0074 — the
+   JML[$74] dispatcher scratchpad. The $6B byte appears in V ring as
+   data corruption of dispatch targets — Doom reads bank-$Fx as data,
+   gets stub byte, computes wrong dispatch. Companion VIC-bank probe
+   adds `D1:## D8:## C2:##` to UART line (reuses obsolete AW/PA bytes).
 
-Final RBF: `29dd242cca7f42146aa4370ca98ce56b`, ALM 64% (26,781 / 41,910).
-T65 + SCPU cold boot READY both modes. Wolf3D regression-free
-(still renders title-screen content with bank-$01 shadow active).
+Final RBF: `ae0df95c8fac88a9a2b80adb5dbe055c`, ALM 64% (26,744 / 41,910).
+T65 + SCPU cold boot READY both modes. Wolf3D regression-free (still
+renders title-screen content). Sweep 9/10 PASS (same single
+pre-existing `vanilla_basic` UART-format fail).
 
 ## Doom result
 
@@ -44,11 +58,21 @@ T65 + SCPU cold boot READY both modes. Wolf3D regression-free
   - AC counter advances `0001 → 5329` over 11 min = active execution
   - Screen: cleared dark blue, no game frame visible, no error text
 
-Hypothesis for blank screen: Doom may write bitmap data to bank ≠ $00
-(SuperRAM SDRAM, which VIC cannot see). Real CMD shadows bank $01
-SRAM into VIC's view; ours doesn't (Tier 2.1 spec gap). Or Doom is in
-extended init / waiting for input. Need to read VIC `$D011` / `$D018`
-or peek `$0400` / candidate bitmap bases via a non-disruptive probe.
+- Post-bank-$01 + bank-$Fx stub (commit c591d33): pc_main moved
+  $FC:$EE6D → $00:$0074 (JML[$74] dispatcher). VIC config NOW
+  reached: D1=$00 ($DEN=0$), D8=$10 (screen $C400), C2=$10 (VIC
+  bank 3). Screen pure black (display blanked mid-config). V ring
+  shows $6B (RTL stub byte) being read as data and corrupting
+  dispatch. Forward progress, NEW blocker = data-byte reads from
+  bank $F0-$FF need real CMD ROM contents.
+
+Hypothesis for blank screen (current, 2026-05-09 c591d33): Doom calls
+CMD ROM library routines that compute results consumed downstream.
+Our $6B stub means routines "return" without effect; A/X/Y stay
+garbage; subsequent `STA $0074 / STX $0075 / JML [$74]` lands at
+garbage. VICE's open SCPU64 v0.07 ROM (md5 006862e9...) is mostly
+$FF past $84FF — no usable substitute; the proprietary CMD ROM is
+required for Doom to render.
 
 ## Wolf3D result
 
@@ -71,51 +95,60 @@ or peek `$0400` / candidate bitmap bases via a non-disruptive probe.
 
 ## Recommended next steps (in order)
 
-1. **Probe Doom's VIC state without disrupting it.** Add a temporary
-   debug-overlay field that reports `$D011 / $D018` live, OR write a
-   tiny probe PRG and inject via mtype while Doom is paused (won't
-   work — Doom runs continuously).
-   Better: read `$0400` (text screen RAM) and `$D018` directly via a
-   short BASIC program AFTER the test, by switching to T65 mode but
-   keeping SDRAM intact (deploy preserves SDRAM per
-   `project_sdram_survives_deploy`).
+1. **Last-bank-$Fx-call probe.** Add latches in `fpga64_sid_iec.vhd`
+   that capture the JML/JSL operand bytes (target bank $Fx + addr +
+   caller PC) on every cross-bank fetch into bank $F0-$FF. Surface in
+   UART. Identifies the small set of CMD ROM routines Doom actually
+   invokes at runtime (most static $5C/$22 occurrences in REU are
+   noise from data bytes mistaken for opcodes). If <20 distinct
+   routines, hand-written shims are feasible. If hundreds, dead end.
 
-2. **Bank-$01 SRAM ROM shadow (Tier 2.1).** Real CMD's bank $01 has
-   KERNAL/BASIC/CHARGEN copies pre-loaded so SCPU CPU reads at
-   `$01:$E000-$FFFF` get KERNAL bytes. Our bank $01 = SuperRAM SDRAM
-   (zeros at boot). If Doom's translated MIPS reads `$01:$Exxx` for
-   any reason (lookup tables, recompiler runtime), gets garbage.
-   Implementation: add cpuDi mux clause when `addr_hi_816='01' AND
-   addr in ROM area` returning ROM bytes from existing romData/
-   charData/etc. Or pre-load bank $01 SDRAM with ROM contents at
-   boot via a one-shot DMA.
+2. **Joystick injection for Wolf3D.** Wolf3D shows title screen but
+   doesn't advance — likely waiting for fire button. Investigate
+   joy_0 wire in c64.sv, see if MiSTer cfg bits or keyboard sequence
+   can trigger CIA1 PRA1 bit 4 (fire).
 
-3. **Joystick injection for Wolf3D**. Wolf3D shows title screen — try
-   pressing fire (joystick port 1 button) to advance. Need to wire
-   joy port via MiSTer (probably via `joy_*` cfg bits or a `keys`
-   sequence that sets joy bits via CIA1).
+3. **CMD SCPU64 ROM acquisition.** Open V0.07 ROM (VICE) is mostly
+   `$FF` past `$84FF`. Real CMD ROM is proprietary (CMD/CMD-Maurice
+   Randall). Without it, Doom cannot complete its CMD-OS dependency
+   chain. Possible paths: (a) implement enough CMD-OS routines as
+   hand-written 65C816 stubs in an embedded ROM, (b) acquire the
+   real ROM image (legal status unclear).
 
-4. **Doom rendering hypothesis check**. Hex-dump bank-$00 RAM at
-   `$0400` (default text screen) and `$4000-$5FFF` (common bitmap
-   base) after Doom has been running. If bitmap bytes are present
-   somewhere VIC can't see, that's the bank-$01 issue. If bitmap
-   bytes ARE in `$4000-$5FFF` but VIC isn't using that bank, it's a
-   `$D018 / CIA2 PRA` configuration issue.
+4. **Cocotb diff harness for Doom's specific failure.** Per existing
+   memory, P65C816 microcode is proven correct on Doom paths via
+   lockstep with VICE. If we narrow to the specific instruction
+   sequence around the JML[$74] dispatcher confusion, we may find
+   a CPU-level divergence the lockstep harness missed. Lower-priority
+   than (1).
 
 ## Files modified this session
 
 - `C64_MiSTer/rtl/fpga64_sid_iec.vhd` — IRQ ack stub, trampoline,
-  scpu_native_mode wiring, $D27C-$D27F clauses
+  scpu_native_mode wiring, $D27C-$D27F clauses, $D011 latch + port
 - `C64_MiSTer/rtl/fpga64_buslogic.vhd` — bank-$00 ROM-shadow clause,
+  bank-$01 ROM-shadow clause, bank-$Fx $6B-RTL stub clause,
   scpu_native_mode port
+- `C64_MiSTer/rtl/debug/{debug_pkg.svh, debug_uart_pool_fmt.sv,
+  capture/cap_vic_wr.sv}` — VIC-bank probe (D1/D8/C2 in UART)
+- `C64_MiSTer/c64.sv` — wires for `scpu_dbg_d011`
 - `CLAUDE.md` — agent cooperation section
 - `docs/agent-cooperation.md` — copied from CD32 project
 
 ## Test artifacts
 
-- `tools/doom_full/{shot,uart}_*` — 4-min Doom test (post-shadow)
-- `tools/doom_extended/{shot,uart}_*` — 11-min Doom test
-- `tools/wolf3d_full/{shot,uart}_*` — 4-min Wolf3D test
+- `tools/doom_full/{shot,uart}_*` — 4-min Doom test (latest = post-c591d33)
+- `tools/doom_extended/{shot,uart}_*` — 11-min Doom test (post-shadow)
+- `tools/doom_vic_probe_baseline/{shot,uart}_*` — pre-bank-$Fx-stub baseline
+- `tools/doom_bank_fx_stub/{shot,uart}_*` — post-bank-$Fx-stub evidence
+- `tools/wolf3d_full/{shot,uart}_*` — 4-min Wolf3D test (post-c591d33)
 - `tools/rom_shadow_test/boot_{t65,scpu}.png` — cold boot READY
+- `tools/doom_vic_probe.py`, `tools/find_jml_bank_fx.py`,
+  `tools/find_ee1d_xrefs.py` — analysis tooling
 - `logs/scpu_sweep_20260509T024329.csv` — regression sweep 9/10 PASS
-- `rbf_archive/rom_shadow_native_5ef026f9.rbf` — final shipped RBF
+  (post-shadow)
+- `logs/scpu_sweep_20260509T091508.csv` — regression sweep 9/10 PASS
+  (post-bank-$Fx-stub)
+- `rbf_archive/rom_shadow_native_5ef026f9.rbf` — bank-$00 shadow RBF
+- `rbf_archive/bank01_shadow_29dd242c.rbf` — bank-$01 shadow RBF
+- `rbf_archive/bank_fx_rtl_stub_ae0df95c.rbf` — final shipped RBF (c591d33)
