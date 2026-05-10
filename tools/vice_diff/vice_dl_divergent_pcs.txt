@@ -1,0 +1,531 @@
+# DL divergent-PC disasm (x64sc oracle)
+
+=== 8000-80ff (SCPU $8030 / T65 $802E) DISASM ===
+(C:$8b3b) 
+=== 8300-83ff (SCPU $83B7 / T65 $83B4 / VICE $83BC) DISASM ===
+(C:$8b3b) 
+=== 8500-85ff (T65 $8596) DISASM ===
+.C:8000  A9 DF       LDA #$DF
+.C:8002  8D 02 DF    STA $DF02
+.C:8005  A9 33       LDA #$33
+.C:8007  05 02       ORA $02
+.C:8009  8D 03 DF    STA $DF03
+.C:800c  8D 35 80    STA $8035
+.C:800f  8D 3B 80    STA $803B
+.C:8012  A9 BB       LDA #$BB
+.C:8014  8D 04 DF    STA $DF04
+.C:8017  A5 10       LDA $10
+.C:8019  18          CLC
+.C:801a  69 3D       ADC #$3D
+.C:801c  8D 05 DF    STA $DF05
+.C:801f  A5 11       LDA $11
+.C:8021  8D 06 DF    STA $DF06
+.C:8024  A9 61       LDA #$61
+.C:8026  8D 07 DF    STA $DF07
+.C:8029  A9 0B       LDA #$0B
+.C:802b  8D 08 DF    STA $DF08
+.C:802e  A0 FD       LDY #$FD
+.C:8030  8C 01 DF    STY $DF01
+.C:8033  AD EC B3    LDA $B3EC
+.C:8036  8D 20 D0    STA $D020
+.C:8039  AD ED B3    LDA $B3ED
+.C:803c  8D 21 D0    STA $D021
+.C:803f  A9 20       LDA #$20
+.C:8041  8D 02 DF    STA $DF02
+.C:8044  8D 04 DF    STA $DF04
+.C:8047  A9 E0       LDA #$E0
+.C:8049  8D 07 DF    STA $DF07
+.C:804c  A9 68       LDA #$68
+.C:804e  05 02       ORA $02
+.C:8050  8D 03 DF    STA $DF03
+.C:8053  A5 10       LDA $10
+.C:8055  69 49       ADC #$49
+.C:8057  8D 05 DF    STA $DF05
+.C:805a  A9 0B       LDA #$0B
+.C:805c  8D 08 DF    STA $DF08
+.C:805f  8C 01 DF    STY $DF01
+.C:8062  4C 00 81    JMP $8100
+.C:8065  00          BRK
+.C:8066  00          BRK
+.C:8067  00          BRK
+.C:8068  00          BRK
+.C:8069  00          BRK
+.C:806a  00          BRK
+.C:806b  00          BRK
+.C:806c  00          BRK
+.C:806d  00          BRK
+.C:806e  00          BRK
+.C:806f  00          BRK
+.C:8070  00          BRK
+.C:8071  00          BRK
+.C:8072  00          BRK
+.C:8073  00          BRK
+.C:8074  00          BRK
+.C:8075  00          BRK
+.C:8076  00          BRK
+.C:8077  00          BRK
+.C:8078  00          BRK
+.C:8079  00          BRK
+.C:807a  00          BRK
+.C:807b  00          BRK
+.C:807c  00          BRK
+.C:807d  00          BRK
+.C:807e  00          BRK
+.C:807f  00          BRK
+.C:8080  02          JAM
+.C:8081  00          BRK
+.C:8082  01 02       ORA ($02,X)
+.C:8084  00          BRK
+.C:8085  01 02       ORA ($02,X)
+.C:8087  00          BRK
+.C:8088  01 02       ORA ($02,X)
+.C:808a  00          BRK
+.C:808b  01 02       ORA ($02,X)
+.C:808d  00          BRK
+.C:808e  01 02       ORA ($02,X)
+.C:8090  00          BRK
+.C:8091  01 02       ORA ($02,X)
+.C:8093  00          BRK
+.C:8094  01 02       ORA ($02,X)
+.C:8096  00          BRK
+.C:8097  01 02       ORA ($02,X)
+.C:8099  00          BRK
+.C:809a  01 02       ORA ($02,X)
+.C:809c  00          BRK
+.C:809d  01 02       ORA ($02,X)
+.C:809f  00          BRK
+.C:80a0  01 02       ORA ($02,X)
+.C:80a2  00          BRK
+.C:80a3  00          BRK
+.C:80a4  00          BRK
+.C:80a5  00          BRK
+.C:80a6  00          BRK
+.C:80a7  00          BRK
+.C:80a8  00          BRK
+.C:80a9  00          BRK
+.C:80aa  00          BRK
+.C:80ab  00          BRK
+.C:80ac  00          BRK
+.C:80ad  00          BRK
+.C:80ae  00          BRK
+.C:80af  00          BRK
+.C:80b0  00          BRK
+.C:80b1  00          BRK
+.C:80b2  00          BRK
+.C:80b3  00          BRK
+.C:80b4  00          BRK
+.C:80b5  00          BRK
+.C:80b6  00          BRK
+.C:80b7  00          BRK
+.C:80b8  00          BRK
+.C:80b9  00          BRK
+.C:80ba  00          BRK
+.C:80bb  00          BRK
+.C:80bc  00          BRK
+.C:80bd  00          BRK
+.C:80be  00          BRK
+.C:80bf  00          BRK
+.C:80c0  FA          NOOP
+.C:80c1  FB FB FB    ISB $FBFB,Y
+.C:80c4  FC FC FC    NOOP $FCFC,X
+.C:80c7  FD FD FD    SBC $FDFD,X
+.C:80ca  FE FE FE    INC $FEFE,X
+.C:80cd  FF FF FF    ISB $FFFF,X
+.C:80d0  00          BRK
+.C:80d1  00          BRK
+.C:80d2  00          BRK
+.C:80d3  01 01       ORA ($01,X)
+.C:80d5  01 02       ORA ($02,X)
+.C:80d7  02          JAM
+.C:80d8  02          JAM
+.C:80d9  03 03       SLO ($03,X)
+.C:80db  03 04       SLO ($04,X)
+.C:80dd  04 04       NOOP $04
+.C:80df  05 05       ORA $05
+.C:80e1  05 00       ORA $00
+.C:80e3  00          BRK
+.C:80e4  00          BRK
+.C:80e5  00          BRK
+.C:80e6  00          BRK
+.C:80e7  00          BRK
+.C:80e8  00          BRK
+.C:80e9  00          BRK
+.C:80ea  00          BRK
+.C:80eb  00          BRK
+.C:80ec  00          BRK
+.C:80ed  00          BRK
+.C:80ee  00          BRK
+.C:80ef  00          BRK
+.C:80f0  00          BRK
+.C:80f1  00          BRK
+.C:80f2  00          BRK
+.C:80f3  00          BRK
+.C:80f4  00          BRK
+.C:80f5  00          BRK
+.C:80f6  00          BRK
+.C:80f7  00          BRK
+.C:80f8  00          BRK
+.C:80f9  00          BRK
+.C:80fa  00          BRK
+.C:80fb  00          BRK
+.C:80fc  00          BRK
+.C:80fd  00          BRK
+.C:80fe  00          BRK
+.C:80ff  00          BRK
+(C:$8100) 
+=== 8700-87ff (VICE $8734) DISASM ===
+.C:8300  A9 00       LDA #$00
+.C:8302  8D 02 DF    STA $DF02
+.C:8305  8D 07 DF    STA $DF07
+.C:8308  A9 53       LDA #$53
+.C:830a  05 02       ORA $02
+.C:830c  8D 03 DF    STA $DF03
+.C:830f  A9 D7       LDA #$D7
+.C:8311  8D 04 DF    STA $DF04
+.C:8314  A5 10       LDA $10
+.C:8316  18          CLC
+.C:8317  69 26       ADC #$26
+.C:8319  AA          TAX
+.C:831a  8E 05 DF    STX $DF05
+.C:831d  A5 11       LDA $11
+.C:831f  8D 06 DF    STA $DF06
+.C:8322  A9 03       LDA #$03
+.C:8324  8D 08 DF    STA $DF08
+.C:8327  A0 A1       LDY #$A1
+.C:8329  8C 01 DF    STY $DF01
+.C:832c  C6 01       DEC $01
+.C:832e  8C 00 FF    STY $FF00
+.C:8331  E6 01       INC $01
+.C:8333  A9 00       LDA #$00
+.C:8335  8D 02 DF    STA $DF02
+.C:8338  A9 7C       LDA #$7C
+.C:833a  05 02       ORA $02
+.C:833c  8D 03 DF    STA $DF03
+.C:833f  E8          INX
+.C:8340  E8          INX
+.C:8341  E8          INX
+.C:8342  8E 05 DF    STX $DF05
+.C:8345  A9 40       LDA #$40
+.C:8347  8D 07 DF    STA $DF07
+.C:834a  A9 01       LDA #$01
+.C:834c  8D 08 DF    STA $DF08
+.C:834f  A0 FD       LDY #$FD
+.C:8351  8C 01 DF    STY $DF01
+.C:8354  A9 40       LDA #$40
+.C:8356  8D 02 DF    STA $DF02
+.C:8359  A9 7D       LDA #$7D
+.C:835b  05 02       ORA $02
+.C:835d  8D 03 DF    STA $DF03
+.C:8360  A9 17       LDA #$17
+.C:8362  8D 04 DF    STA $DF04
+.C:8365  E8          INX
+.C:8366  E8          INX
+.C:8367  8E 05 DF    STX $DF05
+.C:836a  8C 01 DF    STY $DF01
+.C:836d  A9 80       LDA #$80
+.C:836f  8D 02 DF    STA $DF02
+.C:8372  A9 76       LDA #$76
+.C:8374  05 02       ORA $02
+.C:8376  8D 03 DF    STA $DF03
+.C:8379  A9 57       LDA #$57
+.C:837b  8D 04 DF    STA $DF04
+.C:837e  E8          INX
+.C:837f  8E 05 DF    STX $DF05
+.C:8382  8C 01 DF    STY $DF01
+.C:8385  A9 7A       LDA #$7A
+.C:8387  05 02       ORA $02
+.C:8389  8D 03 DF    STA $DF03
+.C:838c  A9 97       LDA #$97
+.C:838e  8D 04 DF    STA $DF04
+.C:8391  E8          INX
+.C:8392  8E 05 DF    STX $DF05
+.C:8395  8C 01 DF    STY $DF01
+.C:8398  A9 00       LDA #$00
+.C:839a  8D 02 DF    STA $DF02
+.C:839d  A9 10       LDA #$10
+.C:839f  05 02       ORA $02
+.C:83a1  8D 03 DF    STA $DF03
+.C:83a4  A9 D7       LDA #$D7
+.C:83a6  8D 04 DF    STA $DF04
+.C:83a9  E8          INX
+.C:83aa  8E 05 DF    STX $DF05
+.C:83ad  A9 E4       LDA #$E4
+.C:83af  8D 07 DF    STA $DF07
+.C:83b2  A9 0E       LDA #$0E
+.C:83b4  8D 08 DF    STA $DF08
+.C:83b7  8C 01 DF    STY $DF01
+.C:83ba  A9 E4       LDA #$E4
+.C:83bc  8D 02 DF    STA $DF02
+.C:83bf  A9 1E       LDA #$1E
+.C:83c1  05 02       ORA $02
+.C:83c3  8D 03 DF    STA $DF03
+.C:83c6  A5 10       LDA $10
+.C:83c8  29 F0       AND #$F0
+.C:83ca  8D 04 DF    STA $DF04
+.C:83cd  A9 00       LDA #$00
+.C:83cf  8D 05 DF    STA $DF05
+.C:83d2  8D 08 DF    STA $DF08
+.C:83d5  A9 50       LDA #$50
+.C:83d7  8D 07 DF    STA $DF07
+.C:83da  8C 01 DF    STY $DF01
+.C:83dd  4C 00 81    JMP $8100
+.C:83e0  0E 15 16    ASL $1615
+.C:83e3  09 05       ORA #$05
+.C:83e5  30 30       BMI $8417
+.C:83e7  31 16       AND ($16),Y
+.C:83e9  31 2E       AND ($2E),Y
+.C:83eb  30 20       BMI $840D
+.C:83ed  44 4C       NOOP $4C
+.C:83ef  00          BRK
+.C:83f0  00          BRK
+.C:83f1  00          BRK
+.C:83f2  00          BRK
+.C:83f3  00          BRK
+.C:83f4  00          BRK
+.C:83f5  00          BRK
+.C:83f6  00          BRK
+.C:83f7  00          BRK
+.C:83f8  A0 84       LDY #$84
+.C:83fa  85 86       STA $86
+.C:83fc  87 88       SAX $88
+.C:83fe  89 80       NOOP #$80
+(C:$8400) 
+=== 8900-89ff (T65 $89CB) DISASM ===
+.C:8500  A9 04       LDA #$04
+.C:8502  8D 02 DF    STA $DF02
+.C:8505  A9 20       LDA #$20
+.C:8507  05 02       ORA $02
+.C:8509  8D 03 DF    STA $DF03
+.C:850c  A9 98       LDA #$98
+.C:850e  8D 04 DF    STA $DF04
+.C:8511  A5 10       LDA $10
+.C:8513  18          CLC
+.C:8514  69 11       ADC #$11
+.C:8516  AA          TAX
+.C:8517  8E 05 DF    STX $DF05
+.C:851a  A5 11       LDA $11
+.C:851c  8D 06 DF    STA $DF06
+.C:851f  A9 7C       LDA #$7C
+.C:8521  8D 07 DF    STA $DF07
+.C:8524  A9 02       LDA #$02
+.C:8526  8D 08 DF    STA $DF08
+.C:8529  A0 FD       LDY #$FD
+.C:852b  8C 01 DF    STY $DF01
+.C:852e  A9 28       LDA #$28
+.C:8530  05 02       ORA $02
+.C:8532  8D 03 DF    STA $DF03
+.C:8535  A9 14       LDA #$14
+.C:8537  8D 04 DF    STA $DF04
+.C:853a  E8          INX
+.C:853b  E8          INX
+.C:853c  E8          INX
+.C:853d  8E 05 DF    STX $DF05
+.C:8540  8C 01 DF    STY $DF01
+.C:8543  A9 00       LDA #$00
+.C:8545  8D 02 DF    STA $DF02
+.C:8548  A9 25       LDA #$25
+.C:854a  05 02       ORA $02
+.C:854c  8D 03 DF    STA $DF03
+.C:854f  A9 90       LDA #$90
+.C:8551  8D 04 DF    STA $DF04
+.C:8554  E8          INX
+.C:8555  E8          INX
+.C:8556  8E 05 DF    STX $DF05
+.C:8559  A9 80       LDA #$80
+.C:855b  8D 07 DF    STA $DF07
+.C:855e  A9 01       LDA #$01
+.C:8560  8D 08 DF    STA $DF08
+.C:8563  8C 01 DF    STY $DF01
+.C:8566  A9 2D       LDA #$2D
+.C:8568  05 02       ORA $02
+.C:856a  8D 03 DF    STA $DF03
+.C:856d  A9 10       LDA #$10
+.C:856f  8D 04 DF    STA $DF04
+.C:8572  E8          INX
+.C:8573  E8          INX
+.C:8574  8E 05 DF    STX $DF05
+.C:8577  8C 01 DF    STY $DF01
+.C:857a  A9 A8       LDA #$A8
+.C:857c  8D 02 DF    STA $DF02
+.C:857f  A9 22       LDA #$22
+.C:8581  05 02       ORA $02
+.C:8583  8D 03 DF    STA $DF03
+.C:8586  A9 90       LDA #$90
+.C:8588  8D 04 DF    STA $DF04
+.C:858b  E8          INX
+.C:858c  8E 05 DF    STX $DF05
+.C:858f  A9 A0       LDA #$A0
+.C:8591  8D 07 DF    STA $DF07
+.C:8594  A9 00       LDA #$00
+.C:8596  8D 08 DF    STA $DF08
+.C:8599  8C 01 DF    STY $DF01
+.C:859c  A9 48       LDA #$48
+.C:859e  8D 02 DF    STA $DF02
+.C:85a1  A9 27       LDA #$27
+.C:85a3  05 02       ORA $02
+.C:85a5  8D 03 DF    STA $DF03
+.C:85a8  A9 30       LDA #$30
+.C:85aa  8D 04 DF    STA $DF04
+.C:85ad  E8          INX
+.C:85ae  8E 05 DF    STX $DF05
+.C:85b1  8C 01 DF    STY $DF01
+.C:85b4  A9 4B       LDA #$4B
+.C:85b6  8D 02 DF    STA $DF02
+.C:85b9  A9 23       LDA #$23
+.C:85bb  05 02       ORA $02
+.C:85bd  8D 03 DF    STA $DF03
+.C:85c0  A9 D0       LDA #$D0
+.C:85c2  8D 04 DF    STA $DF04
+.C:85c5  A9 25       LDA #$25
+.C:85c7  8D 07 DF    STA $DF07
+.C:85ca  8C 01 DF    STY $DF01
+.C:85cd  A9 73       LDA #$73
+.C:85cf  8D 02 DF    STA $DF02
+.C:85d2  A9 F5       LDA #$F5
+.C:85d4  8D 04 DF    STA $DF04
+.C:85d7  8C 01 DF    STY $DF01
+.C:85da  A9 9B       LDA #$9B
+.C:85dc  8D 02 DF    STA $DF02
+.C:85df  A9 1A       LDA #$1A
+.C:85e1  8D 04 DF    STA $DF04
+.C:85e4  E8          INX
+.C:85e5  8E 05 DF    STX $DF05
+.C:85e8  8C 01 DF    STY $DF01
+.C:85eb  A9 C3       LDA #$C3
+.C:85ed  8D 02 DF    STA $DF02
+.C:85f0  A9 3F       LDA #$3F
+.C:85f2  8D 04 DF    STA $DF04
+.C:85f5  8C 01 DF    STY $DF01
+.C:85f8  A9 83       LDA #$83
+.C:85fa  8D 02 DF    STA $DF02
+.C:85fd  A9 26       LDA #$26
+.C:85ff  05 02       ORA $02
+(C:$8601) 
+=== 8b00-8bff (VICE $8B3B) DISASM ===
+.C:8700  A9 FB       LDA #$FB
+.C:8702  8D 02 DF    STA $DF02
+.C:8705  A9 D9       LDA #$D9
+.C:8707  8D 04 DF    STA $DF04
+.C:870a  8C 01 DF    STY $DF01
+.C:870d  A9 23       LDA #$23
+.C:870f  8D 02 DF    STA $DF02
+.C:8712  A9 2F       LDA #$2F
+.C:8714  05 02       ORA $02
+.C:8716  8D 03 DF    STA $DF03
+.C:8719  A9 FE       LDA #$FE
+.C:871b  8D 04 DF    STA $DF04
+.C:871e  8C 01 DF    STY $DF01
+.C:8721  A9 4B       LDA #$4B
+.C:8723  8D 02 DF    STA $DF02
+.C:8726  A9 23       LDA #$23
+.C:8728  8D 04 DF    STA $DF04
+.C:872b  E8          INX
+.C:872c  8E 05 DF    STX $DF05
+.C:872f  8C 01 DF    STY $DF01
+.C:8732  A9 73       LDA #$73
+.C:8734  8D 02 DF    STA $DF02
+.C:8737  A9 48       LDA #$48
+.C:8739  8D 04 DF    STA $DF04
+.C:873c  8C 01 DF    STY $DF01
+.C:873f  A9 9B       LDA #$9B
+.C:8741  8D 02 DF    STA $DF02
+.C:8744  A9 6D       LDA #$6D
+.C:8746  8D 04 DF    STA $DF04
+.C:8749  8C 01 DF    STY $DF01
+.C:874c  A9 C3       LDA #$C3
+.C:874e  8D 02 DF    STA $DF02
+.C:8751  A9 92       LDA #$92
+.C:8753  8D 04 DF    STA $DF04
+.C:8756  8C 01 DF    STY $DF01
+.C:8759  A9 00       LDA #$00
+.C:875b  8D 02 DF    STA $DF02
+.C:875e  A9 20       LDA #$20
+.C:8760  8D 07 DF    STA $DF07
+.C:8763  A9 60       LDA #$60
+.C:8765  05 02       ORA $02
+.C:8767  8D 03 DF    STA $DF03
+.C:876a  A9 B7       LDA #$B7
+.C:876c  8D 04 DF    STA $DF04
+.C:876f  A9 08       LDA #$08
+.C:8771  8D 08 DF    STA $DF08
+.C:8774  8C 01 DF    STY $DF01
+.C:8777  4C 00 81    JMP $8100
+.C:877a  A9 00       LDA #$00
+.C:877c  8D 04 D4    STA $D404
+.C:877f  BD A3 87    LDA $87A3,X
+.C:8782  8D 05 D4    STA $D405
+.C:8785  BD A4 87    LDA $87A4,X
+.C:8788  8D 06 D4    STA $D406
+.C:878b  BD A5 87    LDA $87A5,X
+.C:878e  8D 00 D4    STA $D400
+.C:8791  BD A6 87    LDA $87A6,X
+.C:8794  8D 01 D4    STA $D401
+.C:8797  A9 08       LDA #$08
+.C:8799  8D 03 D4    STA $D403
+.C:879c  BD A7 87    LDA $87A7,X
+.C:879f  8D 04 D4    STA $D404
+.C:87a2  60          RTS
+.C:87a3  03 03       SLO ($03,X)
+.C:87a5  89 26       NOOP #$26
+.C:87a7  11 00       ORA ($00),Y
+.C:87a9  00          BRK
+.C:87aa  28          PLP
+.C:87ab  81 05       STA ($05,X)
+.C:87ad  41 00       EOR ($00,X)
+.C:87af  01 03       ORA ($03,X)
+.C:87b1  05 07       ORA $07
+.C:87b3  09 12       ORA #$12
+.C:87b5  14 16       NOOP $16,X
+.C:87b7  19 22 24    ORA $2422,Y
+.C:87ba  26 37       ROL $37
+.C:87bc  41 43       EOR ($43,X)
+.C:87be  45 47       EOR $47
+.C:87c0  10 52       BPL $8814
+.C:87c2  54 17       NOOP $17,X
+.C:87c4  20 62 64    JSR $6462
+.C:87c7  27 38       RLA $38
+.C:87c9  02          JAM
+.C:87ca  04 06       NOOP $06
+.C:87cc  08          PHP
+.C:87cd  11 13       ORA ($13),Y
+.C:87cf  15 18       ORA $18,X
+.C:87d1  21 23       AND ($23,X)
+.C:87d3  25 28       AND $28
+.C:87d5  00          BRK
+.C:87d6  00          BRK
+.C:87d7  00          BRK
+.C:87d8  00          BRK
+.C:87d9  00          BRK
+.C:87da  00          BRK
+.C:87db  00          BRK
+.C:87dc  00          BRK
+.C:87dd  29 30       AND #$30
+.C:87df  00          BRK
+.C:87e0  00          BRK
+.C:87e1  00          BRK
+.C:87e2  00          BRK
+.C:87e3  00          BRK
+.C:87e4  00          BRK
+.C:87e5  00          BRK
+.C:87e6  00          BRK
+.C:87e7  00          BRK
+.C:87e8  00          BRK
+.C:87e9  00          BRK
+.C:87ea  00          BRK
+.C:87eb  00          BRK
+.C:87ec  00          BRK
+.C:87ed  00          BRK
+.C:87ee  00          BRK
+.C:87ef  00          BRK
+.C:87f0  00          BRK
+.C:87f1  00          BRK
+.C:87f2  00          BRK
+.C:87f3  00          BRK
+.C:87f4  00          BRK
+.C:87f5  00          BRK
+.C:87f6  00          BRK
+.C:87f7  00          BRK
+.C:87f8  FE FE FE    INC $FEFE,X
+.C:87fb  FE FE FE    INC $FEFE,X
+.C:87fe  FE FE A9    INC $A9FE,X
+(C:$8801) 

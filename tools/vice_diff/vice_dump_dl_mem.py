@@ -29,6 +29,7 @@ RANGES = [
     ("8c00-8cff", "8c00",  "8cff"),    # SCPU-dominant JSR target
     ("8d00-8dff", "8d00",  "8dff"),    # $8D34 = top callee from $8105
     ("3000-31ff", "3000",  "31ff"),    # FLI body (T65 hits, SCPU misses)
+    ("3200-32ff", "3200",  "32ff"),    # JMP $3200 target from $3300 dispatcher
     ("8500-85ff", "8500",  "85ff"),    # T65 vblank-PC, SCPU misses
     ("1f00-1fff", "1f00",  "1fff"),    # JMP $1F4E = T65's game-advance target
     ("8f00-8fff", "8f00",  "8fff"),    # $8F2B = where wait-loop escape jumps
