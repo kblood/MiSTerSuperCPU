@@ -47,6 +47,22 @@ running the CMP/BCS/BNE loop, we'd catch wait-loop opcodes. We don't.
 `B404` = LSB `$B4`, data `$04` → `$00:$07B4 = $04`. Last main-thread
 read in `$07xx` range was this; no new reads after halt.
 
+## ⭐ NEW: IRQ-thread PC reaches `$41:$FCF4` (25% of samples)
+
+PC distribution across post-halt samples:
+- `$00:$FF04` LDA $D019 — 9 hits
+- `$00:$FF11` LDA $DD0D — 9 hits
+- `$00:$FF17` post-RTI — 9 hits
+- **`$41:$FCF4` — 9 hits** (~25%)
+
+I field (`pc_irq_r`) shows `$41:$FCF3` at those moments — IRQ-context fetch in bank $41. Default IRQ trampoline at $00:$FCEE = `5C 00 FF 00` (JML to ack stub), but **J ring captures `FCEE FCEE FCEE FCEE`** — meaning $FCEE byte was $20 or $22 (JSR/JSL) when fetched. **Trampoline overwritten.**
+
+ZERO static REU writers found for $FCEE-$FCF1. Possible cause: native BRK push wrap if SP transited $FCxx, or spurious write tripped `scpu_irq_tramp_installed` latch exposing junk RAM bytes. Bytes at $41:$FCxx are a 16-byte structured data table (record fields $1F $01, $0D $00, etc.) — fetching as code yields BRK chains.
+
+**Two parallel halt modes:**
+1. Main-thread pinned at $DB93 (single fetch, then I=1 indefinitely)
+2. IRQ-thread wandering through $41:$FCxx data-as-code
+
 ## REU bytes confirm halt PC = `$00`
 
 ```
