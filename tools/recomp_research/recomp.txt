@@ -1,0 +1,123 @@
+This is a static MIPS-I recompiler for a SuperCPU equiped C64.
+
+That is, it will take a MIPS-I executable and translate the MIPS
+opcodes into 65816 ones. The recompiler is written in ANSI-C,
+compiled using GCC and recompiled into 65816 code using itself.
+Or in other words, an x86 compile of the recompiler is used to
+recompile a MIPS-I compile of the recompiler :-)
+
+Supported:
+
+ * All MIPS-I opcodes except break and syscall.
+
+Not supported:
+
+ * Exceptions, including arithmetic and alignments ones.
+ * Coprocessor instructions.
+ * Self modifying code/runtime generated code. (Runtime
+   generated code can be recompiled using the available
+   syscalls which exposes the recompiler methods).
+ * Delayed loads/delayed PC updates and their side effects.
+ * Loads to register zero, they are treated as NOPs.
+
+Memory usage (subject to change):
+
+ * $00000000 - $00000067 Unused
+ * $00000050 - $00000067 [Multiply pointers]
+ * $00000068 - $000000ff MIPS registers and temporaries
+ * $00000100 - $000001ff Stack
+ * $00000200 - $000003ff [Multiply routines]
+ * $00000400 - $0000ffff Unused
+ * $00010000 - $0001ffff Pseudo-ROM
+ * $00020000 - $000fffff Reserved for the recompiler
+ * $00100000 - $001fffff [Tables of squares]
+ * $00100000 - $007fffff Recompiled code, i.e. 65816 opcodes
+ * $00800000 - $00f5ffff MIPS executable and stack area
+ * $00f60000 - $00ffffff Reserved (SuperCPU system DRAM/ROM)
+
+Included examples:
+
+ * Hello:
+     Simple hello world kind of demo. Sources included in case
+	 anyone feels like building something. It's important to use
+	 the supplied linker script (mips.x). It also shows various
+	 ways of including and calling native (65816) code.
+
+ * Dhrystone:
+     The famous dhrystone test. Should give some kind of
+	 indication about expected performance.
+
+ * Test:
+     A test I originally wrote for the PS1 (or rather PS1
+	 emulators). This version does test most of the MIPS-I
+	 opcodes (jump, exception, advanced and unofficial opcode
+	 tests omitted). The test will print the result of each
+	 test and report "V" for value error.
+
+Usage:
+
+ * SuperCPU (recomp.d81) version:
+     Load and run "LOADER" and type the name of the MIPS binary
+	 you want to load, recompile and run.
+
+ * Win32 (recomp.exe) version:
+     To recompile the Hello example:
+
+	   recomp.exe -opt hello/bin/hello.bin
+
+	 This will result in two files which must be loaded to the
+	 addresses specified below:
+
+	   hello/bin/hello.bin.mips 0x00800000 [jump table and data]
+	   hello/bin/hello.bin.scpu 0x00100000 [65816 code]
+
+	 After loading the files, jump to the load address of the
+	 65816 code, that is 0x00100000.
+
+MIPS-I toolchain:
+
+I'm using the one from PSXSDK, available here:
+http://code.google.com/p/psxsdk/downloads/list
+
+Contact:
+
+Write to me at: maro [at] amidog [dot] se
+
+History:
+
+1.4 (2014-11-03): Added -fast-gp option which will make use of the
+	databank register for shorter and faster code. [0.8656 DMIPS]
+1.3 (2014-09-29): Handle unaligned 32bit reads/writes.
+	Implemented	pseudo opcodes dec, inc. Optimized addi, addiu,
+	andi, ori. [0.8308 DMIPS]
+	  Added -fast-math option which uses tables of squares for
+	faster multiplies. [0.8308 DMIPS]
+	  Added experimental instruction merging which compiles certain
+	combinations of MIPS instructions as a block in order to produce
+	faster code. Can only be enabled when a symbol file is available
+	and may break applications. [0.8308 DMIPS]
+1.2 (2014-03-24): Better heap and stack handling. Implemented
+	pseudo opcode sltzi and optimized special cases for some
+	immediate opcodes (addi, addiu, ori, xori). [0.7464 DMIPS]
+	  Optimized address calculation for load and store opcodes
+	with a negative displacement. [0.7464 DMIPS]
+	  The dhrystone test doesn't benefit much from these
+	optimizations, which is why the DMIPS haven't changed.
+1.1 (2014-03-14): Optimized some branches and all shift opcodes
+	to minimize worst case penalty. [0.4636 DMIPS]
+	  Implemented a lot of pseudo (simplified) opcodes which use
+	reg zero in various ways (clr, mov, negu, not, sgtz, sgtzu,
+	li, sbz, shz, swz, beqz, bnez). [0.4742 DMIPS]
+	  Optimized address calculation for load and store opcodes
+	with a positive displacement. [0.5539 DMIPS]
+	  Replace jump through jump table with direct jump whenever
+	possible. [0.5691 DMIPS]
+	  Optimized the variable and immediate shift opcodes, has a
+	huge impact on long shifts. [0.7320 DMIPS]
+	  Added support for global pointer optimizations. Reduces
+	size of MIPS code and makes it possible to perform absolute
+	loads/stores. [0.7464 DMIPS]
+	  All in all, the DMIPS have increased by over 75%. Also, my
+	silly DOOM build have decreased from 1374KB to 889KB in code
+	size due to these optimizations.
+1.0 (2014-02-21): First release. [0.4200 DMIPS]
