@@ -87,6 +87,13 @@ test-doom-loader-body:
 test-doom-bank20:
 	$(MAKE) sim MODULE=tests.test_doom_bank20_diff LAYER_A_SKIP_VICE=$${LAYER_A_SKIP_VICE:-0}
 
+# BRK→RTI cycle test — DUT-only reproduction of the v294 halt scenario.
+# No VICE needed (cocotb DUT runs the BRK at $41:$DB93 with vectors,
+# ack stub, and RTI in synthetic memory). Decisive on whether the CPU
+# microcode is to blame for the hardware pin at $DB93.
+test-brk-native-rti:
+	$(MAKE) sim MODULE=tests.test_brk_native_rti
+
 # Doom mid-gameplay diff — uses VICE's full mid-gameplay snapshot
 # (captured by tools/vice_dump_gameplay_state.py) to start both DUT and
 # VICE at PC=$2A:$55A9 (or wherever VICE landed after warp). Steps both
