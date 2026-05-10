@@ -1,331 +1,174 @@
-# SuperCPU off-device VICE oracle session — 2026-05-10
+# Doom debug — 2026-05-10 OP+R7 probe results
 
-## 2026-05-10 update — bottom line
+## Bottom line: wait-loop thesis is **fully dead**
 
-Major REVERSAL of the $41:$DB93 wait-loop thesis. After running VICE
-oracle experiments off-device (MiSTer was busy with the CD32 agent):
+The R7+OP build (`dcd14fbca64531a761b843d98c875fa7`, branch tip `38f3dc2`)
+deployed and ran. Hardware data definitively refutes the "Doom is in
+$0707+X wait loop" thesis. The new framing: **main thread halts at
+$41:$DB93 = $00 = BRK opcode, and our P65C816 BRK/RTI handling appears
+to keep main pinned at I=1 forever after the trap.**
 
-  1. VICE NEVER executes any instruction at PB=$41 PC=$DB93/$DB96 in
-     90 s of Doom run (`tools/doom_vice_db93_break.py` 16-bit
-     `break db93` hits only at PB=$2B `ADC #$E0` and PB=$20 `CLC`).
-  2. The wait-pattern bytes `df 07 07 00 b0 03 d0 fe` exist in REU at
-     EXACTLY 2 places: $41:$DB96 and $4B:$ED58 — both inside data
-     tables (12-byte JIT-compiler opcode-prefix templates), NOT code.
-  3. Zero callers/branches into $41:$DB96 anywhere in 16 MB REU.
-  4. The 7 supposed `JSL $00:$0700` callers in bank $4C are ALSO data
-     (a dispatch table, not real instructions — `BEQ -3` after JSL
-     would branch into JSL operand bytes).
+## Build snapshot
 
-**Hardware halt-PC=$41:$DB93 is therefore most likely a stale
-last-fetched-PC latch from a data fetch (e.g., LDA reading dispatch
-table bytes), not real wait-loop execution.** Probe B (OP field, commit
-`5e8f85a`) when it lands on hardware will distinguish definitively:
-if OP shows non-CMP opcodes cycling, the wait is fictional.
+| Field | Value |
+|-------|-------|
+| RBF md5 | `dcd14fbca64531a761b843d98c875fa7` |
+| Branch tip | `38f3dc2` (8 commits this session) |
+| Quartus elapsed | 11:44 |
+| Resources | 26,805 ALMs / 64% — RAM 61% |
+| Cold boot | T65 + SCPU READY ✓ |
 
-## 2026-05-10 update — what we actually learned about $00:$0700-$07FF
+## OP field (commit 5e8f85a) — 4 distinct values across 70+ vblanks
 
-Time-series VICE snapshot (`tools/doom_vice_0700_timeseries.py`)
-proves $00:$0700-$07FF is a **256-byte multi-purpose code cache**
-that gets repurposed across phases:
+Both `uart_120s.txt` (35 lines) and `uart_240s.txt` (35 lines) show
+the SAME 4 OP patterns:
 
-| Time   | PC band  | Contents                              |
-|--------|----------|---------------------------------------|
-| t=0-3s | bank $00 | loader.prg's REU-FETCH+long-store inner loop |
-| t=8s   | PB=$2B   | trampoline `JML $28:$207E`            |
-| t=15s  | PB=$2C   | trampoline `... JML $2B:$xxx`         |
-| t=30s  | PB=$80   | IRQ ack handler (`STA $D019; CLI; REP #$20; RTS`) |
-| t=45s  | PB=$2A   | 5× JIT-emitted JAL trampolines        |
+| OP value | Decode | Source |
+|----------|--------|--------|
+| `E248` | SEP imm + PHA | IRQ stub `$FF01` + `$FF03` |
+| `AFAF` | LDA long + LDA long | IRQ stub `$FF04`/`$FF08`/`$FF0C`/`$FF10` |
+| `2840` | PLP + RTI | IRQ stub `$FF15` + `$FF16` |
+| `1D00` | ORA abs,X + BRK | `$00` = BRK fetched at halt PC; `$1D` source unclear |
 
-The loader bytes at $00:$0700 are installed by **direct CPU copy** from
-loader.prg's BASIC stub (`LDX #$00; LDA $0820,X; STA $0700,X; INX;
-CPX #$BB; BNE`) — NOT REU DMA. 187-byte payload. So if hardware reaches
-post-loader phase (it does, per AC counter advancing), the initial
-copy worked.
+**Wait-pattern opcodes `$DF`, `$B0`, `$D0` appear in ZERO samples.**
+At 73 IRQ acks/sec (normal raster rate), main has ~14 ms between
+IRQs. At 20 MHz that's thousands of fetches per gap. If main were
+running the CMP/BCS/BNE loop, we'd catch wait-loop opcodes. We don't.
 
-Subsequent overwrites at $0700-$07FF are by the recompiler runtime
-issuing CPU stores (no REU DMA involved in code-cache rewrite — VICE
-watch caught all CPU writes correctly).
+## R7 field (commit 74e9c74) — locked at single value post-halt
 
-## 2026-05-10 update — new memory entries
+| Phase | R7 distinct values |
+|-------|--------------------|
+| t=30s (loader) | 9 (`7000 704F 88B9 8900 8A05 8B97 8CFB 8FF8 9709`) |
+| t=60s (loader) | 8 |
+| t=120s (post-halt) | **1 (`B404`)** |
+| t=240s (post-halt) | **1 (`B404`)** |
 
-- `project_doom_07b6_jit_counter_root_cause.md` — original JIT-counter
-  thesis WITH 2026-05-10 corrections appended (bank prefix `c:` was
-  the "Computer" prefix not PB=$0C; wait-loop bytes are template
-  data, not code)
-- `project_doom_41dbxx_template_table.md` — bank $41 around $DB96 is
-  a 12-byte-record JIT opcode template table; zero callers; VICE
-  never executes there
-- `project_doom_runtime_paging_at_4c_d298.md` — bank $4C dispatch
-  table data was misread as 7 paging calls; corrected at end of file
+`B404` = LSB `$B4`, data `$04` → `$00:$07B4 = $04`. Last main-thread
+read in `$07xx` range was this; no new reads after halt.
 
-## 2026-05-10 update — new tools (uncommitted, kept for re-runs)
-
-- `tools/doom_vice_0707_writers.py` — watch stores to $00:$0700-$07FF
-- `tools/doom_vice_0c_vs_00_dump.py` — banked memory dump
-- `tools/doom_vice_0700_timeseries.py` — time-series snapshot
-- `tools/doom_vice_db93_break.py` — break on PC=$DB93, capture PB
-- `tools/doom_search_db93_pattern.py` — REU search for wait-pattern bytes
-- `tools/doom_disasm_41dbxx.py` — bank $41 around $DB96 disasm
-- `tools/doom_disasm_4c_d298.py` — bank $4C around $D298 disasm
-- `tools/doom_search_emit_wait_pattern.py` — find emit code in REU
-- `tools/doom_find_07_writers.py` — locate specific $00:$07XX writers
-
-## 2026-05-10 update — critical next-session sequence (when MiSTer free)
-
-1. Build R7+OP bundle (commits `74e9c74` + `5e8f85a` syntax-checked
-   clean — `.\build_c64.ps1` ~12 min)
-2. Deploy: `python tools/mister_debug.py deploy`
-3. Run Doom: `python tools/doom_full_run.py`
-4. Analyze: `python tools/doom_uart_analyze.py tools/doom_full/`
-5. **Decide based on OP field:**
-   - **OP shows `DF 07` / `B0 03` / `D0 FE` cycling** → wait is real,
-     hardware IS in wait loop polling $00:$07xx. Find writer of expected
-     value via additional probe.
-   - **OP shows different non-CMP opcodes** → halt PC=$41:$DB93 was a
-     stale latch. The REAL halt PC is whatever OP shows. Pursue THAT.
-   - **OP locked at single value** → probe latch is broken; need
-     different instrumentation.
-
----
-
-# SuperCPU spec-gap implementation session — 2026-05-09 (continued)
-
-## Bottom line
-
-8 commits this session on `vanilla-cpu-swap`. The most recent two
-(`edd36b5` narrow bank-$Fx stub, `095b176` NMI vector RAM-back v2)
-**unblock the JML[$74] dispatcher trap** but Doom still wedges in a
-tight wait loop at `$41:$DB93` polling some condition that never
-becomes true. Wolf3D regression-clean across all 8 commits (still
-renders title-screen content, no advancement).
-
-## Commit chain (tip last)
-
-1. `9a84085` — `$D27C-$D27F` SuperRAM extent variables
-2. `8d017b1` — IRQ ack stub at `$00:$FF00..$FF16`
-3. `246bd3c` — IRQ JML trampoline at `$00:$FCEE-$FCF1`
-4. `d179e1b` — Bank-$00 SRAM ROM-shadow (native-mode-gated)
-5. `e8cbf39` — Bank-$01 SRAM ROM shadow (Tier 2.1)
-6. `c591d33` — Bank `$F0-$FF` $6B-RTL stub (broad — REVERTED logically)
-7. `edd36b5` — Narrowed stub to `$F6-$FF` only (heap survives in `$F0-$F5`)
-8. `095b176` — NMI vector at `$00:$FFEA/$FFEB` RAM-backed via shadow
-   register, captures writes from bank `$00` AND bank `$FF` (per
-   `.databank $ff` in `recomp_research/hello/native.s`)
-9. `2645049` — docs+tools: NMI v2 session handoff + `recomp_analyze_emit.py`
-10. `74e9c74` — debug/uart: `$00:$0707` read-capture probe (R7:#### field).
-    Syntax-checked, NOT YET BUILT/DEPLOYED — gated on MiSTer availability.
-11. `1a049a6` — `tools/doom_uart_analyze.py` learns R7 field.
-
-Last built RBF: `7614312678cf9726562957aa746bdbff` (095b176), ALM 26,762
-/ 41,910 = 64 %. T65 + SCPU cold boot READY. Sweep 9/10 PASS (single
-pre-existing `vanilla_basic` UART-format fail).
-
-## Current Doom state (post-095b176)
-
-UART pattern (240 s into run, byte-identical to bank-Fx-narrow
-baseline):
-
-| Field | Value | Notes |
-|-------|-------|-------|
-| PC    | `$00:$FF17` | RTI in IRQ ack stub |
-| N     | `$41:$DB93` | main thread last-fetch PC, fixed |
-| SP    | `$FFEF` | native upper-page IRQ stack |
-| WP    | `$2C:$8570` | recompiled JAL trampoline (writer to `$0002`) |
-| J ring | `FCEE FCEE FCEE FCEE` | only IRQ trampoline target |
-| M ring | `854E 854E 854E 854E` | only one indirect-jump target (the JAL prologue) |
-| AC    | `0x2232` (~50/sec) | VIC raster-IRQ ack count, sane |
-| VW    | `0xEA0B` (~245/sec) | vblank-write count, sane |
-| VIC   | D1=`9B`, D8=`17`, C2=`97` | text mode default — **no bitmap config attempted** |
-
-The NMI v2 fix (095b176) made **zero observable difference** —
-Doom does not write to `$FFEA/$FFEB` from either bank `$00` or `$FF`,
-so it isn't using AmiDog's `_tick_install` recipe.
-
-## What the wait loop is NOT
-
-Ruled out via tests this session:
-- Not waiting for keyboard input (`tools/doom_input_probe.py` injected
-  SPACE/RETURN/Y/ESC/F1 — zero AC/WP/VIC change).
-- Not waiting for `_tick_count` (NMI vector v2 had no effect; no
-  `STA $FFEA/$FFEB` writes detected in the trace).
-- Not stuck in dispatcher trap at `$00:$0074` — that's pre-narrow
-  behavior (`c591d33`); narrow stub (`edd36b5`) escaped to bank `$41`.
-- Not init/bss-clear loop — duration is steady-rate for 11 minutes
-  in `tools/doom_extended/`; init loops finish in seconds.
-- VIC bitmap config never reached, so it's not stuck inside Doom's
-  render path either.
-
-## Disassembly clue at `$41:$DB93` — INTERPRETATION SUSPECT (2026-05-09 update)
-
-Original handoff disasm (`tools/dis65816.py doom.reu 41:DB93 60`):
+## REU bytes confirm halt PC = `$00`
 
 ```
-41:DB94  00 00                pad
-41:DB96  df 07 07 00          CMP $00:$0707, X
-41:DB9A  b0 03                BCS +3 → $DB9F  (skip wedge if [mem] >= A)
-41:DB9C  d0 fe                BNE -2 → $DB9C  (self-loop if [mem] != A)
-41:DB9E  00 00                pad
-41:DBA0  d2 07                CMP ($07)
-41:DBA2  07 00                ORA [$00]
+$41:$DB80: 00 00 DD 07 07 00 50 06 F0 01 00 00 DE 07 07 00
+$41:$DB90: 50 06 10 00 00 00 DF 07 07 00 B0 03 D0 FE 00 00
+                    ^DB93 = $00 = BRK opcode
+                          ^DB96 = wait-pattern start (CMP $0707,X)
 ```
 
-**Off-device cross-checks (2026-05-09) cast doubt on this disasm.**
+The wait pattern bytes `DF 07 07 00 B0 03 D0 FE` (CMP $00:$0707,X /
+BCS +3 / BNE -2) **are real disassembly** — not a coincidental data
+match. They start at `$DB96`. PC entered the table 3 bytes too early
+at `$DB93`, fetching `$00` = BRK.
 
-1. **PC=$DB93 is mid-instruction**, not an opcode boundary. Linear hand-disasm
-   from $DB80 places $DB93 as the second byte of `BPL +0` at $DB92. Either
-   the entry point is different, or `pc_main_r` latch is capturing a non-opcode
-   address.
+## ZERO static callers in 16 MB REU
 
-2. **Real recompiler output (hello.bin.scpu, 6,424 bytes) has ZERO instances
-   of `df 07 07 00` and ZERO instances of `b0 03 d0 fe`.** So this is not the
-   recompiler's standard "wait until memory equals A" emit — it's either Doom-
-   specific code or bytes inside a data table that happen to match opcode
-   prefixes.
+Scanned for `JML/JSL` to `$41:$DB93/94/96/80/90/00` and 24-bit
+pointers `93 DB 41`: **all return zero hits**. Only nearby pointer
+hit was `00 DB 41` at `$7B:$C9DB` (irrelevant).
 
-3. **Zero real producers of $00:$0707 in all of doom.reu.** Searched 256 banks
-   for STA/STZ/STX/STY abs/long/long-X variants targeting $0707/$0706+1/etc.
-   All 14 candidate hits are false positives — verified by hexdump 16 bytes
-   before/after each: every "writer" is inside a sprite/color/text/WAD data
-   table, not inside recompiled code. (See `project_doom_0707_no_real_producers.md`.)
+PC reaches `$41:$DB93` via runtime-computed dispatch (recompiler
+emits target bytes from MIPS register state). No static instrumentation
+can find the caller — needs a writer-PC trace OR a JML-target probe.
 
-4. **Banks $10-$1F in doom.reu are entirely zero** (32 banks, 2 MB of NULs).
-   recomp.txt says recompiled code lives in $00100000-$007FFFFF, but Doom's
-   actual code starts at bank $20. Banks $10-$1F may be a "code reservation"
-   the recompiler sized for but Doom doesn't fill.
+## pc_main_r gating proves halt is real
 
-5. **Bank $41:$DBxx structural stats**: 25-29% zero-byte density (vs ~2% for
-   real code at $20:$0000), top byte = $07 (25 hits in 256 bytes), branch-
-   pattern density 0.05/byte (highest among samples). Either it IS code that
-   uses $00:$0707 region heavily, or it's a data table with $07 as a recurring
-   byte. Without symbol info or runtime trace, ambiguous.
+`pc_main_r <= cpu_pc_now` only fires when:
+- `opcode_fetch_pulse = '1'`
+- `cpu_p_now(2) = '0'` (I-flag clear, main thread)
 
-**Implication for Probe A (R7 field, commit 74e9c74):**
+N=`$41:$DB93` frozen across 8759 IRQ acks (120 s → 73/sec, **normal
+raster rate, NOT BRK-spam rate**) means: **main thread fetched at
+`$DB93` once and never fetched again with I=0.**
 
-When the build deploys and we capture R7, two possible outcomes:
-- R7 shows traffic to $00:$07xx → wait-loop interpretation is right; need to
-  find external agent that should bump $0707 (kernel timer? unbuilt loader
-  init?)
-- R7 shows NO traffic OR traffic to a different address range → PC=$DB93 is
-  bogus or a frozen latch; need a different probe approach.
+The trace ring (trace_op2/op3) is NOT I-flag-gated — it captures all
+fetches. We see only IRQ-stub opcodes in trace, never main-thread
+bytes. So either:
 
-**Probe B (LANDED in commit 5e8f85a):** repurposed W1 slot (was d001_last_pc,
-unused on Doom) to surface `OP:hhll` where `hh=trace_op2` and `ll=trace_op3`
-— the 2 most recent opcode bytes the SCPU fetched. Single-line change in
-`debug_uart_pool_fmt.sv`; syntax-checked clean. Bundled with R7 (74e9c74)
-in the next build.
+1. **P65C816 BRK pushes wrong P** (e.g., I=1 instead of I=0) →
+   RTI restores P with I=1 → main never re-enters I=0 context.
+2. **P65C816 RTI doesn't restore I-flag correctly** in native mode →
+   same end-state.
+3. **CPU stalls in IRQ handler** somewhere that never fetches RTI.
+4. **RTI returns to a non-fetching state** (RDY low, address mux
+   wedge in SDRAM/SuperRAM).
 
-Reading the OP+R7 combo:
-- R7 traffic + OP locked → real wait loop (pre-handoff thesis stands)
-- R7 silent + OP cycling → N is a frozen latch (need a different probe)
-- R7 traffic + OP cycling → inner loop has structure beyond CMP/BNE-2
+Hypothesis (1) and (2) are the most testable.
 
-`tools/doom_uart_analyze.py` learns the OP field and prints distinct-set
-count under R7 (same pattern).
+## Decision tree result
 
-**Final commit chain (off-device session continuation 2026-05-10):**
-  74e9c74 → 1a049a6 → 2645049 → 8a13a69 → b0c29fc → 5e8f85a
+Per pre-deploy plan: **option 2 — "OP shows different non-CMP opcodes"**
+— but with critical refinement: N is NOT a stale latch. The CPU
+truly halts at `$41:$DB93`. The wait-pattern thesis is dead, and a
+new CPU-side bug suspect has emerged.
 
-Next session, the build/deploy/test sequence becomes:
-  1. `.\build_c64.ps1` (~12 min)
-  2. `python tools/mister_debug.py deploy`
-  3. `python tools/doom_full_run.py`
-  4. `python tools/doom_uart_analyze.py tools/doom_full/` — read OP + R7
+## Next probes (in order of cheapness)
 
-## Possible non-MiSTer next probes
+### Probe 1: GHDL bench reproducing native BRK trap → IRQ → RTI
 
-(All can be done off-device; pick up when MiSTer is free again.)
+`sim/p65c816_tb/p65c816_brk_trap_rti_tb.vhd`. Set up:
+- Native mode, I=0
+- Memory model with bank `$41` byte at `$DB93` = `$00`
+- IRQ vectors at `$00:$FFE6/E7` → `$00:$FF00`
+- IRQ stub bytes at `$00:$FF00..$FF16` (the actual stub layout)
+- JML PC = `$41:$DB93`
 
-### A. RTL probe — DONE in commit 74e9c74. Build + deploy needed.
+Verify after RTI:
+- PC restored to `$41:$DB95` (PC+2 of BRK byte)
+- P-flag I bit = 0
+- Next opcode fetch at `$41:$DB95` fires opcode_fetch_pulse with I=0
 
-`R7:#### ` field (positions 194-201) replaces VC. Format `R7:LLDD`
-where LL is the low byte of the last $00:$07xx read addr and DD is
-the byte returned. Locked = wait condition pinned. Cycling = inner
-loop has structure.
+If this fails → the bug is reproduced in sim. **Cheap, decisive.**
 
-Sequence:
-1. Re-build (Quartus full, ~12 min — code path unchanged from
-   095b176 + ~62 lines).
-2. Deploy via `python tools/mister_debug.py deploy`.
-3. Run `python tools/doom_full_run.py`.
-4. Run `python tools/doom_uart_analyze.py tools/doom_full/` —
-   look at the R7 distinct-set count.
+### Probe 2: Surface trace_pc{0,1,2,3} ring to UART (write-only probe)
 
-Original probe spec: was at `docs/probe_plan_07xx_read_capture.md`.
-Implemented per spec; minor variation: instead of building dbg_pool
-fields with new byte names, reused `lat_irq_vec` slot (with the
-old VC field still latched off-line for backward compatibility).
+The trace ring already exists in `fpga64_sid_iec.vhd:743+`. Currently
+only op2/op3 are surfaced. Surfacing pc0/pc1/pc2/pc3 (12 hex digits
+each, 48 chars) would tell us where `$1D` and the IRQ-stub fetches
+landed in PC-space — distinguishing "main fetched a few times after
+$DB93" from "all fetches are IRQ-stub PC range".
 
-```vhdl
-signal dbg_last_read_addr : std_logic_vector(23 downto 0);
-signal dbg_last_read_data : std_logic_vector(7 downto 0);
--- on every cpu fetch where cpuWe='0', latch supercpu_bank & cpuAddr
--- + the data byte returned. Surface as new UART field "RD:bbaaaa=dd".
-```
+Tradeoff: takes UART line space; no cycle count.
 
-If the field locks at `$00:$07xx=00` we've identified the wait
-condition. If it cycles, the loop is doing more reads than the
-self-loop alone implies.
+### Probe 3: Read $00:$07B4 region after halt via peek PRG
 
-### B. Recompiler output reverse-engineering
+We know R7=`$04` was the last main-read at `$00:$07B4` before halt.
+Use peek_d27c-style PRG (loaded post-halt) to dump `$00:$0700-$07FF`
+contents — what's there at runtime? Does B4 area contain a JML
+pointer to `$41:$DB93`?
 
-`tools/recomp_research/recomp.exe -opt` can take a MIPS binary and
-emit its 65816 translation. If we had Doom's MIPS source binary we
-could decode the recompiler's emit patterns symbolically. Since we
-don't, but we DO have the example `hello/main.c` + `hello/bin/`,
-running `recomp.exe` on it and comparing the output to `hello.s` would
-tell us which emit pattern corresponds to which MIPS opcode — letting
-us decode the bytes around `$41:$DB93` definitively. **Cheap and
-local.**
+Tradeoff: must reset core to load PRG, losing post-halt state.
 
-### C. VICE oracle for Doom (still BLOCKED)
+### Probe 4: Audit P65C816 BRK and RTI opcodes for native I-flag
 
-`xscpu64` hangs DL at `$3093`; current cocotb/VICE-oracle setup can
-only diff individual instruction sequences, not the full Doom run.
-Per `project_doom_loader_body_match_500.md` we already know the CPU
-microcode is correct on Doom paths. The bug is data-path (REU stores,
-SuperRAM mapping, or hardware-only timing) — not CPU. So VICE diff
-will keep matching even though hardware halts.
+In `rtl/65C816/MCode.vhd` — search for BRK and RTI handlers. Native
+mode behavior:
+- BRK should push P with I bit reflecting state BEFORE BRK (typically I=0).
+  CPU then sets I=1 internally.
+- RTI should pop P including I bit, restoring whatever was on stack.
 
-### D. `tools/doom_vice_*.py` — write a writer-PC tracer for `$00:$0707`
+If our microcode pushes P with I=1 (post-BRK state), or RTI doesn't
+fully restore I, we have the bug.
 
-Adapt `tools/doom_vice_74_writers.py` (which traced `$0074-$0076`)
-to `$00:$0707`. Run on hardware (when free) with the patched `loader.prg`
-that breaks before the wedge. Identifies who SHOULD write the wait
-variable and confirm whether it ever happens at all.
+## Files updated this session
 
-## What NOT to do next
+- `tools/doom_full/{shot,uart}_*.{png,txt}` — fresh capture artifacts
+- New memory entry: `project_doom_db93_op_r7_probe_landed.md`
+- MEMORY.md: superseded older wait-loop entries, promoted v294 finding
 
-- Don't pursue another RBF rebuild for "more vector backing" — NMI v2
-  proved Doom isn't using vector installs. Adding more backed vectors
-  is no-op.
-- Don't keep guessing what `$0707` is from disassembly alone — the
-  recompiler emits MIPS-load addresses based on its own RAM map. Get
-  the ground truth from `recomp.exe` output (probe B above).
-- Don't try `recomp_research/recomp.d81` boot sequence on hardware —
-  the recompiler IS the runtime; running it as an app isn't useful.
+## Known dead-ends not to revisit
 
-## Files modified this session (final 8 commits)
+- **"Wait loop polls $0707+X"** — refuted by OP showing zero wait-pattern bytes
+- **"$DB93 is mid-instruction operand"** — refuted by REU bytes showing `$00` aligned at `$DB93` and matching legit disasm starting at `$DB96`
+- **"$DB93 is a frozen latch"** — partial refutation: it IS the actual last main-thread fetch PC, just frozen because main never fetches again
+- **"Doom uses _tick_install"** — refuted in v2 NMI fix (no $FFEA/EB writes detected)
+- **"Bank-cross long-abs,X bug"** — refuted via `p65c816_scpumips_copy_tb`
 
-| Commit | File(s) | Purpose |
-|--------|---------|---------|
-| `9a84085` | `fpga64_sid_iec.vhd` | `$D27C-$D27F` SuperRAM extent |
-| `8d017b1` | `fpga64_sid_iec.vhd` | IRQ ack stub bytes |
-| `246bd3c` | `fpga64_sid_iec.vhd` | IRQ trampoline bytes + install latch |
-| `d179e1b` | `fpga64_buslogic.vhd` + `fpga64_sid_iec.vhd` | bank-$00 ROM shadow |
-| `e8cbf39` | `fpga64_buslogic.vhd` | bank-$01 ROM shadow |
-| `c591d33` | `fpga64_buslogic.vhd` + debug | bank-$Fx broad $6B-RTL stub |
-| `edd36b5` | `fpga64_buslogic.vhd` | narrow stub to $F6-$FF |
-| `095b176` | `fpga64_sid_iec.vhd` | NMI vector RAM-back v2 |
+## Open questions
 
-## Test artifacts
-
-- `tools/doom_full/{shot,uart}_*` — 4-min Doom test (latest = NMI v2)
-- `tools/doom_input_probe/{shot,uart}_*` — keyboard injection probe
-- `tools/doom_extended/{shot,uart}_*` — 11-min Doom test (post-shadow)
-- `logs/scpu_sweep_20260509T222751.csv` — sweep 9/10 PASS (post-NMI-v2)
-
-## Memory updates needed before next session
-
-- Add entry for `095b176` NMI v2 (RAM-back, no Doom impact): file
-  `project_nmi_vector_v2_no_doom_impact.md` — captures the
-  ".databank $ff" hypothesis and its refutation.
+- Why does Doom's runtime dispatch land at `$41:$DB93` (off by 3 from
+  `$DB96`)? Computed from runtime data we don't have static visibility into.
+- Is P65C816 native BRK/RTI broken? Probe 1 will tell.
+- What is `$1D` in OP — main thread fetch or some IRQ-stub byte we missed?
+  (No `$1D` in our IRQ stub bytes; might be a transient from main's first
+  fetch chain $DB93 → $DB95 → $DB97 → ...)
