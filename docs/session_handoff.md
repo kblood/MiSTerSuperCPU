@@ -1,3 +1,93 @@
+# SuperCPU off-device VICE oracle session — 2026-05-10
+
+## 2026-05-10 update — bottom line
+
+Major REVERSAL of the $41:$DB93 wait-loop thesis. After running VICE
+oracle experiments off-device (MiSTer was busy with the CD32 agent):
+
+  1. VICE NEVER executes any instruction at PB=$41 PC=$DB93/$DB96 in
+     90 s of Doom run (`tools/doom_vice_db93_break.py` 16-bit
+     `break db93` hits only at PB=$2B `ADC #$E0` and PB=$20 `CLC`).
+  2. The wait-pattern bytes `df 07 07 00 b0 03 d0 fe` exist in REU at
+     EXACTLY 2 places: $41:$DB96 and $4B:$ED58 — both inside data
+     tables (12-byte JIT-compiler opcode-prefix templates), NOT code.
+  3. Zero callers/branches into $41:$DB96 anywhere in 16 MB REU.
+  4. The 7 supposed `JSL $00:$0700` callers in bank $4C are ALSO data
+     (a dispatch table, not real instructions — `BEQ -3` after JSL
+     would branch into JSL operand bytes).
+
+**Hardware halt-PC=$41:$DB93 is therefore most likely a stale
+last-fetched-PC latch from a data fetch (e.g., LDA reading dispatch
+table bytes), not real wait-loop execution.** Probe B (OP field, commit
+`5e8f85a`) when it lands on hardware will distinguish definitively:
+if OP shows non-CMP opcodes cycling, the wait is fictional.
+
+## 2026-05-10 update — what we actually learned about $00:$0700-$07FF
+
+Time-series VICE snapshot (`tools/doom_vice_0700_timeseries.py`)
+proves $00:$0700-$07FF is a **256-byte multi-purpose code cache**
+that gets repurposed across phases:
+
+| Time   | PC band  | Contents                              |
+|--------|----------|---------------------------------------|
+| t=0-3s | bank $00 | loader.prg's REU-FETCH+long-store inner loop |
+| t=8s   | PB=$2B   | trampoline `JML $28:$207E`            |
+| t=15s  | PB=$2C   | trampoline `... JML $2B:$xxx`         |
+| t=30s  | PB=$80   | IRQ ack handler (`STA $D019; CLI; REP #$20; RTS`) |
+| t=45s  | PB=$2A   | 5× JIT-emitted JAL trampolines        |
+
+The loader bytes at $00:$0700 are installed by **direct CPU copy** from
+loader.prg's BASIC stub (`LDX #$00; LDA $0820,X; STA $0700,X; INX;
+CPX #$BB; BNE`) — NOT REU DMA. 187-byte payload. So if hardware reaches
+post-loader phase (it does, per AC counter advancing), the initial
+copy worked.
+
+Subsequent overwrites at $0700-$07FF are by the recompiler runtime
+issuing CPU stores (no REU DMA involved in code-cache rewrite — VICE
+watch caught all CPU writes correctly).
+
+## 2026-05-10 update — new memory entries
+
+- `project_doom_07b6_jit_counter_root_cause.md` — original JIT-counter
+  thesis WITH 2026-05-10 corrections appended (bank prefix `c:` was
+  the "Computer" prefix not PB=$0C; wait-loop bytes are template
+  data, not code)
+- `project_doom_41dbxx_template_table.md` — bank $41 around $DB96 is
+  a 12-byte-record JIT opcode template table; zero callers; VICE
+  never executes there
+- `project_doom_runtime_paging_at_4c_d298.md` — bank $4C dispatch
+  table data was misread as 7 paging calls; corrected at end of file
+
+## 2026-05-10 update — new tools (uncommitted, kept for re-runs)
+
+- `tools/doom_vice_0707_writers.py` — watch stores to $00:$0700-$07FF
+- `tools/doom_vice_0c_vs_00_dump.py` — banked memory dump
+- `tools/doom_vice_0700_timeseries.py` — time-series snapshot
+- `tools/doom_vice_db93_break.py` — break on PC=$DB93, capture PB
+- `tools/doom_search_db93_pattern.py` — REU search for wait-pattern bytes
+- `tools/doom_disasm_41dbxx.py` — bank $41 around $DB96 disasm
+- `tools/doom_disasm_4c_d298.py` — bank $4C around $D298 disasm
+- `tools/doom_search_emit_wait_pattern.py` — find emit code in REU
+- `tools/doom_find_07_writers.py` — locate specific $00:$07XX writers
+
+## 2026-05-10 update — critical next-session sequence (when MiSTer free)
+
+1. Build R7+OP bundle (commits `74e9c74` + `5e8f85a` syntax-checked
+   clean — `.\build_c64.ps1` ~12 min)
+2. Deploy: `python tools/mister_debug.py deploy`
+3. Run Doom: `python tools/doom_full_run.py`
+4. Analyze: `python tools/doom_uart_analyze.py tools/doom_full/`
+5. **Decide based on OP field:**
+   - **OP shows `DF 07` / `B0 03` / `D0 FE` cycling** → wait is real,
+     hardware IS in wait loop polling $00:$07xx. Find writer of expected
+     value via additional probe.
+   - **OP shows different non-CMP opcodes** → halt PC=$41:$DB93 was a
+     stale latch. The REAL halt PC is whatever OP shows. Pursue THAT.
+   - **OP locked at single value** → probe latch is broken; need
+     different instrumentation.
+
+---
+
 # SuperCPU spec-gap implementation session — 2026-05-09 (continued)
 
 ## Bottom line
