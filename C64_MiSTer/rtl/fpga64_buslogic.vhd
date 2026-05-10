@@ -290,7 +290,7 @@ begin
 		-- → KERNAL $FCE2). Without the native-mode gate, the shadow returns
 		-- RAM=$00 instead of ROM at boot and the system never starts. The
 		-- gate also keeps EMU-mode KERNAL execution intact.
-		-- The fpga64_sid_iec cpuDi mux still overrides $FF00-$FF16 (ack
+		-- The fpga64_sid_iec cpuDi mux still overrides $FF00-$FF1A (ack
 		-- stub), $FCEE-$FCF1 (trampoline default), $D27C-$D27F, and the
 		-- native vector intercepts at higher priority; this clause only
 		-- matters for the rest of the $E000-$FFFF / $A000-$BFFF / $D000-$DFFF

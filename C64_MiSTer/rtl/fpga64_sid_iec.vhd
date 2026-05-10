@@ -1548,7 +1548,7 @@ cpuDi <= ("00000" & scpu_optim_mode & '1')
          x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
                      and cpuAddr = x"FCF1" and scpu_irq_tramp_installed = '0') else  -- target bank = $00
          -- ----------------------------------------------------------------
-         -- IRQ ack stub at $00:$FF00..$FF16 (replaces bare RTI sink).
+         -- IRQ ack stub at $00:$FF00..$FF1A (replaces bare RTI sink).
          --
          -- Real CMD SuperCPU EPROM ($F0-$FF) contains IRQ handler stubs
          -- at $00:$8000+ reached via JML trampolines at $00:$FCxx, themselves
@@ -1571,7 +1571,7 @@ cpuDi <= ("00000" & scpu_optim_mode & '1')
          -- alone. Setting X=1 zeroes the upper 8 bits of X/Y per the
          -- W65C816 spec, which would corrupt user index registers.
          --
-         -- Sequence (native mode, 23 bytes, balanced stack):
+         -- Sequence (native mode, 27 bytes, balanced stack):
          --   $FF00  08            PHP                ; save P (M bit etc.)
          --   $FF01  E2 20         SEP #$20           ; force M=1 (8-bit A)
          --   $FF03  48            PHA                ; save A (1 byte)
@@ -1579,9 +1579,18 @@ cpuDi <= ("00000" & scpu_optim_mode & '1')
          --   $FF08  8F 19 D0 00   STA $00D019        ; ack (write 1s back)
          --   $FF0C  AF 0D DC 00   LDA $00DC0D        ; ack CIA1 (read clears)
          --   $FF10  AF 0D DD 00   LDA $00DD0D        ; ack CIA2 (read clears)
-         --   $FF14  68            PLA                ; restore A
-         --   $FF15  28            PLP                ; restore P
-         --   $FF16  40            RTI
+         --   $FF14  AF 00 DF 00   LDA $00DF00        ; read REU status
+         --                                          ; (auto-clears REU IRQ bit
+         --                                          ;  per CMD REU spec — Probe C
+         --                                          ;  added 2026-05-10 because
+         --                                          ;  v295 showed pc_main_r
+         --                                          ;  pinned at $41:$FCF3 even
+         --                                          ;  with PB-based gate, i.e.
+         --                                          ;  IRQ-refire chain — some
+         --                                          ;  source isn't being acked)
+         --   $FF18  68            PLA                ; restore A
+         --   $FF19  28            PLP                ; restore P
+         --   $FF1A  40            RTI
          --
          -- Stack consumption: IRQ entry 4 + PHP 1 + PHA 1 = 6 pushed,
          -- popped same. Native mode only (gated emu_mode_816_i='0').
@@ -1625,12 +1634,20 @@ cpuDi <= ("00000" & scpu_optim_mode & '1')
                      and cpuAddr = x"FF12") else  -- M
          x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF13") else  -- bank = $00
+         x"AF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF14") else  -- LDA long
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF15") else  -- L (REU status)
+         x"DF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF16") else  -- M
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF17") else  -- bank = $00
          x"68" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF14") else  -- PLA
+                     and cpuAddr = x"FF18") else  -- PLA
          x"28" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF15") else  -- PLP
+                     and cpuAddr = x"FF19") else  -- PLP
          x"40" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF16") else  -- RTI
+                     and cpuAddr = x"FF1A") else  -- RTI
          cpuDi_raw;
 
 -- ----------------------------------------------------------------------
