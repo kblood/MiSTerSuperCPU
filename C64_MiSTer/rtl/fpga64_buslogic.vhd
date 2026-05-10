@@ -171,20 +171,30 @@ begin
 
 	-- M10K R1: kernel_c64std and kernel_c64jap dproms removed.
 
-	-- Phase C decision (2026-04-29): no in-FPGA SuperCPU kickstart ROM. The
-	-- 64KB scpu64.mif dprom takes ~52 M10K blocks and disturbs fitter
-	-- placement enough to break vanilla mode (verified by bisect: even
-	-- with the dprom gated only by scpu_rom_en='0' in vanilla mode, the
-	-- mere fact that its 8-bit output drives a wire kept alive in the
-	-- design causes Quartus to lay it down and route around it, blowing
-	-- vanilla's clk32 timing). On master this is masked by the larger
-	-- SuperCPU support footprint absorbing the disruption; on this lean
-	-- branch we keep things vanilla-clean.
+	-- v298 (2026-05-10): SuperCPU EPROM dprom REINSTATED. The Phase C
+	-- decision to omit it (2026-04-29) was made to keep this branch
+	-- vanilla-timing-clean. Doom debugging 2026-05-09..10 traced the
+	-- bank-$0F BRK-march wedge to dispatch into empty SuperRAM banks
+	-- AND to our IRQ stub bypassing the user-handler chain that real
+	-- SCPU EPROM provides at $00:$8025 (chains via $0314 RAM vector).
+	-- Without the EPROM, Doom's recompiler-emitted JSLs into bank $F8
+	-- routines hit our $6B-RTL stub and lose the routine's effect.
 	--
-	-- SuperCPU mode therefore uses the existing C64 KERNAL at $E000-$FFFF.
-	-- Bank $F8 is served from SDRAM (Phase D); user can ioctl-load a
-	-- kickstart image into SDRAM if/when needed.
-	scpuRomData <= (others => '0');
+	-- Lifted from master's instantiation. The dprom adds ~52 M10K
+	-- blocks (61% → ~71% RAM usage). Vanilla-mode timing impact is
+	-- accepted on this branch — the lean baseline was for the early
+	-- vanilla-cpu-swap exploration, but we've added enough SuperCPU
+	-- support since then that vanilla-clean is no longer the goal.
+	scpu_rom: entity work.dprom
+	generic map ("rtl/roms/scpu64.mif", 16)
+	port map
+	(
+		wrclock => clk,
+		rdclock => clk,
+
+		rdaddress => std_logic_vector(cpuAddr),
+		q => scpuRomData
+	);
 
 	romData <= romData_c64;
 
@@ -197,7 +207,11 @@ begin
 	-- in c64.sv). I/O gating still suppresses C64 chip selects when the
 	-- 65C816 is in a non-zero bank so MVN block-moves don't trigger VIC/
 	-- SID/CIA writes.
-	scpu_rom_en      <= '0';
+	-- v298: bank $F8 reads → scpuRomData (kickstart EPROM). Other banks
+	-- ($F0-$F7, $F9-$FF) remain SuperRAM. Native-mode-only — emu mode
+	-- never emits bank-$F8 reads. cpuWe='0' guard mirrors master.
+	scpu_rom_en      <= '1' when supercpu_en = '1' and scpu_native_mode = '1'
+	                              and supercpu_bank = x"F8" and cpuWe = '0' else '0';
 	scpu_sysram_cs   <= '0';
 	scpu_sysram_data <= (others => '0');
 	scpu_io_en       <= '1' when supercpu_en = '0' or supercpu_bank = x"00" else '0';
@@ -217,7 +231,8 @@ begin
 			  cs_cia1Loc, cs_cia2Loc, lastVicData,
 			  cs_ioELoc, cs_ioFLoc,
 			  io_rom, io_ext, io_data,
-			  supercpu_en, supercpu_bank, scpu_native_mode)
+			  supercpu_en, supercpu_bank, scpu_native_mode,
+			  scpuRomData)
 	begin
 		dataToCpu <= lastVicData;
 		-- 2026-05-09 vanilla-cpu-swap: CMD bootmap stub for banks $F0-$FF.
@@ -248,7 +263,16 @@ begin
 		-- Highest priority clause (above bank-$01 shadow + bank-≠-$00 SDRAM)
 		-- because supercpu_bank=$F6+ falls into the bank-≠-$00 SDRAM path
 		-- otherwise. Native-mode-only — emu mode never emits bank-$F6+ reads.
-		if supercpu_en = '1' and scpu_native_mode = '1' and unsigned(supercpu_bank) >= x"F6" then
+		--
+		-- v298: bank $F8 specifically → SuperCPU EPROM (scpuRomData). The
+		-- 64KB scpu64.mif holds CMD library routines, IRQ handler entry
+		-- ($00:$8025 → JML target inside the EPROM at $F8:$8025 if the
+		-- recompiler-emitted code reaches there), and kickstart code. Other
+		-- banks $F6, $F7, $F9-$FF keep the $6B-RTL stub since real EPROM
+		-- only lives at $F8 (per master's mapping).
+		if supercpu_en = '1' and scpu_native_mode = '1' and supercpu_bank = x"F8" then
+			dataToCpu <= unsigned(scpuRomData);
+		elsif supercpu_en = '1' and scpu_native_mode = '1' and unsigned(supercpu_bank) >= x"F6" then
 			dataToCpu <= x"6B";
 		-- Bank-$01 SRAM ROM shadow (Tier 2.1 spec gap). Real CMD SuperCPU's
 		-- bank $01 SRAM is pre-loaded with KERNAL/BASIC/CHARGEN ROM copies
