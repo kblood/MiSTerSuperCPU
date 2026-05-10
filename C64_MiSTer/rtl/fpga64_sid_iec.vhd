@@ -1579,15 +1579,24 @@ cpuDi <= ("00000" & scpu_optim_mode & '1')
          --   $FF08  8F 19 D0 00   STA $00D019        ; ack (write 1s back)
          --   $FF0C  AF 0D DC 00   LDA $00DC0D        ; ack CIA1 (read clears)
          --   $FF10  AF 0D DD 00   LDA $00DD0D        ; ack CIA2 (read clears)
-         --   $FF14  AF 00 DF 00   LDA $00DF00        ; read REU status
-         --                                          ; (auto-clears REU IRQ bit
-         --                                          ;  per CMD REU spec — Probe C
-         --                                          ;  added 2026-05-10 because
-         --                                          ;  v295 showed pc_main_r
-         --                                          ;  pinned at $41:$FCF3 even
-         --                                          ;  with PB-based gate, i.e.
-         --                                          ;  IRQ-refire chain — some
-         --                                          ;  source isn't being acked)
+         --   $FF14  AF 0E DC 00   LDA $00DC0E        ; v297 probe — swapped from
+         --                                          ; LDA $00DF00 (REU status) to
+         --                                          ; LDA $00DC0E (CIA1 timer A
+         --                                          ; control reg, benign read).
+         --                                          ; Tests whether v296's fix
+         --                                          ; was specifically the REU
+         --                                          ; IRQ ack OR just the extra
+         --                                          ; 5 cycles of stub time
+         --                                          ; (timing hypothesis). If
+         --                                          ; Doom still unwedges with
+         --                                          ; $DC0E, the mechanism is
+         --                                          ; not REU-specific. Note:
+         --                                          ; static disasm of VICE's
+         --                                          ; SCPU64 EPROM shows ZERO
+         --                                          ; references to $DF00 in
+         --                                          ; the entire 64KB ROM, so
+         --                                          ; real CMD SuperCPU does
+         --                                          ; not auto-clear REU IRQ.
          --   $FF18  68            PLA                ; restore A
          --   $FF19  28            PLP                ; restore P
          --   $FF1A  40            RTI
@@ -1636,10 +1645,10 @@ cpuDi <= ("00000" & scpu_optim_mode & '1')
                      and cpuAddr = x"FF13") else  -- bank = $00
          x"AF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF14") else  -- LDA long
-         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF15") else  -- L (REU status)
-         x"DF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF16") else  -- M
+         x"0E" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF15") else  -- L (CIA1 TIMER A LO — v297 probe)
+         x"DC" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF16") else  -- M (CIA1 base)
          x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF17") else  -- bank = $00
          x"68" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
