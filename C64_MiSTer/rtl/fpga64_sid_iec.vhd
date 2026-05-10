@@ -2601,8 +2601,24 @@ begin
 				-- v283 latch-once first-writer-PC for $00:$6C03 lives in the
 				-- cpuWe_pre='1' block below (around the wr02_pc_r area).
 				-- v260: PC main/irq split + page counters, gated by opcode_fetch_pulse
+				-- v295: in SCPU mode the split is now PB-based, NOT
+				-- I-flag-based. Recompiled Doom code lives in banks $20+;
+				-- bank $00 holds bootstrap + IRQ ack stub ($FF00) + native
+				-- vector intercepts. The previous I-flag gate
+				-- (cpu_p_now(2) = '0') was blind to recompiler code that
+				-- runs SEI'd between dispatches — pc_main_r appeared frozen
+				-- at the first I=0 fetch even when main was actually
+				-- advancing. PB != $00 catches every main-bank fetch
+				-- regardless of I bit.
+				--
+				-- In T65 mode cpu_pc_now upper bits are forced to $00
+				-- (T65 has no bank register), so the PB-based criterion
+				-- would route every T65 fetch to pc_irq_r. Keep the
+				-- original I-flag split for T65 to preserve prior debug
+				-- behavior.
 				if opcode_fetch_pulse = '1' then
-					if cpu_p_now(2) = '0' then
+					if (supercpu_en = '1' and cpu_pc_now(23 downto 16) /= x"00")
+					   or (supercpu_en = '0' and cpu_p_now(2) = '0') then
 						pc_main_r <= cpu_pc_now;
 					else
 						pc_irq_r <= cpu_pc_now;
