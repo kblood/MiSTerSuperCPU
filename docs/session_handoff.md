@@ -1,133 +1,74 @@
-# Doom debug — 2026-05-10 BRK/RTI cocotb LANDED, microcode CLEAN
+# Doom debug — 2026-05-10 v296 IRQ-refire chain BROKEN
 
-## Bottom line: hardware halt is **IRQ-refire chain**, not microcode bug
+## Bottom line: REU IRQ was the unacked source. Main runs freely now.
 
-`sim/cocotb/tests/test_brk_native_rti.py` LANDED 2026-05-10. Two tests
-both PASS:
+v296 commit `b655011`, RBF `c8105adfeb91c62e9ebc65cb8e746371`.
 
-- **Test 1** (CLI before JML): native BRK at `$41:$DB93` → ack stub at
-  `$00:$FF00` → RTI returns to `$41:$DB95` with **P=$23 / I=0**. RTI
-  pops the pushed P verbatim, including the I-bit. Microcode is correct.
-- **Test 2** (`IRQ_N` held low, simulating an unacked IRQ source):
-  reproduces v294 hardware pattern EXACTLY:
-  ```
-  $DB93 fetches=19, $DB95 fetches=0, RTI fetches=18, $FF00 entries=18
-  ```
-  CPU loops: BRK→ack stub→RTI→IRQ refires (still asserted, I=0 popped)
-  →handler→RTI→IRQ refires… Main never advances past $DB95.
+Extended the synthesized IRQ ack stub at `$00:$FF00..$FF1A` (was
+`..$FF16`) to also `LDA $00DF00` before PLA/PLP/RTI. `reu.v:174`
+clears `status<=0` on `$DF00` read; `reu.v:109` recomputes
+`irq <= (|(status[6:5] & intr[6:5])) & intr[7]`. So reading $DF00
+de-asserts REU's contribution to IRQ_N.
 
-## Reframe of v294 hardware data
+## Hardware result vs v294/v295 baseline (35-sample 240s window)
 
-`pc_main_r <= cpu_pc_now` is gated by `cpu_p_now(2)='0'` (I-flag clear,
-fpga64_sid_iec.vhd:2604-2616). Two scenarios both produce "pc_main_r
-frozen at $DB93":
+| Build | N distinct | Top value | Interpretation |
+|-------|-----------|-----------|----------------|
+| v294  | 1         | `$41:$DB93` (100%) | pinned, BRK loop |
+| v295  | 1         | `$41:$FCF3` (100%) | pinned, BRK loop |
+| v296  | **35**    | every sample unique, `$0F:$Axxx-$Bxxx` | main fetching freely |
 
-1. **Main runs with I=1** (recompiler convention) — pc_main_r blind.
-   CPU may be running fine; the latch never updates.
-2. **IRQ source not acked → IRQ refires every RTI** — main never
-   reaches I=0 fetch in caller context. CPU is wedged in a hot IRQ
-   loop. **Test 2 demonstrates this.**
+I field exercises new stub bytes ($FF14 LDA / $FF18 PLA / $FF19 PLP /
+$FF1A RTI) — extended stub is on the actual hardware path.
 
-The trace_op ring data (`E248 AFAF 2840 1D00` across 70 vblanks) is now
-fully consistent with scenario 2 — what we see is the IRQ stub's own
-fetches plus the `1D 00` pair that happens once per refire when the
-main thread momentarily emits a non-stub byte (likely the JIT trampoline
-target byte at $FCEE if the latch flipped to RAM-backed).
+## Confirms cocotb Test 2 framing
 
-## What this RULES OUT
+`test_brk_native_rti.py::test_brk_native_with_irq_pressure` reproduced
+v294 pattern with `IRQ_N` held low. Hardware behavior matched — the
+"halt" was IRQ pre-empting every RTI before the next main fetch could
+complete. With $DF00 added to the ack path, REU `irq` now drops, IRQ_N
+goes high, main resumes.
 
-- "P65C816 BRK pushes wrong P" — cocotb shows it pushes verbatim.
-- "RTI doesn't restore I=0" — pops D_IN(2)→P(2) verbatim
-  (P65C816.vhd:511, MCode.vhd:600).
-- "RTI in native mode is broken" — Test 1 returns to $DB95 perfectly.
+The recompiler runtime (AmiDog SCPUMIPS) arms REU FETCH/STASH with
+IRQ-on-end-of-block enabled (`intr=$E0`) but its IRQ handler doesn't
+include `LDA $DF00`. Real CMD SuperCPU EPROM probably reads $DF00 in
+its full IRQ chain. Our ack stub now works around it.
 
-## What this RULES IN
+## What's left — Doom still doesn't render
 
-The IRQ ack stub at `$00:$FF00..$FF16` (synthesized in
-fpga64_sid_iec.vhd:1581-1633) reads `$D019`, `$DC0D`, `$DD0D`. Some IRQ
-source is NOT being cleared by these reads/writes. Candidates:
+Screen at 240s = lighter blue border, darker blue inner rect, no
+sprites/text. This is bitmap mode but blank. Main runs in bank $0F
+(linear progression `$A41B → $BB09` — recompiled JIT code) but
+nothing visible appears.
 
-1. **VIC raster compare keeps re-firing** — `STA $D019` clears IRST
-   flags but the next raster line still satisfies the compare, re-arming
-   immediately. The real CMD SCPU EPROM must do more: maybe rewrite
-   `$D012` (raster compare) past current line, or clear the enable mask.
-2. **NMI source still active** — but NMI uses `$FFEA/EB`, separate
-   path. If $FFEA captured a corrupted vector (BRK push wrap could
-   write $00:$FFEA — see `scpu_nmi_vec_lo` capture at
-   fpga64_sid_iec.vhd:1712), NMI handler is wrong but IRQ should still
-   work. Probably not this.
-3. **Expansion port IRQ (REU IRQ?)** — REU has an IRQ-mask register at
-   `$DF09`. If REU IRQ enabled and a transfer-complete fires, our stub
-   never reads `$DF09` to ack. Plausible since loader runs many REU
-   FETCHes.
-4. **CIA timer-interrupt re-arms** — LDA $DC0D acks the CIA1 ICR but
-   if a CIA timer is freerunning and underflows again, IRQ refires on
-   the next underflow. Real SCPU handler may stop the timer.
+Possible causes (next session):
 
-## Probe priority queue
+1. **Renderer in init phase** — game might still be loading assets.
+   Try a 60s+ longer capture.
+2. **VIC reg writes not landing where game expects** — surface
+   `$D011 / $D018 / $DD00` in UART. Bitmap mode + correct bank
+   pointer required for any output.
+3. **Game waiting on input** — try `python tools/mister_debug.py
+   keys ' '` to send space/fire.
+4. **Bank $0F disasm** — peek `$0F:$A41B..$BB09` in REU to see
+   what recompiled code is actually running.
 
-### Probe A: Hunt for unacked IRQ sources
+## Build state
 
-Scan the actual hardware UART for non-zero post-halt values of:
-- VIC `$D019` (after STA, should be $00 or near-$00)
-- VIC `$D011` raster IRQ enable bit
-- VIC `$D012` raster compare value
-- CIA1 `$DC0D`, CIA2 `$DD0D` ICR
-- REU `$DF00` status
+- Branch `vanilla-cpu-swap`, tip commit `b655011`.
+- RTL diff lives in `C64_MiSTer/rtl/fpga64_sid_iec.vhd:1573-1650`
+  (stub bytes + comment) and `C64_MiSTer/rtl/fpga64_buslogic.vhd:293`
+  (range comment update).
+- Captures saved at `tools/doom_full/uart_v296_*.txt` and
+  `shot_v296_240s.png`.
+- ALM 64% (was 63%), build 12:58.
 
-We have these registers visible in fpga64_sid_iec.vhd debug overlay
-already (need to confirm) — if not, surface to UART.
+## Files for next session
 
-### Probe B: Remove I=0 gate on pc_main_r temporarily
-
-If main is actually doing something OTHER than BRK-looping (e.g., legit
-recompiler code with SEI'd I=1), removing the gate would show the real
-PC distribution. Edit fpga64_sid_iec.vhd:2604-2609 to drop the
-`cpu_p_now(2) = '0'` check and capture every fetch. One-line RTL
-change, ~10 min build.
-
-### Probe C: Improve the IRQ ack stub
-
-Make the stub clear ALL plausible sources at once:
-```
-$FF00: 08           PHP
-$FF01: E2 30        SEP #$30
-$FF03: 48           PHA
-$FF04: AF 19 D0 00  LDA $00D019
-$FF08: 8F 19 D0 00  STA $00D019    ; ack VIC
-$FF0C: AF 0D DC 00  LDA $00DC0D    ; ack CIA1
-$FF10: AF 0D DD 00  LDA $00DD0D    ; ack CIA2
-+ NEW: AF 00 DF 00  LDA $00DF00    ; ack REU + auto-clear status bits
-+ NEW: A9 00        LDA #$00
-+ NEW: 8F 11 D0 00  STA $00D011    ; disable VIC raster IRQ enable
-$FF14: 68           PLA
-$FF15: 28           PLP
-$FF16: 40           RTI
-```
-Synthesize the new stub in the read-mux intercept. Tests whether *any*
-one of these candidate sources is the offender.
-
-### Probe D: Hunt $FCEE-$FCF1 indirect writers in REU (deferred)
-
-Original task #2. Less urgent now — `1D 00` in trace ring is
-explainable by IRQ-refire pattern alone. Revisit only if Probe A/C
-don't yield.
-
-## Files updated this session
-
-- `sim/cocotb/tests/test_brk_native_rti.py` — NEW, 2 tests both PASS
-- `sim/cocotb/Makefile` — added `test-brk-native-rti` target
-- New memory entry: `project_doom_brk_rti_microcode_clean.md`
-- MEMORY.md: promoted microcode-clean finding to top of Doom Status
-
-## Known dead-ends (do not revisit)
-
-- "P65C816 native BRK bug" — refuted by cocotb Test 1
-- "RTI doesn't restore I-flag" — refuted by cocotb Test 1
-- All earlier wait-loop / JIT-template / $0707 entries — see prior
-  handoff for full list
-
-## Open question
-
-**Which IRQ source is unacked by the stub?** Probe A or Probe C will
-tell. Probe C is more actionable (single ~10 min build to test).
+- `tools/doom_full_run.py` — the full Doom flow
+- `tools/analyze_v295.py` — N/I/PC field comparison
+- `C64_MiSTer/rtl/fpga64_sid_iec.vhd:1551-1650` — ack stub
+- `C64_MiSTer/rtl/fpga64_sid_iec.vhd:2604-2625` — pc_main_r/pc_irq_r
+  PB-based gate (kept from v295)
+- `sim/cocotb/tests/test_brk_native_rti.py` — diagnostic that
+  framed the IRQ-refire hypothesis
