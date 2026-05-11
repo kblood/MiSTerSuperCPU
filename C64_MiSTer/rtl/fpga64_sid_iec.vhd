@@ -2131,6 +2131,21 @@ end process;
 -- -----------------------------------------------------------------------
 -- Only the active CPU gets enable pulses. The inactive CPU still receives
 -- clk and reset but never advances. Outputs are muxed at cpuAddr_pre etc.
+--
+-- Phase 2 (I/O cycle stretching) — already implicit in this arbitration:
+--   line 2236 below: turbo_m is only loaded when cs_io='0'
+--   line 2218 below: cpu_cyc for I/O is gated solely on (sysCycle=CYCLE_CPUC
+--                    AND (io_enable='1' or cs_ram='1'))
+-- So I/O accesses always go through the slowest path (CPUC slot only) —
+-- ~32 clk32 cycles between successive I/O CPU advances regardless of
+-- turbo speed. This is more stretching than VICE's explicit
+-- scpu64_clock_*_stretch_io() (~2-3 CPU cycles).
+--
+-- Master needed an explicit io_slowdown gate because it added fast paths
+-- (bram_hit_d1 / cache_hit_d1 / phantom_enable) that could bypass CPUC
+-- arbitration. This branch has no such fast paths — the simpler scheme
+-- above means I/O is always stretched. No additional Phase 2 RTL is
+-- required. Verified absent: bram_hit_d1, cache_hit_d1, phantom_enable.
 enableCpu_6510 <= enableCpu and not dma_active and not supercpu_en;
 enableCpu_816  <= enableCpu and not dma_active and supercpu_en;
 
