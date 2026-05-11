@@ -1,111 +1,105 @@
-# Doom debug — 2026-05-11 v298 EPROM port lands, doesn't help Doom
+# Doom debug — 2026-05-11 v299 lands, BOTH wedges cleared
 
-## Bottom line: EPROM at bank $F8 is wrong intervention. Real bug is JML dispatch into empty bank $0F.
+## Bottom line: v299 clears the SECOND wedge — Doom back at music-number trap
 
-v298 RBF md5 `ddb5ce0197cfaf0bd0c1005524caedc6`, ALM 64%, RAM 73%
-(was 61% on v297, +64 M10K blocks for the dprom).
+v299 commit `18068b8`, RBF `94b6c3c0d4f8d1585e7a1b269073b965`.
+ALM 64% (unchanged), RAM 73% (EPROM dprom from v298 retained).
 
-## What v298 changed (from v296/v297 baseline)
-
-`C64_MiSTer/rtl/fpga64_buslogic.vhd` adds `scpu_rom` dprom +
-selector:
-
-```vhdl
-scpu_rom: entity work.dprom
-generic map ("rtl/roms/scpu64.mif", 16)
-port map ( wrclock => clk, rdclock => clk,
-           rdaddress => std_logic_vector(cpuAddr), q => scpuRomData );
-
-scpu_rom_en <= '1' when supercpu_en = '1' and scpu_native_mode = '1'
-                         and supercpu_bank = x"F8" and cpuWe = '0' else '0';
-```
-
-`dataToCpu` mux: bank $F8 → `scpuRomData` (above the $6B-RTL stub
-for banks ≥ $F6).
-
-`scpu64.mif` is byte-identical to VICE SCPU64 V0.07 EPROM by
-Wiebo de Wit. Vectors at $FFEE/EF = $AC $FC. Real IRQ handler
-entry at $FCAC → JML $0:8025 (NOT in our environment, would
-crash).
-
-## Hardware result (continuous 30-s UART windows 30..240s)
-
-| Window | Last PC | J ring | N field | Phase |
-|--------|---------|--------|---------|-------|
-| 30-60s | $00:$0788 | `078D 078D 078D 078D` | $000000 | Loader REU→SuperRAM |
-| 60-90s | $00:$078E | `078D 078D 078D 078D` | $000000 | Loader REU→SuperRAM |
-| 90-120s | $00:$0788 | `078D 078D 078D 078D` | $000000 | Loader REU→SuperRAM |
-| 120-150s | $20:$039F | `0109 → 03AC` | $20:$039D | Bank-$20 dispatch |
-| 150-180s | $00:$FF03 | `21A7 → 2423` | $0F:$1FB9-$24D3 | $0F BRK-march |
-| 180-240s | $00:$8B3F | `8AAF 8AAF 8AAF 8AAF` | $0F:$93AD | Same |
-
-F counter monotonic across all windows. No UART silence. No wedge.
-
-## v298 vs v296 — same failure mode, different addresses
+Two-byte revert at `fpga64_sid_iec.vhd:1648-1651`:
 
 ```
-doom.reu bank $0F:$1FB9 (v298 N field): 00 00 00 00 ...  (32/32 zero)
-doom.reu bank $0F:$2247 (v298 N field): 00 00 00 00 ...  (32/32 zero)
-doom.reu bank $0F:$24D3 (v298 N field): 00 00 00 00 ...  (32/32 zero)
-doom.reu bank $0F:$93AD (v298 N field): 00 00 00 00 ...  (32/32 zero)
-doom.reu bank $0F:$A41B (v296 N field): 00 00 00 00 ...  (32/32 zero)
+$FF15  $0E  ->  $00     ; v297 $DC0E low byte -> v299 $DF00 low byte
+$FF16  $DC  ->  $DF     ; v297 CIA1 base    -> v299 REU base
 ```
 
-**Both builds have main BRK-marching through empty bank $0F.**
-v298 didn't change the fundamental Doom failure. EPROM at bank
-$F8 is never touched by Doom's runtime path.
+Restores the `LDA $00DF00` REU ack that v297 removed in error.
 
-(Doom DOES execute SOME real code — `WP:$2C:$8545` shows writes
-to legitimate game data — but the sampled "main PC" via
-`pc_main_r` is the BRK-march, masking what's actually happening.)
+## How we found this
 
-## Final screen — identical to v296 (blank blue bitmap)
+`tools/doom_v298_transition_zoom.py` captured 45s of continuous
+UART starting at t=125s post-load (no `head -c` truncation),
+catching the previously-missed bank-$20 → bank-$0F transition:
 
-Same lighter-blue border, darker-blue inner rect. No sprites,
-no text, no game frame.
+```
+F:1945 PC:2B2292 ... SP:007B ... J:22B4 DB94 DBCE DBAC
+F:1946 PC:2B2292 ... SP:0065 ...    (SP delta -$16)
+F:1947 PC:2B2292 ... SP:004F ...    (SP delta -$16)
+F:1948 PC:2B2292 ... SP:0039 ...    (SP delta -$16)
+F:1949 PC:2B2292 ... SP:0023 ...    (SP delta -$16)
+F:194A PC:2B2292 ... SP:000D ...    (SP delta -$16)
+F:194B PC:00FF15 ... SP:FFF9 ...    (WRAP via $FFFF, in ack stub)
+F:194C PC:00FF19 ... SP:FFF9 ...    PB now = $0F, BRK-march starts
+```
 
-## Strategic next step
+22 unbalanced bytes per vblank = 5-6 IRQ entries unbalanced.
+Mechanism: Doom's recompiler armed a REU FETCH whose completion-
+IRQ fires when transfer ends. Our v297/v298 stub doesn't read
+$DF00 → REU IRQ stays asserted → refires immediately after every
+RTI. PHP+PHA balance pop, but stack overflows from the IRQ entry
+push-4 every time.
 
-EPROM port is salvageable for FUTURE work (bank-$00 SRAM shadow
-from kickstart, kernal-shadow at $E000-$FFFF, $0314/$0315 RAM
-vector chain, real native-mode trampolines at $FCxx). But the
-**immediate Doom bug** is in the recompiler dispatch math — JML
-target computed into empty bank $0F when real Doom code lives in
-$20-$2C and $40-$BF.
+## v299 result (same probe)
 
-### Probe options for next session
+| Metric | v298 | v299 |
+|--------|------|------|
+| Bank-$0F transition seen | YES (frame 248) | **NO** |
+| PC dominant bank | $0F (BRK-march) | $2C (1093/1339 frames) |
+| SP behavior | decreased $16/vblank | stable at $FFFF |
+| Final halt | $0F:xxxx BRK-march | $2C:$A95C JML self-loop |
+| Screen | blank blue rect | **"Error: Bad music number -9"** |
 
-1. **Wider writer-PC ring on JML target operands** — surface in
-   UART the PC of the instruction that EMITTED the bad JML.
-   Likely a `JML [zp]` or `JML (abs,X)` with corrupt pointer.
+## Where we are now
 
-2. **Verify SuperRAM bank $0F contents vs REU bank $0F** — if
-   loader's REU→SuperRAM mapping IS 1:1, then bank $0F SuperRAM
-   really is all-zero (REU bank $0F IS all-zero in doom.reu).
-   If NOT 1:1, then we need to figure out which REU bank
-   actually got mapped to SuperRAM $0F. Loader.prg disassembly
-   needed.
+Back at the v286-era trap. Every wedge fix is now landed:
+- $00:$FFE4..$FFEF native vector intercept (v286)
+- bank-$00 SRAM ROM-shadow (d179e1b)
+- bank-$01 SRAM ROM shadow (e8cbf39)
+- bank $F6-$FF $6B-RTL stub (edd36b5)
+- v295 PB-based pc_main_r gate
+- v296+v299 27-byte ack stub with REU $DF00 ack
+- v298 EPROM dprom at bank $F8
 
-3. **Capture the LAST real-code PC before bank $0F** — modify
-   `pc_main_r` gating to track only PB <> $0F transitions, then
-   surface the previous PB+PC. That's the bug site.
+The music-number `-9` halt is **not** a CPU microcode issue per
+existing cocotb+VICE lockstep proofs:
+- bank-20 prologue MATCH 15574 instr
+- gameplay $2A:$55A3 MATCH 5000 instr
+- loader body MATCH 500+5000 instr
 
-### Files for next session
+VICE xscpu64 with same `loader.prg + doom.reu` reaches PB=$2A
+PC=$55A1 in NATIVE mode with bitmap VIC ($D011=$C9). Doom WORKS
+on VICE. So our hardware diverges from VICE in some specific
+code path or data load between loader handoff and the
+music-number lookup.
 
-- `tools/doom_v298_wedge_capture.py` — continuous 30-s windows
-- `tools/doom_full/v298_wedge_*.txt` — captured frames
-- `tools/doom_full/shot_v298_wedge_final.png` — blank screen
-- `C64_MiSTer/rtl/fpga64_buslogic.vhd:174-200,251-265` — EPROM
-  dprom + bank-$F8 selector
-- `C64_MiSTer/rtl/fpga64_sid_iec.vhd:1573-1650` — ack stub
-  (v296 LDA $00DF00, kept in v298)
-- `C64_MiSTer/rtl/fpga64_sid_iec.vhd:2604-2625` — PB-based
-  pc_main_r gate (kept from v295)
+## Next probes
 
-### Build state
+Per existing memory:
 
-- Branch `vanilla-cpu-swap`
-- Tip commit (uncommitted v298 buslogic changes + new probe
-  script + memory file)
-- `tools/doom_full/v298_wedge_*.txt` saved
-- ALM 64% (was 64% v297), RAM 61% → 73% (+64 M10K dprom)
+1. **Writer-PC ring on $FFF7 sentinel emission** — track which
+   instruction stores the $FFF7 "lookup failed" value that
+   becomes the -9 music_num display
+
+2. **REU→SuperRAM transfer verification** — peek SuperRAM at
+   the music-number data location vs REU contents. Known
+   precedent: $00:$6C00 `$AB,$AB,$AB,$00` transfer corruption
+
+3. **HW-vs-VICE I/O divergence** — what does Doom read from
+   $D0xx / $DCxx / $DDxx that differs between VICE and our
+   hardware path?
+
+## Files for next session
+
+- `C64_MiSTer/rtl/fpga64_sid_iec.vhd:1648-1651` — v299 stub bytes
+- `tools/doom_v298_transition_zoom.py` — the diagnostic that
+  caught the SP-leak wedge (template for future high-resolution
+  capture)
+- `tools/doom_full/shot_v299_after_test.png` — music-number halt
+  screen
+- `project_doom_v293_85a1_chain_decoded.md` — error chain
+  disassembly
+- `project_doom_vice_oracle_runs_doom.md` — VICE oracle reference
+
+## Build state
+
+- Branch `vanilla-cpu-swap`, tip commit `18068b8`
+- ALM 64%, RAM 73%, build 11:40
