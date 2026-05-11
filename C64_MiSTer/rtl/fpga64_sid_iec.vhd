@@ -1084,7 +1084,18 @@ signal scpu_speed_1mhz   : std_logic := '0';                            -- $D07A
 signal scpu_sys_1mhz     : std_logic := '0';                            -- $D072=1, $D073=0
 signal scpu_regs_enabled : std_logic := '1';                            -- $D07E enables, $D07F/$D07D disables
 signal scpu_hwenable     : std_logic := '0';                            -- ANY write to $D07E sets; $D07F/$D07D clears
-signal scpu_bootmap      : std_logic := '1';                            -- '1' at reset (EPROM at $8000-$FFFF)
+signal scpu_bootmap      : std_logic := '0';                            -- '0' at reset on this branch — see comment below
+-- Phase 3 hardware regression fix (2026-05-11):
+-- scpu_bootmap defaulted to '1' so the SCPU EPROM kickstart would run
+-- at cold boot. Hardware test showed SCPU cold boot black-screened
+-- because the EPROM kickstart at $F8:$80C1 loops in the
+-- $00:$8054-$8082 handler region without ever clearing bootmap.
+-- vanilla-cpu-swap's bus arbitration / register handlers do not match
+-- the timing assumptions the kickstart makes (master needs different
+-- behavior). Defaulting bootmap to '0' restores v299-style cold boot
+-- via KERNAL RESET vector; software that wants the EPROM overlay can
+-- opt in by writing $D0B7. Phase 3's writable native vectors remain
+-- live; the EPROM dprom at bank $F8 stays accessible to JML'd code.
 signal scpu_optim_mode   : unsigned(1 downto 0) := "11";                -- $D074-$D077 select; "11" = no optimization
 -- Phase 5 (WriteSmart + write buffer drain) — architectural gap analysis.
 --
@@ -1797,7 +1808,7 @@ begin
 			scpu_sys_1mhz     <= '0';
 			scpu_regs_enabled <= '1';
 			scpu_hwenable     <= '0';
-			scpu_bootmap      <= '1';
+			scpu_bootmap      <= '0';   -- Phase 3 HW regression fix — see signal decl
 			scpu_optim_mode   <= "11";
 			scpu_irq_tramp_installed <= '0';
 			scpu_nmi_vec_lo   <= x"00";
