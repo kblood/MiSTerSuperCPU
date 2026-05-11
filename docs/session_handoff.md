@@ -1,105 +1,80 @@
-# Doom debug — 2026-05-11 v299 lands, BOTH wedges cleared
+# Doom debug — 2026-05-11 v299 partial + root cause found
 
-## Bottom line: v299 clears the SECOND wedge — Doom back at music-number trap
+## Bottom line: v299's $DF00 ack DOESN'T actually ack on this branch
 
-v299 commit `18068b8`, RBF `94b6c3c0d4f8d1585e7a1b269073b965`.
-ALM 64% (unchanged), RAM 73% (EPROM dprom from v298 retained).
+The vanilla-cpu-swap branch's `c64.sv:661` drives `reu.v cpu_cs = IOF`
+directly without the `iof_falling_edge` pulse fix that exists in
+master. In turbo/SCPU mode the `LDA $00DF00` access cycle is too
+short for REU to register the read. So the ack stub's REU ack is
+a no-op on this branch.
 
-Two-byte revert at `fpga64_sid_iec.vhd:1648-1651`:
-
-```
-$FF15  $0E  ->  $00     ; v297 $DC0E low byte -> v299 $DF00 low byte
-$FF16  $DC  ->  $DF     ; v297 CIA1 base    -> v299 REU base
-```
-
-Restores the `LDA $00DF00` REU ack that v297 removed in error.
-
-## How we found this
-
-`tools/doom_v298_transition_zoom.py` captured 45s of continuous
-UART starting at t=125s post-load (no `head -c` truncation),
-catching the previously-missed bank-$20 → bank-$0F transition:
+v296/v297/v298/v299 all hit the SAME $2B:$2292 SP-leak wedge:
 
 ```
-F:1945 PC:2B2292 ... SP:007B ... J:22B4 DB94 DBCE DBAC
-F:1946 PC:2B2292 ... SP:0065 ...    (SP delta -$16)
-F:1947 PC:2B2292 ... SP:004F ...    (SP delta -$16)
-F:1948 PC:2B2292 ... SP:0039 ...    (SP delta -$16)
-F:1949 PC:2B2292 ... SP:0023 ...    (SP delta -$16)
-F:194A PC:2B2292 ... SP:000D ...    (SP delta -$16)
-F:194B PC:00FF15 ... SP:FFF9 ...    (WRAP via $FFFF, in ack stub)
-F:194C PC:00FF19 ... SP:FFF9 ...    PB now = $0F, BRK-march starts
+F:1934 PC:$2C:$851B SP:$01ED    (error chain entry)
+F:1935 PC:$2B:$2292 SP:$01DB    (call into arg-walker)
+F:1936 PC:$2B:$2292 SP:$01C5    (SP -$16)
+...
+F:194A PC:$2B:$2292 SP:$000D    (SP -$16 each frame)
+F:194B PC:$00:$FF15 SP:$FFF9    (16-bit native wrap)
+F:194C PC:$00:$FF19 SP:$FFF9    N field PB=$0F (RTI popped garbage)
+F:194F PC:$0F:$2C27 SP:$FFFE    (BRK-march continuing in bank $0F)
 ```
 
-22 unbalanced bytes per vblank = 5-6 IRQ entries unbalanced.
-Mechanism: Doom's recompiler armed a REU FETCH whose completion-
-IRQ fires when transfer ends. Our v297/v298 stub doesn't read
-$DF00 → REU IRQ stays asserted → refires immediately after every
-RTI. PHP+PHA balance pop, but stack overflows from the IRQ entry
-push-4 every time.
+The earlier "Bad music number -9" screen capture (17:04) was
+almost certainly residual framebuffer from a prior v286-era
+boot — multi-shot captures at t=130s-160s on fresh deploys
+show all blank blue rect, no error text ever rendered.
 
-## v299 result (same probe)
+## What v294→v299 actually fixed
 
-| Metric | v298 | v299 |
-|--------|------|------|
-| Bank-$0F transition seen | YES (frame 248) | **NO** |
-| PC dominant bank | $0F (BRK-march) | $2C (1093/1339 frames) |
-| SP behavior | decreased $16/vblank | stable at $FFFF |
-| Final halt | $0F:xxxx BRK-march | $2C:$A95C JML self-loop |
-| Screen | blank blue rect | **"Error: Bad music number -9"** |
+- v286: $00:$FFE4..$FFEF native vector intercept → $FF00 stub.
+  Doom progresses past KERNAL-ROM-confusion BRK loop.
+- v296 (vs v294): +5 stub cycles unstuck $41:$DB93 BRK loop.
+  The "REU ack" was incidental — the timing improvement is what
+  worked. v297's experimental swap to $DC0E (no REU ack) also
+  worked, confirming timing-only.
+- v298: EPROM dprom at bank $F8. No Doom benefit (Doom doesn't
+  read $F8 in the wedge path).
+- v299: revert to $DF00. Same as v296. No additional Doom benefit
+  because the stub's $DF00 read doesn't reach REU on this branch.
 
-## Where we are now
+## Real fix needed
 
-Back at the v286-era trap. Every wedge fix is now landed:
-- $00:$FFE4..$FFEF native vector intercept (v286)
-- bank-$00 SRAM ROM-shadow (d179e1b)
-- bank-$01 SRAM ROM shadow (e8cbf39)
-- bank $F6-$FF $6B-RTL stub (edd36b5)
-- v295 PB-based pc_main_r gate
-- v296+v299 27-byte ack stub with REU $DF00 ack
-- v298 EPROM dprom at bank $F8
+Port iof_falling_edge infrastructure from master:
 
-The music-number `-9` halt is **not** a CPU microcode issue per
-existing cocotb+VICE lockstep proofs:
-- bank-20 prologue MATCH 15574 instr
-- gameplay $2A:$55A3 MATCH 5000 instr
-- loader body MATCH 500+5000 instr
+1. Generate `iof_fall_pulse_r` in `fpga64_sid_iec.vhd` as a
+   1-cycle pulse at the falling edge of registered IOF
+2. Latch `cpu_we_latched`, `cpu_addr_latched`, `cpu_dout_latched`
+   during the $DFxx access window
+3. Drive `reu.v cpu_cs` from `iof_fall_pulse_r` instead of `IOF`
+   raw; drive `cpu_we/addr/dout` from the latched signals
 
-VICE xscpu64 with same `loader.prg + doom.reu` reaches PB=$2A
-PC=$55A1 in NATIVE mode with bitmap VIC ($D011=$C9). Doom WORKS
-on VICE. So our hardware diverges from VICE in some specific
-code path or data load between loader handoff and the
-music-number lookup.
+Reference: `project_reu_iof_falling_edge_fix.md` (master branch
+description). Also fixes turbo-mode REU writes that are
+currently misdetected as reads on this branch — would unblock
+multiple SCPU titles, not just Doom.
 
-## Next probes
-
-Per existing memory:
-
-1. **Writer-PC ring on $FFF7 sentinel emission** — track which
-   instruction stores the $FFF7 "lookup failed" value that
-   becomes the -9 music_num display
-
-2. **REU→SuperRAM transfer verification** — peek SuperRAM at
-   the music-number data location vs REU contents. Known
-   precedent: $00:$6C00 `$AB,$AB,$AB,$00` transfer corruption
-
-3. **HW-vs-VICE I/O divergence** — what does Doom read from
-   $D0xx / $DCxx / $DDxx that differs between VICE and our
-   hardware path?
+After port: v299's stub LDA $00DF00 should actually clear REU
+status[7:5] and break the IRQ-refire chain. Doom should then
+progress past $2B:$2292 to actual music-number error printing
+(in text mode on screen, visible to user).
 
 ## Files for next session
 
-- `C64_MiSTer/rtl/fpga64_sid_iec.vhd:1648-1651` — v299 stub bytes
-- `tools/doom_v298_transition_zoom.py` — the diagnostic that
-  caught the SP-leak wedge (template for future high-resolution
-  capture)
-- `tools/doom_full/shot_v299_after_test.png` — music-number halt
-  screen
-- `project_doom_v293_85a1_chain_decoded.md` — error chain
-  disassembly
-- `project_doom_vice_oracle_runs_doom.md` — VICE oracle reference
+- `c64.sv:661` — `cpu_cs(IOF)` to be replaced with falling-edge
+  pulse
+- `project_reu_iof_falling_edge_fix.md` — master fix description
+- `project_doom_v299_correction.md` — corrected v299 understanding
+- `tools/doom_v298_transition_zoom.py` — diagnostic that
+  reproducibly catches the wedge
+- `tools/doom_full/v298_transition_zoom.txt` — current capture
+  (1339 frames, wedge at idx 248)
 
 ## Build state
 
 - Branch `vanilla-cpu-swap`, tip commit `18068b8`
+- RBF md5 `94b6c3c0d4f8d1585e7a1b269073b965`
 - ALM 64%, RAM 73%, build 11:40
+- 2 commits land this session: v299 stub revert (18068b8) and
+  diagnostic captures (f1cac09)
