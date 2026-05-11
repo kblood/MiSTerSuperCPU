@@ -1086,6 +1086,35 @@ signal scpu_regs_enabled : std_logic := '1';                            -- $D07E
 signal scpu_hwenable     : std_logic := '0';                            -- ANY write to $D07E sets; $D07F/$D07D clears
 signal scpu_bootmap      : std_logic := '1';                            -- '1' at reset (EPROM at $8000-$FFFF)
 signal scpu_optim_mode   : unsigned(1 downto 0) := "11";                -- $D074-$D077 select; "11" = no optimization
+-- Phase 5 (WriteSmart + write buffer drain) — architectural gap analysis.
+--
+-- Real CMD SuperCPU has 128KB on-board SRAM + 1-byte write buffer that
+-- captures CPU writes at 20MHz then drains to the 1MHz motherboard bus
+-- in the background; the optimization-mode register ($D074..$D077) gates
+-- whether the slow drain copy happens at all (mode 0 = always mirror;
+-- mode 3 = SRAM-only writes, motherboard stays stale).
+--
+-- vanilla-cpu-swap structurally cannot duplicate this because we have
+-- NO separate motherboard-mirror to skip. Writes already go directly
+-- to their final destination:
+--   bank $00 RAM   → c64_ram64k BRAM (1-cycle clk32, full SCPU speed)
+--   bank $01-$FF   → SDRAM (3-stage pipeline, completes within CPUC slot)
+--   I/O ($Dxxx)    → CIA/SID/VIC at 1MHz via CYCLE_CPUC arbitration
+--                    (which itself stretches the I/O cycle 3-5 clk32 ≈
+--                    the same window a 1-byte write buffer would queue
+--                    a 1MHz write into before the CPU runs free again)
+--
+-- So our existing CPUC-only arbitration IS the write buffer functionally.
+-- optim_mode register stays software-visible (so JiffyDOS / SuperCPU
+-- software that polls $D0B4 sees consistent behaviour) but doesn't
+-- gate any internal path because there's no slow-mirror path to gate.
+--
+-- Implementing a true WriteSmart with separate motherboard-mirror SRAM
+-- (the "Real HW: 128KB SRAM" entry in CLAUDE.md) would require ~32KB
+-- additional M10K (we're at 73%) + a write-arbitration FSM. 4 prior
+-- master-branch attempts black-screened on first boot. Not attempted
+-- here without an off-device cocotb write-path harness that does not
+-- currently exist.
 signal scpu_irq_tramp_installed : std_logic := '0';                     -- '1' once software has written to $00:$FCEE-$FCF1 (user IRQ handler installed); '0' = use default JML stub
 -- Phase 6 — DOS extension mode ($D0BC R/W + $D0BE / $D0BF).
 -- Per VICE scpu64mem.c, $D0BC stores a flag byte that JiffyDOS-style
