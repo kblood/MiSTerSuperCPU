@@ -1087,6 +1087,14 @@ signal scpu_hwenable     : std_logic := '0';                            -- ANY w
 signal scpu_bootmap      : std_logic := '1';                            -- '1' at reset (EPROM at $8000-$FFFF)
 signal scpu_optim_mode   : unsigned(1 downto 0) := "11";                -- $D074-$D077 select; "11" = no optimization
 signal scpu_irq_tramp_installed : std_logic := '0';                     -- '1' once software has written to $00:$FCEE-$FCF1 (user IRQ handler installed); '0' = use default JML stub
+-- Phase 6 — DOS extension mode ($D0BC R/W + $D0BE / $D0BF).
+-- Per VICE scpu64mem.c, $D0BC stores a flag byte that JiffyDOS-style
+-- fast loaders and SuperCPU file extensions read to detect SCPU
+-- presence + DOS-extension availability. $D0BE writes set the mode
+-- (typical $80 = enabled), $D0BF writes clear it. Most software
+-- ignores this — included for full VICE/CMD spec coverage so any
+-- title that polls it sees consistent behaviour.
+signal scpu_dos_ext_mode : unsigned(7 downto 0) := x"00";
 
 -- Phase 3 — writable native vectors at $00:$FFE4..$FFEF (12 bytes).
 -- EPROM kickstart writes real handler addresses here during cold boot;
@@ -1476,7 +1484,7 @@ iof_fall_pulse_o <= iof_fall_pulse_r;
 -- All clauses gate on supercpu_en='1' AND addr_hi_816=$00 so they never
 -- intercept reads in 6510 mode or in non-zero banks.
 -- ----------------------------------------------------------------------
-cpuDi <= ("00000" & scpu_optim_mode & '1')
+cpuDi <= scpu_dos_ext_mode
             when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC" and scpu_regs_enabled = '1') else
          x"40"
             when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B0" and scpu_regs_enabled = '1') else
@@ -1755,6 +1763,7 @@ begin
 			scpu_irq_tramp_installed <= '0';
 			scpu_nmi_vec_lo   <= x"00";
 			scpu_nmi_vec_hi   <= x"FF";
+			scpu_dos_ext_mode <= x"00";  -- Phase 6: DOS extension disabled at reset
 			-- Phase 3 — native vector defaults: all → $00:$FF00 (RTI sink).
 			-- Matches the prior hardcoded intercept pattern exactly so
 			-- cold-boot behaviour before EPROM kickstart is unchanged.
@@ -1801,6 +1810,21 @@ begin
 					scpu_bootmap <= '0';
 				elsif cpuAddr = x"D0B7" then
 					scpu_bootmap <= '1';
+				end if;
+			end if;
+			-- Phase 6 — DOS extension mode. Per VICE scpu64mem.c, $D0BE
+			-- and $D0BF only fire when hwenable=1 (same gate as bootmap).
+			-- $D0BC accepts direct writes (so software can set arbitrary
+			-- mode values); $D0BE sets bit7 (the "enabled" sentinel),
+			-- $D0BF clears the register. Real CMD HW uses bit7 alone;
+			-- we pass all 8 bits through for forward-compat.
+			if scpu_hwenable = '1' then
+				if cpuAddr = x"D0BC" then
+					scpu_dos_ext_mode <= cpuDo;
+				elsif cpuAddr = x"D0BE" then
+					scpu_dos_ext_mode <= cpuDo or x"80";
+				elsif cpuAddr = x"D0BF" then
+					scpu_dos_ext_mode <= x"00";
 				end if;
 			end if;
 			-- IRQ JML trampoline install latch.
