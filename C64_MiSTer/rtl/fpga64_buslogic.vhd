@@ -90,7 +90,18 @@ entity fpga64_buslogic is
 		supercpu_rom     : in std_logic := '0';                          -- '1' = SuperCPU kickstart ROM compiled in (always 1 on this branch)
 		supercpu_rom_vis : in std_logic := '0';                          -- '1' = SuperCPU ROM at $E000-$FFFF; '0' = C64 KERNAL
 		supercpu_bank    : in std_logic_vector(7 downto 0) := x"00";     -- 65C816 bank byte (A23-A16)
-		scpu_native_mode : in std_logic := '0'                           -- '1' = P65C816 in native mode (E=0); enables bank-$00 ROM-shadow for SCPU CPU reads
+		scpu_native_mode : in std_logic := '0';                          -- '1' = P65C816 in native mode (E=0); enables bank-$00 ROM-shadow for SCPU CPU reads
+		-- Phase 3 — bootmap intercept. When '1' the EPROM image is overlaid
+		-- onto bank $00:$E000-$FFFF (CPU reads from scpuRomData[cpuAddr]
+		-- instead of C64 KERNAL). The CPU reads the EPROM RESET vector at
+		-- $00:$FFFC, jumps to $00:$FC90 which contains JML $F8:$00FC inside
+		-- the EPROM image, enters bank $F8 (already EPROM via scpu_rom_en),
+		-- and the kickstart routine at $F8:$80C1 installs real CMD handlers
+		-- at $00:$801A-$8054 before writing $D0B6 to clear bootmap. Once
+		-- bootmap clears, C64 KERNAL becomes visible again and BASIC boots
+		-- normally — but native IRQ vectors at $00:$FFE4..$FFEF now point
+		-- to the real RAM handlers, not our synthesized stubs.
+		scpu_bootmap     : in std_logic := '0'                           -- '1' = EPROM overlay at bank $00:$E000-$FFFF
 	);
 end fpga64_buslogic;
 
@@ -232,6 +243,7 @@ begin
 			  cs_ioELoc, cs_ioFLoc,
 			  io_rom, io_ext, io_data,
 			  supercpu_en, supercpu_bank, scpu_native_mode,
+			  scpu_bootmap, cpuAddr,
 			  scpuRomData)
 	begin
 		dataToCpu <= lastVicData;
@@ -270,7 +282,28 @@ begin
 		-- recompiler-emitted code reaches there), and kickstart code. Other
 		-- banks $F6, $F7, $F9-$FF keep the $6B-RTL stub since real EPROM
 		-- only lives at $F8 (per master's mapping).
-		if supercpu_en = '1' and scpu_native_mode = '1' and supercpu_bank = x"F8" then
+		-- Phase 3 — bootmap intercept at bank $00:$E000-$FFFF.
+		-- When scpu_bootmap='1' (cold-boot default), overlay the EPROM
+		-- image onto bank-$00 KERNAL space. EPROM RESET vector at
+		-- $00:$FFFC returns $90/$FC; CPU jumps to $00:$FC90 (still
+		-- under bootmap, so still EPROM) → JML $F8:$00FC → bank $F8 →
+		-- kickstart copies handlers to RAM and clears bootmap.
+		--
+		-- Gated on emu mode OR native mode — bootmap intercept fires in
+		-- both, since the EPROM image itself uses emu mode at reset and
+		-- switches to native via CLC/XCE during kickstart.
+		--
+		-- Once kickstart clears bootmap (via $D0B6 or $D07E bit7=0),
+		-- this clause stops firing and KERNAL is visible again.
+		--
+		-- Address window: $E000-$FFFF (high 3 bits = "111"). The
+		-- scpuRomData mux is already indexed by cpuAddr globally, so it
+		-- presents EPROM[$E000..$FFFF] when cpuAddr matches.
+		if supercpu_en = '1' and scpu_bootmap = '1'
+		   and supercpu_bank = x"00"
+		   and cpuAddr(15 downto 13) = "111" then
+			dataToCpu <= unsigned(scpuRomData);
+		elsif supercpu_en = '1' and scpu_native_mode = '1' and supercpu_bank = x"F8" then
 			dataToCpu <= unsigned(scpuRomData);
 		elsif supercpu_en = '1' and scpu_native_mode = '1' and unsigned(supercpu_bank) >= x"F6" then
 			dataToCpu <= x"6B";

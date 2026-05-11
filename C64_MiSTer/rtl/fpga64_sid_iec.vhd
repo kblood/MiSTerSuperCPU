@@ -1087,6 +1087,28 @@ signal scpu_hwenable     : std_logic := '0';                            -- ANY w
 signal scpu_bootmap      : std_logic := '1';                            -- '1' at reset (EPROM at $8000-$FFFF)
 signal scpu_optim_mode   : unsigned(1 downto 0) := "11";                -- $D074-$D077 select; "11" = no optimization
 signal scpu_irq_tramp_installed : std_logic := '0';                     -- '1' once software has written to $00:$FCEE-$FCF1 (user IRQ handler installed); '0' = use default JML stub
+
+-- Phase 3 — writable native vectors at $00:$FFE4..$FFEF (12 bytes).
+-- EPROM kickstart writes real handler addresses here during cold boot;
+-- the bootmap intercept (in fpga64_buslogic.vhd) gives the kickstart
+-- a way to run from EPROM, and these writable vectors let it install
+-- the real CMD handler entry points so native BRK/COP/ABORT/NMI/IRQ
+-- traps land in the kernel kickstart copied to $00:$801A-$8054.
+-- Reset defaults point at $00:$FF00 (existing RTI sink) — matches
+-- the prior hardcoded intercept exactly, so cold-boot behaviour
+-- before EPROM runs is unchanged.
+-- Index: 0..1 = $FFE4..$FFE5 (COP), 2..3 = $FFE6..$FFE7 (BRK),
+--        4..5 = $FFE8..$FFE9 (ABORT), 6..7 = $FFEA..$FFEB (NMI),
+--        8..9 = $FFEC..$FFED (unused), 10..11 = $FFEE..$FFEF (IRQ).
+type native_vec_array is array(0 to 11) of unsigned(7 downto 0);
+signal scpu_native_vec : native_vec_array := (
+    0 => x"00", 1 => x"FF",   -- COP   → $00:$FF00
+    2 => x"00", 3 => x"FF",   -- BRK   → $00:$FF00
+    4 => x"00", 5 => x"FF",   -- ABORT → $00:$FF00
+    6 => x"00", 7 => x"FF",   -- NMI   → $00:$FF00
+    8 => x"00", 9 => x"FF",   -- unused
+    10 => x"00", 11 => x"FF"  -- IRQ   → $00:$FF00
+);
 -- v2 of NMI install path (2026-05-09): hold a 16-bit register that
 -- shadows whatever software wrote to $XX:$FFEA/$FFEB (XX=$00 or $FF —
 -- per AmiDog recomp's `.databank $ff` hint, the runtime may write the
@@ -1383,7 +1405,9 @@ port map (
 	supercpu_rom     => '1',  -- always present on this branch (no compile-time strip)
 	supercpu_rom_vis => scpu_rom_vis,
 	supercpu_bank    => std_logic_vector(addr_hi_816),
-	scpu_native_mode => not emu_mode_816_i
+	scpu_native_mode => not emu_mode_816_i,
+	-- Phase 3: bootmap intercept at bank $00:$E000-$FFFF
+	scpu_bootmap     => scpu_bootmap
 );
 
 IOE <= ioe_i;
@@ -1526,46 +1550,40 @@ cpuDi <= ("00000" & scpu_optim_mode & '1')
          -- (Earlier scpu_hwenable gate was wrong — Doom's prologue does
          -- STA $D07F right after STA $D07E, clearing hwenable, so the
          -- override never fired during Doom's BRK.)
-         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFE4") else  -- COP  L → $00:$FF00
-         x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFE5") else  -- COP  H
-         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFE6") else  -- BRK  L → $00:$FF00
-         x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFE7") else  -- BRK  H
-         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFE8") else  -- ABORT L → $00:$FF00
-         x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         -- Phase 3 — native vectors $FFE4..$FFEF served from writable
+         -- scpu_native_vec array. Reset defaults match the old hardcoded
+         -- pattern (all vectors → $00:$FF00). The EPROM kickstart writes
+         -- real handler addresses here during cold boot, replacing the
+         -- defaults with pointers into the RAM kernel at $00:$801A-$8054.
+         -- After EPROM runs, native BRK/COP/ABORT/NMI/IRQ dispatch goes
+         -- to the real CMD handlers instead of our synthesized ack stub.
+         -- scpu_nmi_vec_lo/hi (legacy NMI capture from $FFEA/EB) is
+         -- superseded by scpu_native_vec(6/7) — kept in the write logic
+         -- for backwards compat but no longer read here.
+         scpu_native_vec(0)  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFE4") else  -- COP   L
+         scpu_native_vec(1)  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFE5") else  -- COP   H
+         scpu_native_vec(2)  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFE6") else  -- BRK   L
+         scpu_native_vec(3)  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFE7") else  -- BRK   H
+         scpu_native_vec(4)  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFE8") else  -- ABORT L
+         scpu_native_vec(5)  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
                      and cpuAddr = x"FFE9") else  -- ABORT H
-         -- NMI vector at $00:$FFEA/$FFEB — register-backed (v2). AmiDog
-         -- recompiler runtime (`hello/native.s` _tick_install lines 90-93)
-         -- writes _tick_irq address directly to $FFEA/$FFEB. CIA2 timer A
-         -- IRQ routes to NMI on the C64 → without honoring the user
-         -- handler, _tick_count never advances and Doom's wait-for-tick
-         -- loop hangs (see project_bank_fx_narrow_unblocks_doom_dispatcher).
-         --
-         -- v1 (boolean latch gated on addr_hi_816=$00) didn't help.
-         -- Hypothesis: native.s's `.databank $ff` hint causes Doom to
-         -- write the vector via DBR=$FF — i.e. STA $FFEA targets
-         -- $FF:$FFEA rather than $00:$FFEA. v2 captures writes from
-         -- EITHER bank $00 or $FF (see latch logic below) and ALWAYS
-         -- returns the register value here, no gate. Defaults are
-         -- $00/$FF (= ack stub at $00:$FF00) so cold-boot NMI is safe.
-         unsigned(scpu_nmi_vec_lo) when (supercpu_en = '1' and emu_mode_816_i = '0'
-                     and addr_hi_816 = x"00" and cpuAddr = x"FFEA") else  -- NMI L
-         unsigned(scpu_nmi_vec_hi) when (supercpu_en = '1' and emu_mode_816_i = '0'
-                     and addr_hi_816 = x"00" and cpuAddr = x"FFEB") else  -- NMI H
-         -- IRQ vector now points at $00:$FCEE (user-rewritable JML
-         -- trampoline) instead of straight to $00:$FF00. Real CMD
-         -- SuperCPU dispatches all native vectors through $00:$FCxx
-         -- JML trampolines so software can install custom handlers
-         -- (music tick, raster effect, input scanner). See $FCEE-$FCF1
-         -- intercept + scpu_irq_tramp_installed latch below.
-         x"EE" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFEE") else  -- IRQ  L → $00:$FCEE
-         x"FC" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFEF") else  -- IRQ  H
+         scpu_native_vec(6)  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEA") else  -- NMI   L
+         scpu_native_vec(7)  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEB") else  -- NMI   H
+         scpu_native_vec(8)  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEC") else  -- unused L
+         scpu_native_vec(9)  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFED") else  -- unused H
+         scpu_native_vec(10) when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEE") else  -- IRQ   L
+         scpu_native_vec(11) when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEF") else  -- IRQ   H
          -- ----------------------------------------------------------------
          -- IRQ JML trampoline at $00:$FCEE..$FCF1 (4 bytes, RAM-backed).
          --
@@ -1737,6 +1755,15 @@ begin
 			scpu_irq_tramp_installed <= '0';
 			scpu_nmi_vec_lo   <= x"00";
 			scpu_nmi_vec_hi   <= x"FF";
+			-- Phase 3 — native vector defaults: all → $00:$FF00 (RTI sink).
+			-- Matches the prior hardcoded intercept pattern exactly so
+			-- cold-boot behaviour before EPROM kickstart is unchanged.
+			scpu_native_vec(0)  <= x"00"; scpu_native_vec(1)  <= x"FF";  -- COP
+			scpu_native_vec(2)  <= x"00"; scpu_native_vec(3)  <= x"FF";  -- BRK
+			scpu_native_vec(4)  <= x"00"; scpu_native_vec(5)  <= x"FF";  -- ABORT
+			scpu_native_vec(6)  <= x"00"; scpu_native_vec(7)  <= x"FF";  -- NMI
+			scpu_native_vec(8)  <= x"00"; scpu_native_vec(9)  <= x"FF";  -- unused
+			scpu_native_vec(10) <= x"00"; scpu_native_vec(11) <= x"FF";  -- IRQ
 		elsif supercpu_en = '1' and cpuWe = '1' and addr_hi_816 = x"00" then
 			-- $D072/$D073: system 1MHz (works even with regs disabled)
 			if cpuAddr = x"D072" then
@@ -1797,6 +1824,29 @@ begin
 				scpu_nmi_vec_lo <= std_logic_vector(cpuDo);
 			elsif cpuAddr = x"FFEB" then
 				scpu_nmi_vec_hi <= std_logic_vector(cpuDo);
+			end if;
+			-- Phase 3 — writable native vectors. EPROM kickstart writes
+			-- handler addresses to $00:$FFE4..$FFEF during cold boot;
+			-- after install, native traps land in real CMD handlers
+			-- instead of our synthesized $FF00 RTI sink.
+			-- Native mode gate (emu_mode_816_i='0') because the EPROM
+			-- enters native via CLC/XCE before installing vectors.
+			if emu_mode_816_i = '0' and cpuAddr(15 downto 8) = x"FF" then
+				case cpuAddr(7 downto 0) is
+					when x"E4" => scpu_native_vec(0)  <= cpuDo;
+					when x"E5" => scpu_native_vec(1)  <= cpuDo;
+					when x"E6" => scpu_native_vec(2)  <= cpuDo;
+					when x"E7" => scpu_native_vec(3)  <= cpuDo;
+					when x"E8" => scpu_native_vec(4)  <= cpuDo;
+					when x"E9" => scpu_native_vec(5)  <= cpuDo;
+					when x"EA" => scpu_native_vec(6)  <= cpuDo;
+					when x"EB" => scpu_native_vec(7)  <= cpuDo;
+					when x"EC" => scpu_native_vec(8)  <= cpuDo;
+					when x"ED" => scpu_native_vec(9)  <= cpuDo;
+					when x"EE" => scpu_native_vec(10) <= cpuDo;
+					when x"EF" => scpu_native_vec(11) <= cpuDo;
+					when others => null;
+				end case;
 			end if;
 		end if;
 		-- NMI vector capture (bank $FF path) — parallel to the bank-$00
