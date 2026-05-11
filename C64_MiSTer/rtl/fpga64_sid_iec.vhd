@@ -1579,24 +1579,27 @@ cpuDi <= ("00000" & scpu_optim_mode & '1')
          --   $FF08  8F 19 D0 00   STA $00D019        ; ack (write 1s back)
          --   $FF0C  AF 0D DC 00   LDA $00DC0D        ; ack CIA1 (read clears)
          --   $FF10  AF 0D DD 00   LDA $00DD0D        ; ack CIA2 (read clears)
-         --   $FF14  AF 0E DC 00   LDA $00DC0E        ; v297 probe — swapped from
-         --                                          ; LDA $00DF00 (REU status) to
-         --                                          ; LDA $00DC0E (CIA1 timer A
-         --                                          ; control reg, benign read).
-         --                                          ; Tests whether v296's fix
-         --                                          ; was specifically the REU
-         --                                          ; IRQ ack OR just the extra
-         --                                          ; 5 cycles of stub time
-         --                                          ; (timing hypothesis). If
-         --                                          ; Doom still unwedges with
-         --                                          ; $DC0E, the mechanism is
-         --                                          ; not REU-specific. Note:
-         --                                          ; static disasm of VICE's
-         --                                          ; SCPU64 EPROM shows ZERO
-         --                                          ; references to $DF00 in
-         --                                          ; the entire 64KB ROM, so
-         --                                          ; real CMD SuperCPU does
-         --                                          ; not auto-clear REU IRQ.
+         --   $FF14  AF 00 DF 00   LDA $00DF00        ; v299 — REVERTED to v296
+         --                                          ; REU-ack form. Empirical
+         --                                          ; finding 2026-05-11: v297
+         --                                          ; conclusion "timing only"
+         --                                          ; was incomplete. v297/v298
+         --                                          ; unstuck the FIRST wedge
+         --                                          ; (the BRK loop at $41:$DB93
+         --                                          ; — that fix WAS timing) but
+         --                                          ; Doom then hits a SECOND
+         --                                          ; wedge at $2B:$2292 where
+         --                                          ; the recompiler arms a REU
+         --                                          ; FETCH whose completion-IRQ
+         --                                          ; refires forever because
+         --                                          ; the stub didn't read
+         --                                          ; $DF00. doom_v298_transition
+         --                                          ; _zoom.py captured SP
+         --                                          ; leaking $16/vblank then
+         --                                          ; wrapping into bank $0F via
+         --                                          ; corrupted RTI. Reverting
+         --                                          ; restores REU ack so the
+         --                                          ; second wedge clears.
          --   $FF18  68            PLA                ; restore A
          --   $FF19  28            PLP                ; restore P
          --   $FF1A  40            RTI
@@ -1645,10 +1648,10 @@ cpuDi <= ("00000" & scpu_optim_mode & '1')
                      and cpuAddr = x"FF13") else  -- bank = $00
          x"AF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF14") else  -- LDA long
-         x"0E" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF15") else  -- L (CIA1 TIMER A LO — v297 probe)
-         x"DC" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF16") else  -- M (CIA1 base)
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF15") else  -- L (REU $DF00 — v299 revert)
+         x"DF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF16") else  -- M (REU base)
          x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF17") else  -- bank = $00
          x"68" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
