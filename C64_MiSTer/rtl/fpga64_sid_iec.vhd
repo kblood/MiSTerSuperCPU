@@ -2230,6 +2230,14 @@ end process;
 -- arbitration. This branch has no such fast paths — the simpler scheme
 -- above means I/O is always stretched. No additional Phase 2 RTL is
 -- required. Verified absent: bram_hit_d1, cache_hit_d1, phantom_enable.
+--
+-- Phase 8 (1MHz badline emulation in turbo): already implemented via
+-- the rdy=>baLoc wiring on both CPU instances below. VIC drops baLoc
+-- during badline raster fetches (40 cycles/line, every 8th line); the
+-- P65C816 RDY input then stalls the CPU mid-cycle (subject to the
+-- rdy_gated-by-write fix from cf49066). Software running in turbo SEES
+-- the badline stall, matching real CMD SuperCPU "1MHz badline" mode.
+-- No additional Phase 8 RTL is required.
 enableCpu_6510 <= enableCpu and not dma_active and not supercpu_en;
 enableCpu_816  <= enableCpu and not dma_active and supercpu_en;
 
