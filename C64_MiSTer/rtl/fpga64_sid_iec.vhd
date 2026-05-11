@@ -3049,10 +3049,23 @@ begin
 					wr03_pc_r  <= cpu_pc_now;
 					wr03_val_r <= std_logic_vector(cpuDo_pre);
 				end if;
-				-- v262: ring of values written to $005C (DL IRQ counter).
-				-- Writers are STX $5C at $8166 (decremented X) and STA $5C
-				-- at $3343 (setup-time reset). Newest = v3.
-				if cpuAddr_pre = x"005C" then
+				-- v303 (2026-05-12) Doom JIT-scratchpad probe — REPURPOSED
+				-- from v262 $005C ring. VICE xscpu64 oracle (snapshot run
+				-- 2026-05-10) proves $00:$0700-$07FF is the recompiler's
+				-- JIT scratchpad in bank $2B (continuously overwritten
+				-- with new SCPU code). Hardware reads $00 at $0706 when
+				-- the wedge sets in — either recompiler emits $00 there
+				-- or our SCPU long-store path from bank $2B → bank $00
+				-- drops bytes. This capture answers:
+				--   N5 = total writes to $00:$0706 (if 0 on hardware:
+				--     recompiler never targets that addr — different
+				--     codegen than VICE; if >0: writes happen, but…)
+				--   W5 ring = last 4 byte values written there (if all
+				--     $00: writes are $00, recompiler-emitted; if non-
+				--     zero values but readback is $00: HW path drops).
+				-- Bank-gated so SuperRAM writes at other-bank:$0706 do
+				-- not pollute the count.
+				if addr_hi_816 = x"00" and cpuAddr_pre = x"0706" then
 					wr5C_v0_r  <= wr5C_v1_r;
 					wr5C_v1_r  <= wr5C_v2_r;
 					wr5C_v2_r  <= wr5C_v3_r;
