@@ -92,6 +92,17 @@ port(
 	UMAXromH 	: out std_logic;
 	IOE			: out std_logic;
 	IOF			: out std_logic;
+	-- IOF falling-edge fix (Phase 1 of scpu_full_implementation_plan):
+	-- Latched cpu_we/addr/dout captured during the $DFxx access window,
+	-- plus a 1-cycle pulse fired at the end of the access. reu.v drives
+	-- its cpu_cs/cpu_we/cpu_addr/cpu_dout from these so turbo-mode
+	-- single-cycle accesses are visible to the 1MHz REU device. Without
+	-- this, raw IOF rises too late for cpuWe_pre to settle and REU
+	-- misclassifies turbo writes as reads.
+	iof_we_o    : out std_logic;
+	iof_addr_o  : out unsigned(15 downto 0);
+	iof_dout_o  : out unsigned(7 downto 0);
+	iof_fall_pulse_o : out std_logic;
 	freeze_key  : out std_logic;
 	mod_key     : out std_logic;
 	tape_play   : out std_logic;
@@ -683,6 +694,14 @@ signal cpuDi        : unsigned(7 downto 0);
 signal cpuDo        : unsigned(7 downto 0);
 signal cpuDo_pre    : unsigned(7 downto 0);
 signal cpuIO        : unsigned(7 downto 0);
+
+-- IOF falling-edge fix (Phase 1) — see entity comment above.
+signal iof_detect       : std_logic;  -- combinational IOF detect from cpuAddr_pre
+signal iof_detect_d2    : std_logic := '0';  -- 1-cycle delayed detect
+signal iof_fall_pulse_r : std_logic := '0';  -- 1-cycle pulse at end of $DFxx access
+signal iof_we_r         : std_logic := '0';
+signal iof_addr_r       : unsigned(15 downto 0) := (others => '0');
+signal iof_dout_r       : unsigned(7 downto 0)  := (others => '0');
 
 -- Per-CPU outputs for the dual-CPU mux (Phase A).
 -- Both CPUs are instantiated; only one gets enable pulses based on
@@ -1370,6 +1389,42 @@ port map (
 IOE <= ioe_i;
 IOF <= iof_i;
 cs_io <= cs_vic or cs_sid or cs_color or cs_cia1 or cs_cia2 or ioe_i or iof_i;
+
+-- ----------------------------------------------------------------------
+-- Phase 1: IOF falling-edge pulse + latched cpu inputs for reu.v.
+-- Ported from master fpga64_sid_iec.vhd:903-937.
+--
+-- Why: vanilla-cpu-swap's c64.sv wires reu.v's cpu_cs directly to raw
+-- IOF. In turbo/SCPU mode, the CPU's STA $DFxx write cycle is only
+-- ~1 clk32 long — by the time IOF rises, cpuWe_pre has already
+-- dropped, causing REU to misclassify the write as a read. Same
+-- problem for reads: the access ends before REU's edge detector
+-- registers it.
+--
+-- Fix: capture cpuWe_pre / cpuAddr_pre / cpuDo_pre into latches while
+-- iof_detect is asserted, then fire iof_fall_pulse_r as a 1-cycle pulse
+-- at the cycle iof_detect drops. By that cycle the latches hold the
+-- LAST observed values during the access. reu.v sees a clean rising
+-- edge on cpu_cs with cpu_we settled to 1 for writes / 0 for reads.
+iof_detect <= '1' when cpuAddr_pre(15 downto 8) = x"DF" and addr_hi_816 = x"00" else '0';
+
+process(clk32)
+begin
+    if rising_edge(clk32) then
+        iof_detect_d2    <= iof_detect;
+        iof_fall_pulse_r <= iof_detect_d2 and not iof_detect;  -- 1-cycle pulse at end of access
+        if iof_detect = '1' then
+            iof_we_r   <= cpuWe_pre;
+            iof_addr_r <= cpuAddr_pre;
+            iof_dout_r <= cpuDo_pre;
+        end if;
+    end if;
+end process;
+
+iof_we_o         <= iof_we_r;
+iof_addr_o       <= iof_addr_r;
+iof_dout_o       <= iof_dout_r;
+iof_fall_pulse_o <= iof_fall_pulse_r;
 
 -- ----------------------------------------------------------------------
 -- Phase B — SuperCPU register read mux. Lifted from master, simplified

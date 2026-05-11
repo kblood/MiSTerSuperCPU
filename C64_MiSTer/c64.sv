@@ -654,11 +654,17 @@ reu reu
 	.ram_din(sdram_data),
 	.ram_we(reu_ram_we),
 
-	.cpu_addr(c64_addr),
-	.cpu_dout(c64_data_out),
+	// Phase 1: iof_fall_pulse is a 1-cycle pulse at the end of a $DFxx
+	// access. By that cycle iof_*_latched hold the LAST observed values
+	// during the access window (for writes cpuWe=1 was captured, for
+	// reads cpuWe=0). reu.v's internal edge detector sees a clean
+	// rising edge on cpu_cs with cpu_we settled — no turbo-mode
+	// write→read misclassification.
+	.cpu_addr(iof_addr_latched),
+	.cpu_dout(iof_dout_latched),
 	.cpu_din(reu_dout),
-	.cpu_we(ram_we),
-	.cpu_cs(IOF),
+	.cpu_we(iof_we_latched),
+	.cpu_cs(iof_fall_pulse),
 
 	.reg_cmd      (reu_dbg_cmd),
 	.reg_addr_c64 (reu_dbg_addr_c64),
@@ -1055,6 +1061,12 @@ wire        mod_key;
 
 wire        IOE;
 wire        IOF;
+// Phase 1: IOF falling-edge pulse + latched cpu inputs for reu.v.
+// See fpga64_sid_iec.vhd for rationale.
+wire        iof_we_latched;
+wire [15:0] iof_addr_latched;
+wire  [7:0] iof_dout_latched;
+wire        iof_fall_pulse;
 wire        romL;
 wire        romH;
 wire        UMAXromH;
@@ -1752,6 +1764,10 @@ fpga64_sid_iec fpga64
 	.romh(romH),
 	.ioe(IOE),
 	.iof(IOF),
+	.iof_we_o(iof_we_latched),
+	.iof_addr_o(iof_addr_latched),
+	.iof_dout_o(iof_dout_latched),
+	.iof_fall_pulse_o(iof_fall_pulse),
 	.io_rom(io_rom),
 	.io_ext(cart_oe | reu_oe | opl_en),
 	.io_data(cart_oe ? cart_data : reu_oe ? reu_dout : opl_dout),
