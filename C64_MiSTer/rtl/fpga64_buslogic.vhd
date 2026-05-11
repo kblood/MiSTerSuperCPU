@@ -319,6 +319,19 @@ begin
 		-- from real CMD which has writable SRAM but with KERNAL pre-loaded).
 		-- Native mode only (scpu_native_mode='1') because emu mode never
 		-- emits bank-$01 reads (no DBR effect, no long addressing).
+		--
+		-- Phase 4 audit (plan: full bank-$01 64KB writable SRAM shadow):
+		-- - $0000-$9FFF on this branch → bank $01 SDRAM (writable RAM) ✓
+		--   matches CMD bank-$01 SRAM RAM regions.
+		-- - $A000-$BFFF BASIC, $D000-$DFFF CHARGEN, $E000-$FFFF KERNAL
+		--   already ROM-shadowed below ✓ matches CMD pre-loaded SRAM
+		--   reads exactly.
+		-- - Real-CMD divergence: software that WRITES KERNAL/BASIC bytes
+		--   to $01:$Exxx then READS them back expecting patched values
+		--   would see the shadow ROM instead. No known title does this;
+		--   not implementing writable+preload because it would require a
+		--   reset-time DMA from BRAM → SDRAM (~5 ms boot delay, fragile
+		--   sequencing). Leave as read-only ROM shadow.
 		elsif supercpu_en = '1' and scpu_native_mode = '1' and supercpu_bank = x"01"
 		                    and (cs_romLoc = '1' or cs_CharLoc = '1') then
 			if cs_CharLoc = '1' then
