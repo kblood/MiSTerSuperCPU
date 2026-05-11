@@ -1469,6 +1469,16 @@ iof_fall_pulse_o <= iof_fall_pulse_r;
 --   $D078       = SIMM/DMA status. Real HW returns bit7=busy (0 in steady
 --                 state). We return $00 — polling demos like SCPU KICKS!
 --                 hang on BPL otherwise.
+--                 Phase 7 note: master repurposes $D078 as a cache-flush
+--                 write port; vanilla-cpu-swap has no cache infrastructure
+--                 so $D078 is already CMD-spec-compliant (read-only $00,
+--                 writes no-op via fallthrough). No move-to-$D0BD needed.
+--                 Bootmap-ROM coverage: bank $00:$E000-$FFFF overlay
+--                 (Phase 3) + bank $F8 dprom (v298) match CMD HW; we
+--                 deliberately leave banks $F0-$F7 / $F9-$FF returning
+--                 the $6B-RTL trap stub so Doom's recompiler-emitted
+--                 JSLs into empty banks remain detectable (changing
+--                 these to EPROM mirror could mask the underlying bug).
 --   $D07A/$D07B = software speed triggers (1MHz / turbo)
 --   $D07E       = ROM-vis / hwenable strobe (any write enables regs)
 --   $D07F/$D07D = disable regs / clear hwenable
