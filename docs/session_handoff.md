@@ -67,9 +67,47 @@ proofs in `project_doom_*_match*.md`):
 - VICE oracle for Doom xscpu64 hangs at FLI raster IRQ, can't be used
   as oracle for music_num divergence.
 
+## Integrity test PRG built — deployment blocked
+
+Built two test PRGs (commit `71261e5`):
+
+- `tools/superram_minimal.prg` (53 bytes): minimal SuperRAM round-trip
+  (long-store + long-LDA) with tripwires at `$0400-$0403`.
+- `tools/reu_superram_integrity.prg` (252 bytes): full pipeline —
+  ramp write, REU STASH, REU FETCH, SuperRAM round-trip, mismatch
+  count. Output to screen `$0400-$0405`.
+
+**Deployment friction found this session**:
+1. `mbc load_rom` (used by `python tools/mister_debug.py load_prg`)
+   suppresses debug UART output. After load_rom, UART goes silent
+   even though VIC-II keeps running (single keypress test shows
+   `X` appears on screen).
+2. After `load_rom`, `python tools/mister_debug.py keys 'SYS 2061\r'`
+   does not produce a visible "SYS 2061" command echo on screen
+   across multiple attempts. mtype.py runs without error but the
+   keys don't seem to reach BASIC reliably.
+3. The mbc-corrupts-BASIC-stub note in `CLAUDE.md` is known, but
+   SYS-keypress is the documented workaround — and that's failing
+   too in this session's tests.
+
 ## Next-session priorities
 
-1. **Don't blindly rebuild more probes** — the music_num search has
+1. **Get the integrity test PRG running**. Options:
+   - **Self-displaying loop**: rewrite both PRGs to spin forever
+     at the end, painting the result onto the entire screen RAM
+     ($0400-$07E7) so any screenshot shows the result without
+     needing BASIC to print READY. Avoids `mbc load_rom` race
+     with BASIC.
+   - **MGL autorun**: create an MGL that loads the PRG via
+     `<file>` tag (similar to how doom.reu is loaded). Stock
+     MGL loaders DO process `<file>` tags via the pipe (see
+     CLAUDE.md "Loading .reu files" section).
+   - **Read screen RAM via SSH**: install a small helper on
+     MiSTer that reads `/dev/fb0` or VRAM, OR use the existing
+     `python tools/mister_debug.py screen` and post-process the
+     PNG to identify written byte values (visually).
+
+2. **Don't blindly rebuild more probes** — the music_num search has
    consumed many sessions already with the same dead-end shape. Before
    another wedge-instrumentation pass:
    - Re-read `project_doom_v293_dispatcher_pointer_smoking_gun.md`,
@@ -78,24 +116,18 @@ proofs in `project_doom_*_match*.md`):
      wrong byte from memory at runtime. That implies REU→SuperRAM
      transfer corruption OR a memory-aliasing bug.
 
-2. **Concrete REU→SuperRAM integrity test PRG.** Build a small PRG that:
-   - Programs REU with a known signature (e.g., `$00..$FF` ramp).
-   - Issues FETCH cmd `$91` to copy to SuperRAM bank `$20:$0000`.
-   - CPU reads back from `$20:$0000..$00FF` via long-LDA.
-   - Writes the read-back bytes to screen RAM at `$0400`.
-   - Visual check: any byte not matching the ramp = transfer bug.
-   - This bypasses Doom entirely and tests just the data path.
-
 3. **Stop chasing music_num via UART rings.** The wr02/wr03 ring
    approach has been tried with multiple filters (PBR=$2B, PBR=$2C,
    unfiltered). It hasn't found the producer because the producer is
    probably one of thousands of generic byte stores that look identical
    to every other store. A REU→SuperRAM integrity test is more
-   discriminating.
+   discriminating — assuming we can get it running.
 
 ## Commits this session
 
 ```
+71261e5 debug/doom: REU→SuperRAM integrity test PRG (WIP — deployment friction)
+7f355aa docs/session_handoff: v313 cleared IRQ wedge, back at music_num=-9
 3c4609f verif/doom: v313 — extended ack stub clears IRQ wedge, reaches music_num=-9
 a9b4fda verif/doom: v312 trace — IRQ vector force at $FFEE/F unchanged
 5ab1fab verif/doom: v312 — force IRQ vector reads to $00:$FF00
