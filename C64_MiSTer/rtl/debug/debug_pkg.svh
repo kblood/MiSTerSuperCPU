@@ -579,6 +579,12 @@ typedef struct packed {
   // $00:$6C04..$6C01 — so SP appears to live in $6C0X. Direct readback
   // confirms or refutes the SP-in-$6C0X hypothesis.
   logic [15:0] cpu_sp;
+
+  // v309 doom wedge: native BRK vector lo/hi (scpu_native_vec(2)/(3)).
+  // Reveals whether software installed BRK→$0705, closing the wedge in
+  // one hop.
+  logic  [7:0] brk_vec_lo;
+  logic  [7:0] brk_vec_hi;
 } dbg_pool_t;
 `endif
 

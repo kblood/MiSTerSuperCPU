@@ -110,6 +110,9 @@ module debug_uart_pool_fmt
 	// compatible if needed, but the visible bytes show VR/RR now).
 	reg [15:0] lat_vic_d019_wr;
 	reg [15:0] lat_vic_resetraster;
+	// v309 doom wedge: BRK vector lo/hi — repurposes the AC slot.
+	reg  [7:0] lat_brk_vec_lo;
+	reg  [7:0] lat_brk_vec_hi;
 	// v270: $D019 writer PC + last cpuDo + sticky cpuDo OR.
 	reg [23:0] lat_d019_pc;
 	reg  [7:0] lat_d019_val;
@@ -338,14 +341,18 @@ module debug_uart_pool_fmt
 			8'd152: line_byte = hex_nibble(lat_vic_d019_wr[11:8]);
 			8'd153: line_byte = hex_nibble(lat_vic_d019_wr[7:4]);
 			8'd154: line_byte = hex_nibble(lat_vic_d019_wr[3:0]);
+			// v309: repurpose AC field as VB:#### = BRK vector (lo|hi).
+			// Reads $00:$FFE6/$FFE7 return scpu_native_vec(2)/(3); the
+			// $05_07 expected value pins down whether the wedge is
+			// "BRK→$0705 vector" (Hyp A) vs RTI-via-$FF00-stub.
 			8'd155: line_byte = " ";
-			8'd156: line_byte = "A";
-			8'd157: line_byte = "C";
+			8'd156: line_byte = "V";
+			8'd157: line_byte = "B";
 			8'd158: line_byte = ":";
-			8'd159: line_byte = hex_nibble(lat_vic_resetraster[15:12]);
-			8'd160: line_byte = hex_nibble(lat_vic_resetraster[11:8]);
-			8'd161: line_byte = hex_nibble(lat_vic_resetraster[7:4]);
-			8'd162: line_byte = hex_nibble(lat_vic_resetraster[3:0]);
+			8'd159: line_byte = hex_nibble(lat_brk_vec_lo[7:4]);
+			8'd160: line_byte = hex_nibble(lat_brk_vec_lo[3:0]);
+			8'd161: line_byte = hex_nibble(lat_brk_vec_hi[7:4]);
+			8'd162: line_byte = hex_nibble(lat_brk_vec_hi[3:0]);
 
 			// " W5:## ## ## ##" v262 4-deep ring of writes to $005C
 			8'd163: line_byte = " ";
@@ -507,6 +514,9 @@ module debug_uart_pool_fmt
 				// v269: VIC-internal $D019 ack diagnostic latches
 				lat_vic_d019_wr       <= pool.vic_d019_wr_count;
 				lat_vic_resetraster   <= pool.vic_resetraster_count;
+				// v309: BRK vector lo/hi
+				lat_brk_vec_lo        <= pool.brk_vec_lo;
+				lat_brk_vec_hi        <= pool.brk_vec_hi;
 				// v270: $D019 writer-PC + sticky cpuDo OR latches
 				lat_d019_pc      <= pool.d019_last_pc;
 				lat_d019_val     <= pool.d019_last_val;

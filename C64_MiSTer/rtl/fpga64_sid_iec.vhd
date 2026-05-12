@@ -633,7 +633,15 @@ port(
 	dbg_d019_ack_pc            : out std_logic_vector(23 downto 0);
 	-- v280 doom triage: P65C816 stack pointer (16-bit), live every cycle.
 	-- Confirms whether SP=$6C0X at the BRK loop in Doom.
-	dbg_cpu_sp                 : out std_logic_vector(15 downto 0)
+	dbg_cpu_sp                 : out std_logic_vector(15 downto 0);
+	-- v309 doom wedge: scpu_native_vec(2)/(3) = BRK vector lo/hi as
+	-- installed by software via writes to $00:$FFE6/$FFE7. Wedge at
+	-- $00:$0706 with R7:$0500 implies CPU loops fetching BRK at $0705
+	-- — confirming whether BRK vector itself = $0705 ($05, $07) closes
+	-- the loop in one hop. If vec != $0705 then BRK vectors elsewhere
+	-- and some downstream path returns to $0705.
+	dbg_brk_vec_lo             : out std_logic_vector(7 downto 0);
+	dbg_brk_vec_hi             : out std_logic_vector(7 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -2732,17 +2740,17 @@ begin
 					rd07xx_addr_r <= std_logic_vector(cpuAddr_pre(7 downto 0));
 					rd07xx_data_r <= std_logic_vector(cpuDi);
 					-- v307: per-address READ snapshots surfaced via wr5C ring.
-					-- v308 (2026-05-12): shift window to $0709..$070C to read
-					-- the bytes RIGHT AFTER the v307 result W5:00 05 D0 A9
-					-- ($0705=BRK, $0706=ORA dp, $0707=$D0=operand, $0708=A9=LDA#).
-					-- Need to see $0709..$070C to disassemble the rest of the
-					-- short ~$10-byte JIT block and figure out how the loop
-					-- closes (returns to $0705).
+					-- v309 (2026-05-12): back to $0705..$0708 (the BRK area).
+					-- v308 already captured $0709-$070C = 00 8D 0A DF
+					-- (STA $DF0A — REU register write). Now the focus is
+					-- WHO targets $0705: is it the BRK vector? Companion
+					-- change below surfaces scpu_native_vec(2)/(3) via UART
+					-- to confirm BRK→$0705 vector install.
 					case cpuAddr_pre(7 downto 0) is
-						when x"09" => wr5C_v0_r <= std_logic_vector(cpuDi);
-						when x"0A" => wr5C_v1_r <= std_logic_vector(cpuDi);
-						when x"0B" => wr5C_v2_r <= std_logic_vector(cpuDi);
-						when x"0C" => wr5C_v3_r <= std_logic_vector(cpuDi);
+						when x"05" => wr5C_v0_r <= std_logic_vector(cpuDi);
+						when x"06" => wr5C_v1_r <= std_logic_vector(cpuDi);
+						when x"07" => wr5C_v2_r <= std_logic_vector(cpuDi);
+						when x"08" => wr5C_v3_r <= std_logic_vector(cpuDi);
 						when others => null;
 					end case;
 				end if;
@@ -3796,6 +3804,10 @@ cpu_y_now <= std_logic_vector(dbg_y_816_i(7 downto 0))
 dbg_cpu_sp <= std_logic_vector(dbg_sp_816_i)
               when supercpu_en = '1'
               else x"01" & t65_regs(39 downto 32);
+
+-- v309: surface native BRK vector lo/hi for the Doom wedge probe.
+dbg_brk_vec_lo <= std_logic_vector(scpu_native_vec(2));
+dbg_brk_vec_hi <= std_logic_vector(scpu_native_vec(3));
 
 -- Compose 24-bit "current PC" for $DD00 write capture: PBR:PC for SCPU,
 -- $00:t65_pc_latch (last opcode-fetch address) for T65.
