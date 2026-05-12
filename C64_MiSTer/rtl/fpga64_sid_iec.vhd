@@ -1630,10 +1630,20 @@ cpuDi <= scpu_dos_ext_mode
                      and cpuAddr = x"FFE4") else  -- COP   L
          scpu_native_vec(1)  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
                      and cpuAddr = x"FFE5") else  -- COP   H
-         scpu_native_vec(2)  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFE6") else  -- BRK   L
-         scpu_native_vec(3)  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFE7") else  -- BRK   H
+         -- v311 doom wedge: BRK vector hardcoded to $00:$FF00 regardless
+         -- of whatever software installs at $00:$FFE6/$FFE7. v310 found
+         -- Doom dynamically rewrites the BRK vector to $XX05 inside the
+         -- JIT scratchpad ($0705 then $0B05 …); each $XX05 byte is $00
+         -- (register-spill data, not a handler) which creates an
+         -- infinite BRK→vector→$XX05→BRK self-loop. Forcing the vector
+         -- to $FF00 sends BRK to our ack-stub (PHP/SEP/PHA/4×ack/PLA/
+         -- PLP/RTI) which returns to wherever BRK was pushed from,
+         -- letting Doom continue. Native-mode + bank-$00 gate keeps the
+         -- override invisible to T65 / emu mode / other banks.
+         x"00"  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFE6") else  -- BRK   L → forced $00
+         x"FF"  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFE7") else  -- BRK   H → forced $FF
          scpu_native_vec(4)  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
                      and cpuAddr = x"FFE8") else  -- ABORT L
          scpu_native_vec(5)  when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
