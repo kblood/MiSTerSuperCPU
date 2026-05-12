@@ -3065,6 +3065,14 @@ begin
 				--     zero values but readback is $00: HW path drops).
 				-- Bank-gated so SuperRAM writes at other-bank:$0706 do
 				-- not pollute the count.
+				-- v304 (2026-05-12): v303 CPU-only result = 405 writes of
+				-- uniform $05 over 90s, but readback shows $00. CPU bus
+				-- writes alone can't explain the corruption. New probe
+				-- block below (outside enableCpu gate) ALSO captures REU
+				-- DMA writes (dma_active='1' overrides cpuAddr/cpuDo/cpuWe
+				-- with dma_addr/dma_dout/dma_we). If REU FETCH destination
+				-- ever overlaps $0700-$07BA, those writes were invisible
+				-- to v303 and would corrupt the dispatcher bytes.
 				if addr_hi_816 = x"00" and cpuAddr_pre = x"0706" then
 					wr5C_v0_r  <= wr5C_v1_r;
 					wr5C_v1_r  <= wr5C_v2_r;
@@ -3072,6 +3080,19 @@ begin
 					wr5C_v3_r  <= std_logic_vector(cpuDo_pre);
 					cnt_wr5C_r <= cnt_wr5C_r + 1;
 				end if;
+			end if;
+			-- v304 DMA-side $0706 write capture. Use post-mux cpuAddr /
+			-- cpuDo / cpuWe gated by dma_active to catch REU writes only
+			-- (CPU writes are still captured by v303 above with cpuAddr_pre).
+			-- Repurposes vic_d019_wr_count_r (VW field) as DMA-write counter
+			-- and vic_resetraster_count_r (AC field) as value-trail. VW/AC
+			-- normally count VIC $D019 wr/ack; during the wedge the V ring
+			-- already shows CY:5BEE writes to $00FC are CPU recompiler, no
+			-- VIC traffic. Safe to overload.
+			if dma_active = '1' and cpuWe = '1' and cpuAddr = x"0706" then
+				vic_d019_wr_count_r     <= vic_d019_wr_count_r + 1;
+				vic_resetraster_count_r(15 downto 8) <= vic_resetraster_count_r(7 downto 0);
+				vic_resetraster_count_r(7 downto 0)  <= unsigned(cpuDo);
 			end if;
 			-- v243: dispatch-target PC. Snapshot the PC at the FIRST
 			-- opcode_fetch_pulse where PC leaves the zero-page-stub
