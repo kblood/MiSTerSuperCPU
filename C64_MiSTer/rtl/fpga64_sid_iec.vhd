@@ -2731,6 +2731,18 @@ begin
 				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
 					rd07xx_addr_r <= std_logic_vector(cpuAddr_pre(7 downto 0));
 					rd07xx_data_r <= std_logic_vector(cpuDi);
+					-- v307: per-address READ snapshots at $0705..$0708 surfaced
+					-- via the wr5C ring. The BRK loop in Doom fetches at $0705
+					-- (opcode), $0706 (signature), and $0707+ (post-RTI resume),
+					-- so each iteration refreshes these latches. Reveals the
+					-- actual byte values without disassembling RAM.
+					case cpuAddr_pre(7 downto 0) is
+						when x"05" => wr5C_v0_r <= std_logic_vector(cpuDi);
+						when x"06" => wr5C_v1_r <= std_logic_vector(cpuDi);
+						when x"07" => wr5C_v2_r <= std_logic_vector(cpuDi);
+						when x"08" => wr5C_v3_r <= std_logic_vector(cpuDi);
+						when others => null;
+					end case;
 				end if;
 				if cpuAddr_pre = x"FFFE" then
 					vec_lo_r    <= std_logic_vector(cpuDi);
@@ -3079,11 +3091,11 @@ begin
 				-- $070N was written at least once by CPU). This will reveal
 				-- whether the recompiler EVER writes $0705 (where the wedge's
 				-- BRK opcode $00 sits per the v305 capture).
+				-- v307 (2026-05-12): wr5C_v0..v3 ring REPURPOSED to READ-side
+				-- snapshots at $0705/$0706/$0707/$0708 (updated in the read
+				-- block above). The bitmap update below stays — bit N still
+				-- set on any write to $070N — but no value-ring update here.
 				if addr_hi_816 = x"00" and cpuAddr_pre(15 downto 4) = x"070" then
-					wr5C_v0_r  <= wr5C_v1_r;
-					wr5C_v1_r  <= wr5C_v2_r;
-					wr5C_v2_r  <= wr5C_v3_r;
-					wr5C_v3_r  <= std_logic_vector(cpuDo_pre);
 					case cpuAddr_pre(3 downto 0) is
 						when x"0" => cnt_wr5C_r(0)  <= '1';
 						when x"1" => cnt_wr5C_r(1)  <= '1';
