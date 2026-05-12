@@ -3124,7 +3124,12 @@ begin
 				-- makes to $00:$00FC on hardware — bug is "missing Doom
 				-- overwrite". If CY > 88 or CG > 1, hardware DOES write
 				-- non-$5C values and the V ring shows what they are.
-				if addr_hi_816 = x"00" and cpuAddr_pre = x"00FC" then
+				-- v314 (2026-05-12): repurpose $00FC -> $0090. REU+SuperRAM data
+				-- layers proved byte-clean this session; bug must be exec-time state.
+				-- $0090 is the music_num ZP target ($2B:$245A STA $90). Expected
+				-- WP=$2B:$245C, V trail trending to $F7 (low of $FFF7=-9). Other
+				-- writer-PC or value backtracks the producer.
+				if addr_hi_816 = x"00" and cpuAddr_pre = x"0090" then
 					wr02_pc_r  <= cpu_pc_now;
 					wr02_val_r <= std_logic_vector(cpuDo_pre);
 					cnt_wr02_r <= cnt_wr02_r + 1;

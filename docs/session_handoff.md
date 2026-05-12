@@ -1,157 +1,131 @@
-# Session handoff — 2026-05-12 (REU + SuperRAM data layers proved clean)
+# Session handoff — 2026-05-12 (REU + SuperRAM data clean; $0090 disproved as -9 carrier)
 
 ## Bottom line
 
-Two real-data probes ran against v313 (RBF md5 `1a93f82b7939fac96ffdf983d0fb43a1`).
-Both came back **byte-perfect**: REU SDRAM contains doom.reu unchanged, and
-the loader's REU→SuperRAM copy lands correct bytes at music-data offsets.
+Three big findings narrowed the music_num=-9 hypothesis space dramatically.
 
-The music_num=-9 producer is **not** a data-layer bug. The remaining
-hypothesis space is CPU-execution-time state (bank-$00 RAM/zero-page,
-I/O state at trap evaluation, or a runtime access pattern not exercised
-by synthetic probes).
+**REU and SuperRAM data layers are byte-perfect** for the music data
+region. The loader's REU→SuperRAM copy is clean.
+
+**doom.reu contains zero int32 -9 (`F7 FF FF FF`) constants** — the value
+-9 is computed at runtime, not loaded from a literal.
+
+**v314 wr02 ring at `$0090` shows `00 03 00 FF` with no `$F7`** —
+`$0090` is NOT where music_num=-9 lives at error-print time. The v291
+interpretation was wrong.
 
 ## What we proved this session
 
-### Probe 1: REU FETCH on real doom.reu bytes (`reu_peek_doom_hex.prg`)
-Reads 6 known bytes from doom.reu via REU FETCH and paints them as hex
-on screen row 0. Result:
-```
-78 D8 FF 8C 53 43
-```
-matches expected file bytes EXACTLY at REU offsets:
-- `$200000`=$78 (Doom bank $20 first byte / SEI)
-- `$200001`=$D8
-- `$400000`=$FF
-- `$400001`=$8C
-- `$800000`=$53 ('S' from SCPUMIPS)
-- `$800001`=$43 ('C')
+### Data layer (REU + SuperRAM) is clean
+- `reu_peek_doom_hex.prg`: 6/6 anchor bytes match doom.reu via REU FETCH
+  (`78 D8 FF 8C 53 43` at REU $200000/01 / $400000/01 / $800000/01)
+- `superram_peek_doom_hex.prg`: 12/12 SuperRAM bytes match file
+  (anchor row + music-table area $86:$E9C0 / $86:$EACF / $87:$0000 /
+  $2B:$1A23 / $2C:$A95C)
+- `superram_peek_argptr.prg`: $87:$EAD8..$EADD = 0 (match file);
+  $87:$EB0C..$EB0F = 0 (match file); $86:$EAD0..$EAD1 = `$18 $B3`
+  (RUNTIME OVERRIDE — file has zero)
 
-Border = $08 = lo-nibble of $78 (independent visual check). Screenshot:
-`tools/doom_full/reu_peek_hex.png`.
+Screenshots:
+- `tools/doom_full/reu_peek_hex.png`
+- `tools/doom_full/superram_peek_after_doom.png`
+- `tools/doom_full/superram_peek_argptr.png`
 
-### Probe 2: SuperRAM long-LDA after loader runs (`superram_peek_doom_hex.prg`)
-After full Doom runs to wedge at music_num=-9, this probe long-LDAs
-12 SuperRAM locations and paints them as hex. Result:
-```
-Row 0:  78 D8 FF 8C 53 43   (anchor bytes — match Probe 1)
-Row 1:  6D 4B FF A1 A5 5C   (music area + error trap)
-```
-All 12 bytes match doom.reu, including:
-- `$86:$E9C0` = $4B (head of music table area)
-- `$86:$EACF` = $FF (mid music table)
-- `$2B:$1A23` = $A5 (music check disasm target)
-- `$2C:$A95C` = $5C (first byte of `JML $2C:$A95C` self-trap)
+### v314 RTL probe: $0090 doesn't carry -9
+- Built `acf30af`+1 (RTL change at `fpga64_sid_iec.vhd:3132` repointing
+  wr02_* from `$00FC` to `$0090`). RBF md5
+  `91b23d253438e3fd29bdb105307baa47`.
+- After full Doom run + wedge at music_num=-9:
+  - V (last 4 writes to $0090): `00 03 00 FF`
+  - WP: `$2C:$85FB` (after `STA $90` at $85F9, the cleanup)
+  - CY: `$0713` = 1811 writes total
+  - M chain: `$85A1 → $85B6 → $85E8 → $85F6` (canonical error chain)
+- Snapshot in `tools/doom_full/v314_uart_150s.txt`
+- Screen: `tools/doom_full/v314_wedge_150s.png` (confirms "-9" displayed)
 
-Screenshot: `tools/doom_full/superram_peek_after_doom.png`.
+### doom.reu literal scan
+- `F7 FF FF FF` (int32 -9 LE): **0 occurrences in 16 MB**
+- `F7 FF` (int16 -9): 67 (likely byte coincidences)
+- `5C XX 85 2C` JML-to-$2C-bank table at `$85:$65A0..$65BC` with two
+  entries (idx 13/14) pointing to `$2C:$85A1` music error
+- No `7C XX XX` JMP-abs-X, `22 XX 65 85` JSL, or `A9 XX 65` LDA-imm
+  referencing this table → dispatcher reaches it via COMPUTED address
 
-## Disassembly of the error chain
-
-Expected doom.reu bytes at `$2C:$85A1..$85A8`:
-```
-A9 03 00 85 90 64 92 A9
-```
-Disassembled in M=16 native mode:
-- `LDA #$0003`   ; load default music_num
-- `STA $90`      ; → zero-page $90/$91
-- `STZ $92`      ; clear upper word
-- `LDA #...`     ; next
-
-So `$2C:$85A1` is the **error-screen music initializer** (sets music
-to track 3 for the error display), NOT where -9 is computed.
-
-Expected bytes at `$2B:$245A..$245D`:
-```
-85 90 A5 8A
-```
-- `STA $90`   ; write A → music_num
-- `LDA $8A`   ; load $8A into A
-
-This matches the v290/v291 finding that `$2B:$245A` is the **printf
-arg-walker** that writes whatever's in A to $90. The value $F7 (low byte
-of -9 = $FFF7) was previously latched 245 times here.
-
-So the actual producer of $FFF7 is **upstream of `$2B:$245A`** —
-something computes -9 in A then JMPs/JSRs through the printf walker.
-
-## Deployment method (KEEP THIS)
-
-Two-step sequential MGL+pipe:
-1. `doom_reu_only.mgl` — single `<file>` tag for `doom.reu` only.
-   Pipe `load_core /media/fat/_Test/doom_reu_only.mgl`. Wait 20 s for
-   the 16 MB transfer.
-2. `reu_peek_doom_hex.mgl` (or `superram_peek_doom_hex.mgl`) — single
-   `<file>` tag for the probe PRG. Pipe `load_core`. REU+SuperRAM
-   SDRAM both survive the core bitstream reload.
-
-For probe 2, run **full Doom first** via `_doom_full_abs.mgl` (loader +
-reu in same MGL — this multi-file pattern DOES work for Doom because
-the second file is a regular `.prg` autorun on the existing READY
-prompt), wait 60 s for the wedge, **then** load the peek MGL.
-
-**Multi-file MGL with `.reu` first + `.prg` second does NOT autorun the
-second tag** regardless of delay (tried `delay="1"/"8"` and `"3"/"15"`).
-Use two pipe writes.
-
-## New tooling in this session
-
-- `tools/build_reu_peek_doom_hex.py` → `reu_peek_doom_hex.prg` (542 B)
-- `tools/build_superram_peek_doom_hex.py` → `superram_peek_doom_hex.prg`
-  (628 B)
-- `tools/doom_reu_only.mgl` (REU-only load for sequence step 1)
-- `tools/reu_peek_doom_hex.mgl`, `tools/superram_peek_doom_hex.mgl`
-- `tools/doom_full/reu_peek_hex.png`,
-  `tools/doom_full/superram_peek_after_doom.png` (PASS evidence)
-
-Hex-paint helper inline in both build scripts: nibble→screen-code
-conversion via `CMP #$0A / BCC digit / SBC #$09` for A-F, `CLC; ADC #$30`
-for 0-9. Branch offsets are pre-computed and verified.
+### Disasm of error chain at $2C:$85Axx
+- `$2C:$85A1` is the **error-screen DEFAULT music initializer** —
+  `LDA #$0003; STA $90; STZ $92` sets music_num to 3 (not -9!), then
+  JMLs to `$2B:$76F9` (a thin trampoline that JMLs through `[$74]`).
+- `$2C:$85B6 → $85E8 → $85F6 → $A95C` is the post-print chain.
+  `$85F6` sets `$90/$92 = $FFFFFFFF` then JML self-trap.
+- printf format string at `$86:$02C0` = `"Bad music number %d\0"`.
+  No 24-bit pointer (`C0 02 86`) to it exists in doom.reu — accessed
+  by computed address.
 
 ## Working state
 
-- **HEAD**: `3c4609f` on `vanilla-cpu-swap` (no new commits this session)
-- **Deployed RBF**: md5 `1a93f82b7939fac96ffdf983d0fb43a1`, 3,860,772 B
-- **Source**: probe scripts uncommitted; all RTL untouched
+- **HEAD**: `acf30af` on `vanilla-cpu-swap` (v314 RTL change uncommitted
+  in working tree until next commit)
+- **Deployed RBF**: md5 `91b23d253438e3fd29bdb105307baa47` (v314,
+  3,853,328 B)
+- **New artifacts** (uncommitted):
+  - `tools/build_reu_peek_doom_hex.py`, `.prg`, `.mgl` (committed in
+    `acf30af`)
+  - `tools/build_superram_peek_doom_hex.py`, `.prg`, `.mgl` (committed)
+  - `tools/build_superram_peek_argptr.py`, `.prg`, `.mgl` (new)
+  - `tools/v314_doom_capture.py` (new)
+  - `tools/doom_full/v314_wedge*.png`, `v314_uart*.txt` (new)
+  - `C64_MiSTer/rtl/fpga64_sid_iec.vhd` (1-block edit at line 3127-3132)
 
-## Open hypotheses (post-session)
+## Why "-9" appears on screen but $90 holds $03 at trap time
 
-The bug must be in one of:
-1. **Bank $00 (C64 motherboard RAM) state during execution.**
-   Cannot probe directly because bank $00 is BRAM (volatile across core
-   reload). Best probe: add an RTL `wrXX_*` ring targeting a critical
-   bank-$00 zero-page address (e.g., $0090, $0094, $00A1) and surface
-   via UART pool dump. Cheapest implementation: change the `cpuAddr_pre
-   = x"00FC"` filter at `fpga64_sid_iec.vhd:3127` to `x"0090"` (or
-   another suspect). The wr02_pc + wr02_v0..v3 + cnt_wr02 surfaces
-   already exist — repointing is one line.
-2. **I/O state at trap-evaluation time** (CIA/VIC/SID/REU regs).
-   Less likely given the trap is in a pure code/data error chain.
-3. **Runtime access pattern triggering a bug** that synthetic ramps
-   and long-LDA don't exercise. Possible candidates: 16-bit indexed
-   long-LDA, MVN/MVP block moves, or specific cycle alignments. Worth
-   trying if the wrXX probe doesn't surface a clear producer.
+The screen text "Error: Bad music number -9" was rendered during
+gameplay, MINUTES before the trap chain ran. printf was called with
+music_num = -9 at that earlier moment. By the time the trap chain
+($85A1...) runs, the screen still shows the old text but $90 has been
+overwritten with the error-screen default (3) and then the chain's
+final value ($FFFF).
 
-The CPU microcode is proven correct by cocotb+VICE lockstep over 15574
-instructions (`project_doom_bank20_prologue_match.md`) and another
-5000-instr gameplay run (`project_doom_gameplay_match_5000.md`), so
-deep CPU-internal bugs are ruled out for the post-loader path.
+So the trap chain we see in M ring is the **post-print halt**, not the
+producer. The actual `LDA #$??? / STA $90` (or wherever music_num is
+held) for -9 happened earlier and was overwritten.
 
-## Next session entry point
+## Open hypotheses (ranked)
 
-1. Pick a bank-$00 zero-page address most likely to surface the
-   producer. Candidates (ranked):
-   - `$0090` — last-known music_num write target (v290/v291)
-   - `$008A` — read by `$2B:$245A` printf walker (`LDA $8A`)
-   - `$00A1` — common zero-page printf temp
-2. Edit `C64_MiSTer/rtl/fpga64_sid_iec.vhd:3127`: change `x"00FC"` to
-   the chosen address. Keep wr02_* signal names — they already plumb
-   through to UART V/WP/CY fields.
-3. Build RBF (~30 min, `./build_c64.ps1`).
-4. Deploy to `/media/fat/_Test/C64.rbf`, run `_doom_full_abs.mgl`,
-   capture UART for 90 s.
-5. Decode V/WP/CY: V should show the 4 most recent values written; WP
-   shows the writer PC; CY shows total count. If V trends toward $F7
-   (low byte of $FFF7) and WP is in bank $2B with a PC that ISN'T
-   `$245C`, that's the producer's writer PC.
+1. **music_num lives in a different zero-page slot** — try `$0094`
+   or `$0098` next (the printf-walker working registers at
+   `$2B:$76xx`). Same one-line RTL repoint.
+2. **music_num lives in SuperRAM, not zero-page** — Doom global var
+   in a static struct. Locate via wider SuperRAM scan (a probe-PRG
+   that scans 256 KB and reports any address holding `$F7 $FF $FF $FF`).
+3. **The "$F7 $FF" was a transient value during printf int-to-ASCII
+   conversion** — never stored, computed in a register sequence.
+   Would require a CPU-A register trace at $2B:$77xx printf-walker
+   entry. Harder to instrument.
 
-This is the highest-leverage probe given everything ruled out.
+## Next-session entry point
+
+**Try $0094 first** (least cost — 1-line RTL change + 12-min build).
+
+1. Edit `C64_MiSTer/rtl/fpga64_sid_iec.vhd:3132`:
+   change `x"0090"` to `x"0094"`. Update preceding comment.
+2. `./build_c64.ps1` (12 min wall).
+3. `python tools/v314_doom_capture.py` (auto-deploys + 75s wait +
+   re-captures at 150s if not wedged + UART analysis).
+4. Decode V ring: if `$F7` appears, WP is the producer's PC and
+   M ring shows what code path got there. If still no `$F7`,
+   move to the broader SuperRAM scan probe.
+
+The SuperRAM scan probe (option 2) is also straightforward — paint
+each bank's first matching offset to a hex row. Builds on the existing
+`superram_peek_*` PRG patterns.
+
+## Tested deployment pattern (locked in)
+
+Two-step sequential MGL+pipe (when probe needs Doom-populated SuperRAM):
+1. `_doom_full_abs.mgl` — loader + reu, wait 60-75s for wedge.
+2. `<probe>.mgl` — single-file probe PRG, autoruns; SDRAM survives.
+
+For REU-only-with-no-loader experiments: `doom_reu_only.mgl` (single
+`.reu` tag) + 20-s wait, then probe MGL.
+
+Multi-file MGL with `.reu` + `.prg` does NOT autorun the second tag.
