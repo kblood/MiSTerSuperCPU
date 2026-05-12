@@ -2731,16 +2731,18 @@ begin
 				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
 					rd07xx_addr_r <= std_logic_vector(cpuAddr_pre(7 downto 0));
 					rd07xx_data_r <= std_logic_vector(cpuDi);
-					-- v307: per-address READ snapshots at $0705..$0708 surfaced
-					-- via the wr5C ring. The BRK loop in Doom fetches at $0705
-					-- (opcode), $0706 (signature), and $0707+ (post-RTI resume),
-					-- so each iteration refreshes these latches. Reveals the
-					-- actual byte values without disassembling RAM.
+					-- v307: per-address READ snapshots surfaced via wr5C ring.
+					-- v308 (2026-05-12): shift window to $0709..$070C to read
+					-- the bytes RIGHT AFTER the v307 result W5:00 05 D0 A9
+					-- ($0705=BRK, $0706=ORA dp, $0707=$D0=operand, $0708=A9=LDA#).
+					-- Need to see $0709..$070C to disassemble the rest of the
+					-- short ~$10-byte JIT block and figure out how the loop
+					-- closes (returns to $0705).
 					case cpuAddr_pre(7 downto 0) is
-						when x"05" => wr5C_v0_r <= std_logic_vector(cpuDi);
-						when x"06" => wr5C_v1_r <= std_logic_vector(cpuDi);
-						when x"07" => wr5C_v2_r <= std_logic_vector(cpuDi);
-						when x"08" => wr5C_v3_r <= std_logic_vector(cpuDi);
+						when x"09" => wr5C_v0_r <= std_logic_vector(cpuDi);
+						when x"0A" => wr5C_v1_r <= std_logic_vector(cpuDi);
+						when x"0B" => wr5C_v2_r <= std_logic_vector(cpuDi);
+						when x"0C" => wr5C_v3_r <= std_logic_vector(cpuDi);
 						when others => null;
 					end case;
 				end if;
