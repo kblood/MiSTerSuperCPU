@@ -3124,22 +3124,27 @@ begin
 				-- makes to $00:$00FC on hardware — bug is "missing Doom
 				-- overwrite". If CY > 88 or CG > 1, hardware DOES write
 				-- non-$5C values and the V ring shows what they are.
-				-- v314 (2026-05-12): repurpose $00FC -> $0090. REU+SuperRAM data
-				-- layers proved byte-clean this session; bug must be exec-time state.
-				-- $0090 is the music_num ZP target ($2B:$245A STA $90). Expected
-				-- WP=$2B:$245C, V trail trending to $F7 (low of $FFF7=-9). Other
-				-- writer-PC or value backtracks the producer.
-				if addr_hi_816 = x"00" and cpuAddr_pre = x"0090" then
+				-- v316 (2026-05-12): v314/v315 disproved $0090 and $0094. Switch
+				-- FILTER from address to VALUE: catch every CPU write to bank $00
+				-- of byte $F7 (low of $FFF7=-9). V ring captures the destination
+				-- address LO byte of the last 4 such writes; WP captures the
+				-- writer-PC. If $F7 is ever written anywhere in bank $00, V/WP
+				-- + CY reveal where and from what PC. If CY=0 the value is
+				-- never seen on the CPU bus -> stored in SuperRAM or in a
+				-- 65816 register only (never spilled to memory).
+				if addr_hi_816 = x"00" and cpuDo_pre = x"F7" then
 					wr02_pc_r  <= cpu_pc_now;
 					wr02_val_r <= std_logic_vector(cpuDo_pre);
 					cnt_wr02_r <= cnt_wr02_r + 1;
 					if std_logic_vector(cpuDo_pre) /= wr02_val_r then
 						cnt_wr02_chg_r <= cnt_wr02_chg_r + 1;
 					end if;
+					-- V ring now holds the DESTINATION ADDRESS LO byte of the
+					-- last 4 $F7-writes, not the value (since value is always $F7).
 					wr02_v0_r <= wr02_v1_r;
 					wr02_v1_r <= wr02_v2_r;
 					wr02_v2_r <= wr02_v3_r;
-					wr02_v3_r <= std_logic_vector(cpuDo_pre);
+					wr02_v3_r <= std_logic_vector(cpuAddr_pre(7 downto 0));
 					wr02_y_r  <= cpu_y_now;
 					wr02_x_r  <= cpu_x_now;
 				end if;
