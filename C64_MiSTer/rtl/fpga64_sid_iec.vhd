@@ -3192,37 +3192,35 @@ begin
 					end case;
 				end if;
 			end if;
-			-- v322 (2026-05-12): catch the upstream writer that puts $F7
-			-- into DP+$94 BEFORE the v321-pinned shim at $2C:$84DC reads
-			-- it and propagates to $5C:$B546.
-			--
-			-- v321 proved: STA [$F4],Y=$24 at $2C:$84DC writes A=$F7 to
-			-- $5C:$B546. A was loaded by LDA $94 at $2C:$84DA — i.e.
-			-- effective addr = D + $0094 (D = active direct page reg).
-			-- Fresh-boot $0094 = $00, so something writes $F7 to "DP+$94"
-			-- in bank $00 during Doom runtime.
+			-- v323 (2026-05-12): catch the upstream-of-upstream writer.
+			-- v322 proved the chain:
+			--   (?) -> $00:$C0 = $F7
+			--   -> $2B:$208E `LDA $C0; STA $94` -> $00:$94 = $F7
+			--   -> $2C:$84DA `LDA $94; STA [$F4],Y=$24` -> $5C:$B546 = $F7
+			--   -> music_num=-9 trap at $2C:$A95C
 			--
 			-- Filter: cpuWe=1, cpuDo_pre=$F7, addr_hi_816=$00,
-			--         cpuAddr_pre[7:0]=$94. Catches every store of $F7
-			--         to any DP-relative $94 regardless of D[15:8].
-			-- If FIRES — WP = writer PC (incl. bank), V ring = last 4
-			-- values of cpuAddr_pre[15:8] (= D[15:8]+carry → reveals
-			-- active DP), YX = writer-PC low 16 bits, CY = total fires.
+			--         cpuAddr_pre = $00C0 (literal ZP $C0, D=$0000).
+			-- If FIRES — WP = writer PC (incl. bank via cpu_pc_now[23:16]),
+			-- V ring = last 4 writer banks (cpu_pc_now[23:16]) to spot
+			-- bank-trampolined recompiler shims, YX = writer-PC low 16
+			-- bits, CY = total $F7 writes to $00:$C0.
+			-- If multiple writers — V ring shows trail of source banks.
 			if enableCpu = '1' and cpuWe_pre = '1'
 			   and addr_hi_816 = x"00"
-			   and cpuAddr_pre(7 downto 0) = x"94"
+			   and cpuAddr_pre = x"00C0"
 			   and cpuDo_pre = x"F7" then
 				wr02_pc_r  <= cpu_pc_now;
 				cnt_wr02_r <= cnt_wr02_r + 1;
 				if cpu_pc_now(23 downto 16) /= wr02_val_r then
 					cnt_wr02_chg_r <= cnt_wr02_chg_r + 1;
 				end if;
-				wr02_val_r <= std_logic_vector(cpuAddr_pre(15 downto 8));
-				-- V ring = last 4 cpuAddr_pre[15:8] (= D[15:8] for DP store)
+				wr02_val_r <= cpu_pc_now(23 downto 16);
+				-- V ring = last 4 writer banks (cpu_pc_now[23:16])
 				wr02_v0_r <= wr02_v1_r;
 				wr02_v1_r <= wr02_v2_r;
 				wr02_v2_r <= wr02_v3_r;
-				wr02_v3_r <= std_logic_vector(cpuAddr_pre(15 downto 8));
+				wr02_v3_r <= cpu_pc_now(23 downto 16);
 				-- YX = writer-PC bottom 16 bits (HI/LO within writer's bank)
 				wr02_y_r  <= cpu_pc_now(15 downto 8);
 				wr02_x_r  <= cpu_pc_now(7 downto 0);
