@@ -1755,60 +1755,108 @@ cpuDi <= scpu_dos_ext_mode
          --
          -- Stack consumption: IRQ entry 4 + PHP 1 + PHA 1 = 6 pushed,
          -- popped same. Native mode only (gated emu_mode_816_i='0').
-         x"08" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         -- v313 — emu_mode_816_i gate REMOVED so stub bytes are visible in
+         -- both native and emu mode. SP-delta analysis on v311/v312 trace
+         -- showed +3 post-RTI (emu semantics) while stub bytes were still
+         -- visible, indicating XCE-drop bug desynced the E flag from
+         -- emu_mode_816_i output. Making the stub mode-agnostic in SCPU
+         -- bank-$00 lets the ack code run regardless of which mode the
+         -- CPU thinks it's in.
+         x"08" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF00") else  -- PHP
-         x"E2" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"E2" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF01") else  -- SEP imm
-         x"20" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"20" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF02") else  -- imm = $20 (M=1, X untouched)
-         x"48" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"48" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF03") else  -- PHA
-         x"AF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"AF" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF04") else  -- LDA long
-         x"19" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"19" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF05") else  -- L
-         x"D0" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"D0" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF06") else  -- M
-         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF07") else  -- bank = $00
-         x"8F" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"8F" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF08") else  -- STA long
-         x"19" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"19" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF09") else  -- L
-         x"D0" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"D0" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF0A") else  -- M
-         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF0B") else  -- bank = $00
-         x"AF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"AF" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF0C") else  -- LDA long
-         x"0D" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"0D" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF0D") else  -- L (CIA1 ICR)
-         x"DC" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"DC" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF0E") else  -- M
-         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF0F") else  -- bank = $00
-         x"AF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"AF" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF10") else  -- LDA long
-         x"0D" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"0D" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF11") else  -- L (CIA2 ICR)
-         x"DD" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"DD" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF12") else  -- M
-         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF13") else  -- bank = $00
-         x"AF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"AF" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF14") else  -- LDA long
-         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF15") else  -- L (REU $DF00 — v299 revert)
-         x"DF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"DF" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF16") else  -- M (REU base)
-         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF17") else  -- bank = $00
-         x"68" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF18") else  -- PLA
-         x"28" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF19") else  -- PLP
-         x"40" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF1A") else  -- RTI
+         -- v313 — Extend ack stub: after the four ack reads, hard-disable
+         -- the IRQ sources at their mask registers so even un-acked sources
+         -- can't keep IRQ_N asserted. Disable sequence ($FF18-$FF27):
+         --   $FF18  A9 00         LDA #$00
+         --   $FF1A  8F 1A D0 00   STA $00D01A   ; VIC IRQ mask = 0
+         --   $FF1E  A9 7F         LDA #$7F
+         --   $FF20  8F 0D DC 00   STA $00DC0D   ; CIA1 ICR (write $7F clears all)
+         --   $FF24  8F 0D DD 00   STA $00DD0D   ; CIA2 ICR
+         -- Then PLA/PLP/RTI moved to $FF28-$FF2A.
+         x"A9" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF18") else  -- LDA imm
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF19") else  -- #$00 (for $D01A)
+         x"8F" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1A") else  -- STA long
+         x"1A" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1B") else  -- $D01A low
+         x"D0" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1C") else  -- $D01A mid
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1D") else  -- bank = $00
+         x"A9" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1E") else  -- LDA imm
+         x"7F" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1F") else  -- #$7F (for CIA mask)
+         x"8F" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF20") else  -- STA long
+         x"0D" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF21") else  -- $DC0D low
+         x"DC" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF22") else  -- $DC0D mid
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF23") else  -- bank = $00
+         x"8F" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF24") else  -- STA long
+         x"0D" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF25") else  -- $DD0D low
+         x"DD" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF26") else  -- $DD0D mid
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF27") else  -- bank = $00
+         x"68" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF28") else  -- PLA
+         x"28" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF29") else  -- PLP
+         x"40" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF2A") else  -- RTI
          -- ----------------------------------------------------------------
          -- v310 doom wedge: override $00:$0705 read to return $40 (RTI).
          -- Doom's recompiler installs BRK vector → $00:$0705 (per v309
