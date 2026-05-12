@@ -3192,33 +3192,32 @@ begin
 					end case;
 				end if;
 			end if;
-			-- v324 (2026-05-12): pin the bank-$2B writers of $F7 to ZP $C0.
-			-- v323 V ring was $2B $2B $2B $2C — 3 of 4 last writers were
-			-- in bank $2B. Disambiguate them: filter to bank $2B only,
-			-- repurpose V ring for last 4 writer-PC LO bytes.
+			-- v325 (2026-05-13): walk further upstream. v324 proved
+			-- `INC $C0` at $2B:$DB25 produces $F7 from pre-INC $F6.
+			-- Pre-INC $C0 came from `LDA $90; STA $C0` (M=16) inside
+			-- $2C:$A8A4 subroutine at $A8CE.
+			-- So HW ZP $90 = $F6 vs VICE $02. Find writer of $F6 to $90.
 			--
-			-- Filter: cpuWe=1, cpuDo=$F7, addr_hi=$00, cpuAddr_pre=$00C0,
-			--         cpu_pc_now[23:16]=$2B.
-			-- WP = most recent writer PC ($2B:$xxxx).
-			-- V ring = last 4 writer PC LO bytes (to distinguish sites).
-			-- YX = WP[15:0] sanity check.
-			-- CY = total fires from bank $2B.
+			-- Filter: cpuWe=1, cpuDo=$F6, addr_hi=$00, cpuAddr_pre=$0090.
+			-- WP = writer PC (full 24-bit, including bank).
+			-- V ring = last 4 writer banks (cpu_pc_now[23:16]).
+			-- YX = WP[15:0].
+			-- CY = total fires.
 			if enableCpu = '1' and cpuWe_pre = '1'
 			   and addr_hi_816 = x"00"
-			   and cpuAddr_pre = x"00C0"
-			   and cpuDo_pre = x"F7"
-			   and cpu_pc_now(23 downto 16) = x"2B" then
+			   and cpuAddr_pre = x"0090"
+			   and cpuDo_pre = x"F6" then
 				wr02_pc_r  <= cpu_pc_now;
 				cnt_wr02_r <= cnt_wr02_r + 1;
-				if cpu_pc_now(7 downto 0) /= wr02_val_r then
+				if cpu_pc_now(23 downto 16) /= wr02_val_r then
 					cnt_wr02_chg_r <= cnt_wr02_chg_r + 1;
 				end if;
-				wr02_val_r <= cpu_pc_now(7 downto 0);
-				-- V ring = last 4 writer PC LO bytes
+				wr02_val_r <= cpu_pc_now(23 downto 16);
+				-- V ring = last 4 writer banks
 				wr02_v0_r <= wr02_v1_r;
 				wr02_v1_r <= wr02_v2_r;
 				wr02_v2_r <= wr02_v3_r;
-				wr02_v3_r <= cpu_pc_now(7 downto 0);
+				wr02_v3_r <= cpu_pc_now(23 downto 16);
 				-- YX = writer-PC bottom 16 bits
 				wr02_y_r  <= cpu_pc_now(15 downto 8);
 				wr02_x_r  <= cpu_pc_now(7 downto 0);
