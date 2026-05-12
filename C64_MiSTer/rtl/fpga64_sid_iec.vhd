@@ -1799,6 +1799,19 @@ cpuDi <= scpu_dos_ext_mode
                      and cpuAddr = x"FF19") else  -- PLP
          x"40" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF1A") else  -- RTI
+         -- ----------------------------------------------------------------
+         -- v310 doom wedge: override $00:$0705 read to return $40 (RTI).
+         -- Doom's recompiler installs BRK vector → $00:$0705 (per v309
+         -- VB:0507 capture) but the byte at $0705 is $00 (BRK opcode in
+         -- native), creating an infinite BRK→$0705→BRK self-loop. SP
+         -- descends $2664/vblank at 1MHz bank-$00 push rate. Forcing
+         -- $0705 reads to return $40 (RTI) makes BRK a no-op so the CPU
+         -- returns to wherever BRK was pushed from. This is a PROBE —
+         -- if Doom advances past the wedge, we've localized the bug to
+         -- the JIT $0705 byte content. Native-mode + bank-$00 gate
+         -- prevents collateral damage to T65 / emu mode / other banks.
+         x"40" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"0705") else  -- $00:$0705 → RTI probe
          cpuDi_raw;
 
 -- ----------------------------------------------------------------------
