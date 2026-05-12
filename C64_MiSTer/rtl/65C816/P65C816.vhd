@@ -352,7 +352,14 @@ begin
 			-- Force when: entering emulation (P(0)=1), OR leaving emulation (P(8)=1).
 			-- Only skip when both=0 (native mode with C=0, stays native).
 			-- Fix from iigs_simulation: original only checked P(0), missing native→emu case.
-			if (IR = x"FB" and (P(0) = '1' or P(8) = '1') and MC.LOAD_P = "101") then
+			-- v305: Add `EN = '1'` guard. Without it, on FPGA with CE-pulsed enable,
+			-- this branch fires on every clk32 edge during the CE='0' stretches between
+			-- when IR loads FB and when XCE actually executes — bypassing the
+			-- `elsif EN='1'` normal AXY tracking. That bypass caused the instruction
+			-- immediately following XCE to be entirely dropped on HW (LDA #$77 -> A
+			-- retained pre-XCE value, characterized by tools/build_xce_test.py).
+			-- GHDL bench did not reproduce because CE='1' permanently there.
+			if (EN = '1' and IR = x"FB" and (P(0) = '1' or P(8) = '1') and MC.LOAD_P = "101") then
 				X(15 downto 8) <= x"00";
 				Y(15 downto 8) <= x"00";
 				SP(15 downto 8) <= x"01";
