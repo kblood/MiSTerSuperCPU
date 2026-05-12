@@ -1,117 +1,97 @@
-# SCPU full implementation plan — Phases 1-8 LANDED 2026-05-11
+# Session handoff — 2026-05-12 (XCE bug characterized, v305 wedge unchanged)
 
 ## Bottom line
 
-All 8 phases of `docs/scpu_full_implementation_plan.md` are now committed
-on `vanilla-cpu-swap` (HEAD = `b599319`). Phase 1, 3, and 6 added RTL;
-Phases 2, 4, 5, 7, 8 were audited as already-implemented or
-architecturally-incompatible and committed as doc-only annotations.
+Spent the session characterizing the XCE pipeline-drop bug on hardware,
+then proving it is NOT what blocks Doom. v305 RBF deployed and tested
+— same wedge as v298/v301 at `$00:$0706`. The XCE EN-guard fix attempt
+was reverted in source (commit `5e92372`).
 
-The deployable artefact is the Phase 6 RBF at
-`C64_MiSTer/output_files/C64.rbf` (md5 `a3b1adb9c867aaa9aa277c563d9fd090`,
-3,831,204 bytes). It includes all Phase 1+3+6 RTL. The Phase 4/5/7/8
-doc commits added no RTL so the same RBF applies.
+Found a strong new lead: at the wedge, opcode at `$00:$0705` is `$58`
+(per B/I fields) but the R7 ring shows the latest `$0705` data read
+returned `$00`. Same address, two values — possible BRAM/cache mismatch
+or two read contexts.
 
-## Build metrics (Phase 6)
+## Working state
 
-- ALM: 26,968 / 41,910 (64%)
-- M10K: 403 / 553 (73%)
-- clk32 setup slack: -4.698 ns (unchanged from pre-Phase-1 baseline)
-- Total registers: 30,681
-- RBF md5: a3b1adb9c867aaa9aa277c563d9fd090
+- **HEAD**: `bb4b754` on `vanilla-cpu-swap`
+- **Deployed RBF**: `d43c41afe9ad32eecf59d7bb109af105` (3,848,348 bytes,
+  v305 build with EN-guard included — but since the EN-guard had zero
+  effect, this is functionally equivalent to HEAD for runtime behavior)
+- **Source**: clean (EN-guard reverted)
+- **Doom test PRG suite**: `tools/build_xce_*.py` (5 builders committed)
 
-Quartus 17.0.2 SJ Lite. `build_c64.ps1` syntax check (analysis &
-elaboration) PASSED with 0 errors, 77 warnings.
+## Key findings
 
-## Per-phase status
+### XCE pipeline disrupts ~2 instructions on FPGA
 
-| # | Phase                            | Status   | Mechanism on this branch                          |
-|---|----------------------------------|----------|---------------------------------------------------|
-| 1 | IOF falling-edge fix             | RTL ✓    | `iof_fall_pulse_r` + latched cpu_we/addr/dout      |
-| 2 | I/O cycle stretching             | doc      | CPUC-only arbitration > VICE's 2-3 cycle stretch   |
-| 3 | EPROM-driven boot + RAM kernel   | RTL ✓    | bootmap overlay + scpu_native_vec writable array   |
-| 4 | Bank $01 SRAM shadow             | doc      | Already ROM-shadows $A000-$BFFF/$D000-$DFFF/$E000-$FFFF |
-| 5 | WriteSmart + write buffer        | doc      | CPUC arbitration is functionally a 1-byte buffer   |
-| 6 | $D0BC R/W + $D0BE/$D0BF          | RTL ✓    | `scpu_dos_ext_mode` register                       |
-| 7 | $D078 unrepurpose + bootmap ROM  | doc      | $D078 has no cache_flush; bootmap dprom exists     |
-| 8 | 1MHz badline emulation           | doc      | `rdy => baLoc` already stalls CPU on VIC badlines  |
+See `project_xce_drops_next_instruction.md`. Hardware-only:
+1. First instruction after `XCE` is fully dropped.
+2. Second instruction's result is scrambled (`LDA #$AA` → A=`$69`).
+3. Third+ instructions recover.
+4. `JMP` after `XCE` survives (so Doom launcher works).
+5. `SEI` between `XCE` and `LDA` absorbs the drop.
 
-## Commit chain (push'd to origin/vanilla-cpu-swap)
+The v305 attempt to gate the XCE special-case at `P65C816.vhd:357`
+with `EN='1'` did NOT fix the bug. Reverted.
+
+GHDL `p65c816_native_switch_tb` PASSES — bug is CE-gating-specific.
+
+### Doom v305 wedge byte-identical to v298
+
+See `project_doom_v305_wedge_unchanged.md`. Wedge state:
+```
+PC:000706 P:05 V:07 07 07 07 SP:varies WP:000707
+N:2BDB90 I:000705 B:58 G:7D 07 00 W5:05 J:DC6B
+```
+- `$2B:$DB90` disassembled = 32-byte context-save routine (`CLC; LDA $F4;
+  ADC #$FFE0; STA $F4; ... STA [F4],Y`).
+- SP eats ~614 ops/sample = IRQ storm or stack-corrupting loop.
+- Only 4 unique UART signatures in 30s = fully deterministic.
+
+### Strong new lead: $0705 read divergence
+
+- B/I fields: opcode at `$00:$0705` = `$58` (CLI)
+- R7 ring: last `$0705` data read returned `$00`
+
+Same address, two values. Investigate first thing next session.
+
+## Next-session priorities
+
+1. **Investigate $0705 read divergence (task #32)**. Check `c64_ram64k.vhd`
+   BRAM RAW-hazard bypass (v158b commit `b267455`). Could the bypass
+   miss for some access paths?
+2. **Identify what reads $0705 in DATA context (vs opcode fetch)**.
+   Hypothesis: if DP=`$0700` (recompiler set), then `ORA [$05]` at
+   `$0706` reads pointer at DP+$05 = `$0705`. Check what DP gets in
+   the recompiler bank-$00 entry.
+3. **RTL probe** (build cycle): add a 4-deep ring capturing
+   `(cpuAddr_pre, dbg_pc_816_i, cpuDi)` at every `$0705` read so we
+   can see PC vs BUS address divergence.
+4. **Defer XCE**: bug is documented (task #29) but doesn't block Doom.
+   A real fix requires a GHDL bench with CE-pulse injection — not yet
+   built.
+
+## Test artifacts committed this session
+
+- `tools/build_xce_clean_test.py`
+- `tools/build_xce_clean2_test.py`
+- `tools/build_xce_chars_test.py`
+- `tools/build_xce_a_probe.py`
+- `tools/doom_v305_uart_30s.txt`
+
+## Commits
 
 ```
-b599319 Phase 5: WriteSmart + write buffer — architectural gap doc, no RTL
-58673f5 Phase 8: 1MHz badline emulation in turbo — already implemented via rdy=>baLoc
-8d90f47 Phase 4: Bank $01 SRAM shadow — audit shows complete on this branch
-ccca7b7 Phase 7: $D078 unrepurpose + bootmap ROM — doc-only on vanilla-cpu-swap
-aee2577 Phase 6: $D0BC R/W + $D0BE/$D0BF DOS extension register
-7b92166 Phase 3: EPROM-driven boot intercept + writable native vectors
-05e622d Phase 2: I/O cycle stretching — already implicit, document why
-2cdf04a Phase 1: port IOF falling-edge fix from master
-bb1c8e2 docs: full SCPU implementation plan — 8 phases targeting VICE/CMD spec
+bb4b754 verif/doom: v305 wedge byte-identical to v298 — XCE fix had zero impact
+5e92372 debug/xce: revert failed v305 EN-guard; bundle XCE characterization PRGs
+6aa24d9 verif/doom: VICE oracle refutes $41:$DB93 wait-loop thesis (prior session)
 ```
 
-## Build cycle gotcha
+## Memory files updated/created
 
-`build_c64.ps1` has a try/finally QSF restore race with `quartus_fit`
-when the fitter elapsed time exceeds ~9 minutes. Symptom: error
-125085 ("Settings File changed outside the Quartus Prime software")
-during placement, then `Current module quartus_fit ended
-unexpectedly`. Fitter completes successfully but `quartus_asm` is
-never invoked so no new RBF is produced.
-
-Workaround that produced the Phase 6 RBF:
-
-```bash
-wsl bash --noprofile --norc -c "cd /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer \
-  && /home/caldor/intelFPGA_lite/17.0/quartus/bin/quartus_asm \
-     --read_settings_files=on --write_settings_files=off C64 -c C64"
-```
-
-Long-term fix: widen the `finally Restore-DebugMacros` in
-`build_c64.ps1` to wait for `quartus_asm` to finish before restoring
-the QSF, OR copy the QSF aside and restore from copy without rewriting
-the original file mid-flow.
-
-## Pending: hardware gate
-
-MiSTer at 192.168.50.130 was busy with `JamesPond3-CD32MVP` at session
-end (`/tmp/CORENAME` mtime 19:07). Per the cooperation protocol I
-deferred hardware deploy. When MiSTer frees:
-
-```bash
-python tools/mister_debug.py deploy C64_MiSTer/output_files/C64.rbf
-# expected md5 on /media/fat/_Test/C64.rbf:
-#   a3b1adb9c867aaa9aa277c563d9fd090
-```
-
-Then run the v298 Doom regression suite:
-
-```bash
-python tools/doom_v298_transition_zoom.py
-python tools/doom_v298_wedge_capture.py
-```
-
-Pass criteria:
-- No $2B:$2292 SP-leak wedge (v298/v299 baseline failure mode)
-- No $0F BRK-march to $24Dxx (v298 alternate failure mode)
-- Title splash renders + at least one playable frame captured
-
-If both wedges persist after Phase 1+3+6, the bug is in the data
-layer (Phase 5 WriteSmart / REU→SuperRAM transfer corruption) and
-needs a different investigation path than the 8-phase plan covers.
-
-## Cocotb status
-
-Cocotb is not installed in this WSL session — Layer A diff harness
-cannot be re-run from this shell. Prior MATCH proofs
-(test-doom-bank20, test-doom-gameplay, test-doom-loader-body) remain
-valid for the P65C816 CPU microcode. Phase 1+3+6 RTL changes touch
-reu.v wiring + bank-$00 cpuDi mux + $D0BC register — all OUTSIDE
-the cocotb CPU-only DUT scope. So no cocotb regression risk from
-these phases; verification must happen on hardware.
-
-## Memory protocol
-
-After hardware gate passes, write a new project memory entry summarising
-the v300 result and supersede the v294-v299 wedge entries
-(`project_doom_v29[3-9]_*.md`).
+- `project_xce_drops_next_instruction.md` — updated with three-test
+  evidence chain, failed v305 fix attempt, and root-cause hypotheses.
+- `project_doom_v305_wedge_unchanged.md` — NEW. v305 wedge state +
+  `$2B:$DB90` disasm + $0705 divergence lead.
+- `MEMORY.md` — top entries updated to reflect v305 and XCE.
