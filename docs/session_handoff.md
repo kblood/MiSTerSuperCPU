@@ -140,3 +140,24 @@ a9b4fda verif/doom: v312 trace — IRQ vector force at $FFEE/F unchanged
 - `project_doom_v312_emu_mode_wedge.md` — NEW. SP-delta contradiction; XCE-drop hypothesis.
 - `project_doom_v313_irq_wedge_cleared.md` — NEW. v313 success state, back at music_num=-9.
 - `MEMORY.md` — top entries updated to reflect v311-v313 chain.
+
+## Update — spin-test variant committed, mbc deployment confirmed broken
+
+Committed `tools/superram_spin_test.prg` (commit `3047b6c`) — 64-byte
+variant that paints screen rows 0-12 with the SuperRAM readback byte
+and spins forever, avoiding any RTS-to-BASIC dependency.
+
+Deployment still blocked. Re-confirmed this session:
+- **Pre-load_rom**: full BASIC banner visible, `PRINT 1` typed via
+  `keys 'PRINT 1\r'` returns `1` — keys + screen both work.
+- **Post-load_rom**: debug UART silent, multi-character keystroke
+  (`SYS 2061 enter`) silently does nothing even with `wait:0.1`
+  pauses between each character via direct `mtype.py` SSH call.
+  Single-character `X` did work in one earlier attempt; longer
+  sequences do not.
+
+`mbc load_rom` is unsuitable for our SCPU+UART-debug workflow. For
+the integrity test to actually run, the next session needs either:
+- MGL-based autorun (bypass mbc entirely), or
+- A different injection path (custom ioctl, direct BRAM poke via
+  FPGA register if any path exists that doesn't disturb UART).
