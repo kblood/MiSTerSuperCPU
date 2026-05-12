@@ -1,163 +1,157 @@
-# Session handoff — 2026-05-12 (v313 cleared IRQ wedge, back at music_num=-9)
+# Session handoff — 2026-05-12 (REU + SuperRAM data layers proved clean)
 
 ## Bottom line
 
-The v305-v312 BRK/IRQ wedge cluster is **fully collapsed**. v313 extended
-the `$FF00` ack stub from 27 to 43 bytes (`$FF00-$FF2A`) with hard
-IRQ-source disables (`STA $D01A=$00`, `STA $DC0D=$7F`, `STA $DD0D=$7F`)
-and removed the `emu_mode_816_i='0'` gate from all stub bytes. Doom now
-reaches the **documented `music_num=-9` trap** at `$2C:$A95C` — same
-state as the v286/v296 baseline before the recent regression cluster.
+Two real-data probes ran against v313 (RBF md5 `1a93f82b7939fac96ffdf983d0fb43a1`).
+Both came back **byte-perfect**: REU SDRAM contains doom.reu unchanged, and
+the loader's REU→SuperRAM copy lands correct bytes at music-data offsets.
 
-The trap chain is canonical (`$85A1 → $85B6 → $85E8 → $85F6 → $A95C`
-self-trap JML) and the on-screen text confirms `Error: Bad music
-number -9`. CPU/wedge-control work has produced an identical
-end-state to v286 — the open question is now ONLY the music_num
-producer.
+The music_num=-9 producer is **not** a data-layer bug. The remaining
+hypothesis space is CPU-execution-time state (bank-$00 RAM/zero-page,
+I/O state at trap evaluation, or a runtime access pattern not exercised
+by synthetic probes).
+
+## What we proved this session
+
+### Probe 1: REU FETCH on real doom.reu bytes (`reu_peek_doom_hex.prg`)
+Reads 6 known bytes from doom.reu via REU FETCH and paints them as hex
+on screen row 0. Result:
+```
+78 D8 FF 8C 53 43
+```
+matches expected file bytes EXACTLY at REU offsets:
+- `$200000`=$78 (Doom bank $20 first byte / SEI)
+- `$200001`=$D8
+- `$400000`=$FF
+- `$400001`=$8C
+- `$800000`=$53 ('S' from SCPUMIPS)
+- `$800001`=$43 ('C')
+
+Border = $08 = lo-nibble of $78 (independent visual check). Screenshot:
+`tools/doom_full/reu_peek_hex.png`.
+
+### Probe 2: SuperRAM long-LDA after loader runs (`superram_peek_doom_hex.prg`)
+After full Doom runs to wedge at music_num=-9, this probe long-LDAs
+12 SuperRAM locations and paints them as hex. Result:
+```
+Row 0:  78 D8 FF 8C 53 43   (anchor bytes — match Probe 1)
+Row 1:  6D 4B FF A1 A5 5C   (music area + error trap)
+```
+All 12 bytes match doom.reu, including:
+- `$86:$E9C0` = $4B (head of music table area)
+- `$86:$EACF` = $FF (mid music table)
+- `$2B:$1A23` = $A5 (music check disasm target)
+- `$2C:$A95C` = $5C (first byte of `JML $2C:$A95C` self-trap)
+
+Screenshot: `tools/doom_full/superram_peek_after_doom.png`.
+
+## Disassembly of the error chain
+
+Expected doom.reu bytes at `$2C:$85A1..$85A8`:
+```
+A9 03 00 85 90 64 92 A9
+```
+Disassembled in M=16 native mode:
+- `LDA #$0003`   ; load default music_num
+- `STA $90`      ; → zero-page $90/$91
+- `STZ $92`      ; clear upper word
+- `LDA #...`     ; next
+
+So `$2C:$85A1` is the **error-screen music initializer** (sets music
+to track 3 for the error display), NOT where -9 is computed.
+
+Expected bytes at `$2B:$245A..$245D`:
+```
+85 90 A5 8A
+```
+- `STA $90`   ; write A → music_num
+- `LDA $8A`   ; load $8A into A
+
+This matches the v290/v291 finding that `$2B:$245A` is the **printf
+arg-walker** that writes whatever's in A to $90. The value $F7 (low byte
+of -9 = $FFF7) was previously latched 245 times here.
+
+So the actual producer of $FFF7 is **upstream of `$2B:$245A`** —
+something computes -9 in A then JMPs/JSRs through the printf walker.
+
+## Deployment method (KEEP THIS)
+
+Two-step sequential MGL+pipe:
+1. `doom_reu_only.mgl` — single `<file>` tag for `doom.reu` only.
+   Pipe `load_core /media/fat/_Test/doom_reu_only.mgl`. Wait 20 s for
+   the 16 MB transfer.
+2. `reu_peek_doom_hex.mgl` (or `superram_peek_doom_hex.mgl`) — single
+   `<file>` tag for the probe PRG. Pipe `load_core`. REU+SuperRAM
+   SDRAM both survive the core bitstream reload.
+
+For probe 2, run **full Doom first** via `_doom_full_abs.mgl` (loader +
+reu in same MGL — this multi-file pattern DOES work for Doom because
+the second file is a regular `.prg` autorun on the existing READY
+prompt), wait 60 s for the wedge, **then** load the peek MGL.
+
+**Multi-file MGL with `.reu` first + `.prg` second does NOT autorun the
+second tag** regardless of delay (tried `delay="1"/"8"` and `"3"/"15"`).
+Use two pipe writes.
+
+## New tooling in this session
+
+- `tools/build_reu_peek_doom_hex.py` → `reu_peek_doom_hex.prg` (542 B)
+- `tools/build_superram_peek_doom_hex.py` → `superram_peek_doom_hex.prg`
+  (628 B)
+- `tools/doom_reu_only.mgl` (REU-only load for sequence step 1)
+- `tools/reu_peek_doom_hex.mgl`, `tools/superram_peek_doom_hex.mgl`
+- `tools/doom_full/reu_peek_hex.png`,
+  `tools/doom_full/superram_peek_after_doom.png` (PASS evidence)
+
+Hex-paint helper inline in both build scripts: nibble→screen-code
+conversion via `CMP #$0A / BCC digit / SBC #$09` for A-F, `CLC; ADC #$30`
+for 0-9. Branch offsets are pre-computed and verified.
 
 ## Working state
 
-- **HEAD**: `3c4609f` on `vanilla-cpu-swap`
-- **Deployed RBF**: md5 `1a93f82b7939fac96ffdf983d0fb43a1`, 3,860,772 bytes
-- **Source**: clean
-- **Trace**: `tools/doom_full/uart_240s.txt` shows `N:$2C:$A95C` pinned
+- **HEAD**: `3c4609f` on `vanilla-cpu-swap` (no new commits this session)
+- **Deployed RBF**: md5 `1a93f82b7939fac96ffdf983d0fb43a1`, 3,860,772 B
+- **Source**: probe scripts uncommitted; all RTL untouched
 
-## Why v311/v312 didn't work and v313 did
+## Open hypotheses (post-session)
 
-- v311 forced BRK vector reads `$00:$FFE6/$FFE7 → $00/$FF`. Broke the
-  `$0705/$0B05` BRK chain, but Doom-installed `$00:$AF00` IRQ handler
-  was just `PLP; RTI` (no source ack) → infinite IRQ refire loop.
-- v312 mirrored the trick to `$FFEE/$FFEF` IRQ vector. Trace was
-  **byte-identical** to v311. SP-delta analysis: post-RTI `SP += 3` =
-  emu-mode RTI semantics — but our stub bytes were native-gated and
-  still visible. **Contradiction** → XCE-drop bug had desynced internal
-  EF flag from `emu_mode_816_i` output.
-- v313 removed the emu-mode gate AND added the IRQ-source disable
-  sequence to the stub. Both changes were needed: ack alone doesn't
-  stop a continuously-firing source, and the gate prevented the stub
-  from running in whatever mode the CPU thought it was in.
+The bug must be in one of:
+1. **Bank $00 (C64 motherboard RAM) state during execution.**
+   Cannot probe directly because bank $00 is BRAM (volatile across core
+   reload). Best probe: add an RTL `wrXX_*` ring targeting a critical
+   bank-$00 zero-page address (e.g., $0090, $0094, $00A1) and surface
+   via UART pool dump. Cheapest implementation: change the `cpuAddr_pre
+   = x"00FC"` filter at `fpga64_sid_iec.vhd:3127` to `x"0090"` (or
+   another suspect). The wr02_pc + wr02_v0..v3 + cnt_wr02 surfaces
+   already exist — repointing is one line.
+2. **I/O state at trap-evaluation time** (CIA/VIC/SID/REU regs).
+   Less likely given the trap is in a pure code/data error chain.
+3. **Runtime access pattern triggering a bug** that synthetic ramps
+   and long-LDA don't exercise. Possible candidates: 16-bit indexed
+   long-LDA, MVN/MVP block moves, or specific cycle alignments. Worth
+   trying if the wrXX probe doesn't surface a clear producer.
 
-## What v313 trace shows at t=240s
+The CPU microcode is proven correct by cocotb+VICE lockstep over 15574
+instructions (`project_doom_bank20_prologue_match.md`) and another
+5000-instr gameplay run (`project_doom_gameplay_match_5000.md`), so
+deep CPU-internal bugs are ruled out for the post-loader path.
 
-```
-F:3B59 PC:2CA95F P:00 V:E8 E8 F6 0E SP:FFFF WP:2C8605 OP:5C5C
-CY:5B71 J:A95C A95C A95C A95C M:85A1 85B6 85E8 85F6 G:7D 07 00
-N:2CA95C I:00FF2A B:58 VW:000C VB:00FF W5:8D 7A D0 A9
-```
+## Next session entry point
 
-- N = `$2C:$A95C` (the JML self-trap, pinned)
-- M ring = the documented `$85A1→$85B6→$85E8→$85F6` error chain
-- J ring = last 4 JMLs, all `$A95C` (target of self-trap)
-- I = `$00:$FF2A` (RTI inside our ack stub — IRQ infrastructure healthy)
-- W5 = `8D 7A D0 A9` (Doom's `STA $D07A` speed-write, ran post-recompiler)
+1. Pick a bank-$00 zero-page address most likely to surface the
+   producer. Candidates (ranked):
+   - `$0090` — last-known music_num write target (v290/v291)
+   - `$008A` — read by `$2B:$245A` printf walker (`LDA $8A`)
+   - `$00A1` — common zero-page printf temp
+2. Edit `C64_MiSTer/rtl/fpga64_sid_iec.vhd:3127`: change `x"00FC"` to
+   the chosen address. Keep wr02_* signal names — they already plumb
+   through to UART V/WP/CY fields.
+3. Build RBF (~30 min, `./build_c64.ps1`).
+4. Deploy to `/media/fat/_Test/C64.rbf`, run `_doom_full_abs.mgl`,
+   capture UART for 90 s.
+5. Decode V/WP/CY: V should show the 4 most recent values written; WP
+   shows the writer PC; CY shows total count. If V trends toward $F7
+   (low byte of $FFF7) and WP is in bank $2B with a PC that ISN'T
+   `$245C`, that's the producer's writer PC.
 
-Screenshot: white text "Error: Bad music number -9" on dark blue.
-
-## Open issue — music_num producer
-
-Per memory (`project_doom_v293_85a1_chain_decoded.md`,
-`project_doom_v286_brk_loop_broken.md`, the 6 cocotb+VICE lockstep
-proofs in `project_doom_*_match*.md`):
-
-- CPU microcode is **proven correct** on Doom code paths.
-- Bug is HW-only / REU→SuperRAM data-path related.
-- music_num=-9 is a `$FFF7` "lookup failed" sentinel that appears at
-  21 sites in REU.
-- Producer ran during **loader phase before the trap**.
-- VICE oracle for Doom xscpu64 hangs at FLI raster IRQ, can't be used
-  as oracle for music_num divergence.
-
-## Integrity test PRG built — deployment blocked
-
-Built two test PRGs (commit `71261e5`):
-
-- `tools/superram_minimal.prg` (53 bytes): minimal SuperRAM round-trip
-  (long-store + long-LDA) with tripwires at `$0400-$0403`.
-- `tools/reu_superram_integrity.prg` (252 bytes): full pipeline —
-  ramp write, REU STASH, REU FETCH, SuperRAM round-trip, mismatch
-  count. Output to screen `$0400-$0405`.
-
-**Deployment friction found this session**:
-1. `mbc load_rom` (used by `python tools/mister_debug.py load_prg`)
-   suppresses debug UART output. After load_rom, UART goes silent
-   even though VIC-II keeps running (single keypress test shows
-   `X` appears on screen).
-2. After `load_rom`, `python tools/mister_debug.py keys 'SYS 2061\r'`
-   does not produce a visible "SYS 2061" command echo on screen
-   across multiple attempts. mtype.py runs without error but the
-   keys don't seem to reach BASIC reliably.
-3. The mbc-corrupts-BASIC-stub note in `CLAUDE.md` is known, but
-   SYS-keypress is the documented workaround — and that's failing
-   too in this session's tests.
-
-## Next-session priorities
-
-1. **Get the integrity test PRG running**. Options:
-   - **Self-displaying loop**: rewrite both PRGs to spin forever
-     at the end, painting the result onto the entire screen RAM
-     ($0400-$07E7) so any screenshot shows the result without
-     needing BASIC to print READY. Avoids `mbc load_rom` race
-     with BASIC.
-   - **MGL autorun**: create an MGL that loads the PRG via
-     `<file>` tag (similar to how doom.reu is loaded). Stock
-     MGL loaders DO process `<file>` tags via the pipe (see
-     CLAUDE.md "Loading .reu files" section).
-   - **Read screen RAM via SSH**: install a small helper on
-     MiSTer that reads `/dev/fb0` or VRAM, OR use the existing
-     `python tools/mister_debug.py screen` and post-process the
-     PNG to identify written byte values (visually).
-
-2. **Don't blindly rebuild more probes** — the music_num search has
-   consumed many sessions already with the same dead-end shape. Before
-   another wedge-instrumentation pass:
-   - Re-read `project_doom_v293_dispatcher_pointer_smoking_gun.md`,
-     `project_doom_v293_85a1_chain_decoded.md`, and the lockstep proofs.
-   - The CPU is correct. So the producer of `$FFF7` is reading the
-     wrong byte from memory at runtime. That implies REU→SuperRAM
-     transfer corruption OR a memory-aliasing bug.
-
-3. **Stop chasing music_num via UART rings.** The wr02/wr03 ring
-   approach has been tried with multiple filters (PBR=$2B, PBR=$2C,
-   unfiltered). It hasn't found the producer because the producer is
-   probably one of thousands of generic byte stores that look identical
-   to every other store. A REU→SuperRAM integrity test is more
-   discriminating — assuming we can get it running.
-
-## Commits this session
-
-```
-71261e5 debug/doom: REU→SuperRAM integrity test PRG (WIP — deployment friction)
-7f355aa docs/session_handoff: v313 cleared IRQ wedge, back at music_num=-9
-3c4609f verif/doom: v313 — extended ack stub clears IRQ wedge, reaches music_num=-9
-a9b4fda verif/doom: v312 trace — IRQ vector force at $FFEE/F unchanged
-5ab1fab verif/doom: v312 — force IRQ vector reads to $00:$FF00
-37272eb verif/doom: v310→v311 — wedge shifts $0705→$0B05, force BRK→$FF00
-```
-
-## Memory files updated/created this session
-
-- `project_doom_v311_irq_wedge_at_af00.md` — NEW. v311 progress + new IRQ wedge.
-- `project_doom_v312_emu_mode_wedge.md` — NEW. SP-delta contradiction; XCE-drop hypothesis.
-- `project_doom_v313_irq_wedge_cleared.md` — NEW. v313 success state, back at music_num=-9.
-- `MEMORY.md` — top entries updated to reflect v311-v313 chain.
-
-## Update — spin-test variant committed, mbc deployment confirmed broken
-
-Committed `tools/superram_spin_test.prg` (commit `3047b6c`) — 64-byte
-variant that paints screen rows 0-12 with the SuperRAM readback byte
-and spins forever, avoiding any RTS-to-BASIC dependency.
-
-Deployment still blocked. Re-confirmed this session:
-- **Pre-load_rom**: full BASIC banner visible, `PRINT 1` typed via
-  `keys 'PRINT 1\r'` returns `1` — keys + screen both work.
-- **Post-load_rom**: debug UART silent, multi-character keystroke
-  (`SYS 2061 enter`) silently does nothing even with `wait:0.1`
-  pauses between each character via direct `mtype.py` SSH call.
-  Single-character `X` did work in one earlier attempt; longer
-  sequences do not.
-
-`mbc load_rom` is unsuitable for our SCPU+UART-debug workflow. For
-the integrity test to actually run, the next session needs either:
-- MGL-based autorun (bypass mbc entirely), or
-- A different injection path (custom ioctl, direct BRAM poke via
-  FPGA register if any path exists that doesn't disturb UART).
+This is the highest-leverage probe given everything ruled out.
