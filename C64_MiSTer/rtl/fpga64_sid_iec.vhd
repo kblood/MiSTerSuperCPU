@@ -3192,36 +3192,34 @@ begin
 					end case;
 				end if;
 			end if;
-			-- v323 (2026-05-12): catch the upstream-of-upstream writer.
-			-- v322 proved the chain:
-			--   (?) -> $00:$C0 = $F7
-			--   -> $2B:$208E `LDA $C0; STA $94` -> $00:$94 = $F7
-			--   -> $2C:$84DA `LDA $94; STA [$F4],Y=$24` -> $5C:$B546 = $F7
-			--   -> music_num=-9 trap at $2C:$A95C
+			-- v324 (2026-05-12): pin the bank-$2B writers of $F7 to ZP $C0.
+			-- v323 V ring was $2B $2B $2B $2C — 3 of 4 last writers were
+			-- in bank $2B. Disambiguate them: filter to bank $2B only,
+			-- repurpose V ring for last 4 writer-PC LO bytes.
 			--
-			-- Filter: cpuWe=1, cpuDo_pre=$F7, addr_hi_816=$00,
-			--         cpuAddr_pre = $00C0 (literal ZP $C0, D=$0000).
-			-- If FIRES — WP = writer PC (incl. bank via cpu_pc_now[23:16]),
-			-- V ring = last 4 writer banks (cpu_pc_now[23:16]) to spot
-			-- bank-trampolined recompiler shims, YX = writer-PC low 16
-			-- bits, CY = total $F7 writes to $00:$C0.
-			-- If multiple writers — V ring shows trail of source banks.
+			-- Filter: cpuWe=1, cpuDo=$F7, addr_hi=$00, cpuAddr_pre=$00C0,
+			--         cpu_pc_now[23:16]=$2B.
+			-- WP = most recent writer PC ($2B:$xxxx).
+			-- V ring = last 4 writer PC LO bytes (to distinguish sites).
+			-- YX = WP[15:0] sanity check.
+			-- CY = total fires from bank $2B.
 			if enableCpu = '1' and cpuWe_pre = '1'
 			   and addr_hi_816 = x"00"
 			   and cpuAddr_pre = x"00C0"
-			   and cpuDo_pre = x"F7" then
+			   and cpuDo_pre = x"F7"
+			   and cpu_pc_now(23 downto 16) = x"2B" then
 				wr02_pc_r  <= cpu_pc_now;
 				cnt_wr02_r <= cnt_wr02_r + 1;
-				if cpu_pc_now(23 downto 16) /= wr02_val_r then
+				if cpu_pc_now(7 downto 0) /= wr02_val_r then
 					cnt_wr02_chg_r <= cnt_wr02_chg_r + 1;
 				end if;
-				wr02_val_r <= cpu_pc_now(23 downto 16);
-				-- V ring = last 4 writer banks (cpu_pc_now[23:16])
+				wr02_val_r <= cpu_pc_now(7 downto 0);
+				-- V ring = last 4 writer PC LO bytes
 				wr02_v0_r <= wr02_v1_r;
 				wr02_v1_r <= wr02_v2_r;
 				wr02_v2_r <= wr02_v3_r;
-				wr02_v3_r <= cpu_pc_now(23 downto 16);
-				-- YX = writer-PC bottom 16 bits (HI/LO within writer's bank)
+				wr02_v3_r <= cpu_pc_now(7 downto 0);
+				-- YX = writer-PC bottom 16 bits
 				wr02_y_r  <= cpu_pc_now(15 downto 8);
 				wr02_x_r  <= cpu_pc_now(7 downto 0);
 			end if;
