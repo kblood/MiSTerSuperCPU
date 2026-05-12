@@ -3124,30 +3124,14 @@ begin
 				-- makes to $00:$00FC on hardware — bug is "missing Doom
 				-- overwrite". If CY > 88 or CG > 1, hardware DOES write
 				-- non-$5C values and the V ring shows what they are.
-				-- v316 (2026-05-12): v314/v315 disproved $0090 and $0094. Switch
-				-- FILTER from address to VALUE: catch every CPU write to bank $00
-				-- of byte $F7 (low of $FFF7=-9). V ring captures the destination
-				-- address LO byte of the last 4 such writes; WP captures the
-				-- writer-PC. If $F7 is ever written anywhere in bank $00, V/WP
-				-- + CY reveal where and from what PC. If CY=0 the value is
-				-- never seen on the CPU bus -> stored in SuperRAM or in a
-				-- 65816 register only (never spilled to memory).
-				if addr_hi_816 = x"00" and cpuDo_pre = x"F7" then
-					wr02_pc_r  <= cpu_pc_now;
-					wr02_val_r <= std_logic_vector(cpuDo_pre);
-					cnt_wr02_r <= cnt_wr02_r + 1;
-					if std_logic_vector(cpuDo_pre) /= wr02_val_r then
-						cnt_wr02_chg_r <= cnt_wr02_chg_r + 1;
-					end if;
-					-- V ring now holds the DESTINATION ADDRESS LO byte of the
-					-- last 4 $F7-writes, not the value (since value is always $F7).
-					wr02_v0_r <= wr02_v1_r;
-					wr02_v1_r <= wr02_v2_r;
-					wr02_v2_r <= wr02_v3_r;
-					wr02_v3_r <= std_logic_vector(cpuAddr_pre(7 downto 0));
-					wr02_y_r  <= cpu_y_now;
-					wr02_x_r  <= cpu_x_now;
-				end if;
+				-- v320 (2026-05-12): write-side filter REMOVED.
+				-- The wr02_* ring is now driven by a READ-side filter
+				-- placed OUTSIDE this `enableCpu='1' and cpuWe='1'` block
+				-- (see new block after line 3224 end-if). Reasoning: a
+				-- $F7 write filter inside the write-gate cannot detect
+				-- READS, and v319 results showed write-side captures
+				-- were dominated by recompiler JIT output to bank $5C
+				-- (too noisy). Read-side filter is more targeted.
 				if cpuAddr_pre = x"0003" then
 					wr03_pc_r  <= cpu_pc_now;
 					wr03_val_r <= std_logic_vector(cpuDo_pre);
@@ -3207,6 +3191,41 @@ begin
 						when others => null;
 					end case;
 				end if;
+			end if;
+			-- v322 (2026-05-12): catch the upstream writer that puts $F7
+			-- into DP+$94 BEFORE the v321-pinned shim at $2C:$84DC reads
+			-- it and propagates to $5C:$B546.
+			--
+			-- v321 proved: STA [$F4],Y=$24 at $2C:$84DC writes A=$F7 to
+			-- $5C:$B546. A was loaded by LDA $94 at $2C:$84DA — i.e.
+			-- effective addr = D + $0094 (D = active direct page reg).
+			-- Fresh-boot $0094 = $00, so something writes $F7 to "DP+$94"
+			-- in bank $00 during Doom runtime.
+			--
+			-- Filter: cpuWe=1, cpuDo_pre=$F7, addr_hi_816=$00,
+			--         cpuAddr_pre[7:0]=$94. Catches every store of $F7
+			--         to any DP-relative $94 regardless of D[15:8].
+			-- If FIRES — WP = writer PC (incl. bank), V ring = last 4
+			-- values of cpuAddr_pre[15:8] (= D[15:8]+carry → reveals
+			-- active DP), YX = writer-PC low 16 bits, CY = total fires.
+			if enableCpu = '1' and cpuWe_pre = '1'
+			   and addr_hi_816 = x"00"
+			   and cpuAddr_pre(7 downto 0) = x"94"
+			   and cpuDo_pre = x"F7" then
+				wr02_pc_r  <= cpu_pc_now;
+				cnt_wr02_r <= cnt_wr02_r + 1;
+				if cpu_pc_now(23 downto 16) /= wr02_val_r then
+					cnt_wr02_chg_r <= cnt_wr02_chg_r + 1;
+				end if;
+				wr02_val_r <= std_logic_vector(cpuAddr_pre(15 downto 8));
+				-- V ring = last 4 cpuAddr_pre[15:8] (= D[15:8] for DP store)
+				wr02_v0_r <= wr02_v1_r;
+				wr02_v1_r <= wr02_v2_r;
+				wr02_v2_r <= wr02_v3_r;
+				wr02_v3_r <= std_logic_vector(cpuAddr_pre(15 downto 8));
+				-- YX = writer-PC bottom 16 bits (HI/LO within writer's bank)
+				wr02_y_r  <= cpu_pc_now(15 downto 8);
+				wr02_x_r  <= cpu_pc_now(7 downto 0);
 			end if;
 			-- v304 DMA-side $0706 write capture. Use post-mux cpuAddr /
 			-- cpuDo / cpuWe gated by dma_active to catch REU writes only
