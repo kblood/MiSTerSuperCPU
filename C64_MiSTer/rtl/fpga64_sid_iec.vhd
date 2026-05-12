@@ -3073,12 +3073,36 @@ begin
 				-- with dma_addr/dma_dout/dma_we). If REU FETCH destination
 				-- ever overlaps $0700-$07BA, those writes were invisible
 				-- to v303 and would corrupt the dispatcher bytes.
-				if addr_hi_816 = x"00" and cpuAddr_pre = x"0706" then
+				-- v306 (2026-05-12): widen W5 ring to capture writes across the
+				-- full recompiler scratchpad $00:$0700-$070F. Repurpose
+				-- cnt_wr5C as a 16-bit "addresses-written" bitmap (bit N set =
+				-- $070N was written at least once by CPU). This will reveal
+				-- whether the recompiler EVER writes $0705 (where the wedge's
+				-- BRK opcode $00 sits per the v305 capture).
+				if addr_hi_816 = x"00" and cpuAddr_pre(15 downto 4) = x"070" then
 					wr5C_v0_r  <= wr5C_v1_r;
 					wr5C_v1_r  <= wr5C_v2_r;
 					wr5C_v2_r  <= wr5C_v3_r;
 					wr5C_v3_r  <= std_logic_vector(cpuDo_pre);
-					cnt_wr5C_r <= cnt_wr5C_r + 1;
+					case cpuAddr_pre(3 downto 0) is
+						when x"0" => cnt_wr5C_r(0)  <= '1';
+						when x"1" => cnt_wr5C_r(1)  <= '1';
+						when x"2" => cnt_wr5C_r(2)  <= '1';
+						when x"3" => cnt_wr5C_r(3)  <= '1';
+						when x"4" => cnt_wr5C_r(4)  <= '1';
+						when x"5" => cnt_wr5C_r(5)  <= '1';
+						when x"6" => cnt_wr5C_r(6)  <= '1';
+						when x"7" => cnt_wr5C_r(7)  <= '1';
+						when x"8" => cnt_wr5C_r(8)  <= '1';
+						when x"9" => cnt_wr5C_r(9)  <= '1';
+						when x"A" => cnt_wr5C_r(10) <= '1';
+						when x"B" => cnt_wr5C_r(11) <= '1';
+						when x"C" => cnt_wr5C_r(12) <= '1';
+						when x"D" => cnt_wr5C_r(13) <= '1';
+						when x"E" => cnt_wr5C_r(14) <= '1';
+						when x"F" => cnt_wr5C_r(15) <= '1';
+						when others => null;
+					end case;
 				end if;
 			end if;
 			-- v304 DMA-side $0706 write capture. Use post-mux cpuAddr /
