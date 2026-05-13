@@ -215,17 +215,18 @@ module debug_uart_pool_fmt
 			8'd52: line_byte = hex_nibble(lat_wp[3:0]);
 			8'd53: line_byte = " ";
 
-			// v265: "W1:####" — d001_last_pc[15:0], writer PC of $D001 (sprite0 Y)
-			// 2026-05-10: "OP:####" doom-wait Probe B. Was W1=d001_last_pc.
-			// hh = trace_op2 (one-back), ll = trace_op3 (newest fetched
-			// opcode byte). Pairs with N to confirm pc_main is real.
-			8'd54: line_byte = "O";
-			8'd55: line_byte = "P";
+			// v320 (2026-05-12): "YX:####" repurposes OP slot to show
+			// the source address (HI:LO) of the last bank-$2B read of
+			// $F7 from SuperRAM. lat_y = $99 (HI), lat_x = $98 (LO).
+			// Combined with V ring's source bank, we get a 24-bit
+			// SuperRAM address that returned $F7 to the sign-extend.
+			8'd54: line_byte = "Y";
+			8'd55: line_byte = "X";
 			8'd56: line_byte = ":";
-			8'd57: line_byte = hex_nibble(lat_w1[15:12]);
-			8'd58: line_byte = hex_nibble(lat_w1[11:8]);
-			8'd59: line_byte = hex_nibble(lat_w1[7:4]);
-			8'd60: line_byte = hex_nibble(lat_w1[3:0]);
+			8'd57: line_byte = hex_nibble(lat_y[7:4]);
+			8'd58: line_byte = hex_nibble(lat_y[3:0]);
+			8'd59: line_byte = hex_nibble(lat_x[7:4]);
+			8'd60: line_byte = hex_nibble(lat_x[3:0]);
 			8'd61: line_byte = " ";
 
 			// "CY:####"

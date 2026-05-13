@@ -1870,6 +1870,22 @@ cpuDi <= scpu_dos_ext_mode
          -- prevents collateral damage to T65 / emu mode / other banks.
          x"40" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
                      and cpuAddr = x"0705") else  -- $00:$0705 → RTI probe
+         -- ----------------------------------------------------------------
+         -- ROOT-CAUSE READ FIX (2026-05-13): bypass buslogic I/O decode for
+         -- SCPU long-mode reads (addr_hi_816 /= $00). buslogic decodes
+         -- cs_vic/cs_sid/cs_color/cs_cia* purely from cpuAddr[15:12]=$D with
+         -- no bank check, so any SCPU access at $XX:$Dxxx (bank != $00)
+         -- read I/O register garbage (color RAM open-bus / VIC raster / CIA
+         -- timers) instead of the SuperRAM byte at that long address.
+         -- scpu_sdram_addr correctly routes SDRAM to {1,bank,addr16} but
+         -- the data came back from buslogic's I/O mux. ramDin carries
+         -- sdram_data (via cartridge passthrough), so muxing it in here
+         -- restores the correct SuperRAM byte for any non-$00 bank.
+         -- Bank $00 falls through to cpuDi_raw unchanged, preserving all
+         -- legacy 6510/T65 behaviour and SCPU register intercepts above.
+         -- See project_bug_pinned_io_decode_ignores_bank.md for full
+         -- analysis + code-peek evidence.
+         ramDin when (supercpu_en = '1' and addr_hi_816 /= x"00") else
          cpuDi_raw;
 
 -- ----------------------------------------------------------------------
@@ -3192,35 +3208,34 @@ begin
 					end case;
 				end if;
 			end if;
-			-- v325 (2026-05-13): walk further upstream. v324 proved
-			-- `INC $C0` at $2B:$DB25 produces $F7 from pre-INC $F6.
-			-- Pre-INC $C0 came from `LDA $90; STA $C0` (M=16) inside
-			-- $2C:$A8A4 subroutine at $A8CE.
-			-- So HW ZP $90 = $F6 vs VICE $02. Find writer of $F6 to $90.
+			-- v338 (2026-05-13): trace upstream — writer of $FX into $0090.
 			--
-			-- Filter: cpuWe=1, cpuDo=$F6, addr_hi=$00, cpuAddr_pre=$0090.
-			-- WP = writer PC (full 24-bit, including bank).
-			-- V ring = last 4 writer banks (cpu_pc_now[23:16]).
-			-- YX = WP[15:0].
-			-- CY = total fires.
+			-- v337 proved all 285 $FX writes to $C0 funnel through one shim
+			-- `LDA $90; STA $C0` at $2B:$1D8A. So the corruption source is ZP $90.
+			-- v338 freezes WP at fire 1 of $FX-write-to-$0090 and rings first 4
+			-- values + PC LO bytes to pin the bootstrap writer of $0090.
+			--
+			-- Filter: cpuWe_pre=1, $00:$0090, cpuDo HI nibble = $F.
 			if enableCpu = '1' and cpuWe_pre = '1'
 			   and addr_hi_816 = x"00"
 			   and cpuAddr_pre = x"0090"
-			   and cpuDo_pre = x"F6" then
-				wr02_pc_r  <= cpu_pc_now;
+			   and cpuDo_pre(7 downto 4) = x"F" then
 				cnt_wr02_r <= cnt_wr02_r + 1;
-				if cpu_pc_now(23 downto 16) /= wr02_val_r then
-					cnt_wr02_chg_r <= cnt_wr02_chg_r + 1;
+				-- Freeze WP at fire 1 (cnt=0)
+				if cnt_wr02_r = to_unsigned(0, 16) then
+					wr02_pc_r <= cpu_pc_now;
 				end if;
-				wr02_val_r <= cpu_pc_now(23 downto 16);
-				-- V ring = last 4 writer banks
-				wr02_v0_r <= wr02_v1_r;
-				wr02_v1_r <= wr02_v2_r;
-				wr02_v2_r <= wr02_v3_r;
-				wr02_v3_r <= cpu_pc_now(23 downto 16);
-				-- YX = writer-PC bottom 16 bits
-				wr02_y_r  <= cpu_pc_now(15 downto 8);
-				wr02_x_r  <= cpu_pc_now(7 downto 0);
+				-- V ring = first 4 values (frozen after fire 4)
+				if cnt_wr02_r < to_unsigned(4, 16) then
+					wr02_val_r <= std_logic_vector(cpuDo_pre);
+					wr02_v0_r  <= wr02_v1_r;
+					wr02_v1_r  <= wr02_v2_r;
+					wr02_v2_r  <= wr02_v3_r;
+					wr02_v3_r  <= std_logic_vector(cpuDo_pre);
+					-- YX = first 4 PC LO bytes (shifted same as V ring)
+					wr02_y_r   <= wr02_x_r;
+					wr02_x_r   <= cpu_pc_now(7 downto 0);
+				end if;
 			end if;
 			-- v304 DMA-side $0706 write capture. Use post-mux cpuAddr /
 			-- cpuDo / cpuWe gated by dma_active to catch REU writes only

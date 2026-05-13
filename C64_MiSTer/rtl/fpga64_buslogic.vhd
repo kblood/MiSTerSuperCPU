@@ -150,6 +150,7 @@ architecture rtl of fpga64_buslogic is
 	signal scpu_sysram_cs   : std_logic;
 	signal scpu_sysram_data : std_logic_vector(7 downto 0);
 	signal scpu_io_en       : std_logic;
+	signal scpu_long_access : std_logic;
 
 begin
 	chargen: entity work.dprom
@@ -524,7 +525,16 @@ begin
 		end if;
 	end process;
 
-	cs_ram <= cs_ramLoc or cs_romLLoc or cs_romHLoc or cs_UMAXromHLoc or cs_UMAXnomapLoc or cs_CharLoc or cs_romLoc;
+	-- ROOT-CAUSE FIX part 2 (2026-05-13): cs_ram must also fire for SCPU long-mode
+	-- accesses to non-bank-$00 (any bank /= $00 with supercpu_en=1). The internal
+	-- cs_*Loc decoding fires cs_colorLoc/cs_vicLoc/etc for cpuAddr[15:12]=$D
+	-- regardless of bank, leaving cs_ram = '0' so the upstream ramCE never asserts
+	-- and SCPU reads/writes at $XX:$Dxxx never touch SDRAM. With this OR'd in,
+	-- non-bank-$00 SCPU access always asserts cs_ram → ramCE → SDRAM cycle fires.
+	-- Bank $00 unaffected (still uses the original cs_*Loc decoding).
+	scpu_long_access <= '1' when supercpu_en = '1' and supercpu_bank /= x"00" else '0';
+	cs_ram <= cs_ramLoc or cs_romLLoc or cs_romHLoc or cs_UMAXromHLoc or cs_UMAXnomapLoc or cs_CharLoc or cs_romLoc
+	          or scpu_long_access;
 	-- Phase C step 4: gate C64 chip-selects with scpu_io_en so MVN/STA-long
 	-- accesses into bank /= $00 don't produce stray VIC/SID/CIA strobes. In
 	-- vanilla mode (supercpu_en='0') scpu_io_en is constant '1' and these
