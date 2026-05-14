@@ -1,95 +1,107 @@
-# Session handoff — 2026-05-14 (post-v340n: IRQ wedge FIXED, new bitmap-render surface)
+# Session handoff — 2026-05-14 (v341 built, ready to deploy)
 
 ## Bottom line
 
-**The post-$0EED black-screen wedge is FIXED** (commit `c3fa2b8`).
-v340n changes:
-1. IRQ stub JML target: $0D40 → $0D3C (Doom's real entry point)
-2. Removed v304 DMA-$0706 overload of VW/AC counters
-3. UART formatter: VB (BRK vector) → AC (resetraster count)
+**v341 RBF built and committed (md5 `a1faa08cece10efabddc04b1ea0565be`).**
+Adds three probe fields to the per-vblank UART line to disambiguate the
+black-screen wedge that remains after v340n fixed the post-$0EED IRQ flood.
 
-Doom now boots all the way through `V_Init → M_LoadDefaults → Z_Init →
-W_Init → M_Init → R_Init` (text screen visible at t=120s) and into JIT
-main code in banks $2C/$3B/$A0/$A5 with SP:01FF clean, VW=AC=9 (VIC
-ack chain works 1:1), M ring containing $0D6C (Doom's IRQ handler body).
+New UART fields per line:
+- `1D:####` (bytes 194-201) — last cpuDi/cpuDo at bank-$00:`$1D02` / `$1D04`
+  (Doom's page-flip handshake). Gated on supercpu_bank=$00 so JIT
+  bank-$XX:`$1D02` hits don't shadow the real handshake words.
+- `D6:##` (bytes 220-225) — last cpuDo to `$D016`. MCM bit (bit 4) must
+  be set for multicolor-bitmap mode.
 
-Black screen remains at t=240s, but the cause has shifted from
-"ORA-fetch wedge in JIT" to "bitmap-render not producing visible
-output." This is a **new debug surface**.
+Line length 224 → 230. R7 (always-zero diag slot) repurposed for 1D.
 
-## v340n verification (RBF md5 `a31d251dd8affbd7ee5be6c9145fade9`)
+MiSTer is loaned to another agent — deploy when free.
 
-| Sample | PC | SP | VW | AC | IF | Screen |
-|--------|----|----|----|----|----|--------|
-| t=30s  | $00:$078C | $01F6 | n/a | n/a | n/a | loader anim |
-| t=60s  | $00:$078B | $01F6 | 0001 | 0001 | 001B | loader anim |
-| t=120s | $29:$1F9C | $01FF | 0005 | 0005 | 001B | Doom text up to R_Init |
-| t=240s | $2C:$30CD | $01FF | 0009 | 0009 | 001C | black |
+## Why these probes
 
-PC at t=240s drifts across $2C:$2FE6, $2FF2, $3023, $3080, $30C6,
-$30CD, $35CA, $35D9, $310F — a wide range, so CPU is genuinely
-executing JIT code, not stuck.
+VICE xscpu64 + doom.reu + loader.prg (warp 30-240s) **renders Doom title
+bitmap** at t=180s while HW v340n black-screens with identical code.
+Code therefore correct; bug is in our FPGA infrastructure.
 
-VW=AC monotonic and equal → the SCPU $D019 ack writes ARE reaching
-the VIC's myWr_a and IRST IS being cleared 1:1. The suspected bug
-at `video_vicII_656x.vhd:77` is **not present**. Doom isn't
-generating frequent VIC IRQ activity in this state (only 9 ack
-writes in 240s), which is consistent with the game having disabled
-$D01A (VIC IRQ mask) once its scheduler is up.
+VICE state at t=180s+ (visible Doom title):
+- D011=$BB (DEN+BMM+RSEL, raster_msb=1)
+- D016=$D8 (**MCM=1, CSEL=1** → multicolor bitmap)
+- D018=$81 (screen=$2000 in-bank, bitmap=$0000)
+- DD00 toggles $C0↔$C2 (bank 3 ↔ bank 1) every frame — double-buffer
+- $FFEE=$EAEA (**VICE Doom has NO native IRQ vector installed**)
 
-## Next debug surface — bitmap-render black screen
+HW state at t=240s (v340n):
+- D1=3B, D8=80, C2=02 (correct mode, bank 1, screen $2000) — basic VIC setup matches
+- DD00 stuck at $02 (bank 1 only) — **page-flip not happening**
+- VW=AC=9, IF=001C (9 raster IRQs total over 240s)
+- PC drifts $2C:$2FE6-$36xx — CPU running JIT but in a tight ~1KB span
 
-CPU runs main code. IF (28 IRQs/240s) is low. Screen is black after
-the Doom text-mode startup completes. Hypothesis tree:
+## Three live hypotheses to discriminate with v341
 
+1. **Bitmap-fill code never runs** — PC stuck in a polling loop early in
+   `R_Init` aftermath, before the renderer ever touches $4000-$5F3F.
+   v341 signal: `1D:####` shows both bytes at boot defaults ($00 or
+   garbage), never updates. D6 stays at boot default.
+
+2. **$D01A=$00 mask kill breaks Doom's frame scheduler** — our stub
+   at $FF1A masks all VIC IRQs every ack. If Doom polls $1D04 from
+   main but the producer at $0F58 is IRQ-driven, $1D04 never changes
+   → main waits forever.
+   v341 signal: `1D:####` shows static value (e.g., `0101` or `0000`),
+   D6 updated to $D8 once during init.
+
+3. **Page-flip stuck on bank 1** — Doom's flip code at $80:$0B40 reads
+   $1D04, BEQs, picks DD00. If $1D04 != 0 it always picks bank 1.
+   v341 signal: `1D:####` shows $1D02 and $1D04 BOTH non-zero, equal
+   to each other and stable.
+
+VICE differential expectation: $1D04 should toggle between two values
+each frame (oldest+1, oldest, oldest+1, ...) and $1D02 should follow.
+
+## v341 deploy procedure (when MiSTer free)
+
+```bash
+python tools/mister_debug.py deploy C64_MiSTer/output_files/C64.rbf
+# Load doom.reu via MGL with absolute path
+ssh root@192.168.50.130 'echo load_core /media/fat/_Test/doom_reu_only.mgl > /dev/MiSTer_cmd'
+# After ~30s for REU load + load_prg loader, type loader sequence:
+python tools/mister_debug.py keys 'POKE49152,120:POKE49153,24:POKE49154,251:POKE49155,92\nPOKE49156,0:POKE49157,0:POKE49158,32\nSYS49152\n'
+# Capture UART
+python tools/mister_debug.py uart 300 > tools/doom_full/v341_uart.txt
+python tools/mister_debug.py screen tools/doom_full/v341_screen.png
 ```
-Black screen at t=240s
-├─ VIC config wrong
-│   ├─ $D011 DEN bit cleared (display disabled)
-│   ├─ $D018 mem pointer to wrong screen/bitmap bank
-│   └─ $D016 / $D011 mode bits wrong (text vs bitmap mismatch)
-├─ VIC bank wrong
-│   ├─ $DD00 lower 2 bits select wrong 16K bank
-│   └─ Doom expects bitmap in motherboard RAM that VIC can see;
-│      JIT may be writing to SuperRAM bank that VIC cannot read
-└─ Doom in renderer state that never completes a frame
-    └─ PC drifts across $2C:$3000-$36xx — could be polling loop
-      waiting on a flag we never set
-```
 
-### Recommended next probes
+Then `grep -oE "1D:[0-9a-fA-F]{4}" tools/doom_full/v341_uart.txt | sort -u`
+to see the unique $1D02/$1D04 values across the run. Empty or one-value
+→ probe doesn't trigger or stays constant. Multiple distinct values →
+handshake is alive somehow.
 
-1. **Read live VIC config**: capture $D011/$D018/$D016/$D020/$D021/$DD00
-   values via a peek probe or by adding a VIC-config slot to UART.
-2. **Compare to VICE** at the same Doom state (post-R_Init,
-   pre-bitmap). VICE's xscpu64 ought to be at the same PC location
-   and showing pixels — capture VICE's $D0xx state and diff.
-3. **Hook a probe at the bitmap memory** Doom writes to, to confirm
-   it's actually computing pixels (vs hung in a wait loop). If
-   pixels ARE being written, the wedge is at VIC reading them.
+## Resource budget v341
 
-## Uncommitted state
+- ALMs: 27,060 / 41,910 (**65%**) — down from prior 73% baseline
+  (some pruning during fitter optimization, no logic intentionally
+  removed by this commit)
+- M10K: 403 / 553 (73%)
+- WNS: +3.568ns (HDMI PLL counter) — no failed paths
+- Build time: 12:26
 
-None — v340n is committed (`c3fa2b8`).
+## Open items behind this surface
 
-## Files
+Still pending root-cause regardless of v341 outcome:
+- VICE has $D011=$BB but HW has $D011=$3B (bit 7 / raster_msb differs).
+  Doom on HW may never reach the code that sets raster_msb=1 (renderer
+  not running) — see hypothesis 1.
+- WriteSmart still MISSING but should not matter for vanilla-cpu-swap
+  branch (single c64_ram64k BRAM shared CPU+VIC; no separate SCPU SRAM
+  to mirror from).
 
-- Commit: `c3fa2b8 fix: v340n — clear post-$0EED IRQ wedge; Doom
-  boots through R_Init`
-- Memory file: `project_doom_v340n_irq_wedge_fixed.md`
-- UART captures: `tools/doom_full/uart_{30,60,120,240}s.txt`
-- Screenshots: `tools/doom_full/shot_{30,60,120,240}s.png`
-  (120s is the money shot — visible Doom startup text)
+## Files modified for v341
 
-## Don't repeat these mistakes
+- `C64_MiSTer/rtl/fpga64_sid_iec.vhd` — `dbg_mem_1d02`/`dbg_mem_1d04`
+  ports + signals + read/write latches at lines 3645-3667
+- `C64_MiSTer/c64.sv` — wires + instance connections + pool assignments
+- `C64_MiSTer/rtl/debug/debug_pkg.svh` — `mem_1d02`/`mem_1d04` pool fields
+- `C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv` — LINE_LEN=230, R7→1D,
+  +D6 field bytes 194-201 and 220-225
 
-- v340m's JML target $0D40 skipped Doom's $0D3C prologue and leaked
-  the stack. Always confirm the *exact* entry address against the
-  installed code, not a "nearby" one.
-- The "SCPU $D019 ack doesn't clear IRST" suspicion at
-  `video_vicII_656x.vhd:77` turned out NOT to be the cause of the
-  wedge. The ack chain works; the wedge was simply that we weren't
-  routing IRQ to a working handler. Keep that comment as a future
-  diagnostic hook but the bug it was hunting is not active.
-- AC/VW are now load-bearing diagnostic fields. Don't repurpose them
-  without first restoring an alternate display path.
+Commit: `df066a8`
