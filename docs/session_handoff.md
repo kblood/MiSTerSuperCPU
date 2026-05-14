@@ -1,131 +1,101 @@
-# Session handoff — 2026-05-12 (REU + SuperRAM data clean; $0090 disproved as -9 carrier)
+# Session handoff — 2026-05-14 (post-v340m: stack leak + IRQ refire confirmed)
 
 ## Bottom line
 
-Three big findings narrowed the music_num=-9 hypothesis space dramatically.
+The post-$0EED-fix black-screen wedge is **CPU aborts ORA at $0F:$F1DA after
+opcode fetch** because IRQ is persistently asserted. v340l per-LO-nibble
+cum-OR + bit-7 marker probe **definitively proved** that operand fetches at
+$F1DB-$F1DF never happen on HW (V1-V3/Y/X stayed $00 despite the $80 marker
+that would set if any fetch occurred).
 
-**REU and SuperRAM data layers are byte-perfect** for the music data
-region. The loader's REU→SuperRAM copy is clean.
+v340m attempted to fix by routing IRQ → $00:$FF00 ack stub → JML $00:$0D40 →
+Doom handler, but produced **stack leak ~$3FC bytes per UART line** while
+still black-screen. Two simultaneous problems:
+1. JML target $0D40 wrong — Doom installs at $0D3C (skips 3-byte prologue)
+2. IRQ refires despite stub's full ack chain + $D01A=$00 mask → strongly
+   suggests **FPGA's $D019 ack doesn't deassert irq_vic** (the suspicion
+   already documented at video_vicII_656x.vhd:77)
 
-**doom.reu contains zero int32 -9 (`F7 FF FF FF`) constants** — the value
--9 is computed at runtime, not loaded from a literal.
+## Probe series summary (this session)
 
-**v314 wr02 ring at `$0090` shows `00 03 00 FF` with no `$F7`** —
-`$0090` is NOT where music_num=-9 lives at error-print time. The v291
-interpretation was wrong.
+| RBF | md5 | Probe / Edit | Key result |
+|-----|-----|--------------|------------|
+| v340g | a7354b... | $4000-$5FFF CPU write last-byte | V0=$00, ambiguous |
+| v340h | b620b1... | Cum-OR CPU writes | V0=$FF (KERNAL+Doom pollution) |
+| v340i | c7663c... | + VIC bitmap read cum-OR | V3=$00 → SDRAM bitmap really zero |
+| v340j | b32f74... | Opcode-fetch latch at $F1DA-$F1DF | V0=$1F (matches VICE), V3/Y/X=$00 |
+| v340k | ebd78b... | Restore `STA $00D01A=$00` at $FF1A stub | Delayed wedge ~30s, still wedges |
+| v340l | da15a2... | Per-LO-nibble cum-OR + $80 marker | V1-V3/Y/X=$00 → **operand fetches NEVER fire** |
+| v340m | 0bc331... | $FFEE/$FFEF → $00FF, stub `JML $00:$0D40` | Stub runs (PC=$FF04/$FF1B/$FF25), JML reaches $0D42, but SP descends $3FC/line, screen black |
 
-## What we proved this session
+## Hypothesis tree (current)
 
-### Data layer (REU + SuperRAM) is clean
-- `reu_peek_doom_hex.prg`: 6/6 anchor bytes match doom.reu via REU FETCH
-  (`78 D8 FF 8C 53 43` at REU $200000/01 / $400000/01 / $800000/01)
-- `superram_peek_doom_hex.prg`: 12/12 SuperRAM bytes match file
-  (anchor row + music-table area $86:$E9C0 / $86:$EACF / $87:$0000 /
-  $2B:$1A23 / $2C:$A95C)
-- `superram_peek_argptr.prg`: $87:$EAD8..$EADD = 0 (match file);
-  $87:$EB0C..$EB0F = 0 (match file); $86:$EAD0..$EAD1 = `$18 $B3`
-  (RUNTIME OVERRIDE — file has zero)
+```
+ORA $1F at $0F:$F1DA never completes
+└─ CPU aborts after opcode fetch (v340l proved)
+   └─ IRQ persistently asserted at instruction boundary
+      ├─ Hardware ack via stub still leaves IRQ asserted (v340m proves
+      │   refire continues despite $D019 STA write-1-clear)
+      │   → most likely: FPGA $D019 doesn't deassert irq_vic line on
+      │     SCPU writes (myWr_a phase mismatch?)
+      └─ Hint at video_vicII_656x.vhd:77: comment explicitly states
+         "Used to triangulate why SCPU's $D019 ack writes don't clear IRST"
+         → this is a KNOWN suspected issue
+```
 
-Screenshots:
-- `tools/doom_full/reu_peek_hex.png`
-- `tools/doom_full/superram_peek_after_doom.png`
-- `tools/doom_full/superram_peek_argptr.png`
+## Uncommitted state
 
-### v314 RTL probe: $0090 doesn't carry -9
-- Built `acf30af`+1 (RTL change at `fpga64_sid_iec.vhd:3132` repointing
-  wr02_* from `$00FC` to `$0090`). RBF md5
-  `91b23d253438e3fd29bdb105307baa47`.
-- After full Doom run + wedge at music_num=-9:
-  - V (last 4 writes to $0090): `00 03 00 FF`
-  - WP: `$2C:$85FB` (after `STA $90` at $85F9, the cleanup)
-  - CY: `$0713` = 1811 writes total
-  - M chain: `$85A1 → $85B6 → $85E8 → $85F6` (canonical error chain)
-- Snapshot in `tools/doom_full/v314_uart_150s.txt`
-- Screen: `tools/doom_full/v314_wedge_150s.png` (confirms "-9" displayed)
+`C64_MiSTer/rtl/fpga64_sid_iec.vhd` has:
+- $FF1A-$FF1D: `STA $00D01A` long instruction (v340k restore — kept)
+- $FFEE/$FFEF: hardcoded $00FF (v340m revert of v340e — kept)
+- $FF2A-$FF2D: `JML $00:$0D40` (v340m — kept, but target should be $0D3C)
+- $0F:$F1Dx capture probe with cum-OR + $80 marker (v340l — debug only)
 
-### doom.reu literal scan
-- `F7 FF FF FF` (int32 -9 LE): **0 occurrences in 16 MB**
-- `F7 FF` (int16 -9): 67 (likely byte coincidences)
-- `5C XX 85 2C` JML-to-$2C-bank table at `$85:$65A0..$65BC` with two
-  entries (idx 13/14) pointing to `$2C:$85A1` music error
-- No `7C XX XX` JMP-abs-X, `22 XX 65 85` JSL, or `A9 XX 65` LDA-imm
-  referencing this table → dispatcher reaches it via COMPUTED address
+**Do not commit** until a fix lands. The $F1Dx probe is purely diagnostic.
 
-### Disasm of error chain at $2C:$85Axx
-- `$2C:$85A1` is the **error-screen DEFAULT music initializer** —
-  `LDA #$0003; STA $90; STZ $92` sets music_num to 3 (not -9!), then
-  JMLs to `$2B:$76F9` (a thin trampoline that JMLs through `[$74]`).
-- `$2C:$85B6 → $85E8 → $85F6 → $A95C` is the post-print chain.
-  `$85F6` sets `$90/$92 = $FFFFFFFF` then JML self-trap.
-- printf format string at `$86:$02C0` = `"Bad music number %d\0"`.
-  No 24-bit pointer (`C0 02 86`) to it exists in doom.reu — accessed
-  by computed address.
+## How to resume
 
-## Working state
+The cheapest next probe is **fixing the VIC $D019 ack**. The VIC has
+existing debug signals `dbg_d019_wr_pulse` (myWr_a fires at addr=$D019)
+and `dbg_resetraster_pulse` (resetRasterIrq actually pulses). They feed
+counters `vic_d019_wr_count_r` (VW field) and `vic_resetraster_count_r`
+(VB/AC field). However, v304 overloaded these counters for DMA $0706
+write capture — current UART VW/VB readings reflect DMA activity, not
+the original VIC ack pulses.
 
-- **HEAD**: `acf30af` on `vanilla-cpu-swap` (v314 RTL change uncommitted
-  in working tree until next commit)
-- **Deployed RBF**: md5 `91b23d253438e3fd29bdb105307baa47` (v314,
-  3,853,328 B)
-- **New artifacts** (uncommitted):
-  - `tools/build_reu_peek_doom_hex.py`, `.prg`, `.mgl` (committed in
-    `acf30af`)
-  - `tools/build_superram_peek_doom_hex.py`, `.prg`, `.mgl` (committed)
-  - `tools/build_superram_peek_argptr.py`, `.prg`, `.mgl` (new)
-  - `tools/v314_doom_capture.py` (new)
-  - `tools/doom_full/v314_wedge*.png`, `v314_uart*.txt` (new)
-  - `C64_MiSTer/rtl/fpga64_sid_iec.vhd` (1-block edit at line 3127-3132)
+### Recommended v340n
 
-## Why "-9" appears on screen but $90 holds $03 at trap time
+1. **Remove v304 overload** at fpga64_sid_iec.vhd:3299-3303 so VW/AC
+   counters reflect the original VIC ack pulses.
+2. **Keep v340l per-nibble probe** for $F1Dx fetch confirmation.
+3. **Revert v340m's JML target to $0D3C** (not $0D40) — Doom installs
+   at $0D3C.
+4. Deploy. If VW (D019 writes) >> AC (resetraster pulses), confirms
+   SCPU $D019 writes aren't being seen by the VIC's myWr_a → fix the
+   VIC bus phase / timing for SCPU mode.
 
-The screen text "Error: Bad music number -9" was rendered during
-gameplay, MINUTES before the trap chain ran. printf was called with
-music_num = -9 at that earlier moment. By the time the trap chain
-($85A1...) runs, the screen still shows the old text but $90 has been
-overwritten with the error-screen default (3) and then the chain's
-final value ($FFFF).
+### Alternative v340n — diagnostic
 
-So the trap chain we see in M ring is the **post-print halt**, not the
-producer. The actual `LDA #$??? / STA $90` (or wherever music_num is
-held) for -9 happened earlier and was overwritten.
+Force `irq_vic_n='1'` at the c64.sv/fpga64_sid_iec.vhd top level (mask
+VIC IRQ entirely). If Doom renders pixels, IRQ refire IS the wedge
+cause and the fix is at the VIC ack path. If still black, renderer has
+a separate problem.
 
-## Open hypotheses (ranked)
+## Don't repeat these mistakes
 
-1. **music_num lives in a different zero-page slot** — try `$0094`
-   or `$0098` next (the printf-walker working registers at
-   `$2B:$76xx`). Same one-line RTL repoint.
-2. **music_num lives in SuperRAM, not zero-page** — Doom global var
-   in a static struct. Locate via wider SuperRAM scan (a probe-PRG
-   that scans 256 KB and reports any address holding `$F7 $FF $FF $FF`).
-3. **The "$F7 $FF" was a transient value during printf int-to-ASCII
-   conversion** — never stored, computed in a register sequence.
-   Would require a CPU-A register trace at $2B:$77xx printf-walker
-   entry. Harder to instrument.
+- Don't assume $D019 write-1-clear works for SCPU on this branch — the
+  RTL comment at video_vicII_656x.vhd:77 explicitly flags it as
+  suspected, and v340m's stack leak corroborates.
+- Don't JML/JMP to $00:$0D40 in the stub — Doom's entry is $0D3C.
+- The v340l cum-OR + bit-7 marker pattern is a great probe template
+  for "did this case fire?" disambiguation — reuse it.
 
-## Next-session entry point
+## Files
 
-**Try $0094 first** (least cost — 1-line RTL change + 12-min build).
-
-1. Edit `C64_MiSTer/rtl/fpga64_sid_iec.vhd:3132`:
-   change `x"0090"` to `x"0094"`. Update preceding comment.
-2. `./build_c64.ps1` (12 min wall).
-3. `python tools/v314_doom_capture.py` (auto-deploys + 75s wait +
-   re-captures at 150s if not wedged + UART analysis).
-4. Decode V ring: if `$F7` appears, WP is the producer's PC and
-   M ring shows what code path got there. If still no `$F7`,
-   move to the broader SuperRAM scan probe.
-
-The SuperRAM scan probe (option 2) is also straightforward — paint
-each bank's first matching offset to a hex row. Builds on the existing
-`superram_peek_*` PRG patterns.
-
-## Tested deployment pattern (locked in)
-
-Two-step sequential MGL+pipe (when probe needs Doom-populated SuperRAM):
-1. `_doom_full_abs.mgl` — loader + reu, wait 60-75s for wedge.
-2. `<probe>.mgl` — single-file probe PRG, autoruns; SDRAM survives.
-
-For REU-only-with-no-loader experiments: `doom_reu_only.mgl` (single
-`.reu` tag) + 20-s wait, then probe MGL.
-
-Multi-file MGL with `.reu` + `.prg` does NOT autorun the second tag.
+- Memory: `project_doom_v340j_byte_3_not_fetched.md`,
+  `project_doom_v340l_*` (subsumed into v340j file),
+  `project_doom_v340m_stack_leak_irq_refire.md`.
+- UART captures: in conversation log + the v340l/m UART data already
+  embedded in memory files.
+- Screenshots: `tools/doom_full/shot_v340k_post_return.png`,
+  `tools/doom_full/shot_v340m_post_return.png` (both all-black).

@@ -145,6 +145,22 @@ operation (replacing `/media/fat/MiSTer`, killing daemon, etc.).
 - For 65C816: verify emulation mode boots normally, then test native mode
 - Check VIC-II timing is not affected (demo compatibility)
 
+## Debugging Methodology
+Before starting a probe-walk series on a "memory corruption" or
+"wrong-value" bug, classify the bug class. Probe-walking the CPU
+writer works for (a) CPU-wrote-wrong and (b) DMA-wrote-wrong, but is
+useless for (c) bus-mux-returned-wrong-source and (d) bit-rot — the
+chain extends forever because the actual bug sits between the CPU
+and memory. **Cheapest disambiguator:** peek a grid of 8+ nearby
+addresses (template: `tools/build_code_peek_diff3.py`). If multiple
+addresses fail at the same offset range across banks, it's class (c)
+— stop probing CPU state and read `fpga64_buslogic.vhd` + the cpuDi
+mux in `fpga64_sid_iec.vhd`. **Also run VICE (xscpu64) as a
+differential oracle early** — if VICE is clean and HW isn't, the bug
+is in FPGA infrastructure, not CPU semantics. The music_num=-9 wedge
+(commit `b2d44d1`) cost ~80 builds by skipping these checks. Full
+case study + decision tree: `docs/debug_methodology.md`.
+
 ## Verilator / Desktop Simulation Build Policy
 - SuperCPU-fork harness (`sim/verilator_c64/`) was **SHELVED 2026-04-18** and removed from `master`. Preserved on branch `shelved/verilator-superfork` (tip `56756b6`) — check out or cherry-pick, do not rebuild from scratch. See `docs/verilator_desktop_harness_plan.md` for why and for revival criteria. Do NOT recreate it on impulse; it only comes back if a bug survives >1 week of hardware + GHDL-bench debugging.
 - Vanilla reference harness (`sim/verilator_c64_vanilla/`) is retained for possible differential testing. Builds there are still heavy CPU-bound jobs.

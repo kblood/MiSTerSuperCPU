@@ -1668,10 +1668,19 @@ cpuDi <= scpu_dos_ext_mode
          -- woke the consumer at $0EED. Reset default is still $00FF so
          -- pre-init IRQs (before software writes the vector) still land
          -- on the ack stub harmlessly.
-         scpu_native_vec(10) when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFEE") else  -- IRQ   L (software-written, default $00)
-         scpu_native_vec(11) when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFEF") else  -- IRQ   H (software-written, default $FF)
+         -- v340m: hardcode IRQ vector back to $00:$FF00 (our ack stub).
+         -- v340e let this follow software writes so Doom's $0D40 ran
+         -- directly, but v340j/l proved CPU aborts ORA at $0F:$F1DA after
+         -- opcode fetch — IRQ source must be persistently asserted because
+         -- Doom's handler doesn't ack the hardware sources properly. By
+         -- routing IRQ through our stub first (acks all sources), then
+         -- JML $00:$0D40 (Doom's handler still runs its SW ack), both
+         -- conditions are satisfied. Doom's writes to $FFEE/$FFEF still
+         -- go to scpu_native_vec storage but are ignored on read.
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEE") else  -- IRQ   L (hardcoded $00 → $FF00 stub)
+         x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEF") else  -- IRQ   H (hardcoded $FF → $FF00 stub)
          -- ----------------------------------------------------------------
          -- IRQ JML trampoline at $00:$FCEE..$FCF1 (4 bytes, RAM-backed).
          --
@@ -1832,30 +1841,33 @@ cpuDi <= scpu_dos_ext_mode
          --   $FF24  8F 0D DD 00   STA $00DD0D   ; CIA2 ICR
          -- Then PLA/PLP/RTI moved to $FF28-$FF2A.
          --
-         -- v340e (2026-05-13): NOP out STA $00D01A. v340d HW probe captured
-         -- last $D01A write value = $00 with writer-PC = $FF1E (post-PC of
-         -- the long-mode STA at $FF1A). Doom's $0EED wedge is a consumer
-         -- waiting for an IRQ-handler ack of $1D02 = $1D04 — IRQ never fires
-         -- because this stub kills VIC's IRQ mask on every interrupt entry,
-         -- so the producer-vs-consumer ping-pong never advances. The stub's
-         -- v313 extension was added when the prior $AF00 IRQ-refire wedge was
-         -- mistaken for un-acked sources; the real root cause (I/O decode
-         -- bug, commit b2d44d1) has since been fixed. CIA1/CIA2 mask clears
-         -- at $FF20/$FF24 are still active because Doom doesn't enable those
-         -- — if a future title needs CIA1 timer IRQ, NOP those out too or
-         -- revert the entire v313 extension and restore PLA/PLP/RTI here.
+         -- v340e (2026-05-13): NOP out STA $00D01A.
+         -- v340k (2026-05-14): REVERTED v340e — restore STA $00D01A=$00.
+         -- v340j HW probe (md5 b32f74b3...) captured V0=$1F at $F1DA opcode
+         -- but V3=$00 at $F1DD bank selector (expected $06). With cum-OR
+         -- semantics the byte fetched first three positions matches VICE,
+         -- byte position 3+ never populates — strongly suggests CPU
+         -- aborts ORA $1F (4-byte long-indexed-X) before fetching byte 3.
+         -- PC bouncing $F1DA <-> IRQ handler $0D4D-$0D97 indicates IRQ
+         -- refires on every instruction entry: our FPGA's $D019 write-1-
+         -- clear ack may not deassert the VIC IRQ line if the underlying
+         -- raster condition is still active, so the source stays asserted
+         -- through RTI and trips immediately. Restoring the mask kill at
+         -- $FF1A-$FF1D forces $D01A=$00 in the ack stub, ensuring no IRQ
+         -- source can keep the line asserted past RTI. CIA1/CIA2 mask
+         -- clears at $FF20/$FF24 remain.
          x"A9" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF18") else  -- LDA imm
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF19") else  -- #$00 (now wasted — see below)
-         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF1A") else  -- NOP (was $8F STA long — DO NOT mask VIC IRQ)
-         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF1B") else  -- NOP (was $1A $D01A low)
-         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF1C") else  -- NOP (was $D0 $D01A mid)
-         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF1D") else  -- NOP (was $00 bank)
+                     and cpuAddr = x"FF19") else  -- #$00
+         x"8F" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1A") else  -- STA long (v340k restored)
+         x"1A" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1B") else  -- $D01A low
+         x"D0" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1C") else  -- $D01A mid
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1D") else  -- bank = $00
          x"A9" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF1E") else  -- LDA imm
          x"7F" when (supercpu_en = '1' and addr_hi_816 = x"00"
@@ -1880,8 +1892,19 @@ cpuDi <= scpu_dos_ext_mode
                      and cpuAddr = x"FF28") else  -- PLA
          x"28" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF29") else  -- PLP
+         -- v340m: replace RTI with JML $00:$0D40 so the stub forwards to
+         -- Doom's installed handler AFTER acking all hardware IRQ sources.
+         -- This guarantees the ack happens regardless of what Doom's
+         -- handler does. Doom's $0D40 still runs its cooperative SW ack
+         -- ($1D02=$1D04) needed for the game's IRQ chain.
+         x"5C" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF2A") else  -- JML long (was RTI)
          x"40" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF2A") else  -- RTI
+                     and cpuAddr = x"FF2B") else  -- target LO = $40
+         x"0D" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF2C") else  -- target MID = $0D
+         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF2D") else  -- target BANK = $00
          -- ----------------------------------------------------------------
          -- v310 doom wedge: override $00:$0705 read to return $40 (RTI).
          -- Doom's recompiler installs BRK vector → $00:$0705 (per v309
@@ -3253,41 +3276,37 @@ begin
 			-- before $1D02). WP holds PC at most recent fire. CY counts
 			-- total fires (huge if loop is hot).
 			-- Plan: C:\Users\Caldor\.claude\plans\nifty-swinging-pearl.md
-			-- v340d (2026-05-13): capture last-write values to IRQ-relevant VIC
-			-- registers and the IRQ vector at $FFEE/$FFEF. v340c showed all
-			-- writes to $1D00..$05 match VICE (YX:6C 0D installs $0D6C JMP
-			-- target, $1D04 producer fires once during init). But CY:001C is
-			-- FROZEN during the $0EED wedge — no IRQ chain runs. VICE state at
-			-- wedge: $D01A=$F1 (IRQ enabled). If HW $D01A=$00 here, write to
-			-- $D01A failed to take effect. Filter all writes to $00:$D012,
-			-- $D015, $D019, $D01A, $FFEE, $FFEF. Last value per addr → slots.
-			-- See memory/project_doom_v340b_1d02_data.md for full context.
-			if enableCpu = '1' and cpuWe_pre = '1' and addr_hi_816 = x"00" then
-				if cpuAddr_pre = x"D012" then
-					cnt_wr02_r <= cnt_wr02_r + 1;
-					wr02_pc_r  <= cpu_pc_now;
-					wr02_v3_r  <= std_logic_vector(cpuDo_pre); -- last $D012
-				elsif cpuAddr_pre = x"D015" then
-					cnt_wr02_r <= cnt_wr02_r + 1;
-					wr02_pc_r  <= cpu_pc_now;
-					wr02_v1_r  <= std_logic_vector(cpuDo_pre); -- last $D015
-				elsif cpuAddr_pre = x"D019" then
-					cnt_wr02_r <= cnt_wr02_r + 1;
-					wr02_pc_r  <= cpu_pc_now;
-					wr02_v2_r  <= std_logic_vector(cpuDo_pre); -- last $D019 ack
-				elsif cpuAddr_pre = x"D01A" then
-					cnt_wr02_r <= cnt_wr02_r + 1;
-					wr02_pc_r  <= cpu_pc_now;
-					wr02_v0_r  <= std_logic_vector(cpuDo_pre); -- last $D01A val (PRIMARY)
-				elsif cpuAddr_pre = x"FFEE" then
-					cnt_wr02_r <= cnt_wr02_r + 1;
-					wr02_pc_r  <= cpu_pc_now;
-					wr02_y_r   <= std_logic_vector(cpuDo_pre); -- last $FFEE (irq vec LO)
-				elsif cpuAddr_pre = x"FFEF" then
-					cnt_wr02_r <= cnt_wr02_r + 1;
-					wr02_pc_r  <= cpu_pc_now;
-					wr02_x_r   <= std_logic_vector(cpuDo_pre); -- last $FFEF (irq vec HI)
-				end if;
+			-- v340f (2026-05-14): capture VIC display registers to debug
+			-- post-$0EED-fix black screen. v340e cleared $0EED wedge, Doom
+			-- now reaches gameplay state (CPU healthy, IRQ chain firing) but
+			-- screen renders all-black. VICE at the same code location loops
+			-- through $0F:F1DA + sister addresses too, so foreground isn't
+			-- wedged. Hypothesis: VIC mode/pointer/color state differs from
+			-- VICE — e.g., $D011 display-enable bit clear, $D018 wrong
+			-- screen/bitmap pointer, or $D020/$D021 forcing black.
+			-- Filter all writes to: $00:$D011 ctrl1, $D016 ctrl2, $D018
+			-- mem ptrs, $D020 border, $D021 bg. Last value per addr → slot.
+			-- v340l (2026-05-14): per-LO-nibble cum-OR with bit-7 marker.
+			-- v340j was ambiguous: V1/V2/V3/Y/X = $00 could mean either
+			-- "fetch fired with cpuDi=$00" (JIT corruption) or "fetch never
+			-- fired" (operand fetch never reaches that byte on HW).
+			-- Disambiguator: cum-OR cpuDi with $80 marker. If V3 = $00, the
+			-- $D case never fired (operand fetch never reaches byte 3). If
+			-- V3 = $80, fired but byte was $00. If V3 = $86, fired with $06.
+			-- V0 keeps latch semantics (already confirms $1F captured).
+			if enableCpu = '1' and cpuWe_pre = '0' and addr_hi_816 = x"0F"
+			   and cpuAddr_pre(15 downto 4) = x"F1D" then
+				cnt_wr02_r <= cnt_wr02_r + 1;
+				wr02_pc_r  <= cpu_pc_now;
+				case cpuAddr_pre(3 downto 0) is
+					when x"A" => wr02_v0_r <= std_logic_vector(cpuDi);
+					when x"B" => wr02_v1_r <= wr02_v1_r or std_logic_vector(cpuDi) or x"80";
+					when x"C" => wr02_v2_r <= wr02_v2_r or std_logic_vector(cpuDi) or x"80";
+					when x"D" => wr02_v3_r <= wr02_v3_r or std_logic_vector(cpuDi) or x"80";
+					when x"E" => wr02_y_r  <= wr02_y_r  or std_logic_vector(cpuDi) or x"80";
+					when x"F" => wr02_x_r  <= wr02_x_r  or std_logic_vector(cpuDi) or x"80";
+					when others => null;
+				end case;
 			end if;
 			-- v304 DMA-side $0706 write capture. Use post-mux cpuAddr /
 			-- cpuDo / cpuWe gated by dma_active to catch REU writes only
