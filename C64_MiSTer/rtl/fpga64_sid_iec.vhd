@@ -641,7 +641,15 @@ port(
 	-- the loop in one hop. If vec != $0705 then BRK vectors elsewhere
 	-- and some downstream path returns to $0705.
 	dbg_brk_vec_lo             : out std_logic_vector(7 downto 0);
-	dbg_brk_vec_hi             : out std_logic_vector(7 downto 0)
+	dbg_brk_vec_hi             : out std_logic_vector(7 downto 0);
+	-- v341 doom bitmap probe (2026-05-14): Doom's page-flip handshake bytes.
+	-- After v340n IRQ wedge fix, VICE renders the Doom title bitmap but HW
+	-- stays black with DD00 stuck at $02 (bank 1 only — no page flip). The
+	-- flip code at $80:$0B40 reads $1D04 then BEQs; HW always takes the
+	-- non-zero branch ($1D04 never reaches 0). Surfacing the last seen
+	-- $1D02 + $1D04 cpuDi values lets us see the handshake state directly.
+	dbg_mem_1d02               : out std_logic_vector(7 downto 0);
+	dbg_mem_1d04               : out std_logic_vector(7 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -799,6 +807,12 @@ signal jmp_tgt_t3_r : std_logic_vector(15 downto 0) := (others => '0');
 -- different bytes here, the IRQ entry diverges.
 signal mem_0314_r : std_logic_vector(7 downto 0) := (others => '0');
 signal mem_0315_r : std_logic_vector(7 downto 0) := (others => '0');
+-- v341 doom bitmap probe: page-flip handshake bytes at bank $00:$1D02/$1D04.
+-- $1D04 is the flag the main loop reads to decide bank-1 vs bank-3 in
+-- Doom's double-buffer flip ($80:$0B40 area). HW page-flip is stuck at
+-- DD00=$02 (bank 1) so $1D04 never reaches 0.
+signal mem_1d02_r : std_logic_vector(7 downto 0) := (others => '0');
+signal mem_1d04_r : std_logic_vector(7 downto 0) := (others => '0');
 -- v255: CPU IO port direction ($0000) + data ($0001). Bits in $0001
 -- (LORAM/HIRAM/CHAREN) gate ROM/RAM visibility at $A000/$E000/$D000.
 -- If SCPU has different value here, the SAME PC sees different bytes
@@ -3628,6 +3642,28 @@ begin
 				if cpuAddr_pre = x"0001" then
 					mem_01_r <= std_logic_vector(cpuDi);
 				end if;
+				-- v341 doom bitmap probe: latch reads of $00:$1D02/$1D04
+				-- (page-flip handshake). Gate to bank $00 in SCPU mode so
+				-- bank-$XX:$1D02 in JIT code doesn't shadow these.
+				if cpuAddr_pre = x"1D02"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					mem_1d02_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"1D04"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					mem_1d04_r <= std_logic_vector(cpuDi);
+				end if;
+			end if;
+			-- v341: also latch writes (Doom both reads and writes these).
+			if enableCpu = '1' and cpuWe_pre = '1' then
+				if cpuAddr_pre = x"1D02"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					mem_1d02_r <= std_logic_vector(cpuDo_pre);
+				end if;
+				if cpuAddr_pre = x"1D04"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					mem_1d04_r <= std_logic_vector(cpuDo_pre);
+				end if;
 			end if;
 			if cs_cia2 = '1' and cpuWe = '1' and cpuAddr(3 downto 0) = "0000" then
 				dbg_dd00_r <= std_logic_vector(cpuDo);
@@ -3657,6 +3693,9 @@ dbg_d016        <= dbg_d016_r;
 dbg_dd00        <= dbg_dd00_r;
 dbg_d011        <= dbg_d011_r;
 dbg_raster_line <= std_logic_vector(dbg_raster_y);
+-- v341 doom bitmap probe
+dbg_mem_1d02    <= mem_1d02_r;
+dbg_mem_1d04    <= mem_1d04_r;
 
 dbg_cpu_pc_24   <= std_logic_vector(dbg_pbr_816_i) & std_logic_vector(dbg_pc_816_i)
                        when supercpu_en = '1'

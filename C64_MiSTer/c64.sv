@@ -1283,6 +1283,8 @@ wire [23:0] scpu_dbg_d019_ack_pc;
 wire [15:0] scpu_dbg_cpu_sp;          // v280 doom triage: 16-bit SP
 wire  [7:0] scpu_dbg_brk_vec_lo;      // v309 doom wedge: native BRK vec lo
 wire  [7:0] scpu_dbg_brk_vec_hi;      // v309 doom wedge: native BRK vec hi
+wire  [7:0] scpu_dbg_mem_1d02;        // v341 doom bitmap probe: $00:$1D02 last R/W
+wire  [7:0] scpu_dbg_mem_1d04;        // v341 doom bitmap probe: $00:$1D04 last R/W
 
 // ---------------------------------------------------------------------------
 // Layered debug overlay (rtl/debug/) - pool struct + capture stubs.
@@ -1714,6 +1716,9 @@ assign dbg_pool.cpu_sp                  = scpu_dbg_cpu_sp;
 // v309 doom wedge: native BRK vector lo/hi
 assign dbg_pool.brk_vec_lo              = scpu_dbg_brk_vec_lo;
 assign dbg_pool.brk_vec_hi              = scpu_dbg_brk_vec_hi;
+// v341 doom bitmap probe: page-flip handshake bytes
+assign dbg_pool.mem_1d02                = scpu_dbg_mem_1d02;
+assign dbg_pool.mem_1d04                = scpu_dbg_mem_1d04;
 
 `ifdef DBG_CAP_FRAME
 cap_frame u_cap_frame (
@@ -2115,7 +2120,9 @@ fpga64_sid_iec fpga64
 	.dbg_d019_ack_pc            (scpu_dbg_d019_ack_pc),
 	.dbg_cpu_sp                 (scpu_dbg_cpu_sp),
 	.dbg_brk_vec_lo             (scpu_dbg_brk_vec_lo),
-	.dbg_brk_vec_hi             (scpu_dbg_brk_vec_hi)
+	.dbg_brk_vec_hi             (scpu_dbg_brk_vec_hi),
+	.dbg_mem_1d02               (scpu_dbg_mem_1d02),
+	.dbg_mem_1d04               (scpu_dbg_mem_1d04)
 );
 
 wire [7:0] mouse_x;

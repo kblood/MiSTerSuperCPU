@@ -585,6 +585,14 @@ typedef struct packed {
   // one hop.
   logic  [7:0] brk_vec_lo;
   logic  [7:0] brk_vec_hi;
+
+  // v341 doom bitmap probe: last R/W value seen at bank $00:$1D02 and
+  // $00:$1D04. Doom's frame-flip code at $80:$0B40 reads $1D04; if 0,
+  // VIC bank → 3 ($C000); otherwise → 1 ($4000). HW stuck at DD00=$02
+  // (bank 1) means $1D04 never reaches 0. Surfacing both bytes per
+  // vblank tells us whether the IRQ handler's $0D6C handshake fires.
+  logic  [7:0] mem_1d02;
+  logic  [7:0] mem_1d04;
 } dbg_pool_t;
 `endif
 

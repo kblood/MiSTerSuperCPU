@@ -4,7 +4,8 @@
 // vblank rising edge containing the dbg_pool fields most relevant for
 // the Dragon's Lair / SCPU-emu-mode investigation:
 //
-//   F:#### PC:###### P:## V:## ## ## ## YX:#### WP:###### CG:#### CY:#### J:#### #### #### #### M:#### #### #### #### G:## ## ## N:###### I:###### B:## C3:#### C9:#### D1:## D8:## C2:##\n
+//   F:#### PC:###### P:## V:## ## ## ## YX:#### WP:###### CG:#### CY:#### J:#### #### #### #### M:#### #### #### #### G:## ## ## N:###### I:###### B:## C3:#### C9:#### D1:## D8:## C2:## D6:##\n
+// v341: 1D:#### slot replaces dead R7; D6:## appended (line=230 bytes).
 //
 // J = 4-deep JSR-PC ring (low 16 bits)         from pool.jsr_pc_t0..t3
 // M = 4-deep JMP-indirect target ring          from pool.jmp_tgt_t0..t3
@@ -128,13 +129,22 @@ module debug_uart_pool_fmt
 	reg  [7:0] lat_d011v;
 	reg  [7:0] lat_d018v;
 	reg  [7:0] lat_dd00v;
+	// v341 doom bitmap probe (2026-05-14): page-flip handshake bytes at
+	// bank $00:$1D02/$1D04 and $D016 MCM bit. After v340n IRQ wedge fix,
+	// Doom reaches bitmap mode (D1=$3B) but DD00 stuck at $02 — VIC sees
+	// only bank 1 ($4000-$7FFF). $1D04 is the flag Doom's flip code BEQs
+	// on; if it never reaches 0, the flip never picks bank 3. D6/$D016
+	// MCM bit confirms multicolor vs hires bitmap mode.
+	reg  [7:0] lat_m1d02;
+	reg  [7:0] lat_m1d04;
+	reg  [7:0] lat_d016v;
 
 	// -----------------------------------------------------------------
 	// Send FSM: drive tx_send for one cycle whenever tx is idle and the
 	// next byte hasn't been issued yet. byte_idx indexes the line bytes
 	// 0..LINE_LEN-1; LINE_LEN signals "line done, idle until next vblank".
 	// -----------------------------------------------------------------
-	localparam LINE_LEN = 8'd224;
+	localparam LINE_LEN = 8'd230;
 
 	reg [7:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -398,21 +408,22 @@ module debug_uart_pool_fmt
 			8'd192: line_byte = hex_nibble(lat_irq_fall[7:4]);
 			8'd193: line_byte = hex_nibble(lat_irq_fall[3:0]);
 
-			// 2026-05-09 doom-wait probe: " R7:####" — replaces VC:####.
-			// First 2 hex digits = low byte of last $00:$07xx read addr;
-			// last 2 hex digits = data byte returned. e.g. R7:0700FF
-			// means "last fetch from $00:$0700 returned $FF".
-			// Sample at vblank rising edge (50/60 Hz). lat_irq_vec is
-			// no longer surfaced in the line but still latched (above)
-			// in case a future field needs it.
+			// v341 doom bitmap probe (2026-05-14): " 1D:####" — replaces
+			// dead R7 doom-wait probe. First 2 hex digits = last value
+			// at bank $00:$1D02; last 2 hex digits = last value at $1D04.
+			// Doom's frame-flip code at $80:$0B40 reads $1D04 then BEQs
+			// to pick VIC bank 3 ($C000) vs 1 ($4000). HW stuck at
+			// DD00=$02 (bank 1) implies $1D04 != 0; surfacing both bytes
+			// confirms the IRQ-handler producer at $0F58 ran (writes
+			// $1D04) and the consumer at $0EED loop is/isn't advancing.
 			8'd194: line_byte = " ";
-			8'd195: line_byte = "R";
-			8'd196: line_byte = "7";
+			8'd195: line_byte = "1";
+			8'd196: line_byte = "D";
 			8'd197: line_byte = ":";
-			8'd198: line_byte = hex_nibble(lat_rd07addr[7:4]);
-			8'd199: line_byte = hex_nibble(lat_rd07addr[3:0]);
-			8'd200: line_byte = hex_nibble(lat_rd07data[7:4]);
-			8'd201: line_byte = hex_nibble(lat_rd07data[3:0]);
+			8'd198: line_byte = hex_nibble(lat_m1d02[7:4]);
+			8'd199: line_byte = hex_nibble(lat_m1d02[3:0]);
+			8'd200: line_byte = hex_nibble(lat_m1d04[7:4]);
+			8'd201: line_byte = hex_nibble(lat_m1d04[3:0]);
 
 			// 2026-05-09 vanilla-cpu-swap: VIC bank-select probes
 			// (replaces v271 AW/PA). " D1:## D8:## C2:##   " — last
@@ -440,12 +451,21 @@ module debug_uart_pool_fmt
 			8'd217: line_byte = ":";
 			8'd218: line_byte = hex_nibble(lat_dd00v[7:4]);
 			8'd219: line_byte = hex_nibble(lat_dd00v[3:0]);
+			// v341: append " D6:##" — $D016 latched last cpuDo. MCM bit
+			// (bit 4) confirms multicolor bitmap vs hires; VICE shows
+			// D016=$D8 (MCM=1) during Doom gameplay.
 			8'd220: line_byte = " ";
-			8'd221: line_byte = " ";
-			8'd222: line_byte = " ";
+			8'd221: line_byte = "D";
+			8'd222: line_byte = "6";
+			8'd223: line_byte = ":";
+			8'd224: line_byte = hex_nibble(lat_d016v[7:4]);
+			8'd225: line_byte = hex_nibble(lat_d016v[3:0]);
+			8'd226: line_byte = " ";
+			8'd227: line_byte = " ";
+			8'd228: line_byte = " ";
 
-			// newline (LINE_LEN-1)
-			8'd223: line_byte = 8'h0A;
+			// newline (LINE_LEN-1 = 229)
+			8'd229: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -535,6 +555,10 @@ module debug_uart_pool_fmt
 				lat_d011v <= pool.vic_d011;
 				lat_d018v <= pool.vic_d018;
 				lat_dd00v <= pool.vic_dd00;
+				// v341 doom bitmap probe
+				lat_m1d02 <= pool.mem_1d02;
+				lat_m1d04 <= pool.mem_1d04;
+				lat_d016v <= pool.vic_d016;
 				byte_idx  <= 8'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin
