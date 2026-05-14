@@ -342,18 +342,24 @@ module debug_uart_pool_fmt
 			8'd152: line_byte = hex_nibble(lat_vic_d019_wr[11:8]);
 			8'd153: line_byte = hex_nibble(lat_vic_d019_wr[7:4]);
 			8'd154: line_byte = hex_nibble(lat_vic_d019_wr[3:0]);
-			// v309: repurpose AC field as VB:#### = BRK vector (lo|hi).
-			// Reads $00:$FFE6/$FFE7 return scpu_native_vec(2)/(3); the
-			// $05_07 expected value pins down whether the wedge is
-			// "BRK→$0705 vector" (Hyp A) vs RTI-via-$FF00-stub.
+			// v340n: restore AC field = VIC-internal resetRasterIrq count.
+			// (v309 had repurposed AC → VB:#### BRK vector; BRK diagnostic
+			// no longer needed since v340e+ work confirmed the BRK/RTI
+			// paths.) AC is the IRST-clear pulse counter — pulses every
+			// time the VIC's resetRasterIrq fires inside video_vicII_656x.
+			// Together with VW (myWr_a $D019 write count) this distinguishes:
+			//   VW=0 AC=0  → SCPU $D019 writes never reach the VIC bus
+			//   VW>0 AC=0  → writes reach myWr_a but di_r(0) wrong or IRST
+			//                latch ignores the write (suspected bug)
+			//   VW>0 AC>0  → ack chain works; wedge has another cause
 			8'd155: line_byte = " ";
-			8'd156: line_byte = "V";
-			8'd157: line_byte = "B";
+			8'd156: line_byte = "A";
+			8'd157: line_byte = "C";
 			8'd158: line_byte = ":";
-			8'd159: line_byte = hex_nibble(lat_brk_vec_lo[7:4]);
-			8'd160: line_byte = hex_nibble(lat_brk_vec_lo[3:0]);
-			8'd161: line_byte = hex_nibble(lat_brk_vec_hi[7:4]);
-			8'd162: line_byte = hex_nibble(lat_brk_vec_hi[3:0]);
+			8'd159: line_byte = hex_nibble(lat_vic_resetraster[15:12]);
+			8'd160: line_byte = hex_nibble(lat_vic_resetraster[11:8]);
+			8'd161: line_byte = hex_nibble(lat_vic_resetraster[7:4]);
+			8'd162: line_byte = hex_nibble(lat_vic_resetraster[3:0]);
 
 			// " W5:## ## ## ##" v262 4-deep ring of writes to $005C
 			8'd163: line_byte = " ";

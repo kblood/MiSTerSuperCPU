@@ -1892,15 +1892,19 @@ cpuDi <= scpu_dos_ext_mode
                      and cpuAddr = x"FF28") else  -- PLA
          x"28" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF29") else  -- PLP
-         -- v340m: replace RTI with JML $00:$0D40 so the stub forwards to
+         -- v340m: replace RTI with JML $00:$0D3C so the stub forwards to
          -- Doom's installed handler AFTER acking all hardware IRQ sources.
          -- This guarantees the ack happens regardless of what Doom's
-         -- handler does. Doom's $0D40 still runs its cooperative SW ack
+         -- handler does. Doom's $0D3C still runs its cooperative SW ack
          -- ($1D02=$1D04) needed for the game's IRQ chain.
+         -- v340n (2026-05-14): target reverted from $0D40 to $0D3C — Doom
+         -- installs the user IRQ vector at $0D3C (3-byte JMP indirect
+         -- prologue lives there). $0D40 skipped the entry, causing the
+         -- v340m stack leak (~$3FC bytes/UART line) by entering mid-frame.
          x"5C" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF2A") else  -- JML long (was RTI)
-         x"40" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF2B") else  -- target LO = $40
+         x"3C" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF2B") else  -- target LO = $3C
          x"0D" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF2C") else  -- target MID = $0D
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
@@ -3308,19 +3312,15 @@ begin
 					when others => null;
 				end case;
 			end if;
-			-- v304 DMA-side $0706 write capture. Use post-mux cpuAddr /
-			-- cpuDo / cpuWe gated by dma_active to catch REU writes only
-			-- (CPU writes are still captured by v303 above with cpuAddr_pre).
-			-- Repurposes vic_d019_wr_count_r (VW field) as DMA-write counter
-			-- and vic_resetraster_count_r (AC field) as value-trail. VW/AC
-			-- normally count VIC $D019 wr/ack; during the wedge the V ring
-			-- already shows CY:5BEE writes to $00FC are CPU recompiler, no
-			-- VIC traffic. Safe to overload.
-			if dma_active = '1' and cpuWe = '1' and cpuAddr = x"0706" then
-				vic_d019_wr_count_r     <= vic_d019_wr_count_r + 1;
-				vic_resetraster_count_r(15 downto 8) <= vic_resetraster_count_r(7 downto 0);
-				vic_resetraster_count_r(7 downto 0)  <= unsigned(cpuDo);
-			end if;
+			-- v340n (2026-05-14): v304 DMA-side $0706 overload REMOVED.
+			-- VW/AC counters now exclusively track the original VIC ack
+			-- pulses (vic_d019_wr_pulse / vic_resetraster_pulse) again so
+			-- we can diagnose whether SCPU's $D019 ack writes actually
+			-- pulse myWr_a inside the VIC and whether resetRasterIrq
+			-- fires. If VW >> AC, SCPU writes reach myWr_a but IRST isn't
+			-- being cleared (the suspected bug at video_vicII_656x.vhd:77).
+			-- If VW stays 0 while Doom keeps stuck on ORA at $F1DA, the
+			-- writes never reach myWr_a (timing / bus phase issue).
 			-- v243: dispatch-target PC. Snapshot the PC at the FIRST
 			-- opcode_fetch_pulse where PC leaves the zero-page-stub
 			-- range ($00xx). Tracks what handler the $0062 IRQ stub
