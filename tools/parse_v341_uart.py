@@ -80,18 +80,18 @@ def main(argv: list[str]) -> int:
     if d6:
         d6_d8_seen = any(v == "d8" for v in d6)
         if d6_d8_seen:
-            print("  D6=$D8 SEEN → MCM bitmap mode reached. Bitmap-fill code IS running.")
+            print("  D6=$D8 SEEN -> MCM bitmap mode reached. Bitmap-fill code IS running.")
         else:
-            print(f"  D6=$D8 NOT seen (values: {sorted(d6.keys())}) → bitmap-fill code likely never reached.")
+            print(f"  D6=$D8 NOT seen (values: {sorted(d6.keys())}) -> bitmap-fill code likely never reached.")
 
     onedeux = counts["1D"]
     if onedeux:
         if len(onedeux) == 1:
             (val,) = onedeux.keys()
-            print(f"  1D static at one value (${val}) → page-flip handshake not toggling.")
+            print(f"  1D static at one value (${val}) -> page-flip handshake not toggling.")
             print(f"    If high 2 nibbles == low 2 nibbles, page-flip code is stuck on bank 1.")
         else:
-            print(f"  1D has {len(onedeux)} distinct values → handshake IS toggling.")
+            print(f"  1D has {len(onedeux)} distinct values -> handshake IS toggling.")
             for v, ct in sorted(onedeux.items(), key=lambda kv: -kv[1])[:6]:
                 hi = v[:2]
                 lo = v[2:]
@@ -101,9 +101,19 @@ def main(argv: list[str]) -> int:
     if c2:
         if len(c2) == 1:
             (val,) = c2.keys()
-            print(f"  DD00 (C2) static at ${val} → VIC bank NOT page-flipping.")
+            print(f"  DD00 (C2) static at ${val} -> VIC bank NOT page-flipping.")
         else:
-            print(f"  DD00 (C2) has {len(c2)} distinct values → VIC bank page-flip IS happening.")
+            print(f"  DD00 (C2) has {len(c2)} distinct values -> VIC bank page-flip IS happening.")
+
+    irq = counts["IF"]
+    if irq and len(irq) >= 2:
+        vals = sorted(irq.keys(), key=lambda v: int(v, 16))
+        first_if = int(vals[0], 16)
+        last_if = int(vals[-1], 16)
+        delta = (last_if - first_if) & 0xFFFF
+        print(f"  IF (IRQ counter) range ${vals[0]}..${vals[-1]} = +{delta} IRQs across capture")
+        if delta < 10:
+            print(f"    -> IRQ STARVED. Expected ~60Hz * seconds. IRQ source likely masked.")
 
     return 0
 

@@ -1857,31 +1857,34 @@ cpuDi <= scpu_dos_ext_mode
          --
          -- v340e (2026-05-13): NOP out STA $00D01A.
          -- v340k (2026-05-14): REVERTED v340e — restore STA $00D01A=$00.
-         -- v340j HW probe (md5 b32f74b3...) captured V0=$1F at $F1DA opcode
-         -- but V3=$00 at $F1DD bank selector (expected $06). With cum-OR
-         -- semantics the byte fetched first three positions matches VICE,
-         -- byte position 3+ never populates — strongly suggests CPU
-         -- aborts ORA $1F (4-byte long-indexed-X) before fetching byte 3.
-         -- PC bouncing $F1DA <-> IRQ handler $0D4D-$0D97 indicates IRQ
-         -- refires on every instruction entry: our FPGA's $D019 write-1-
-         -- clear ack may not deassert the VIC IRQ line if the underlying
-         -- raster condition is still active, so the source stays asserted
-         -- through RTI and trips immediately. Restoring the mask kill at
-         -- $FF1A-$FF1D forces $D01A=$00 in the ack stub, ensuring no IRQ
-         -- source can keep the line asserted past RTI. CIA1/CIA2 mask
-         -- clears at $FF20/$FF24 remain.
+         -- v342 (2026-05-14): RE-NOP STA $D01A. v341 UART capture proved
+         -- Doom now boots through R_Init into main game loop (PC at
+         -- $2A:$55xx / $20:DAxx, VW=AC=monotonically equal) but only
+         -- 2 IRQs fire in 240s because the mask kill freezes all VIC
+         -- IRQs after the first one. Doom's $0EED page-flip consumer
+         -- waits forever ($1D02=$00, $1D04=$01 — IRQ handler $0D6C
+         -- never runs the cooperative STA $1D02=$1D04 ack). VICE shows
+         -- Doom expects $D01A=$F1 to persist across IRQs. With our
+         -- stub forwarding to $0D3C (which acks $D019 and advances
+         -- $D012), the $D019 write-1-clear path alone is sufficient
+         -- to deassert the IRQ line — VW/AC counter equality in v340n
+         -- proves the FPGA's IRST clear actually works now. Replace
+         -- the 4 STA-long bytes with NOPs ($EA); keep LDA #$00 since
+         -- $FF1E LDA #$7F overwrites A immediately. CIA1/CIA2 mask
+         -- clears at $FF20/$FF24 remain (those preserve original
+         -- v313 behavior protecting against CIA IRQ flood).
          x"A9" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF18") else  -- LDA imm
+                     and cpuAddr = x"FF18") else  -- LDA imm (vestigial)
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF19") else  -- #$00
-         x"8F" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF1A") else  -- STA long (v340k restored)
-         x"1A" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF1B") else  -- $D01A low
-         x"D0" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF1C") else  -- $D01A mid
-         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF1D") else  -- bank = $00
+         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1A") else  -- NOP (was STA long)
+         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1B") else  -- NOP
+         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1C") else  -- NOP
+         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1D") else  -- NOP
          x"A9" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF1E") else  -- LDA imm
          x"7F" when (supercpu_en = '1' and addr_hi_816 = x"00"
