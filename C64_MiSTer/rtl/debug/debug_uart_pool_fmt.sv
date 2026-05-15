@@ -138,13 +138,15 @@ module debug_uart_pool_fmt
 	reg  [7:0] lat_m1d02;
 	reg  [7:0] lat_m1d04;
 	reg  [7:0] lat_d016v;
+	// v346 doom bitmap-content probe: per-frame sticky OR of vicDi.
+	reg  [7:0] lat_vic_di_or;
 
 	// -----------------------------------------------------------------
 	// Send FSM: drive tx_send for one cycle whenever tx is idle and the
 	// next byte hasn't been issued yet. byte_idx indexes the line bytes
 	// 0..LINE_LEN-1; LINE_LEN signals "line done, idle until next vblank".
 	// -----------------------------------------------------------------
-	localparam LINE_LEN = 8'd230;
+	localparam LINE_LEN = 8'd236;
 
 	reg [7:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -460,12 +462,23 @@ module debug_uart_pool_fmt
 			8'd223: line_byte = ":";
 			8'd224: line_byte = hex_nibble(lat_d016v[7:4]);
 			8'd225: line_byte = hex_nibble(lat_d016v[3:0]);
+			// v346 doom bitmap-content probe: " B6:##" — per-frame
+			// sticky OR of vicDi (the byte VIC fetches from RAM).
+			// If $00 across Doom runtime, VIC sees only zeros →
+			// screen genuinely empty. If non-zero, VIC sees data
+			// and the black has a non-memory cause.
 			8'd226: line_byte = " ";
-			8'd227: line_byte = " ";
-			8'd228: line_byte = " ";
+			8'd227: line_byte = "B";
+			8'd228: line_byte = "6";
+			8'd229: line_byte = ":";
+			8'd230: line_byte = hex_nibble(lat_vic_di_or[7:4]);
+			8'd231: line_byte = hex_nibble(lat_vic_di_or[3:0]);
+			8'd232: line_byte = " ";
+			8'd233: line_byte = " ";
+			8'd234: line_byte = " ";
 
-			// newline (LINE_LEN-1 = 229)
-			8'd229: line_byte = 8'h0A;
+			// newline (LINE_LEN-1 = 235)
+			8'd235: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -559,6 +572,8 @@ module debug_uart_pool_fmt
 				lat_m1d02 <= pool.mem_1d02;
 				lat_m1d04 <= pool.mem_1d04;
 				lat_d016v <= pool.vic_d016;
+				// v346 doom bitmap-content probe (per-frame vicDi OR)
+				lat_vic_di_or <= pool.vic_di_or;
 				byte_idx  <= 8'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin

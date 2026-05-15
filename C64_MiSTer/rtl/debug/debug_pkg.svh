@@ -593,6 +593,11 @@ typedef struct packed {
   // vblank tells us whether the IRQ handler's $0D6C handshake fires.
   logic  [7:0] mem_1d02;
   logic  [7:0] mem_1d04;
+  // v346 doom bitmap-content probe: per-frame sticky OR of vicDi. If $00
+  // across full Doom runtime, VIC is reading only zero bytes → screen
+  // is genuinely empty regardless of register state. If != $00, VIC sees
+  // data and the black screen has a non-memory cause (color RAM, mode).
+  logic  [7:0] vic_di_or;
 } dbg_pool_t;
 `endif
 

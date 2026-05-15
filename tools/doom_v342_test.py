@@ -15,7 +15,7 @@ import os, time, paramiko, sys
 HOST, USER, PASS = '192.168.50.130', 'root', '1'
 RBF = '/media/fat/_Test/C64.rbf'
 CFG = '/media/fat/config/C64.cfg'
-REU_MGL = '/media/fat/_Test/doom_reu_only.mgl'
+REU_MGL = '/media/fat/_Test/doom_reu_only.mgl'  # MGL stays under _Test; <file> path inside points to /media/usb0/games/C64/doom.reu
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'doom_full')
 
 
@@ -73,9 +73,11 @@ def main():
     c.connect(HOST, username=USER, password=PASS, timeout=15)
     print('Connected.')
 
-    # Cooperation gate: bail if non-C64 core is loaded.
+    # Cooperation gate: bail if a non-C64, non-MENU core is loaded by
+    # another agent. MENU or empty is fine — the test loads C64.rbf via
+    # MGL in step 1.
     cn = run(c, 'cat /tmp/CORENAME 2>/dev/null').strip()
-    if cn and cn != 'C64':
+    if cn and cn not in ('C64', 'MENU'):
         print('ABORT: /tmp/CORENAME = %r (not C64). Other agent owns MiSTer.' % cn)
         c.close()
         return 2
@@ -99,7 +101,7 @@ def main():
 
     # 2) Inject loader.prg via mbc load_rom (mbc auto-detects PRG)
     print('Step 2: inject loader.prg via mbc ...')
-    run(c, 'mbc load_rom /media/fat/games/C64/loader.prg C64 2>&1', t=20)
+    run(c, 'mbc load_rom /media/usb0/games/C64/loader.prg C64 2>&1', t=20)
     time.sleep(5)
     screenshot(c, 'v342_after_prg_inject.png')
 

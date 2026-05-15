@@ -51,8 +51,8 @@ def main():
     _, o, _ = c.exec_command(
         'echo load_core /media/fat/_Test/_doom_full_abs.mgl > /dev/MiSTer_cmd')
     o.channel.recv_exit_status()
-    print('Loaded _doom_full_abs.mgl, waiting 75s for loader + wedge')
-    time.sleep(75)
+    print('Loaded _doom_full_abs.mgl, waiting 200s for loader + wedge (trap)')
+    time.sleep(200)
     c.close()
 
     # Screenshot

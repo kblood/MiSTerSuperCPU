@@ -649,7 +649,18 @@ port(
 	-- non-zero branch ($1D04 never reaches 0). Surfacing the last seen
 	-- $1D02 + $1D04 cpuDi values lets us see the handshake state directly.
 	dbg_mem_1d02               : out std_logic_vector(7 downto 0);
-	dbg_mem_1d04               : out std_logic_vector(7 downto 0)
+	dbg_mem_1d04               : out std_logic_vector(7 downto 0);
+
+	-- v346 doom bitmap-content probe (2026-05-16): per-frame sticky OR of
+	-- vicDi (the byte VIC reads from RAM at each VIC fetch slot). After v345g
+	-- confirmed UART runtime fields are byte-identical between v342's render
+	-- success and v345g's black, the question shifted to "what's in the VIC's
+	-- view of RAM". This OR resets on vsync rising edge and accumulates over
+	-- one frame; the value latched the next vsync_rise tells us whether VIC
+	-- saw any non-zero byte that frame. B6=$00 → screen is genuinely empty
+	-- (everything VIC fetched was zero). B6 != $00 → screen has data but VIC
+	-- pipeline / colour / mode register is mismatched.
+	dbg_vic_di_or              : out std_logic_vector(7 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -1228,6 +1239,14 @@ signal vicRegsDi    : unsigned(7 downto 0);
 signal vicAddr      : unsigned(15 downto 0);
 signal vicData      : unsigned(7 downto 0);
 signal lastVicDi    : unsigned(7 downto 0);
+-- v346 sticky OR of vicDi over one frame, used by debug overlay/UART.
+-- Resets on vSync rising edge; accumulates non-zero bytes through the
+-- frame. Latched into the dbg pool on the same edge that resets it, so
+-- the UART/overlay sees the previous frame's OR value.
+signal vic_di_or_r   : unsigned(7 downto 0) := (others => '0');
+signal vic_di_or_lat : unsigned(7 downto 0) := (others => '0');
+signal vSync_sig     : std_logic := '0';
+signal vSync_prev_r  : std_logic := '0';
 signal vicAddr1514  : unsigned(1 downto 0);
 signal colorData    : unsigned(3 downto 0);
 signal colorDataAec : unsigned(3 downto 0);
@@ -2213,7 +2232,7 @@ port map (
 	addrValid => aec,
 	
 	hsync => hSync,
-	vsync => vSync,
+	vsync => vSync_sig,
 	colorIndex => vicColorIndex,
 
 	debugY => dbg_raster_y,
@@ -2238,6 +2257,23 @@ begin
 	if rising_edge(clk32) then
 		if sysCycle = CYCLE_VIC3 then
 			lastVicDi <= vicDi;
+		end if;
+	end if;
+end process;
+
+-- v346: per-frame sticky OR of vicDi. Resets on vSync rising edge,
+-- accumulates through the frame. vic_di_or_lat captures the previous
+-- frame's value just before reset so the UART/debug pool reads a
+-- stable per-frame number rather than the in-flight register.
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		vSync_prev_r <= vSync_sig;
+		if vSync_prev_r = '0' and vSync_sig = '1' then
+			vic_di_or_lat <= vic_di_or_r;
+			vic_di_or_r   <= (others => '0');
+		elsif sysCycle = CYCLE_VIC3 then
+			vic_di_or_r <= vic_di_or_r or vicDi;
 		end if;
 	end if;
 end process;
@@ -3723,6 +3759,11 @@ dbg_raster_line <= std_logic_vector(dbg_raster_y);
 -- v341 doom bitmap probe
 dbg_mem_1d02    <= mem_1d02_r;
 dbg_mem_1d04    <= mem_1d04_r;
+-- v346 doom bitmap-content probe — sticky OR of vicDi over previous frame
+dbg_vic_di_or   <= std_logic_vector(vic_di_or_lat);
+-- vsync output: route through internal signal so the per-frame OR latch
+-- (above) can detect the rising edge.
+vsync           <= vSync_sig;
 
 dbg_cpu_pc_24   <= std_logic_vector(dbg_pbr_816_i) & std_logic_vector(dbg_pc_816_i)
                        when supercpu_en = '1'
