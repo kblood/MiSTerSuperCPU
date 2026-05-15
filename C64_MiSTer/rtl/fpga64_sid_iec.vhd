@@ -1106,18 +1106,16 @@ signal scpu_speed_1mhz   : std_logic := '0';                            -- $D07A
 signal scpu_sys_1mhz     : std_logic := '0';                            -- $D072=1, $D073=0
 signal scpu_regs_enabled : std_logic := '1';                            -- $D07E enables, $D07F/$D07D disables
 signal scpu_hwenable     : std_logic := '0';                            -- ANY write to $D07E sets; $D07F/$D07D clears
-signal scpu_bootmap      : std_logic := '0';                            -- '0' at reset on this branch — see comment below
--- Phase 3 hardware regression fix (2026-05-11):
--- scpu_bootmap defaulted to '1' so the SCPU EPROM kickstart would run
--- at cold boot. Hardware test showed SCPU cold boot black-screened
--- because the EPROM kickstart at $F8:$80C1 loops in the
--- $00:$8054-$8082 handler region without ever clearing bootmap.
--- vanilla-cpu-swap's bus arbitration / register handlers do not match
--- the timing assumptions the kickstart makes (master needs different
--- behavior). Defaulting bootmap to '0' restores v299-style cold boot
--- via KERNAL RESET vector; software that wants the EPROM overlay can
--- opt in by writing $D0B7. Phase 3's writable native vectors remain
--- live; the EPROM dprom at bank $F8 stays accessible to JML'd code.
+signal scpu_bootmap      : std_logic := '1';                            -- v343 retry: bootmap on at reset (kickstart needs it)
+-- 2026-05-11 attempt with bootmap='1' wedged because EPROM kickstart at
+-- $F8:$80C1 loops in $00:$8054-$8082 handler region. Since then two
+-- structural fixes landed that touch the kickstart's environment:
+--   b2d44d1 — I/O decode read-mux now respects bank (kickstart probes I/O)
+--   41b1ae2 — $0EED IRQ wedge cleared (raster IRQ + $D01A persistence)
+-- v343 retries bootmap='1' at cold boot. If still wedges, defaulting to
+-- '0' is one-line revert. Wolf3D needs kickstart to populate banks
+-- $F0-$FE with copied ROM code (49+98+67 JMLs to $FC/$F5/$F4 hit empty
+-- SuperRAM and spin in $00:$284A loop at runtime).
 signal scpu_optim_mode   : unsigned(1 downto 0) := "11";                -- $D074-$D077 select; "11" = no optimization
 -- Phase 5 (WriteSmart + write buffer drain) — architectural gap analysis.
 --
@@ -1972,7 +1970,20 @@ begin
 			scpu_sys_1mhz     <= '0';
 			scpu_regs_enabled <= '1';
 			scpu_hwenable     <= '0';
-			scpu_bootmap      <= '0';   -- Phase 3 HW regression fix — see signal decl
+			-- v344 (2026-05-15): bootmap='1' at reset was attempted and
+			-- wedged identically to 2026-05-11 — IRQ handler at $00:$8054
+			-- loops with SP growing (BRK→$FFFE→$FC94→JML $00:$8054→BRK).
+			-- The two structural fixes (b2d44d1 I/O decode + 41b1ae2 IRQ
+			-- stub) didn't help because the wedge is upstream of them:
+			-- the EPROM dispatch table at $FCxx JMLs to $00:$8054-$8082,
+			-- but kickstart at $F8:$80C1 only MVN-copies to bank $01
+			-- (BASIC shadow), never populating bank-$00 RAM at $8054
+			-- before an IRQ/BRK fires. Result: handler runs from
+			-- zero-init BRAM = BRK opcodes = infinite stack push.
+			-- v345+ direction: either teach kickstart to copy to bank
+			-- $00 first, or RAM-init bank-$00 RAM with the handler
+			-- bytes via a .mif overlay. Until then, leave bootmap '0'.
+			scpu_bootmap      <= '0';
 			scpu_optim_mode   <= "11";
 			scpu_irq_tramp_installed <= '0';
 			scpu_nmi_vec_lo   <= x"00";

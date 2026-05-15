@@ -304,8 +304,22 @@ begin
 		   and supercpu_bank = x"00"
 		   and cpuAddr(15 downto 13) = "111" then
 			dataToCpu <= unsigned(scpuRomData);
-		elsif supercpu_en = '1' and scpu_native_mode = '1' and supercpu_bank = x"F8" then
+		-- v344 (2026-05-15): mirror SCPU EPROM across banks $F8-$FF.
+		-- Real CMD HW: the 64KB EPROM repeats across the 8-bank region
+		-- $F8-$FF (banks see the same 64KB image at any offset). VICE's
+		-- scpu64 ROM file is 64KB (md5 006862e9..3803c71) and our .mif
+		-- is byte-identical. Previously only bank $F8 returned ROM; the
+		-- rest ($F9-$FE) returned $6B (RTL stub). That broke Doom's bank
+		-- $FF JSLs (693 in doom.reu, RTLed instead of running real
+		-- KERNAL code — Doom recovered most of the time) and wolf3d's
+		-- bank $FC JMLs (49 in wolf3d.reu — wolf3d had no fallback path
+		-- and wedged at $00:$284x).
+		elsif supercpu_en = '1' and scpu_native_mode = '1' and unsigned(supercpu_bank) >= x"F8" then
 			dataToCpu <= unsigned(scpuRomData);
+		-- Banks $F6/$F7 sit between MIPS heap-top ($00f60000 per
+		-- AmiDog's recomp.txt linker script) and EPROM-bottom ($F80000).
+		-- Per CMD spec these are reserved system RAM. Keep $6B stub
+		-- until we know wolf3d actually reads from them.
 		elsif supercpu_en = '1' and scpu_native_mode = '1' and unsigned(supercpu_bank) >= x"F6" then
 			dataToCpu <= x"6B";
 		-- Bank-$01 SRAM ROM shadow (Tier 2.1 spec gap). Real CMD SuperCPU's
