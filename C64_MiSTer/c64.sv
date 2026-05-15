@@ -1043,8 +1043,27 @@ sdram sdram
 // is presented to SDRAM the same clk32 the cart_ce edge fires (registering
 // here introduces a 1-cycle latency that breaks LDA-long bank transitions —
 // see master fork's project_sdram_timing_fix.md).
+//
+// Tier 3 bank $00/$01 mirror (v345, 2026-05-15): bank $01 in native mode
+// routes to cart_addr (bank-$00 SDRAM region) instead of {1,$01,c64_addr}.
+// Real CMD SuperCPU has 128KB SRAM accessed via two virtual bank numbers
+// $00/$01; kickstart MVN-copies KERNAL/BASIC/CHARGEN shadows from EPROM
+// bank $F8 into $01:$A000-$BFFF/$E000-$FFFF. With the mirror those bytes
+// also appear at $00:$A000-$BFFF/$E000-$FFFF (RAM under ROM), which is
+// what software expects when it reads bank $01 long pointers. Without the
+// mirror, $01:* reads/writes hit a separate 64KB SuperRAM SDRAM region
+// that kickstart never initialised, leaving Wolf3D's recompiler-generated
+// $01:* long stores invisible to the bank-$00 read path.
+// Gate on !supercpu_emul because emu-mode 6510 cannot emit non-$00 banks;
+// retain `bank != $00` precedence so bank $00 keeps its cart_addr path
+// (cartridge ROM overrides etc). Combinational like before — no new SDRAM
+// timing edge.
+wire bank01_mirror_to_00 = supercpu_enable && cpu_has_bus
+                          && (supercpu_bank == 8'h01)
+                          && !supercpu_emul;
 wire [24:0] scpu_sdram_addr =
-    (supercpu_enable && cpu_has_bus && (supercpu_bank != 8'h00))
+    (supercpu_enable && cpu_has_bus
+     && (supercpu_bank != 8'h00) && !bank01_mirror_to_00)
         ? {1'b1, supercpu_bank, c64_addr}
         : cart_addr;
 
