@@ -297,12 +297,23 @@ begin
 		-- Once kickstart clears bootmap (via $D0B6 or $D07E bit7=0),
 		-- this clause stops firing and KERNAL is visible again.
 		--
-		-- Address window: $E000-$FFFF (high 3 bits = "111"). The
-		-- scpuRomData mux is already indexed by cpuAddr globally, so it
-		-- presents EPROM[$E000..$FFFF] when cpuAddr matches.
+		-- v345b (2026-05-15): widened from $E000-$FFFF to $8000-$FFFF
+		-- (cpuAddr(15)='1'). Root cause for v344/v345 $00:$8054 wedge: the
+		-- EPROM dispatch table at $00:$FCxx is `JML $00:$8054`, `JML
+		-- $00:$801A`, etc. — the targets are inside the EPROM image at
+		-- $80xx (CMD's BRK/IRQ/NMI handlers live there: $8054=BRK,
+		-- $801A=IRQ, $8025=native IRQ etc.). With the old $E000+ range
+		-- those JMLs landed in zero-init bank-$00 SDRAM → BRK opcode → SP
+		-- runaway. Widening to $8000+ makes the dispatch JMLs hit real
+		-- EPROM code. EPROM bytes at $D000-$DFFF are all $FF (padding),
+		-- and SCPU register reads at $D07x/$D0Bx/$D27x are intercepted by
+		-- the outer cpuDi mux at fpga64_sid_iec.vhd:1955 anyway, so I/O
+		-- decode isn't disturbed during the brief bootmap='1' window.
+		-- Kickstart clears bootmap (via STA $D07E/$D0B6 at $F8:$80F7/$80FA)
+		-- within a few ms, after which normal C64 memory map is restored.
 		if supercpu_en = '1' and scpu_bootmap = '1'
 		   and supercpu_bank = x"00"
-		   and cpuAddr(15 downto 13) = "111" then
+		   and cpuAddr(15) = '1' then
 			dataToCpu <= unsigned(scpuRomData);
 		-- v344 (2026-05-15): mirror SCPU EPROM across banks $F8-$FF.
 		-- Real CMD HW: the 64KB EPROM repeats across the 8-bank region
@@ -314,7 +325,19 @@ begin
 		-- KERNAL code — Doom recovered most of the time) and wolf3d's
 		-- bank $FC JMLs (49 in wolf3d.reu — wolf3d had no fallback path
 		-- and wedged at $00:$284x).
-		elsif supercpu_en = '1' and scpu_native_mode = '1' and unsigned(supercpu_bank) >= x"F8" then
+		-- v345c (2026-05-15): also fire during bootmap='1' (regardless of
+		-- E flag). The kickstart entry path is:
+		--   RESET → $00:$FFFC = $FC90 (EPROM overlay)
+		--   $00:$FC90: JML $F8:$00FC
+		--   $F8:$00FC: JML $F8:$80C1 → kickstart
+		-- The CPU is in EMU mode at reset (scpu_native_mode='0'); kickstart
+		-- doesn't enter native mode until its third instruction (CLC; XCE).
+		-- Without this gate-relaxation the $F8:$00FC fetch returned zeros
+		-- (SDRAM uninit) → BRK → trapped in $00:$8054 handler before
+		-- kickstart could run. After kickstart clears bootmap='0', the
+		-- native-mode gate alone covers Doom/Wolf3D's bank-$F8-$FF JSLs.
+		elsif supercpu_en = '1' and (scpu_native_mode = '1' or scpu_bootmap = '1')
+		                    and unsigned(supercpu_bank) >= x"F8" then
 			dataToCpu <= unsigned(scpuRomData);
 		-- Banks $F6/$F7 sit between MIPS heap-top ($00f60000 per
 		-- AmiDog's recomp.txt linker script) and EPROM-bottom ($F80000).
@@ -322,38 +345,16 @@ begin
 		-- until we know wolf3d actually reads from them.
 		elsif supercpu_en = '1' and scpu_native_mode = '1' and unsigned(supercpu_bank) >= x"F6" then
 			dataToCpu <= x"6B";
-		-- Bank-$01 SRAM ROM shadow (Tier 2.1 spec gap). Real CMD SuperCPU's
-		-- bank $01 SRAM is pre-loaded with KERNAL/BASIC/CHARGEN ROM copies
-		-- so SCPU CPU reads at $01:$E000-$FFFF return KERNAL bytes,
-		-- $01:$A000-$BFFF return BASIC bytes, etc. Our bank $01 = SuperRAM
-		-- SDRAM (zeros at boot). MIPS-recompiler runtimes that read bank $01
-		-- ROM areas for KERNAL data get garbage. This clause synthesizes the
-		-- ROM bytes for those reads. Writes to $01:$Exxx still go to SDRAM
-		-- via the cs_ram path (effectively read-only ROM, since the shadow
-		-- always wins on reads — matches "ROM" semantics, slight divergence
-		-- from real CMD which has writable SRAM but with KERNAL pre-loaded).
-		-- Native mode only (scpu_native_mode='1') because emu mode never
-		-- emits bank-$01 reads (no DBR effect, no long addressing).
-		--
-		-- Phase 4 audit (plan: full bank-$01 64KB writable SRAM shadow):
-		-- - $0000-$9FFF on this branch → bank $01 SDRAM (writable RAM) ✓
-		--   matches CMD bank-$01 SRAM RAM regions.
-		-- - $A000-$BFFF BASIC, $D000-$DFFF CHARGEN, $E000-$FFFF KERNAL
-		--   already ROM-shadowed below ✓ matches CMD pre-loaded SRAM
-		--   reads exactly.
-		-- - Real-CMD divergence: software that WRITES KERNAL/BASIC bytes
-		--   to $01:$Exxx then READS them back expecting patched values
-		--   would see the shadow ROM instead. No known title does this;
-		--   not implementing writable+preload because it would require a
-		--   reset-time DMA from BRAM → SDRAM (~5 ms boot delay, fragile
-		--   sequencing). Leave as read-only ROM shadow.
-		elsif supercpu_en = '1' and scpu_native_mode = '1' and supercpu_bank = x"01"
-		                    and (cs_romLoc = '1' or cs_CharLoc = '1') then
-			if cs_CharLoc = '1' then
-				dataToCpu <= unsigned(charData);
-			else
-				dataToCpu <= unsigned(romData);
-			end if;
+		-- v345 (2026-05-15): bank-$01 ROM shadow clause REMOVED. It is dead
+		-- code: the cpuDi mux at fpga64_sid_iec.vhd:1955 selects ramDin
+		-- (raw sdram_data) for any non-bank-$00 SCPU read, overriding
+		-- dataToCpu. Tier 3 mirror in c64.sv now routes $01:* SDRAM access
+		-- to cart_addr (bank-$00 SDRAM region), so $01:$A000-$BFFF and
+		-- $01:$E000-$FFFF reads return whatever software wrote there via
+		-- kickstart MVN ($F8:$0100→$01:$A000 BASIC, $F8:$2100→$01:$E000
+		-- KERNAL). That matches real CMD SuperCPU's 128KB SRAM with both
+		-- bank numbers aliasing the same physical SRAM, including writes —
+		-- closer to spec than this read-only romData/charData fallback was.
 		-- Phase C: in SuperCPU mode, bank ≠ $00 reads come from SuperRAM
 		-- (SDRAM path; Phase D mux in c64.sv selects which SDRAM bank).
 		-- All other clauses fall through to the vanilla else-chain.

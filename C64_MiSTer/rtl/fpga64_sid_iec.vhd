@@ -1952,7 +1952,22 @@ cpuDi <= scpu_dos_ext_mode
          -- legacy 6510/T65 behaviour and SCPU register intercepts above.
          -- See project_bug_pinned_io_decode_ignores_bank.md for full
          -- analysis + code-peek evidence.
-         ramDin when (supercpu_en = '1' and addr_hi_816 /= x"00") else
+         --
+         -- v345e (2026-05-15): gate the bank-$F8+ carve-out on bootmap='1'
+         -- only. With bootmap='0' (post-kickstart and v345d default), bank
+         -- $F8-$FF reads flow through ramDin (= uninit SDRAM = $00 = BRK
+         -- opcodes). Doom's 693 bank-$FF JMLs then BRK → $00:$FF00 ack
+         -- stub → soft no-op (matches v344b behaviour where Doom rendered
+         -- title at 240s).
+         -- With bootmap='1' (during kickstart reset chain), bank $F8-$FF
+         -- reads route to cpuDi_raw = buslogic's scpuRomData mirror, so
+         -- JML $F8:$00FC → JML $F8:$80C1 kickstart fetch returns real
+         -- EPROM bytes instead of BRK.
+         -- v345d (no gate) regressed Doom because scpu64.mif is 60% $FF
+         -- padding; bank-$FF reads fetched $FF → SBC long,X chain → state
+         -- corruption. Full analysis: docs/v345e_fix_plan.md.
+         ramDin when (supercpu_en = '1' and addr_hi_816 /= x"00"
+                     and not (scpu_bootmap = '1' and unsigned(addr_hi_816) >= x"F8")) else
          cpuDi_raw;
 
 -- ----------------------------------------------------------------------
@@ -1970,19 +1985,17 @@ begin
 			scpu_sys_1mhz     <= '0';
 			scpu_regs_enabled <= '1';
 			scpu_hwenable     <= '0';
-			-- v344 (2026-05-15): bootmap='1' at reset was attempted and
-			-- wedged identically to 2026-05-11 — IRQ handler at $00:$8054
-			-- loops with SP growing (BRK→$FFFE→$FC94→JML $00:$8054→BRK).
-			-- The two structural fixes (b2d44d1 I/O decode + 41b1ae2 IRQ
-			-- stub) didn't help because the wedge is upstream of them:
-			-- the EPROM dispatch table at $FCxx JMLs to $00:$8054-$8082,
-			-- but kickstart at $F8:$80C1 only MVN-copies to bank $01
-			-- (BASIC shadow), never populating bank-$00 RAM at $8054
-			-- before an IRQ/BRK fires. Result: handler runs from
-			-- zero-init BRAM = BRK opcodes = infinite stack push.
-			-- v345+ direction: either teach kickstart to copy to bank
-			-- $00 first, or RAM-init bank-$00 RAM with the handler
-			-- bytes via a .mif overlay. Until then, leave bootmap '0'.
+			-- v345e/g (2026-05-15): bootmap='0' default. v345f tried bootmap='1'
+			-- with the cpuDi mux gate, but kickstart wedged mid-flight: once
+			-- kickstart clears bootmap via STA $D07E, the gate cuts $F8+ reads
+			-- to ramDin while kickstart is still executing at $F8:$80FA+ →
+			-- BRK → SP runaway, KERNAL never inits $0314 vectors (UART shows
+			-- VW>>AC and SP descending from $D82D to $D5D1). Restoring '0'
+			-- keeps the v345e behaviour: Tier3 mirror PASS (green border),
+			-- vanilla BASIC READY clean, Doom CPU healthy in JIT (PC at
+			-- $2C:$3xxx, M ring $0D6C IRQ handler) but DD00 stuck $02 / black
+			-- screen — bursty IRQ pattern suggests only CIA1 timer fires,
+			-- not raster IRQ. Separate investigation needed.
 			scpu_bootmap      <= '0';
 			scpu_optim_mode   <= "11";
 			scpu_irq_tramp_installed <= '0';

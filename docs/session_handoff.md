@@ -1,107 +1,143 @@
-# Session handoff — 2026-05-14 (v341 built, ready to deploy)
+# Session handoff — 2026-05-15 (v345e/f/g build cycle)
 
 ## Bottom line
 
-**v341 RBF built and committed (md5 `a1faa08cece10efabddc04b1ea0565be`).**
-Adds three probe fields to the per-vblank UART line to disambiguate the
-black-screen wedge that remains after v340n fixed the post-$0EED IRQ flood.
+**v345g (rebuild of v345e source) is the current best state.** Building now (or
+already built — check `C64_MiSTer/output_files/C64.rbf`).
 
-New UART fields per line:
-- `1D:####` (bytes 194-201) — last cpuDi/cpuDo at bank-$00:`$1D02` / `$1D04`
-  (Doom's page-flip handshake). Gated on supercpu_bank=$00 so JIT
-  bank-$XX:`$1D02` hits don't shadow the real handshake words.
-- `D6:##` (bytes 220-225) — last cpuDo to `$D016`. MCM bit (bit 4) must
-  be set for multicolor-bitmap mode.
+- ✅ Tier 3 mirror PASSES (green border, screen visible) — proven on v345e.
+- ✅ Doom no longer SBC,X-corrupted — cpuDi mux gate on bootmap fixes the
+  v345d regression where bank-$FF JMLs hit EPROM `$FF` padding.
+- ⚠️ **Doom still black at 240s.** CPU healthy in JIT
+  (PC bouncing $2C:$2Exx-$34xx, M ring $0D6C IRQ handler, F counter ~50Hz)
+  but DD00 stuck at $02 (no page-flip), VW=AC=$18DF=6367 IRQs/240s = ~26Hz
+  average (bursty). Symptom matches v345d regression even with the gate
+  applied. Likely raster IRQ ($D019 bit0) not firing reliably; CIA1 timer A
+  IRQ alone won't drive Doom's double-buffer page-flip.
+- ⚠️ **v345c bootmap='1' kickstart→KERNAL wedge unsolved.** v345f tried
+  restoring bootmap='1' (matching v344b) + the v345e gate — wedges mid-flight
+  because the gate cuts $F8+ to ramDin the moment kickstart clears bootmap
+  via `STA $D07E`, while CPU is still executing at $F8:$80FA+. Symptom: SP
+  runaway ($D82D→$D5D1), VW>>AC (raster IRQ flood without acks), KERNAL
+  $0314 vectors never initialised.
 
-Line length 224 → 230. R7 (always-zero diag slot) repurposed for 1D.
+## v345g — applied fix (Option A, gate on bootmap)
 
-MiSTer is loaned to another agent — deploy when free.
-
-## Why these probes
-
-VICE xscpu64 + doom.reu + loader.prg (warp 30-240s) **renders Doom title
-bitmap** at t=180s while HW v340n black-screens with identical code.
-Code therefore correct; bug is in our FPGA infrastructure.
-
-VICE state at t=180s+ (visible Doom title):
-- D011=$BB (DEN+BMM+RSEL, raster_msb=1)
-- D016=$D8 (**MCM=1, CSEL=1** → multicolor bitmap)
-- D018=$81 (screen=$2000 in-bank, bitmap=$0000)
-- DD00 toggles $C0↔$C2 (bank 3 ↔ bank 1) every frame — double-buffer
-- $FFEE=$EAEA (**VICE Doom has NO native IRQ vector installed**)
-
-HW state at t=240s (v340n):
-- D1=3B, D8=80, C2=02 (correct mode, bank 1, screen $2000) — basic VIC setup matches
-- DD00 stuck at $02 (bank 1 only) — **page-flip not happening**
-- VW=AC=9, IF=001C (9 raster IRQs total over 240s)
-- PC drifts $2C:$2FE6-$36xx — CPU running JIT but in a tight ~1KB span
-
-## Three live hypotheses to discriminate with v341
-
-1. **Bitmap-fill code never runs** — PC stuck in a polling loop early in
-   `R_Init` aftermath, before the renderer ever touches $4000-$5F3F.
-   v341 signal: `1D:####` shows both bytes at boot defaults ($00 or
-   garbage), never updates. D6 stays at boot default.
-
-2. **$D01A=$00 mask kill breaks Doom's frame scheduler** — our stub
-   at $FF1A masks all VIC IRQs every ack. If Doom polls $1D04 from
-   main but the producer at $0F58 is IRQ-driven, $1D04 never changes
-   → main waits forever.
-   v341 signal: `1D:####` shows static value (e.g., `0101` or `0000`),
-   D6 updated to $D8 once during init.
-
-3. **Page-flip stuck on bank 1** — Doom's flip code at $80:$0B40 reads
-   $1D04, BEQs, picks DD00. If $1D04 != 0 it always picks bank 1.
-   v341 signal: `1D:####` shows $1D02 and $1D04 BOTH non-zero, equal
-   to each other and stable.
-
-VICE differential expectation: $1D04 should toggle between two values
-each frame (oldest+1, oldest, oldest+1, ...) and $1D02 should follow.
-
-## v341 deploy procedure (when MiSTer free)
-
-```bash
-python tools/mister_debug.py deploy C64_MiSTer/output_files/C64.rbf
-# Load doom.reu via MGL with absolute path
-ssh root@192.168.50.130 'echo load_core /media/fat/_Test/doom_reu_only.mgl > /dev/MiSTer_cmd'
-# After ~30s for REU load + load_prg loader, type loader sequence:
-python tools/mister_debug.py keys 'POKE49152,120:POKE49153,24:POKE49154,251:POKE49155,92\nPOKE49156,0:POKE49157,0:POKE49158,32\nSYS49152\n'
-# Capture UART
-python tools/mister_debug.py uart 300 > tools/doom_full/v341_uart.txt
-python tools/mister_debug.py screen tools/doom_full/v341_screen.png
+`fpga64_sid_iec.vhd:1969-1971`:
+```vhdl
+ramDin when (supercpu_en = '1' and addr_hi_816 /= x"00"
+            and not (scpu_bootmap = '1' and unsigned(addr_hi_816) >= x"F8")) else
+cpuDi_raw;
 ```
 
-Then `grep -oE "1D:[0-9a-fA-F]{4}" tools/doom_full/v341_uart.txt | sort -u`
-to see the unique $1D02/$1D04 values across the run. Empty or one-value
-→ probe doesn't trigger or stays constant. Multiple distinct values →
-handshake is alive somehow.
+`fpga64_sid_iec.vhd:1985-1997`: `scpu_bootmap <= '0'` at reset.
 
-## Resource budget v341
+## What v345e/g fixes
 
-- ALMs: 27,060 / 41,910 (**65%**) — down from prior 73% baseline
-  (some pruning during fitter optimization, no logic intentionally
-  removed by this commit)
-- M10K: 403 / 553 (73%)
-- WNS: +3.568ns (HDMI PLL counter) — no failed paths
-- Build time: 12:26
+The v345c cpuDi mux change unconditionally routed bank-$F8+ reads to
+`cpuDi_raw` (buslogic's `scpuRomData`). With v344b's EPROM-mirror clause
+(buslogic returns `scpuRomData` for `(native_mode='1' OR bootmap='1') AND
+bank>=$F8`), this meant Doom's 693 bank-$FF JMLs and 433 JSLs hit `$FF`
+padding (60% of scpu64.mif). The padding executes as `SBC long,X` chain
+(opcode `$FF` = SBC long,X) which trashes A register and advances PC by 4.
+Doom's runtime state corrupted → black screen.
 
-## Open items behind this surface
+v345e/g's gate routes bank-$F8+ reads to `ramDin` (uninit SDRAM = `$00` =
+BRK opcode) when `bootmap='0'`. Doom's bank-$FF JMLs then BRK → $00:$FF00
+ack stub → soft no-op (matches v344b pre-v345c behaviour). Tier 3 mirror
+test passes; Doom's CPU stays in legitimate JIT code.
 
-Still pending root-cause regardless of v341 outcome:
-- VICE has $D011=$BB but HW has $D011=$3B (bit 7 / raster_msb differs).
-  Doom on HW may never reach the code that sets raster_msb=1 (renderer
-  not running) — see hypothesis 1.
-- WriteSmart still MISSING but should not matter for vanilla-cpu-swap
-  branch (single c64_ram64k BRAM shared CPU+VIC; no separate SCPU SRAM
-  to mirror from).
+## What remains black
 
-## Files modified for v341
+Doom 240s UART (`tools/doom_full/uart_240s.txt`):
+- F:3BE0 (15k frames in 240s ≈ 50 Hz frame rate)
+- PC:2C35BE (JIT main code in bank $2C)
+- VW:AC:$18DF (6367 IRQs total in 240s ≈ 26 Hz average; bursty within a
+  capture window 100/s spikes)
+- DD00 stuck $02 (VIC bank 1, no $00 alternation — page-flip dead)
+- D011=$3B, D016=$D8, D018=$80 (MCM bitmap mode set up correctly)
 
-- `C64_MiSTer/rtl/fpga64_sid_iec.vhd` — `dbg_mem_1d02`/`dbg_mem_1d04`
-  ports + signals + read/write latches at lines 3645-3667
-- `C64_MiSTer/c64.sv` — wires + instance connections + pool assignments
-- `C64_MiSTer/rtl/debug/debug_pkg.svh` — `mem_1d02`/`mem_1d04` pool fields
-- `C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv` — LINE_LEN=230, R7→1D,
-  +D6 field bytes 194-201 and 220-225
+26 Hz IRQ rate hypothesis: CIA1 timer A fires reliably (60 Hz on PAL → 26
+average with periodic dropouts), but raster IRQ doesn't drive Doom's
+page-flip at $80:$0B40 (reads $1D04, conditionally writes DD00 to $00 or
+$02). If $1D04 never toggles, DD00 stays $02 and only bank-1 frame is
+shown.
 
-Commit: `df066a8`
+Compare to v342 success (commit e5ff820, RBF md5
+`71722b93a461fc29562f85836ec31bf1`): IF +12043 IRQs/240s = ~50 Hz steady.
+DD00 alternated $02/$00 per frame.
+
+## v345c→v345g divergence summary
+
+| Build | bootmap reset | cpuDi $F8+ → | Tier3 | Doom |
+|-------|---------------|--------------|-------|------|
+| v342 (e5ff820)  | (n/a — pre b50ec0b) | ramDin (no gate) | ? | **renders** |
+| v344b (b50ec0b) | '1'           | ramDin (no gate) | ? | claimed render |
+| v345c           | '1'           | cpuDi_raw always | ? | regressed   |
+| v345d           | '0'           | cpuDi_raw always | PASS  | regressed   |
+| v345e (= v345g) | '0'           | cpuDi_raw if bootmap='1', else ramDin | PASS  | black 26 Hz |
+| v345f           | '1'           | (same as v345e gate) | wedge | wedge       |
+
+The v344b claim ("renders Doom with bootmap='1'") is suspicious given that
+v344b's cpuDi mux has no carve-out — bank-$F8+ reads would have returned
+SDRAM=$00, kickstart at $F8:$80C1 should have BRK'd on first fetch. Either
+the memory entry is wrong, or there's a SDRAM-init path that loads EPROM
+bytes that I haven't traced.
+
+## Next investigation directions
+
+### 1. Verify v344b actually rendered Doom
+
+Check out commit `b50ec0b`, rebuild, deploy, run `tools/doom_full_run.py`.
+If it black-screens too, the "v342/v344b" claim in earlier session notes
+is wrong and v345g is no worse than v344b for Doom.
+
+### 2. Probe raster IRQ ($D019) state during Doom
+
+Add UART field: 6502 cycles since last `$D019 bit0=1` event, plus current
+`$D01A & $01`. If raster IRQ enable bit clears unexpectedly, that's the
+cause of the page-flip failure.
+
+### 3. Compare bank $00:$E000-$FFFF in v345g vs v342
+
+If bootmap='0' skips kickstart's KERNAL preparation, but KERNAL still
+boots via $FFFC, the difference might be in what registers/state Doom
+inherits. Especially $D07x SCPU control bits.
+
+### 4. Page-classify scpu64.mif for an Option B fix
+
+For a future bootmap='1' attempt: replace 60% padding pages with `$6B` in
+buslogic. Then bank-$FF JMLs to padding → RTL no-op, but bank-$FF reads
+to real code (KERNAL routines) → EPROM bytes. See `docs/v345e_fix_plan.md`
+"Option B".
+
+## Files in this session
+
+- `C64_MiSTer/rtl/fpga64_sid_iec.vhd:1969-1971` — cpuDi mux gate (v345e/g)
+- `C64_MiSTer/rtl/fpga64_sid_iec.vhd:1985-1997` — bootmap='0' (was '1' on
+  v344b/v345c; tried '1' again on v345f, wedged)
+- `tools/v345e_deploy_test.py` — deploy + tier3 smoke runner
+- `tools/v345e_results/tier3_shot.png` — green border PASS (v345e)
+- `tools/doom_full/shot_240s.png` — black screen (v345e)
+- `tools/doom_full/uart_240s.txt` — 26 Hz IRQ pattern
+- `docs/v345e_fix_plan.md` — Option A/B/C analysis
+
+## Build/deploy artifacts
+
+- v345e RBF: md5 `6165b0691d1b0b7d3f14fc2eb44dd1c9` (size 3874612) —
+  overwritten by v345f build, no longer on disk
+- v345f RBF: md5 `48142f459945f002fb61238540319f1e` (size 3837832) —
+  current on disk and on MiSTer (broken — kickstart wedge)
+- v345g RBF: building now. Source state matches v345e. Expected md5
+  similar (synthesis variance may differ).
+
+## Pre-MiSTer-test commit plan
+
+When v345g build completes:
+1. Deploy `C64_MiSTer/output_files/C64.rbf` to `/media/fat/_Test/C64.rbf`
+2. Smoke: `tools/v345e_deploy_test.py` → tier3 green border (expected PASS)
+3. Doom: `tools/doom_full_run.py` → expect same v345e signature (CPU
+   healthy, IRQ ~26 Hz, screen black)
+4. If both match expectations, commit the v345g source state (cpuDi gate
+   + bootmap='0' reverted). Title: "fix: v345g — gate cpuDi $F8+ carve-out
+   on bootmap; restores Tier3 + no SBC,X corruption; Doom still black"
