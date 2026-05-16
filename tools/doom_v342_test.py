@@ -139,6 +139,12 @@ def main():
     print('Final 240s UART capture for analysis ...')
     capture_uart(c, 'v342_uart.txt', seconds=240)
 
+    # 7) Final screenshot at end of extended capture (~t=485s from launcher SYS).
+    # Run-2 analysis showed DD00 transitions $02->$00 at line 1346 of 6014 in
+    # this extended capture window — well past the t=240s screenshot. Capture
+    # one more shot so a successful render is visible.
+    screenshot(c, 'v342_t485s.png')
+
     c.close()
     print('Done.')
 

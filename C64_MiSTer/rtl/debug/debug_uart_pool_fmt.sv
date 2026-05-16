@@ -140,13 +140,18 @@ module debug_uart_pool_fmt
 	reg  [7:0] lat_d016v;
 	// v346 doom bitmap-content probe: per-frame sticky OR of vicDi.
 	reg  [7:0] lat_vic_di_or;
+	// v347 doom bitmap-write probe: per-frame saturating count of CPU
+	// writes to bank-0 SDRAM regions $4000-$5FFF (bm1) and $C000-$DFFF
+	// (bm3). Latched on vsync rising edge.
+	reg  [7:0] lat_bm1_writes;
+	reg  [7:0] lat_bm3_writes;
 
 	// -----------------------------------------------------------------
 	// Send FSM: drive tx_send for one cycle whenever tx is idle and the
 	// next byte hasn't been issued yet. byte_idx indexes the line bytes
 	// 0..LINE_LEN-1; LINE_LEN signals "line done, idle until next vblank".
 	// -----------------------------------------------------------------
-	localparam LINE_LEN = 8'd236;
+	localparam LINE_LEN = 8'd245;
 
 	reg [7:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -473,12 +478,22 @@ module debug_uart_pool_fmt
 			8'd229: line_byte = ":";
 			8'd230: line_byte = hex_nibble(lat_vic_di_or[7:4]);
 			8'd231: line_byte = hex_nibble(lat_vic_di_or[3:0]);
+			// v347 " B1:## B3:##" — bm1/bm3 per-frame CPU-write counters
 			8'd232: line_byte = " ";
-			8'd233: line_byte = " ";
-			8'd234: line_byte = " ";
+			8'd233: line_byte = "B";
+			8'd234: line_byte = "1";
+			8'd235: line_byte = ":";
+			8'd236: line_byte = hex_nibble(lat_bm1_writes[7:4]);
+			8'd237: line_byte = hex_nibble(lat_bm1_writes[3:0]);
+			8'd238: line_byte = " ";
+			8'd239: line_byte = "B";
+			8'd240: line_byte = "3";
+			8'd241: line_byte = ":";
+			8'd242: line_byte = hex_nibble(lat_bm3_writes[7:4]);
+			8'd243: line_byte = hex_nibble(lat_bm3_writes[3:0]);
 
-			// newline (LINE_LEN-1 = 235)
-			8'd235: line_byte = 8'h0A;
+			// newline (LINE_LEN-1 = 244)
+			8'd244: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -574,6 +589,9 @@ module debug_uart_pool_fmt
 				lat_d016v <= pool.vic_d016;
 				// v346 doom bitmap-content probe (per-frame vicDi OR)
 				lat_vic_di_or <= pool.vic_di_or;
+				// v347 doom bitmap-write probe (bm1/bm3 per-frame counters)
+				lat_bm1_writes <= pool.bm1_writes;
+				lat_bm3_writes <= pool.bm3_writes;
 				byte_idx  <= 8'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin

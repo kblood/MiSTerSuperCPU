@@ -1306,6 +1306,18 @@ wire  [7:0] scpu_dbg_mem_1d02;        // v341 doom bitmap probe: $00:$1D02 last 
 wire  [7:0] scpu_dbg_mem_1d04;        // v341 doom bitmap probe: $00:$1D04 last R/W
 wire  [7:0] scpu_dbg_vic_di_or;       // v346 per-frame sticky OR of vicDi
 
+// v347 per-frame saturating counters of CPU writes to bank-0 SDRAM bitmap
+// regions. Latched on vsync rising edge. Answers: is Doom's CPU emitting
+// any writes to where VIC reads its bitmap? bitmap_test PRGs proved the
+// VIC + Tier-3 mirror path works, so if these counters stay 0 across all
+// Doom frames, Doom's bitmap renderer is never reaching this path.
+// (Always block lives later in the file — after vsync wire declaration.)
+reg [7:0] bm1_writes_r   = '0;   // accumulator for $4000-$5FFF
+reg [7:0] bm3_writes_r   = '0;   // accumulator for $C000-$DFFF
+reg [7:0] bm1_writes_lat = '0;   // latched at vsync rising edge
+reg [7:0] bm3_writes_lat = '0;
+reg       vsync_prev_for_bmcount = 1'b0;
+
 // ---------------------------------------------------------------------------
 // Layered debug overlay (rtl/debug/) - pool struct + capture stubs.
 // Only declared when DBG_OVERLAY is set; release builds collapse the tree.
@@ -1740,6 +1752,9 @@ assign dbg_pool.brk_vec_hi              = scpu_dbg_brk_vec_hi;
 assign dbg_pool.mem_1d02                = scpu_dbg_mem_1d02;
 assign dbg_pool.mem_1d04                = scpu_dbg_mem_1d04;
 assign dbg_pool.vic_di_or               = scpu_dbg_vic_di_or;
+// v347 per-frame CPU-write counters for bank-0 SDRAM bitmap regions
+assign dbg_pool.bm1_writes              = bm1_writes_lat;
+assign dbg_pool.bm3_writes              = bm3_writes_lat;
 
 `ifdef DBG_CAP_FRAME
 cap_frame u_cap_frame (
@@ -2321,6 +2336,29 @@ always @(posedge clk_sys) begin
 		hq2x160 <= (status[10:8] == 2);
 	end
 end
+
+// v347 — bitmap-region write counters. Increment when a CPU write targets
+// bank-0 SDRAM in the bitmap ranges; latch on vsync rising edge and reset
+// the accumulator. See declaration above for full context.
+`ifdef DBG_OVERLAY
+wire write_to_bm1_v347   = (scpu_sdram_addr[24:16] == 9'h000) && (scpu_sdram_addr[15:13] == 3'b010);
+wire write_to_bm3_v347   = (scpu_sdram_addr[24:16] == 9'h000) && (scpu_sdram_addr[15:13] == 3'b110);
+wire cpu_sdram_write_v347= cart_we && cart_ce && !io_cycle && !ext_cycle;
+always @(posedge clk_sys) begin
+	vsync_prev_for_bmcount <= vsync;
+	if (~vsync_prev_for_bmcount & vsync) begin
+		bm1_writes_lat <= bm1_writes_r;
+		bm3_writes_lat <= bm3_writes_r;
+		bm1_writes_r   <= '0;
+		bm3_writes_r   <= '0;
+	end else begin
+		if (cpu_sdram_write_v347 && write_to_bm1_v347 && (bm1_writes_r != 8'hFF))
+			bm1_writes_r <= bm1_writes_r + 1'b1;
+		if (cpu_sdram_write_v347 && write_to_bm3_v347 && (bm3_writes_r != 8'hFF))
+			bm3_writes_r <= bm3_writes_r + 1'b1;
+	end
+end
+`endif
 
 reg ce_pix;
 always @(posedge CLK_VIDEO) begin

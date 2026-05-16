@@ -598,6 +598,16 @@ typedef struct packed {
   // is genuinely empty regardless of register state. If != $00, VIC sees
   // data and the black screen has a non-memory cause (color RAM, mode).
   logic  [7:0] vic_di_or;
+
+  // v347 doom bitmap-write probe: per-frame saturating count of CPU
+  // SDRAM writes targeting bank-0 SDRAM regions $4000-$5FFF (bm1) and
+  // $C000-$DFFF (bm3). Counts both direct bank-$00 writes and bank-$01
+  // writes routed via the Tier-3 mirror. Latched on vsync rising edge.
+  // bitmap_render_test*.prg proved this path renders correctly, so if
+  // Doom's counters stay at $00 across all frames, Doom never reaches
+  // its bitmap renderer (init wedge somewhere upstream).
+  logic  [7:0] bm1_writes;
+  logic  [7:0] bm3_writes;
 } dbg_pool_t;
 `endif
 
