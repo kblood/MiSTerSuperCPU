@@ -18,6 +18,24 @@ set_multicycle_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|cyclonev_pl
                     -to   [get_clocks {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk}] \
                     -hold 1
 
+# clk64 (counter[1]) -> clk_sys (counter[2]) crossing — the REVERSE direction
+# of the constraint above. SDRAM dout_r and related signals are registered on
+# clk64 and consumed by the CPU on clk_sys. The CPU is gated by enableCpu
+# which fires at most once per sysCycle (32 clk32 ticks = 16 clk64 ticks),
+# so data registered on clk64 has many cycles to settle before being sampled.
+# Without this, the analyzer assumed 1 clk_sys period budget; the worst path
+# sdram.dout_r[8] -> P65C816.P[1] missed by -4.652ns in debug builds.
+# Functional safety: SDRAM read SM takes ~5 clk32 ticks per access and CPU
+# enable pulses are >= 4 clk32 ticks apart, so the 63.4ns multicycle budget
+# is always met in real operation. Hold paths remain positive (+0.243ns min).
+set_multicycle_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk}] \
+                    -to   [get_clocks {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk}] \
+                    -setup 2
+
+set_multicycle_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk}] \
+                    -to   [get_clocks {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk}] \
+                    -hold 1
+
 # P65C816 CPU core uses clock-enable gating (CE from enableCpu_816).
 # enableCpu_816 never fires on consecutive clk32 edges: BRAM/cache hits
 # self-suppress for at least 1 cycle, SDRAM pipeline takes many cycles,
