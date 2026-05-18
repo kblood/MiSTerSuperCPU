@@ -1708,10 +1708,19 @@ cpuDi <= scpu_dos_ext_mode
          -- JML $00:$0D40 (Doom's handler still runs its SW ack), both
          -- conditions are satisfied. Doom's writes to $FFEE/$FFEF still
          -- go to scpu_native_vec storage but are ignored on read.
-         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFEE") else  -- IRQ   L (hardcoded $00 → $FF00 stub)
-         x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFEF") else  -- IRQ   H (hardcoded $FF → $FF00 stub)
+         -- v351 (2026-05-18): re-enable software-writeable IRQ vector via
+         -- scpu_native_vec(10/11). The 2026-05-13 I/O decode bug fix
+         -- (commit b2d44d1 + d1e46d7) eliminated the recompiler corruption
+         -- that originally forced the v340m revert — Doom's $0D3C handler
+         -- can now ack hw sources correctly. Wolf3D VICE probe (2026-05-18
+         -- tools/wolf3d_vice_irq_setup.py) proved Wolf3D writes $FFEE/$FFEF
+         -- = $B5/$B7 (→ handler at $00:$B7B5), so the hardcoded $00FF was
+         -- blocking Wolf3D's own IRQ handler. Reset default in scpu_native_vec
+         -- (10/11) is $00/$FF so pre-init IRQs still land on the $FF00 stub.
+         scpu_native_vec(10) when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEE") else  -- IRQ L (software-writeable, default $00)
+         scpu_native_vec(11) when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEF") else  -- IRQ H (software-writeable, default $FF)
          -- ----------------------------------------------------------------
          -- IRQ JML trampoline at $00:$FCEE..$FCF1 (4 bytes, RAM-backed).
          --
@@ -1887,62 +1896,74 @@ cpuDi <= scpu_dos_ext_mode
          -- to deassert the IRQ line — VW/AC counter equality in v340n
          -- proves the FPGA's IRST clear actually works now. Replace
          -- the 4 STA-long bytes with NOPs ($EA); keep LDA #$00 since
-         -- $FF1E LDA #$7F overwrites A immediately. CIA1/CIA2 mask
-         -- clears at $FF20/$FF24 remain (those preserve original
-         -- v313 behavior protecting against CIA IRQ flood).
+         -- v348 (2026-05-18): NOP the CIA1/CIA2 mask clears at $FF1E-$FF27.
+         -- Previously this wrote $7F to $DC0D/$DD0D, which DISABLES all CIA
+         -- IRQ enable bits ($7F write to ICR = clear all enables). For Wolf3D
+         -- which uses CIA1 timer for frame timing, this kills the timer IRQ
+         -- on the first IRQ fired, leaving the game frame-stuck. Doom v342
+         -- works without CIA IRQs (uses VIC raster), so it doesn't notice.
+         -- The $D019 + $DC0D/$DD0D ack READS at $FF04-$FF13 already clear
+         -- pending IRQ sources via write-1-to-clear / read-to-clear. The
+         -- mask-disable here was overkill defense from v313 era.
+         -- Leaving $FF18/$FF19 (LDA #$00) and $FF1A-$FF1D NOPs intact for
+         -- byte layout compatibility.
          x"A9" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF18") else  -- LDA imm (vestigial)
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF19") else  -- #$00
          x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF1A") else  -- NOP (was STA long)
+                     and cpuAddr = x"FF1A") else  -- NOP (was STA $D01A, v342)
          x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF1B") else  -- NOP
          x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF1C") else  -- NOP
          x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF1D") else  -- NOP
-         x"A9" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF1E") else  -- LDA imm
-         x"7F" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF1F") else  -- #$7F (for CIA mask)
-         x"8F" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF20") else  -- STA long
-         x"0D" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF21") else  -- $DC0D low
-         x"DC" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF22") else  -- $DC0D mid
-         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF23") else  -- bank = $00
-         x"8F" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF24") else  -- STA long
-         x"0D" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF25") else  -- $DD0D low
-         x"DD" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF26") else  -- $DD0D mid
-         x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF27") else  -- bank = $00
+         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1E") else  -- NOP (was LDA #$7F)
+         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF1F") else  -- NOP
+         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF20") else  -- NOP (was STA $DC0D mask)
+         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF21") else  -- NOP
+         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF22") else  -- NOP
+         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF23") else  -- NOP
+         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF24") else  -- NOP (was STA $DD0D mask)
+         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF25") else  -- NOP
+         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF26") else  -- NOP
+         x"EA" when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF27") else  -- NOP
          x"68" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF28") else  -- PLA
          x"28" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF29") else  -- PLP
          -- v340m: replace RTI with JML $00:$0D3C so the stub forwards to
          -- Doom's installed handler AFTER acking all hardware IRQ sources.
-         -- This guarantees the ack happens regardless of what Doom's
-         -- handler does. Doom's $0D3C still runs its cooperative SW ack
-         -- ($1D02=$1D04) needed for the game's IRQ chain.
-         -- v340n (2026-05-14): target reverted from $0D40 to $0D3C — Doom
-         -- installs the user IRQ vector at $0D3C (3-byte JMP indirect
-         -- prologue lives there). $0D40 skipped the entry, causing the
-         -- v340m stack leak (~$3FC bytes/UART line) by entering mid-frame.
+         -- v340n (2026-05-14): target reverted from $0D40 to $0D3C.
+         -- v349 (2026-05-18): tried `JMP ($0314)` to support Wolf3D's
+         -- KERNAL-style $0314 indirection — BROKE DOOM. VICE probe and
+         -- HW Doom test both showed $0314 = $EA31 (KERNAL default) at
+         -- Doom runtime; Doom does NOT install $0314, it relies on the
+         -- recompiler-populated handler at $0D3C being entered directly.
+         -- v350 (2026-05-18): revert to JML $00:$0D3C (Doom-working
+         -- baseline). Wolf3D needs a different fix (CIA mask removal
+         -- from v348 retained — IF rose from $0023 to $02C4 but game
+         -- still wedges; that's a separate Wolf3D-specific debug surface).
+         -- Bytes: $5C $3C $0D $00 (JML long).
          x"5C" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF2A") else  -- JML long (was RTI)
+                     and cpuAddr = x"FF2A") else  -- JML long
          x"3C" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF2B") else  -- target LO = $3C
          x"0D" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF2C") else  -- target MID = $0D
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF2D") else  -- target BANK = $00
+                     and cpuAddr = x"FF2D") else  -- target bank = $00
          -- ----------------------------------------------------------------
          -- v310 doom wedge: override $00:$0705 read to return $40 (RTI).
          -- Doom's recompiler installs BRK vector → $00:$0705 (per v309
