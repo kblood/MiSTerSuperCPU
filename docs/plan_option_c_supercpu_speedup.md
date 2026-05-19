@@ -225,3 +225,51 @@ SuperRAM, we expect ~5×. Worth checking the PRG layout first.
 4. Does the existing `cpu_cyc_s(0)` → `cpu_cyc_s(1)` shift register
    need lengthening when cpu_cyc fires every cycle, to maintain SDRAM
    pipeline alignment?
+
+## Iter 1 → Iter 1.5 → ABANDONED (2026-05-19): SDRAM controller caps at 4 MHz
+
+**Iter 1 (md5 87873e50, 10 slots: CPU0/2/4/6/8/A/C/E + VIC0/VIC2):**
+Wedges Doom at striped loader pattern by t=60s. Root cause: `cpuHasBus`
+is only '1' during CPU0..CPUF (fpga64_sid_iec.vhd:1391); during VIC
+slots, `currentAddr <= vicAddr` (fpga64_buslogic.vhd:527). The SCPU
+SDRAM address mux (`scpu_sdram_addr`, c64.sv:1064-1068) collapses to
+`cart_addr` when `cpu_has_bus=0`, so my new VIC-slot enables read from
+the wrong physical address — CPU latches VIC's bus contents.
+
+**Iter 1.5 (md5 6812572a, 8 slots: CPU0/2/4/6/8/A/C/E, all in CPU range):**
+Still wedges Doom at t=60s, now as repeating "ZHG" character corruption.
+Root cause: SDRAM controller (sdram.v) state machine `q` runs 0→7 over
+8 clk64 = **4 clk_sys per access** (STATE_LAST=7, line 69). Data is
+latched at STATE_READ=5 = 5 clk64 = 2.5 clk_sys after `ce` rises. If a
+new `ce` rises before the previous q reaches LAST, the controller
+restarts (`if(ce && !last_ce) q <= 3'd1;` line 78) and aborts the
+previous access. With iter1.5 gap=2 clk_sys between consecutive CPU
+enables, every other SDRAM read returns garbage.
+
+**Real cap with current SDRAM controller**:
+- Minimum gap between ce rises = 8 clk64 = 4 clk_sys
+- Frame = 32 clk_sys → max 8 enables/frame = 8 MHz theoretical
+- But CPU range CPU0..CPUF only has 4 slots at gap=4 (CPU0/4/8/C) = 4 MHz
+- To exceed 4 MHz: must extend cpuHasBus into pre-CPU slots (VIC0/EXT4/DMA0)
+  AND keep gap≥4. With VIC0 alone added: gap=4 preserved, 5 enables = 5 MHz.
+
+**To make Option C actually deliver speedup, two changes are needed:**
+1. Extend `cpu_has_bus` (or `scpu_sdram_addr` mux gate) during scpu_fast_path
+   so SuperRAM accesses at VIC0 / EXT slots use the SCPU address, not vicAddr/cart_addr.
+2. Add SDRAM backpressure: a `sdram_busy` output from sdram.v gating
+   cpu_cyc so the controller can't be restarted mid-access. OR rewrite
+   sdram.v to pipeline back-to-back accesses (page-mode, no auto-precharge).
+
+Either is a non-trivial 1+ day RTL change. Deferred — not attempting in
+this branch. Branch left with timing fix (SDC/QSF backport from
+fa2930d) intact but Option C RTL reverted. Branch keepable for future
+restart.
+
+**Backported as standalone improvement**: the clk64→clk_sys multicycle-2
+SDC + the QSF SDC_FILE assignment, originally on `perf-experiments`
+branch (fa2930d), were not in this branch's ancestry. Without them
+STA reports -5 ns clk_sys slack for sdram.dout_r → P65C816.P[1]; with
+them, +26 ns. The fitter on past builds wasn't aware of the multicycle
+either, so the same path delays existed but happened to fit by luck.
+Wiring the SDC properly into QSF lets the fitter optimize for the
+multicycle budget; functionally safer.

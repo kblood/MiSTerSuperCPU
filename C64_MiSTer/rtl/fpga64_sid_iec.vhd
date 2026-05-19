@@ -751,15 +751,6 @@ signal vda_816      : std_logic;  -- unused for now; reserved for future
 signal enableCpu_6510 : std_logic;
 signal enableCpu_816  : std_logic;
 
--- Option C iteration 1: SuperCPU "fast path" enable. Asserted when
--- supercpu_en=1 AND current bank /= $00 AND DMA idle. While high,
--- cpu_cyc fires on every 2nd clk_sys cycle (CPU0/2/4/.../E + VIC0/2)
--- instead of only CPU0/4/8/C — lifting effective rate from 4 MHz to
--- 10 MHz on SuperRAM-resident code. Multicycle-2 (C64.sdc:26-29) is
--- preserved because all new enables are >= 2 clk_sys apart from
--- their nearest neighbour. See docs/plan_option_c_supercpu_speedup.md.
-signal scpu_fast_path : std_logic;
-
 -- Layered debug overlay internal signals (rtl/debug/).
 signal dbg_d018_r     : std_logic_vector(7 downto 0) := (others => '0');
 signal dbg_d016_r     : std_logic_vector(7 downto 0) := (others => '0');
@@ -2616,26 +2607,12 @@ ramDout <= cpuDo;
 ramAddr <= systemAddr;
 ramWE   <= systemWe when sysCycle >= CYCLE_CPU0 else '0';
 ramCE   <= cs_ram when sysCycle = CYCLE_VIC0 or cpu_cyc = '1' else '0';
--- scpu_fast_path: lift CPU from 4 MHz to 10 MHz when running in SuperRAM
--- (bank /= $00, SCPU enabled, no DMA). cs_ram = '1' is already true in
--- this region per fpga64_buslogic.vhd:550 (scpu_long_access).
-scpu_fast_path <= '1' when supercpu_en = '1'
-                       and addr_hi_816 /= x"00"
-                       and dma_active = '0'
-                       else '0';
 
 cpu_cyc <= '1' when
 				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' ) or
-				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1')) or
-				-- Iteration 1 fast-path: 6 extra slots, all 2 clk_sys apart from
-				-- their neighbours, so multicycle-2 stays valid. 10 enables / 32
-				-- cycles × 32 MHz = 10 MHz effective when in SuperRAM.
-				(scpu_fast_path = '1' and cs_ram = '1' and
-				 (sysCycle = CYCLE_VIC0 or sysCycle = CYCLE_VIC2 or
-				  sysCycle = CYCLE_CPU2 or sysCycle = CYCLE_CPU6 or
-				  sysCycle = CYCLE_CPUA or sysCycle = CYCLE_CPUE)) else '0';
+				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1')) else '0';
 				
 process(clk32)
 begin
