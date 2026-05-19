@@ -58,7 +58,7 @@ set_multicycle_path -hold 1 \
 # minimum interval between ce pulses.
 set_multicycle_path -setup 4 \
                     -from [get_registers {*P65C816:cpu|*}] \
-                    -to   [get_registers {*sdram:sdram|sd_*}]
+                    -to   [get_registers {*sdram_pm:sdram|sd_*}]
 set_multicycle_path -hold 3 \
                     -from [get_registers {*P65C816:cpu|*}] \
-                    -to   [get_registers {*sdram:sdram|sd_*}]
+                    -to   [get_registers {*sdram_pm:sdram|sd_*}]
