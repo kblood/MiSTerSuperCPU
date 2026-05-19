@@ -1010,7 +1010,9 @@ end
 assign SDRAM_CKE  = 1;
 
 wire [7:0] sdram_data;
-sdram sdram
+wire sdram_ready;  // Layer 1 page-mode controller — ready output unused
+                   // until Layer 2 bus-arbiter backpressure lands.
+sdram_pm sdram
 (
 	.sd_addr(SDRAM_A),
 	.sd_data(SDRAM_DQ),
@@ -1036,7 +1038,8 @@ sdram sdram
 	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : ext_cycle ? reu_ram_ce   : cart_ce         ),
 	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : ext_cycle ? reu_ram_we   : cart_we         ),
 	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : ext_cycle ? reu_ram_dout : cart_wrdata     ),
-	.dout( sdram_data )
+	.dout( sdram_data ),
+	.ready( sdram_ready )
 );
 
 // Phase D SuperRAM address mux. Combinational so the SCPU CPU cycle's address

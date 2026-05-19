@@ -31,9 +31,12 @@
 //   * REU `dout_reu` latch path unchanged.
 //   * Module name is `sdram` so it can be swapped in/out by renaming files.
 //
-// Backward-compatible port set: identical to baseline sdram.v.
+// Backward-compatible port set: identical to baseline sdram.v plus the
+// new `ready` output. Module name is `sdram_pm` so both this file and the
+// baseline `sdram.v` can live in the source tree; c64.sv picks via
+// instantiation name.
 
-module sdram (
+module sdram_pm (
 	// interface to the MT48LC16M16 chip
 	output reg [12:0]	sd_addr,    // 13 bit multiplexed address bus
 	inout  reg [15:0]	sd_data,
