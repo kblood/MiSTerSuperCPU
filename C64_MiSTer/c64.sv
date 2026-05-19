@@ -1751,7 +1751,14 @@ assign dbg_pool.brk_vec_hi              = scpu_dbg_brk_vec_hi;
 // v341 doom bitmap probe: page-flip handshake bytes
 assign dbg_pool.mem_1d02                = scpu_dbg_mem_1d02;
 assign dbg_pool.mem_1d04                = scpu_dbg_mem_1d04;
-assign dbg_pool.vic_di_or               = scpu_dbg_vic_di_or;
+// v355 (2026-05-19): repurpose B6 = IRQ source levels nibble for Wolf3D
+// wedge debug. B6 hi-nibble = {irq_vic_lvl, irq_cia1_lvl, irq_n_lvl,
+// irq_ext_lvl}. Each bit is the active-low source line: 1 = no IRQ,
+// 0 = IRQ asserted. When wedged with IF frozen, B6:F0 means combined
+// IRQ is high (sourceless wedge — unexpected); B6:80 means only
+// irq_vic_lvl is high (CIA1+REU+CART all stuck); B6:E0 = REU stuck;
+// B6:B0 = CIA1 stuck. Low nibble stays 0 for now.
+assign dbg_pool.vic_di_or               = {scpu_dbg_irq_vic_lvl, scpu_dbg_irq_cia1_lvl, scpu_dbg_irq_n_lvl, scpu_dbg_irq_ext_lvl, 4'b0000};
 // v347 per-frame CPU-write counters for bank-0 SDRAM bitmap regions
 assign dbg_pool.bm1_writes              = bm1_writes_lat;
 assign dbg_pool.bm3_writes              = bm3_writes_lat;

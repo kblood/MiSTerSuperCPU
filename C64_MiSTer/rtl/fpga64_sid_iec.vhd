@@ -1158,6 +1158,7 @@ signal scpu_optim_mode   : unsigned(1 downto 0) := "11";                -- $D074
 -- here without an off-device cocotb write-path harness that does not
 -- currently exist.
 signal scpu_irq_tramp_installed : std_logic := '0';                     -- '1' once software has written to $00:$FCEE-$FCF1 (user IRQ handler installed); '0' = use default JML stub
+signal scpu_irq_vec_installed   : std_logic := '0';                     -- v356: '1' once software has written $00:$FFEE or $FFEF (own native IRQ vector); used by stub-tail JML to pick user vec vs hardcoded Doom $0D3C fallback
 -- Phase 6 — DOS extension mode ($D0BC R/W + $D0BE / $D0BF).
 -- Per VICE scpu64mem.c, $D0BC stores a flag byte that JiffyDOS-style
 -- fast loaders and SuperCPU file extensions read to detect SCPU
@@ -1708,19 +1709,19 @@ cpuDi <= scpu_dos_ext_mode
          -- JML $00:$0D40 (Doom's handler still runs its SW ack), both
          -- conditions are satisfied. Doom's writes to $FFEE/$FFEF still
          -- go to scpu_native_vec storage but are ignored on read.
-         -- v351 (2026-05-18): re-enable software-writeable IRQ vector via
-         -- scpu_native_vec(10/11). The 2026-05-13 I/O decode bug fix
-         -- (commit b2d44d1 + d1e46d7) eliminated the recompiler corruption
-         -- that originally forced the v340m revert — Doom's $0D3C handler
-         -- can now ack hw sources correctly. Wolf3D VICE probe (2026-05-18
-         -- tools/wolf3d_vice_irq_setup.py) proved Wolf3D writes $FFEE/$FFEF
-         -- = $B5/$B7 (→ handler at $00:$B7B5), so the hardcoded $00FF was
-         -- blocking Wolf3D's own IRQ handler. Reset default in scpu_native_vec
-         -- (10/11) is $00/$FF so pre-init IRQs still land on the $FF00 stub.
-         scpu_native_vec(10) when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFEE") else  -- IRQ L (software-writeable, default $00)
-         scpu_native_vec(11) when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FFEF") else  -- IRQ H (software-writeable, default $FF)
+         -- v356 (2026-05-19): force $FFEE/$FFEF reads back to $00/$FF so
+         -- IRQ ALWAYS routes through the $FF00 ack stub. The stub-tail
+         -- JML (at $FF2A-$FF2D) then jumps to scpu_native_vec(10/11) IF
+         -- software installed (scpu_irq_vec_installed='1'), else falls
+         -- back to Doom's hardcoded $0D3C. This combines v340m (all hw
+         -- sources acked) with v351 (Wolf3D's own handler runs). v351's
+         -- direct-vector path was bypassing our hw ack, leaving CIA1
+         -- timer-A / sprite-collision / REU IRQ pending after Wolf3D's
+         -- handler RTI → IRQ refire wedge at $0F:$A63C.
+         x"00" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEE") else  -- IRQ L = $00 (route to $FF00 stub)
+         x"FF" when (supercpu_en = '1' and emu_mode_816_i = '0' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FFEF") else  -- IRQ H = $FF
          -- ----------------------------------------------------------------
          -- IRQ JML trampoline at $00:$FCEE..$FCF1 (4 bytes, RAM-backed).
          --
@@ -1943,25 +1944,27 @@ cpuDi <= scpu_dos_ext_mode
                      and cpuAddr = x"FF28") else  -- PLA
          x"28" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF29") else  -- PLP
-         -- v340m: replace RTI with JML $00:$0D3C so the stub forwards to
-         -- Doom's installed handler AFTER acking all hardware IRQ sources.
-         -- v340n (2026-05-14): target reverted from $0D40 to $0D3C.
-         -- v349 (2026-05-18): tried `JMP ($0314)` to support Wolf3D's
-         -- KERNAL-style $0314 indirection — BROKE DOOM. VICE probe and
-         -- HW Doom test both showed $0314 = $EA31 (KERNAL default) at
-         -- Doom runtime; Doom does NOT install $0314, it relies on the
-         -- recompiler-populated handler at $0D3C being entered directly.
-         -- v350 (2026-05-18): revert to JML $00:$0D3C (Doom-working
-         -- baseline). Wolf3D needs a different fix (CIA mask removal
-         -- from v348 retained — IF rose from $0023 to $02C4 but game
-         -- still wedges; that's a separate Wolf3D-specific debug surface).
-         -- Bytes: $5C $3C $0D $00 (JML long).
+         -- v356 (2026-05-19): dynamic JML target from scpu_native_vec(10/11)
+         -- when software installed (scpu_irq_vec_installed='1'), else
+         -- fallback to Doom's hardcoded $0D3C. Combined with $FFEE/$FFEF
+         -- forced to $00/$FF (above), this means EVERY IRQ now routes
+         -- through our hw-ack stub first, then to the game's installed
+         -- handler.
+         --   Wolf3D: writes $FFEE/$FFEF=$B5/$B7 → JML $00:$B7B5
+         --   Doom: if recompiler writes $FFEE/$FFEF → JML there.
+         --         If not, fallback JML $00:$0D3C (v350 behaviour).
+         --
+         -- Bytes: $5C <lo> <hi> $00 (JML long).
          x"5C" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF2A") else  -- JML long
+         scpu_native_vec(10) when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF2B" and scpu_irq_vec_installed = '1') else  -- user IRQ L
          x"3C" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF2B") else  -- target LO = $3C
+                     and cpuAddr = x"FF2B") else  -- Doom fallback LO = $3C
+         scpu_native_vec(11) when (supercpu_en = '1' and addr_hi_816 = x"00"
+                     and cpuAddr = x"FF2C" and scpu_irq_vec_installed = '1') else  -- user IRQ H
          x"0D" when (supercpu_en = '1' and addr_hi_816 = x"00"
-                     and cpuAddr = x"FF2C") else  -- target MID = $0D
+                     and cpuAddr = x"FF2C") else  -- Doom fallback MID = $0D
          x"00" when (supercpu_en = '1' and addr_hi_816 = x"00"
                      and cpuAddr = x"FF2D") else  -- target bank = $00
          -- ----------------------------------------------------------------
@@ -2039,6 +2042,7 @@ begin
 			scpu_bootmap      <= '0';
 			scpu_optim_mode   <= "11";
 			scpu_irq_tramp_installed <= '0';
+			scpu_irq_vec_installed   <= '0';  -- v356
 			scpu_nmi_vec_lo   <= x"00";
 			scpu_nmi_vec_hi   <= x"FF";
 			scpu_dos_ext_mode <= x"00";  -- Phase 6: DOS extension disabled at reset
@@ -2145,8 +2149,8 @@ begin
 					when x"EB" => scpu_native_vec(7)  <= cpuDo;
 					when x"EC" => scpu_native_vec(8)  <= cpuDo;
 					when x"ED" => scpu_native_vec(9)  <= cpuDo;
-					when x"EE" => scpu_native_vec(10) <= cpuDo;
-					when x"EF" => scpu_native_vec(11) <= cpuDo;
+					when x"EE" => scpu_native_vec(10) <= cpuDo; scpu_irq_vec_installed <= '1';  -- v356
+					when x"EF" => scpu_native_vec(11) <= cpuDo; scpu_irq_vec_installed <= '1';  -- v356
 					when others => null;
 				end case;
 			end if;
@@ -3396,17 +3400,26 @@ begin
 			-- $D case never fired (operand fetch never reaches byte 3). If
 			-- V3 = $80, fired but byte was $00. If V3 = $86, fired with $06.
 			-- V0 keeps latch semantics (already confirms $1F captured).
-			if enableCpu = '1' and cpuWe_pre = '0' and addr_hi_816 = x"0F"
-			   and cpuAddr_pre(15 downto 4) = x"F1D" then
+			-- v355 (2026-05-19): probe live read values at $00:$3706-$370B.
+			-- v354 confirmed handler at $00:$2200-$220B =
+			--   SEP #$20; LDA $3706; STA $3704; BEQ +7; LDA #$00; ...
+			-- Handler dispatches on byte at $00:$3706. In wedge state $3706
+			-- presumably stays non-zero (handler never reaches BEQ-taken).
+			-- Capture live values at each $370x read so we can see what
+			-- dispatch byte the handler sees. V0..V5 = bytes at addresses
+			-- $3706, $3707, $3708, $3709, $370A, $370B (low nibble decides
+			-- which V slot is latched).
+			if enableCpu = '1' and cpuWe_pre = '0' and addr_hi_816 = x"00"
+			   and cpuAddr_pre(15 downto 4) = x"370" then
 				cnt_wr02_r <= cnt_wr02_r + 1;
 				wr02_pc_r  <= cpu_pc_now;
 				case cpuAddr_pre(3 downto 0) is
-					when x"A" => wr02_v0_r <= std_logic_vector(cpuDi);
-					when x"B" => wr02_v1_r <= wr02_v1_r or std_logic_vector(cpuDi) or x"80";
-					when x"C" => wr02_v2_r <= wr02_v2_r or std_logic_vector(cpuDi) or x"80";
-					when x"D" => wr02_v3_r <= wr02_v3_r or std_logic_vector(cpuDi) or x"80";
-					when x"E" => wr02_y_r  <= wr02_y_r  or std_logic_vector(cpuDi) or x"80";
-					when x"F" => wr02_x_r  <= wr02_x_r  or std_logic_vector(cpuDi) or x"80";
+					when x"6" => wr02_v0_r <= std_logic_vector(cpuDi);
+					when x"7" => wr02_v1_r <= std_logic_vector(cpuDi);
+					when x"8" => wr02_v2_r <= std_logic_vector(cpuDi);
+					when x"9" => wr02_v3_r <= std_logic_vector(cpuDi);
+					when x"A" => wr02_y_r  <= std_logic_vector(cpuDi);
+					when x"B" => wr02_x_r  <= std_logic_vector(cpuDi);
 					when others => null;
 				end case;
 			end if;
