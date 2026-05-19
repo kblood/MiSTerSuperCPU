@@ -1,0 +1,62 @@
+=== upload mhold.py ===
+=== load doom_autolaunch.mgl ===
+waiting 25s for boot + REU load + launcher autolaunch ...
+00_after_load a89b3ee149
+waiting 12s for attract loop / menu overlay ...
+01_attract b1aaff09d8
+=== menu nav: 4 RETURN holds (5s each) ===
+  ret #1
+  02_after_ret1 b4ad13d7ae
+  ret #2
+  02_after_ret2 dc2d46824a
+  ret #3
+  02_after_ret3 e229779cde
+  final ret #4 -> start level load
+03_after_final_ret 32de00ca2e
+=== waiting 120s for JIT level build ===
+  04_load_t30 d17d38ba4b
+  04_load_t60 2df4fc0375
+  04_load_t90 2df4fc0375
+  04_load_t120 2df4fc0375
+05_ingame baseline 2df4fc0375
+=== in-game key probe (1.5s hold each) ===
+  probe arrow_up
+    pre=2df4fc0375 post=2df4fc0375    ===
+  probe arrow_down
+    pre=2df4fc0375 post=2df4fc0375    ===
+  probe arrow_left
+    pre=2df4fc0375 post=2df4fc0375    ===
+  probe arrow_right
+    pre=2df4fc0375 post=2df4fc0375    ===
+  probe rctrl
+    pre=2df4fc0375 post=2df4fc0375    ===
+  probe lctrl
+    pre=2df4fc0375 post=2df4fc0375    ===
+  probe space
+    pre=2df4fc0375 post=c30d02f182  MOVED
+  probe ralt
+    pre=c30d02f182 post=c30d02f182    ===
+  probe lalt
+    pre=41792a00d3 post=41792a00d3    ===
+  probe return
+    pre=41792a00d3 post=05c3d97f7b  MOVED
+  probe w
+    pre=05c3d97f7b post=41792a00d3  MOVED
+  probe a
+    pre=41792a00d3 post=05c3d97f7b  MOVED
+  probe s
+    pre=05c3d97f7b post=41792a00d3  MOVED
+  probe d
+    pre=41792a00d3 post=05c3d97f7b  MOVED
+  probe i
+    pre=05c3d97f7b post=05c3d97f7b    ===
+  probe j
+    pre=41792a00d3 post=41792a00d3    ===
+  probe k
+    pre=41792a00d3 post=05c3d97f7b  MOVED
+  probe l
+    pre=05c3d97f7b post=41792a00d3  MOVED
+  probe tab
+    pre=41792a00d3 post=41792a00d3    ===
+  probe esc
+    pre=41792a00d3 post=05c3d97f7b  MOVED

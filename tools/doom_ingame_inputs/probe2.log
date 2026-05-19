@@ -1,0 +1,62 @@
+=== cold load doom_autolaunch.mgl ===
+=== polling for Doom to reach attract loop ===
+  poll_t30 b11c9ff3bc
+  poll_t60 dc2d46824a
+  poll_t90 e229779cde
+  poll_t120 34a38fb268
+  poll_t150 6d0a9429bf
+  poll_t180 2df4fc0375
+  poll_t210 2df4fc0375 STABLE x1
+  poll_t240 2df4fc0375 STABLE x2
+  poll_t270 2df4fc0375 STABLE x3
+  poll_t300 2df4fc0375 STABLE x4
+  poll_t330 c30d02f182
+  poll_t360 c30d02f182 STABLE x1
+  poll_t390 c30d02f182 STABLE x2
+  poll_t420 c30d02f182 STABLE x3
+=== treating final shot as attract baseline; starting nav ===
+20_pre_nav c30d02f182
+  ret #1 (5s hold)
+  21_after_ret1 41792a00d3
+  ret #2 (5s hold)
+  21_after_ret2 a310f713a9
+  ret #3 (5s hold)
+  21_after_ret3 c12f7f79e8
+  ret #4 (start level)
+22_after_final_ret 23fd01c6b8
+=== waiting 150s for JIT level build ===
+  23_load_t30 23fd01c6b8
+  23_load_t60 23fd01c6b8
+  23_load_t90 b7665f37d8
+  23_load_t120 305373676b
+  23_load_t150 305373676b
+30_ingame 305373676b
+=== in-game key probe (2s hold each) ===
+  probe arrow_up
+    pre=305373676b post=bcf7d77bd7 MOVED
+  probe arrow_down
+    pre=bcf7d77bd7 post=b1d250119b MOVED
+  probe arrow_left
+    pre=b1d250119b post=b1d250119b   ===
+  probe arrow_right
+    pre=b1d250119b post=0e674482f9 MOVED
+  probe rctrl
+    pre=0e674482f9 post=0e674482f9   ===
+  probe lctrl
+    pre=0e674482f9 post=0e674482f9   ===
+  probe space
+    pre=0e674482f9 post=0e674482f9   ===
+  probe lalt
+    pre=0e674482f9 post=0e674482f9   ===
+  probe ralt
+    pre=b1d250119b post=b1d250119b   ===
+  probe w
+    pre=b1d250119b post=b1d250119b   ===
+  probe s
+    pre=b1d250119b post=b1d250119b   ===
+  probe a
+    pre=b1d250119b post=b1d250119b   ===
+  probe d
+    pre=b1d250119b post=b1d250119b   ===
+  probe tab
+    pre=b1d250119b post=b1d250119b   ===
