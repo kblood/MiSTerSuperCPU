@@ -205,8 +205,11 @@ always @(posedge clk) begin
 	sd_cmd  <= CMD_NOP;
 	sd_data <= 16'bZ;
 
-	// Default q increment when active
-	if (q != ST_IDLE) q <= q + 4'd1;
+	// Q increment — runs whenever a sequence is in flight (q!=0) OR we are
+	// still in the power-on reset countdown. Matches baseline `if(q || reset)`
+	// behaviour: reset countdown requires q to cycle 0→9→0 continuously so
+	// `reset` can decrement at q==9 below.
+	if (q != ST_IDLE || reset) q <= q + 4'd1;
 
 	// -----------------------------------------------------------------
 	// Power-on reset sequence (unchanged from baseline)
