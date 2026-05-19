@@ -58,7 +58,8 @@ module sdram (
 
 	input 		 		refresh,    // refresh tick (~1 us)
 	input 		 		ce,         // cpu/chipset access request (rising edge)
-	input 		 		we          // 1 = write, 0 = read
+	input 		 		we,         // 1 = write, 0 = read
+	output 				ready       // 1 = idle, safe to assert new ce edge
 );
 
 localparam RASCAS_DELAY   = 3'd2;   // tRCD >= 20ns -> 2 cycles @ 64MHz
@@ -117,6 +118,11 @@ localparam ST_IDLE        = 4'd0;
 
 reg [3:0] q /* synthesis noprune */;
 reg       last_ce, last_refresh;
+
+// Backpressure: controller is ready for a new ce edge only when q is idle.
+// Bus arbiter MUST consult this before asserting ce on consecutive slots,
+// otherwise a row-conflict access (9 clk64) can be aborted mid-flight.
+assign ready = (q == ST_IDLE) && !reset;
 
 // Path selector latched at ce/refresh edge
 reg [2:0] path;   // 0=cold, 1=hit, 2=conflict, 3=refresh_with_pch, 4=refresh_only

@@ -31,21 +31,54 @@ Changes vs baseline `sdram.v`:
 **Status**: file written. Not yet syntax-checked under Quartus. Not yet
 swapped into c64.sv (still references `sdram.v`).
 
-### Layer 2 — backpressure interface (NOT STARTED)
+### Layer 2 — backpressure interface (HALF DRAFTED)
 Even with page-mode, a row-conflict (9 clk64) still exceeds the iter-1.5
 slot cadence (8 clk64 between CPU slots). Without a "controller busy"
 signal, the FSM still aborts mid-flight on the next `ce` edge.
 
-Plan:
-- Add `output sdram_ready` (= `q == ST_IDLE`) to sdram_pm.v.
-- Modify `fpga64_sid_iec.vhd` to gate `cart_ce` generation when
-  `sdram_ready=0` AND the CPU is requesting a SuperRAM access.
-- Effect: CPU slot stalls (CPU enable held low) until SDRAM finishes
-  previous op. CPU "lost" cycles are bounded by the worst-case 9-clk64
-  conflict path.
+Done:
+- `output ready` added to `sdram_pm.v` (= `q == ST_IDLE && !reset`).
 
-Risk: stalling the CPU enable might desync VIC / CIA timing. Need to
-verify CPU enable can be held without bus-arbiter corruption.
+Pending:
+- Plumb `ready` from sdram_pm.v through c64.sv into fpga64_sid_iec.vhd.
+- Gate `cpu_cyc` in fpga64_sid_iec.vhd:2611 on `sdram_ready=1` for
+  CPU slots that would issue an SDRAM access. Sketch:
+
+  ```vhdl
+  signal sdram_ready : std_logic;  -- new input from c64.sv
+  signal cpu_needs_sdram : std_logic;
+
+  -- "True" when the upcoming CPU slot would route through SDRAM.
+  -- Bank-$00 access in 6510 or SCPU emu mode = BRAM (no SDRAM).
+  -- Bank-non-$00 access in SCPU native mode = SuperRAM (= SDRAM).
+  -- Cartridge ROM access (romL/romH) = SDRAM.
+  cpu_needs_sdram <= '1' when
+      (supercpu_en = '1' and addr_hi_816 /= x"00" and cs_ram = '1') or
+      (romL or romH) = '1'
+      else '0';
+
+  cpu_cyc <= '1' when
+      (cpu_needs_sdram = '0' or sdram_ready = '1') and (
+          (sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1') or
+          (sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1') or
+          (sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1') or
+          (sysCycle = CYCLE_CPUC and (io_enable = '1' or cs_ram = '1'))
+      ) else '0';
+  ```
+
+- Effect: CPU slot stalls (CPU enable held low for that slot only)
+  when SDRAM is mid-access. Lost cycles bounded by 9-clk64 conflict
+  path (≤ 5 clk32 = 1 slot delay).
+
+Risk: stalling cpu_cyc might desync VIC / CIA timing. Need to verify
+the cycle-accurate VIC bus expectations are preserved (VIC slots run
+in parallel with CPU and shouldn't be affected, but cs_ram CYCLE_VIC0
+share path needs checking).
+
+Alternative (simpler, more conservative): gate ALL cpu_cyc on
+`sdram_ready`. Slows bank-$00 BRAM accesses too whenever SDRAM is
+busy, but easier to reason about and matches the current behaviour
+that some CPU slots already drop (when turbo_m(n)=0).
 
 ### Layer 3 — extra CPU slots (DEFERRED, depends on Layer 2)
 Re-attempt iter 1.5 (8 CPU slots per frame) with the backpressure-aware
