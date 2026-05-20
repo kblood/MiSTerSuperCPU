@@ -18,8 +18,9 @@ Procedure (~5 min for smoke; full Lorenz can run separately):
 import os, sys, time, hashlib, paramiko
 
 HOST, USER, PASS = '192.168.50.130', 'root', '1'
-RBF_LOCAL = r'C:\LLM\C64\MiSTerSuperCPU\C64_MiSTer\output_files\C64.rbf'
+RBF_LOCAL = sys.argv[1] if len(sys.argv) > 1 else r'C:\LLM\C64\MiSTerSuperCPU\C64_MiSTer\output_files\C64.rbf'
 RBF_REMOTE = '/media/fat/_Test/C64.rbf'
+LABEL = sys.argv[2] if len(sys.argv) > 2 else 'step2'
 OUT = os.path.dirname(os.path.abspath(__file__))
 
 V356_DOOM_HASHES = {
@@ -71,7 +72,7 @@ def boot_smoke(c):
     print('=== boot smoke: load vanilla C64, screenshot @ t=10s ===')
     cmd(c, f'echo load_core _Test/C64.rbf > /dev/MiSTer_cmd')
     time.sleep(10)
-    path, h = shot(c, 'step2_boot_t010')
+    path, h = shot(c, f'{LABEL}_boot_t010')
     print(f'boot t=10s  hash={h}  -> {path}')
     return h
 
@@ -84,7 +85,7 @@ def doom_progression(c):
     for t in (30, 60, 90, 120, 150, 180):
         time.sleep(t - prev_t)
         prev_t = t
-        path, h = shot(c, f'step2_doom_t{t:03d}')
+        path, h = shot(c, f'{LABEL}_doom_t{t:03d}')
         expected = V356_DOOM_HASHES[t]
         verdict = 'MATCH' if h == expected else 'DIFF'
         print(f't={t:3d}s  hash={h}  v356={expected}  {verdict}  -> {path}')
