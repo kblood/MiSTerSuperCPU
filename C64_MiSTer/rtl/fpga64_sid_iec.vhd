@@ -749,6 +749,17 @@ signal scpu_fast_path : std_logic;
 -- can be tightened in Step 5.
 signal sdram_busy_cnt : unsigned(2 downto 0) := (others => '0');
 signal sdram_busy     : std_logic;
+
+-- Step 5 trial (2026-05-20, side branch step5-altslot-registered):
+-- Registered alt-slot fire signal — recovery from the Step 2 alt-slot wedge.
+-- Latched at CPU1/5/9/D under busy='0' + scpu_fast_path + cs_ram, then ORed
+-- into cpu_cyc combinationally. Goal: keep cpu_cyc → ramCE → cart_ce hazard-
+-- free by feeding alt-slot through a register output (no LUT cluster shared
+-- with the main combinational gate). On Build B (counter=3, 4-clk32 SDRAM
+-- cycle) sdram_busy=1 at CPU1 so alt_fire_r latches 0 → no alt fire → bit-
+-- identical behaviour to Step 2 / bisect-1. On Build C HIT (counter=1)
+-- alt_fire_r latches 1 → CPU2 fires next clk32 → 8 MHz cadence.
+signal alt_fire_r : std_logic := '0';
 signal cpuWe        : std_logic;
 signal cpuWe_pre    : std_logic;
 signal cpuAddr      : unsigned(15 downto 0);
@@ -2669,12 +2680,12 @@ scpu_fast_path <= '1' when supercpu_en = '1'
 -- propagation when alt-slot inputs are folded into the same LUT. To be
 -- re-investigated together with Step 5 (Build C revival), where the
 -- alt-slot becomes actually useful (cycle=3 clk64, busy_cnt tighter).
-cpu_cyc <= '1' when sdram_busy = '0' and (
+cpu_cyc <= '1' when (sdram_busy = '0' and (
 				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1'))
-			) else '0';
+			)) or alt_fire_r = '1' else '0';
 				
 process(clk32)
 begin
@@ -2697,6 +2708,20 @@ begin
 			sdram_busy_cnt <= "011";
 		elsif sdram_busy_cnt /= "000" then
 			sdram_busy_cnt <= sdram_busy_cnt - 1;
+		end if;
+
+		-- Step 5 trial: latch alt-slot fire decision one clk32 ahead of
+		-- the alt slot itself (at CPU1/5/9/D). cpu_cyc then sees alt-slot
+		-- via a clean register output rather than a combinational LUT
+		-- cluster, avoiding the Step 2 wedge.
+		if (sysCycle = CYCLE_CPU1 or sysCycle = CYCLE_CPU5
+		    or sysCycle = CYCLE_CPU9 or sysCycle = CYCLE_CPUD)
+		   and scpu_fast_path = '1'
+		   and cs_ram = '1'
+		   and sdram_busy = '0' then
+			alt_fire_r <= '1';
+		else
+			alt_fire_r <= '0';
 		end if;
 
 		cpu_cyc_s <= cpu_cyc_s(0) & cpu_cyc;
