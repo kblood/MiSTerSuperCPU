@@ -184,6 +184,12 @@ port(
 	-- alt-slot fast-path. Default '1' so the port stays compile-compatible
 	-- with any unwired instantiation.
 	sdram_ready   : in  std_logic := '1';
+	-- Step 6 Phase 6a (2026-05-20): "dout_r is fresh" handshake from
+	-- sdram_pm. Level signal — set post-sample edge, cleared at next
+	-- ce-edge. Phase 6b consumer replaces the cpu_cyc_s fixed shift
+	-- with a wait on sdram_data_valid_sync. Default '1' keeps the port
+	-- compile-compatible with non-handshake-aware instantiations.
+	sdram_data_valid : in std_logic := '1';
 	-- Phase D: external SDRAM mux gates the SuperRAM SDRAM cycle on
 	-- cpu_has_bus so VIC-II reads (during VIC slots) never resolve to a
 	-- stale supercpu_bank value left over from the prior CPU instruction.
@@ -728,6 +734,14 @@ signal cs_ram       : std_logic;
 signal sdram_ready_sync : std_logic_vector(1 downto 0) := "11";
 attribute preserve : boolean;
 attribute preserve of sdram_ready_sync : signal is true;
+
+-- Step 6 Phase 6a (2026-05-20): single-flop sync of sdram_data_valid into
+-- the clk32 domain. data_valid is a level signal that stays high for
+-- several clk64 between sample-edge and next ce-edge, so single-flop is
+-- metastability-safe. `preserve` prevents Quartus from optimising the
+-- signal away while the Phase 6b consumer is being built.
+signal sdram_data_valid_sync : std_logic := '1';
+attribute preserve of sdram_data_valid_sync : signal is true;
 
 -- Option C Mitigation A — SCPU SuperRAM alt-slot fast-path (Step 2, 2026-05-20).
 -- scpu_fast_path is '1' when the SCPU CPU core is executing in a SuperRAM
@@ -2693,6 +2707,10 @@ begin
 		-- Layer 2 sync (Step 1, 2026-05-20): bring sdram_ready into clk32.
 		-- 2-FF chain. Consumer wired in Step 2.
 		sdram_ready_sync <= sdram_ready_sync(0) & sdram_ready;
+
+		-- Step 6 Phase 6a (2026-05-20): single-flop sync of sdram_data_valid.
+		-- Consumer (RDY-handshake gate replacing cpu_cyc_s) lands in Phase 6b.
+		sdram_data_valid_sync <= sdram_data_valid;
 
 		-- Step 2 (Mitigation A, 2026-05-20): local SDRAM-busy predictor.
 		-- Reset to 3 on any cpu_cyc fire that drives an SDRAM transaction

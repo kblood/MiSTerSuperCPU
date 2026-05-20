@@ -39,7 +39,13 @@ module sdram_pm (
 	input 		 		refresh,    // refresh cycle
 	input 		 		ce,         // cpu/chipset access
 	input 		 		we,         // cpu/chipset requests write
-	output 				ready       // 1 = idle, safe to assert new ce edge (for future backpressure)
+	output 				ready,      // 1 = idle, safe to assert new ce edge (for future backpressure)
+	// Step 6 Phase 6a (2026-05-20): "dout_r is fresh" handshake for the
+	// arbiter. Asserts post-edge of the sample edge (q == STATE_READ),
+	// clears at the next ce-edge. Level signal — single-flop sync on
+	// the consumer side is sufficient since it stays high for several
+	// clk64 between sample and the next cycle start.
+	output reg          data_valid
 );
 
 // no burst configured
@@ -74,6 +80,12 @@ end
 
 // Backpressure for future bus arbitration.
 assign ready = (q == 3'd0) && !reset;
+
+// Step 6 Phase 6a (2026-05-20): default initialisation for data_valid.
+// Set to 1 in the always block at the q == STATE_READ sample edge; cleared
+// at ce-edge when a new cycle starts. Stays high between cycles so the
+// clk32-domain sync consumer always sees a stable level.
+initial data_valid = 1'b0;
 
 // ---------------------------------------------------------------------
 // --------------------------- startup/reset ---------------------------
@@ -136,10 +148,13 @@ always @(posedge clk) begin
 	if(q == STATE_READ) begin
 		dout_r <= sd_data;
 		if(bt && !wr) dout_reu_r <= sd_data[15:8];
+		// Step 6 Phase 6a: signal "dout_r is fresh" to the arbiter.
+		data_valid <= 1'b1;
 	end
 
 	if(reset) begin
 		sd_ba <= 0;
+		data_valid <= 1'b0;
 		if(q == STATE_CMD_START) begin
 			if(reset == 13) begin
 				sd_cmd <= CMD_PRECHARGE;
@@ -162,6 +177,9 @@ always @(posedge clk) begin
 			bt      <= addr[24];
 			wr      <= we;
 			wrdata  <= din;
+			// Step 6 Phase 6a: new cycle in flight — data_valid drops
+			// until the q==STATE_READ sample edge fires.
+			data_valid <= 1'b0;
 		end
 		if(q == STATE_CMD_CONT) begin
 			if(wr) sd_data <= {wrdata, wrdata};
