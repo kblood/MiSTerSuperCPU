@@ -1,86 +1,74 @@
-# Session handoff — 2026-05-19 (afternoon)
+# Session handoff — 2026-05-20
 
-## Major milestone landed: v356 fully validated
+## This session: page-mode SDRAM investigation — SHELVED
 
-**RBF MD5: `19839ee723662d8fb439208dd0ca6e7b`** (3,837,164 bytes)
-**Branch: `vanilla-cpu-swap`** — see `git log --oneline | head -8`
+**Outcome:** Build C (page-mode with COLD/HIT/CONFLICT paths) wedges KERNAL
+boot on hardware. Root cause is **not** an SDC constraint issue (793fa12
+fixed that, but Build C2 wedged identically). Page-mode is fundamentally
+incompatible with the existing bus arbiter without Layer 2.
 
-### What works on v356
+**HEAD:** `9f9e2c2` on branch `vanilla-cpu-swap`.
+**Live `sdram_pm.v`:** Build B (baseline + `output ready`), byte-equivalent
+to commit `cc89d27`.
+**Build C draft preserved at commit `50d8bd3`** for future revival.
 
-| Title    | Status     | Verified by                  | Reproducer                      |
-|----------|------------|------------------------------|---------------------------------|
-| Wolf3D   | PLAYABLE   | E1L1 starting room visible   | menu break via SPACE at HS→demo |
-| Doom     | PLAYABLE   | E1M1 3D corridor + HUD       | `tools/doom_v356_PLAY.py`       |
-| Lorenz t65 | PASS    | runs 32m through SCPU regtest | `tools/lorenz_run.py t65 --mins 32` |
-| Lorenz scpu | PASS   | `orazx - ok` at 32m cap       | `tools/lorenz_run.py scpu --mins 32` |
+### Root cause (full detail in `memory/project_sdram_page_mode_needs_layer2.md`)
 
-### Critical new tooling
+The bus arbiter at `fpga64_sid_iec.vhd:2620` is a 2-stage clk32 shift
+register → `enableCpu` fires ~6 clk64 cycles after `cpu_cyc` asserts.
+Build C's CONFLICT path (PRECHARGE → tRP → ACTIVE → tRCD → READ → CL) needs
+sample-q=7, which is 1 cycle past the 6-cycle CPU read deadline. KERNAL
+boot's ZP↔stack alternation (different rows, same bank) hits CONFLICT every
+other access → CPU latches the previous access's dout_r → garbage RAM →
+PC bounces $0107-$013B with M=$FFFF FFFF FFFF FFFF.
 
-- **`tools/mhold.py`** — uinput keyboard that HOLDS a key for N seconds.
-  Required for Doom because HW Doom runs at ~3 fps internal; mtype.py's
-  40 ms tap is shorter than one Doom frame.
-- **`tools/doom_v356_PLAY.py`** — canonical 4-step Doom recipe.
-- **`tools/jtype.py` / `tools/joyfire.py`** — virtual gamepad via uinput
-  (spoofs VID/PID 0810/e501 to pick up the existing C64 map). Doom didn't
-  end up needing this, but it's available for cores that genuinely require
-  joystick input.
+### Decision point for next session
 
-### Memory updates (top of MEMORY.md)
+Three credible paths, choose one before resuming SDRAM work:
 
-1. **v356 LORENZ REGRESSION PASS** — `project_v356_lorenz_pass.md`
-2. **DOOM PLAYABLE** — `project_doom_v356_PLAYABLE.md`
-3. **WOLF3D PLAYABLE FROM MENU** — `project_wolf3d_v356_RUNS.md`
-4. v356 IRQ wedge fix — `project_wolf3d_v356_irq_wedge_fixed.md`
+1. **Layer 2** — gate `cpu_cyc_s` advancement on synchronized `sdram_ready`.
+   Significant change to the C64 bus arbiter (fpga64_sid_iec.vhd:2617-2622).
+   Highest risk; unlocks Build C; preserves both 6510 + SCPU compatibility
+   if done carefully.
+2. **Alternative speedup** — pre-PRECHARGE during idle (kills HIT benefit,
+   moot), reclaim EXT slots (iter-1.5 attempt, previously failed), DDR3
+   (high-latency, unsuitable for per-instruction fetch). None obviously
+   better than Layer 2.
+3. **Stop SDRAM speedup** — return to v356-era priorities: investigate
+   Doom's 3 fps render rate (IRQ overhead? JIT cache thrash?), missing
+   SCPU registers, Wolf3D in-game inputs.
 
-### Commits this session (top-down)
+### State of the dev MiSTer
 
-- `faf5c4f` — Lorenz regression PASS both modes
-- `61bdafa` — Doom v356 reaches 3D gameplay (mhold.py recipe)
-- `5b63445` — Wolf3D level1 movement test results
-- `3aa3bdf` — Wolf3D v356 PLAYABLE (full menu path)
-- `1e01f23` — Wolf3D attract cycle proof
-- `a953952` — Wolf3D v356 RUNS — extended monitor
-- `db149d6` — v356 RTL fix: universal IRQ ack via $FF00 stub
+- **Live RBF:** still v356 at `/media/fat/_Test/C64.rbf` (md5 `19839ee...`).
+  Page-mode builds B/C/C2 were deployed and rolled back during this
+  session; the v356 image is what's left.
+- **CORENAME:** `C64_doomturbo` (Doom MGL was the last interactive load).
+- **C64.sdc:** keeps the `*sdram_pm:sdram|sd_*` filter (commit 793fa12).
+  This is the right pattern even if `sdram_pm.v` is byte-equivalent to
+  baseline `sdram.v`, because the entity is named `sdram_pm`.
 
-## Candidate next tasks (in rough priority order)
+### Commits this session
 
-1. **Implement missing SCPU registers.** Per
-   `project_scpu_register_implementation_status.md`, $D072/$D073
-   (system 1 MHz), $D074-$D077 (optim mode), $D0BC (detect), $D07E/$D07F
-   (gating), $D0B4 (optim status) are stubbed. Wolf3D may poll one of
-   these during its second wedge; Doom doesn't seem to need them.
+- `9f9e2c2` — revert sdram_pm.v to Build B (page-mode shelved)
+- `793fa12` — C64.sdc filter pattern fix (`sdram` → `sdram_pm`)
+- `50d8bd3` — draft Build C (preserved for future revival)
+- `cc89d27` — Build B (baseline + ready output)
+- `b46aad2` — Build A reset-counter fix
+- `faef16f` — Build A smoke-test wire-up
 
-2. **Investigate Doom's 3 fps render rate.** UART shows main loop
-   spinning $2A:$55A0–$55D2 at ~3 frames/s. Likely causes: IRQ overhead
-   from $FF00 stub, slow SuperRAM access for JIT recompiler, unmapped
-   ROM-bank stalls. Could improve to 6-10 fps with targeted RTL work.
+### Memory updates this session
 
-3. **Wolf3D "Working..." wedge** (after setup screen). Memory notes the
-   Bliss-Box second wedge case-study is now superseded by Turbo Off →
-   Smart 4x being the actual cause. With v356, Wolf3D reaches L1 starting
-   room but is stuck — keyboard movement keys don't advance the player.
-   Joystick port 2 may be required for in-game movement.
+- `project_sdram_page_mode_needs_layer2.md` — full Build C analysis
+- `feedback_renaming_sdram_entity_breaks_sdc.md` — SDC filter gotcha
 
-4. **Doom in-game inputs.** Tested 2026-05-19: keyboard (all arrows +
-   WASD/IJKL/CTRL/SPACE/ALT/TAB/ESC up to 10 s sustained holds) AND
-   virtual USB gamepad at js0/joyA/port-2 (real device unbound) — NO
-   view change. View stays static; player does not move/turn/shoot.
-   Hash flips are face-icon animation only. Likely DEMO playback or
-   port-1 vs port-2 mapping. See `project_doom_v356_ingame_unresponsive.md`
-   for next-probe ideas.
+## v356 milestones (still valid from yesterday)
 
-5. **U64 differential** — Ultimate 64 hardware is available at 192.168.50.94
-   for cross-validation if any new bug surfaces.
-
-## State of the dev MiSTer
-
-- **CORENAME**: `C64_doomturbo` (last loaded was the doom MGL)
-- **RBF**: v356 at `/media/fat/_Test/C64.rbf` (md5 `19839ee...`)
-- **Bliss-Box / usb gamepad / 8BitDo keyboard**: all rebinded after
-  earlier USB-unbind tests for the joystick rabbit hole.
-- **C64.cfg**: standard turbo config; `C64_doomturbo.cfg` mirrored for
-  the Doom MGL's setname.
+| Title       | Status   | Verified              | Reproducer                          |
+|-------------|----------|-----------------------|-------------------------------------|
+| Wolf3D      | PLAYABLE | E1L1 starting room    | menu break via SPACE at HS→demo     |
+| Doom        | PLAYABLE | E1M1 3D corridor+HUD  | `tools/doom_v356_PLAY.py`           |
+| Lorenz t65  | PASS     | 32m SCPU regtest      | `tools/lorenz_run.py t65 --mins 32` |
+| Lorenz scpu | PASS     | `orazx - ok` at 32m   | `tools/lorenz_run.py scpu --mins 32`|
 
 ## Background processes (none active)
-
-No long-running scripts on either side as of commit `faf5c4f`.

@@ -177,6 +177,13 @@ port(
 	supercpu_en   : in  std_logic := '0';
 	supercpu_bank : out std_logic_vector(7 downto 0);   -- bank byte (A23-A16); $00 when 6510 active
 	emu_mode_816  : out std_logic;                      -- '1' = emulation mode (always '1' when 6510 active)
+	-- SDRAM backpressure (Layer 2 prep, 2026-05-20).
+	-- sdram_ready='1' when the SDRAM controller is idle and safe to start
+	-- a new access. Synchronised to clk32 inside this entity. Step 1 only
+	-- wires + synchronises this; Step 2 will gate cpu_cyc on it for the
+	-- alt-slot fast-path. Default '1' so the port stays compile-compatible
+	-- with any unwired instantiation.
+	sdram_ready   : in  std_logic := '1';
 	-- Phase D: external SDRAM mux gates the SuperRAM SDRAM cycle on
 	-- cpu_has_bus so VIC-II reads (during VIC slots) never resolve to a
 	-- stale supercpu_bank value left over from the prior CPU instruction.
@@ -713,6 +720,14 @@ signal cs_color     : std_logic;
 signal cs_cia1      : std_logic;
 signal cs_cia2      : std_logic;
 signal cs_ram       : std_logic;
+-- Layer 2 backpressure (Step 1, 2026-05-20):
+-- 2-FF synchroniser bringing sdram_ready (clk64-domain output of sdram_pm)
+-- into the clk32 domain that gates cpu_cyc. (* preserve *) so Quartus
+-- doesn't optimise the FFs away when no consumer exists yet (Step 1 is
+-- pure plumbing; Step 2 hooks it into cpu_cyc).
+signal sdram_ready_sync : std_logic_vector(1 downto 0) := "11";
+attribute preserve : boolean;
+attribute preserve of sdram_ready_sync : signal is true;
 signal cpuWe        : std_logic;
 signal cpuWe_pre    : std_logic;
 signal cpuAddr      : unsigned(15 downto 0);
@@ -2617,6 +2632,10 @@ cpu_cyc <= '1' when
 process(clk32)
 begin
 	if rising_edge(clk32) then
+		-- Layer 2 sync (Step 1, 2026-05-20): bring sdram_ready into clk32.
+		-- 2-FF chain. Consumer wired in Step 2.
+		sdram_ready_sync <= sdram_ready_sync(0) & sdram_ready;
+
 		cpu_cyc_s <= cpu_cyc_s(0) & cpu_cyc;
 		enableCpu <= cpu_cyc_s(1);
 		io_enable <= io_enable and not enableCpu;

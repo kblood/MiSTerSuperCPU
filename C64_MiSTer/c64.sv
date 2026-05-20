@@ -1898,6 +1898,9 @@ fpga64_sid_iec fpga64
 	.supercpu_bank(supercpu_bank),
 	.emu_mode_816(supercpu_emul),
 	.cpu_has_bus(cpu_has_bus),
+	// Layer 2 backpressure (Step 1, 2026-05-20): wire SDRAM ready into the
+	// arbiter so Step 2 can gate cpu_cyc on it.
+	.sdram_ready(sdram_ready),
 
 	.dbg_raster_line(scpu_dbg_raster),
 	.dbg_d018       (scpu_dbg_d018),
