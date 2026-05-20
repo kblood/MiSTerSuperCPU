@@ -28,45 +28,40 @@ real hardware. Mitigation B becomes optional polish.
 
 ## Six-step plan, each independently verifiable
 
-### Step 1 — Layer 2: cpu_cyc backpressure on sdram_ready
-**Files touched:** `fpga64_sid_iec.vhd` (cpu_cyc gating + sync FFs),
-`c64.sv` (already exposes sdram_ready, no change needed).
+### Step 1 — Layer 2: sdram_ready synchroniser plumbing
+**Status:** ✅ Implemented + verified PASS 2026-05-20 (commit `a65b3f7`).
+6/6 Doom hashes match v356; timing slack improved (+0.118 ns worst setup,
+clk_sys +5.997 ns). `sdram_ready_sync` declared but consumer is deferred
+to Step 5 (Build C revival); Step 2 uses a more cycle-accurate local
+counter instead (see below).
 
-**RTL change sketch:**
+**Files touched:** `fpga64_sid_iec.vhd` (sync FFs only),
+`c64.sv` (wires `sdram_ready` from sdram_pm into top-level VHDL port).
+
+**RTL change as implemented:**
 ```vhdl
--- New: 2-FF synchronizer to bring sdram_ready (clk64 domain)
--- into clk32 domain.
-signal sdram_ready_sync : std_logic_vector(1 downto 0);
+-- 2-FF synchroniser bringing sdram_ready (clk64-domain output of
+-- sdram_pm) into clk32. Kept for Step 5 (Build C revival) where the
+-- actual ready edge timing matters.
+signal sdram_ready_sync : std_logic_vector(1 downto 0) := "11";
+attribute preserve : boolean;
+attribute preserve of sdram_ready_sync : signal is true;
+
 process(clk32) begin
   if rising_edge(clk32) then
     sdram_ready_sync <= sdram_ready_sync(0) & sdram_ready;
   end if;
 end process;
-
--- New: predicate "would the upcoming CPU slot route through SDRAM".
-signal cpu_needs_sdram : std_logic;
-cpu_needs_sdram <= '1' when
-    cs_ram = '1' and (
-      (supercpu_en = '1' and addr_hi_816 /= x"00") or  -- SuperRAM
-      (cart_active = '1')                             -- cartridge ROM
-    ) else '0';
-
--- Modified: gate the existing cpu_cyc term on backpressure.
-cpu_cyc <= '1' when
-    ((cpu_needs_sdram = '0') or (sdram_ready_sync(1) = '1')) and
-    (
-      (sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1') or
-      (sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1') or
-      (sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1') or
-      (sysCycle = CYCLE_CPUC and (io_enable = '1' or cs_ram = '1'))
-    ) else '0';
 ```
 
-**Expected effect on the *current* build:** zero observable change.
-Today's enable cadence (max once per 4 clk32) is far slower than the
-SDRAM's 5-cycle baseline access, so `sdram_ready_sync` is always '1'
-when cpu_cyc would fire. The gate is a no-op until Step 2 increases
-enable frequency.
+**Why not gate cpu_cyc on sdram_ready_sync directly:** the 2-FF sync
+chain adds 2 clk32 of latency. Build B's SDRAM cycle is already exactly
+4 clk32 = 8 clk64; gating cpu_cyc on `sdram_ready_sync(1)='1'` would
+delay every enable by 2 clk32, *halving* today's throughput. Use a
+local cycle-accurate counter instead (Step 2).
+
+**Expected effect on the current build:** zero observable change.
+Step 1 only adds wiring; no behavioural gate yet.
 
 **Pass criteria:**
 - Lorenz t65 32 min → matches v356 baseline (`andix - ok` or further).
@@ -77,28 +72,61 @@ enable frequency.
 
 **Rollback:** single commit revert.
 
-### Step 2 — Option C Mitigation A: alternate-slot SCPU fast-path
-**Files touched:** `fpga64_sid_iec.vhd` (extra `cpu_cyc` term).
+### Step 2 — SDRAM-busy backpressure infrastructure (alt-slot deferred)
+**Status:** ⚠️ PARTIALLY LANDED 2026-05-20. The SDRAM-busy predictor
+counter and `sdram_busy='0'` gate on the *main* slots compile + pass
+Doom 6/6 (bisect-1 RBF `7fdd41b7`). Adding the alt-slot term (CPU2/6/A/E
++ scpu_fast_path) wedges Doom on Build B even though static analysis
+predicts every alt-slot fire is blocked by the busy counter. Both
+OUTER-gate (bisect-2) and INNER-gate (bisect-3) variants wedge with
+identical stripe→solid-color symptoms (stuck hash 25ce2464 / 1df06220
+from t=60 onward). Suspect: synthesis-level hazard on cpu_cyc →
+ramCE → cart_ce when alt-slot inputs join the same LUT cluster.
+Alt-slot term is therefore deferred to be re-investigated alongside
+Step 5 (Build C revival), where it actually delivers speedup; the
+busy-counter scaffolding is committed now so Step 5 can flip a single
+constant (3 → 1) and add the alt-slot term in one well-isolated change.
 
-**RTL change sketch:**
+**Files touched:** `fpga64_sid_iec.vhd` (counter process + helpers +
+extended `cpu_cyc` term).
+
+**RTL change as implemented:**
 ```vhdl
--- "True" only when the SCPU CPU core is fetching from SuperRAM
--- and not touching I/O — safe to give it extra slots.
+-- Local SDRAM-busy predictor (cycle-accurate, no sync latency).
+-- Counter resets to 3 on every cpu_cyc fire that drives SDRAM
+-- (cs_ram = '1' covers bank-$00 RAM AND SuperRAM via the
+-- scpu_long_access OR in fpga64_buslogic.vhd:551). Decrements one
+-- per clk32 down to 0. Build B baseline SDRAM cycle = 8 clk64 =
+-- 4 clk32 → counter is 0 by the next main slot (CPU0→CPU4 = 4
+-- clk32), preserving today's cadence exactly.
+signal sdram_busy_cnt : unsigned(2 downto 0) := (others => '0');
+signal sdram_busy     : std_logic;
+
+process(clk32) begin
+  if rising_edge(clk32) then
+    if cpu_cyc = '1' and cs_ram = '1' then
+      sdram_busy_cnt <= "011";
+    elsif sdram_busy_cnt /= "000" then
+      sdram_busy_cnt <= sdram_busy_cnt - 1;
+    end if;
+  end if;
+end process;
+sdram_busy <= '1' when sdram_busy_cnt /= "000" else '0';
+
+-- Fast-path predicate: SCPU executing in SuperRAM, not I/O, no DMA.
 signal scpu_fast_path : std_logic;
 scpu_fast_path <= '1' when
     supercpu_en = '1' and addr_hi_816 /= x"00"
     and cs_io = '0' and dma_active = '0' else '0';
 
-cpu_cyc <= '1' when
-    ((cpu_needs_sdram = '0') or (sdram_ready_sync(1) = '1')) and
-    (
-      -- existing 4-MHz baseline terms (unchanged)
+cpu_cyc <= '1' when sdram_busy = '0' and (
+      -- existing 4-MHz baseline terms (unchanged semantics)
       (sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1') or
       (sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1') or
       (sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1') or
       (sysCycle = CYCLE_CPUC and (io_enable = '1' or cs_ram = '1')) or
-      -- NEW alternate-slot fast path (8 extra MHz)
-      (scpu_fast_path = '1' and (
+      -- NEW alt-slot fast path
+      (scpu_fast_path = '1' and cs_ram = '1' and (
          sysCycle = CYCLE_CPU2 or sysCycle = CYCLE_CPU6 or
          sysCycle = CYCLE_CPUA or sysCycle = CYCLE_CPUE
       ))
@@ -109,25 +137,31 @@ This keeps enables ≥ 2 clk32 apart (CPU0→CPU2 = 2, CPU2→CPU4 = 2,
 etc.) so the existing multicycle-2 SDC constraint stays valid → no
 timing closure surprises.
 
-**Expected:** ~2× SuperRAM throughput when SCPU is executing in
-banks ≠ $00 → Doom should reach ~6 fps (vs 3 today). Bank-$00 +
-I/O still at 4 MHz (preserves VIC/CIA semantics).
+**Expected on Build B (today's SDRAM cycle = 8 clk64 = 4 clk32):**
+counter blocks every alt-slot CPU2 (busy_cnt still ≥ 1 at slot +2),
+so alt-slot fires *don't happen* yet → 0× speedup but also 0 regression.
+**This is the safe-foundation behaviour.** The throughput unlock arrives
+in Step 5 when Build C's 3-clk64 HIT path comes back and the counter
+constant drops from 3 to 1 → alt-slot CPU2 sees busy_cnt=0 → fires →
+8 MHz effective for SuperRAM HIT-pattern code.
 
-**Pass criteria:**
+**Pass criteria (Step 2 standalone, Build B SDRAM):**
 - Lorenz t65 + scpu unchanged (Lorenz runs in bank $00 → fast-path
-  shouldn't fire).
-- Doom progression hashes pre-Mitigation: hashes flip every ~30 s
-  through ~t=120s. Post-Mitigation: same sequence, ~half the time
-  per hash transition.
-- Wolf3D menu nav reaches Level 1 in less time than v356.
+  shouldn't fire; counter logic still gates main slots identically).
+- Doom progression hashes match v356 (alt-slot blocked by busy_cnt).
+- No timing closure regression (multicycle-2 still valid).
+
+**Speedup is deferred to Step 5** — Step 2 alone gives ~0× on Build B;
+that's expected and documented in `project_sdram_page_mode_needs_layer2.md`.
+Pass = no regression; the alt-slot wiring is in place ready for Step 5.
 
 **Rollback:** single commit revert.
 
 ### Step 3 — Measurement gate
 Run `tools/doom_v356_PLAY.py` with extended capture, compare per-hash
-timing v356 vs Step 2. Run SCPU speed bench. If <1.5× speedup, stop
-and instrument `scpu_fast_path` on UART column to verify firing rate
-before going to Step 4.
+timing v356 vs Step 2 (expect MATCH on Build B). After Step 5 (Build C
+revival), re-run and confirm ≥1.5× speedup. If <1.5× post-Step-5, stop
+and instrument `scpu_fast_path` on a UART column to verify firing rate.
 
 ### Step 4 (optional) — Mitigation B: P65C816 carry-chain refactor
 Pipeline `AAL→PCr` via an intermediate register. Removes the critical

@@ -722,12 +722,33 @@ signal cs_cia2      : std_logic;
 signal cs_ram       : std_logic;
 -- Layer 2 backpressure (Step 1, 2026-05-20):
 -- 2-FF synchroniser bringing sdram_ready (clk64-domain output of sdram_pm)
--- into the clk32 domain that gates cpu_cyc. (* preserve *) so Quartus
--- doesn't optimise the FFs away when no consumer exists yet (Step 1 is
--- pure plumbing; Step 2 hooks it into cpu_cyc).
+-- into the clk32 domain. The sync chain is kept for Step 5 (Build C
+-- revival) where the actual ready edge timing matters. Step 2 below
+-- uses a *local* counter (cycle-accurate, no sync latency) for backpressure.
 signal sdram_ready_sync : std_logic_vector(1 downto 0) := "11";
 attribute preserve : boolean;
 attribute preserve of sdram_ready_sync : signal is true;
+
+-- Option C Mitigation A — SCPU SuperRAM alt-slot fast-path (Step 2, 2026-05-20).
+-- scpu_fast_path is '1' when the SCPU CPU core is executing in a SuperRAM
+-- bank (≠ $00) and the current access does not hit I/O ($D000-$DFFF) and
+-- no DMA is active. NOTE: the alt-slot consumer of this signal (CYCLE_CPU2/
+-- 6/A/E + scpu_fast_path) was bench-removed at Step 2 commit because empirically
+-- folding it into cpu_cyc wedges Doom even with the SDRAM-busy gate that
+-- static analysis says should block every fire on Build B. The signal is
+-- driven (kept for Step 5 revival) but currently has no consumer — Quartus
+-- will dead-strip it. See cpu_cyc assignment below + docs/plan_supercpu_speedup_stepped.md.
+signal scpu_fast_path : std_logic;
+
+-- Local counter that predicts SDRAM busy time. Starts at 3 (= 4 clk32 = 8
+-- clk64) when a cpu_cyc fires on a cs_ram=1 access, ticks down on each
+-- clk32 until it reaches 0. Any cpu_cyc fire is blocked while sdram_busy='1'.
+-- For Build B's baseline 8-clk64 SDRAM cycle this matches today's cadence
+-- exactly: CPU0→CPU4 spacing of 4 clk32 leaves the counter at 0 by CPU4,
+-- so existing terms are not blocked. For Build C HIT path (3 clk64) this
+-- can be tightened in Step 5.
+signal sdram_busy_cnt : unsigned(2 downto 0) := (others => '0');
+signal sdram_busy     : std_logic;
 signal cpuWe        : std_logic;
 signal cpuWe_pre    : std_logic;
 signal cpuAddr      : unsigned(15 downto 0);
@@ -2623,11 +2644,37 @@ ramAddr <= systemAddr;
 ramWE   <= systemWe when sysCycle >= CYCLE_CPU0 else '0';
 ramCE   <= cs_ram when sysCycle = CYCLE_VIC0 or cpu_cyc = '1' else '0';
 
-cpu_cyc <= '1' when
+-- Step 2 (Mitigation A, 2026-05-20) combinational helpers.
+-- sdram_busy: asserted while the local predictor counter is non-zero.
+-- scpu_fast_path: asserted when SCPU is executing in a SuperRAM bank
+-- (≠ $00), not hitting I/O, and no DMA active. Alt-slot CPU enables
+-- (CPU2/6/A/E) are admitted only on this path; main-slot terms below
+-- are unchanged in semantics — they're still gated on cs_ram which
+-- becomes '1' for bank ≠ $00 via scpu_long_access in fpga64_buslogic.
+sdram_busy     <= '1' when sdram_busy_cnt /= "000" else '0';
+scpu_fast_path <= '1' when supercpu_en = '1'
+                       and addr_hi_816 /= x"00"
+                       and cs_io = '0'
+                       and dma_active = '0' else '0';
+
+-- Step 2 (2026-05-20): busy-counter backpressure infrastructure.
+-- Main-slot terms gated on sdram_busy='0'. With Build B's 8-clk64 SDRAM
+-- cycle, the counter is 0 at every CPU0/4/8/C boundary, so this gate is
+-- a no-op for today's cadence (verified PASS, 6/6 Doom hashes vs v356).
+-- The alt-slot fast-path (CPU2/6/A/E + scpu_fast_path) is INTENTIONALLY
+-- omitted at this step: empirically, simply adding the alt-slot term to
+-- cpu_cyc (with either OUTER or INNER busy gate) wedges Doom even
+-- though static analysis shows the gate should block every fire on
+-- Build B. Suspect: synthesis-level hazard on cpu_cyc → ramCE → cart_ce
+-- propagation when alt-slot inputs are folded into the same LUT. To be
+-- re-investigated together with Step 5 (Build C revival), where the
+-- alt-slot becomes actually useful (cycle=3 clk64, busy_cnt tighter).
+cpu_cyc <= '1' when sdram_busy = '0' and (
 				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' ) or
-				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1')) else '0';
+				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1'))
+			) else '0';
 				
 process(clk32)
 begin
@@ -2635,6 +2682,22 @@ begin
 		-- Layer 2 sync (Step 1, 2026-05-20): bring sdram_ready into clk32.
 		-- 2-FF chain. Consumer wired in Step 2.
 		sdram_ready_sync <= sdram_ready_sync(0) & sdram_ready;
+
+		-- Step 2 (Mitigation A, 2026-05-20): local SDRAM-busy predictor.
+		-- Reset to 3 on any cpu_cyc fire that drives an SDRAM transaction
+		-- (cs_ram = '1' covers bank-$00 RAM AND SuperRAM via the
+		-- scpu_long_access OR in fpga64_buslogic.vhd:551). Decrement one
+		-- per clk32 down to 0. Build B baseline SDRAM cycle = 8 clk64 =
+		-- 4 clk32 → counter is 0 by the next main slot (CPU0→CPU4 is 4
+		-- clk32), preserving today's cadence. Alt-slot CPU2 (2 clk32
+		-- later) sees counter ≠ 0 with Build B → blocked. Counter
+		-- decrement length will be tightened in Step 5 once Build C's
+		-- 3-clk64 HIT path is back.
+		if cpu_cyc = '1' and cs_ram = '1' then
+			sdram_busy_cnt <= "011";
+		elsif sdram_busy_cnt /= "000" then
+			sdram_busy_cnt <= sdram_busy_cnt - 1;
+		end if;
 
 		cpu_cyc_s <= cpu_cyc_s(0) & cpu_cyc;
 		enableCpu <= cpu_cyc_s(1);
