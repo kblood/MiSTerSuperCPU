@@ -88,13 +88,30 @@ architecture rtl of scpu_async_bridge is
 	-- cache_valid tracks which bytes the CPU has written. Until a byte has
 	-- been observed, the mux must fall through to bus_di_in — otherwise the
 	-- cache would return $00 for unwritten KERNAL state and corrupt boot.
+	--
+	-- Structure mirrors c64_ram64k.vhd:
+	--   - shared variable + := assignment lets Quartus pick the M10K
+	--     inference template. Using a signal with conditional read landed
+	--     us at "uninferred due to asynchronous read logic" → LUT-RAM
+	--     fallback that returned $AB on every ZP read on the first attempt.
+	--   - ramstyle "M10K, no_rw_check" disables the synthesised read-
+	--     during-write protection (the canonical pattern in this repo).
+	--   - cache_we_d1 / cache_din_d1 implement the 1-deep write-bypass that
+	--     covers the RAW hazard introduced by no_rw_check.
 	constant CACHE_BYTES : integer := 512;
-	type cache_mem_t is array (0 to CACHE_BYTES - 1) of unsigned(7 downto 0);
-	signal cache_mem        : cache_mem_t := (others => (others => '0'));
+	type cache_mem_t is array (0 to CACHE_BYTES - 1) of std_logic_vector(7 downto 0);
+	shared variable cache_mem : cache_mem_t := (others => (others => '0'));
 	signal cache_valid      : std_logic_vector(0 to CACHE_BYTES - 1) := (others => '0');
 	signal cache_hit        : std_logic;
-	signal cache_dout       : unsigned(7 downto 0) := (others => '0');
+	signal cache_dout       : unsigned(7 downto 0);
+	signal cache_dout_raw   : unsigned(7 downto 0) := (others => '0');
 	signal cache_valid_dout : std_logic := '0';
+
+	signal cache_we_d1   : std_logic := '0';
+	signal cache_din_d1  : unsigned(7 downto 0) := (others => '0');
+
+	attribute ramstyle : string;
+	attribute ramstyle of cache_mem : variable is "M10K, no_rw_check";
 
 begin
 	is_slow_access <= '1' when cpu_addr_hi_in = x"00" else '0';
@@ -125,16 +142,32 @@ begin
 		process(clk_cpu) begin
 			if rising_edge(clk_cpu) then
 				if reset = '1' then
-					cache_valid <= (others => '0');
-				elsif access_pulse = '1' and cpu_we_in = '1' and cache_hit = '1' then
-					cache_mem(to_integer(cpu_addr_in(8 downto 0)))   <= cpu_do_in;
-					cache_valid(to_integer(cpu_addr_in(8 downto 0))) <= '1';
+					cache_valid  <= (others => '0');
+					cache_we_d1  <= '0';
+				else
+					cache_we_d1 <= '0';
+					if access_pulse = '1' and cpu_we_in = '1' and cache_hit = '1' then
+						cache_mem(to_integer(cpu_addr_in(8 downto 0))) := std_logic_vector(cpu_do_in);
+						cache_valid(to_integer(cpu_addr_in(8 downto 0))) <= '1';
+						cache_we_d1  <= '1';
+						cache_din_d1 <= cpu_do_in;
+					end if;
 				end if;
-				cache_dout       <= cache_mem(to_integer(cpu_addr_in(8 downto 0)));
+				-- Unconditional registered reads at process tail — the
+				-- M10K inference template. Both cache_mem (M10K) and
+				-- cache_valid (FFs) sample the same idx on the same edge,
+				-- so cache_dout_raw and cache_valid_dout describe the
+				-- contents of cpu_addr_in @ this edge minus one cycle.
+				cache_dout_raw   <= unsigned(cache_mem(to_integer(cpu_addr_in(8 downto 0))));
 				cache_valid_dout <= cache_valid(to_integer(cpu_addr_in(8 downto 0)));
 			end if;
 		end process;
 	end generate;
+
+	-- 1-deep write-bypass. When the prior cycle wrote to the same address
+	-- whose contents are about to be returned, forward the captured data
+	-- rather than rely on the BRAM port committing in time.
+	cache_dout <= cache_din_d1 when cache_we_d1 = '1' else cache_dout_raw;
 
 	-- Slow-path RDY-stall handshake. Inert while BRIDGE_ACTIVE='0' because
 	-- the output mux below selects bus_rdy_in / bus_di_in directly; the
