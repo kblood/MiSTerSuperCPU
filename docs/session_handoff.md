@@ -1,68 +1,63 @@
-# Session handoff — 2026-05-20
+# Session handoff — 2026-05-21 (stabilisation + async pivot decision)
 
-## This session: page-mode SDRAM investigation — SHELVED
+## Status: Phase 6b REVERTED. Branch stable at Phase 6a baseline. Pivoting to async CPU bridge.
 
-**Outcome:** Build C (page-mode with COLD/HIT/CONFLICT paths) wedges KERNAL
-boot on hardware. Root cause is **not** an SDC constraint issue (793fa12
-fixed that, but Build C2 wedged identically). Page-mode is fundamentally
-incompatible with the existing bus arbiter without Layer 2.
+**Current branch:** `step6-rdy-handshake`
+**Stabilising commit:** `8377734` — `Revert "feat: Step 6 Phase 6b ..."`
+**Resulting RBF md5:** 88963b9e (= Phase 6a baseline, byte-identical to proven-working build)
+**Merge target:** `vanilla-cpu-swap` → `master` → fork `async-cpu-bridge`
 
-**HEAD:** `9f9e2c2` on branch `vanilla-cpu-swap`.
-**Live `sdram_pm.v`:** Build B (baseline + `output ready`), byte-equivalent
-to commit `cc89d27`.
-**Build C draft preserved at commit `50d8bd3`** for future revival.
+### Why the revert
 
-### Root cause (full detail in `memory/project_sdram_page_mode_needs_layer2.md`)
+Seven consecutive attempts at a Phase 6b dv_sync consumer (iso2-v3 through
+iso7) all wedge on cold boot with PC=$0005, regardless of whether `cpu_cyc`
+is gated. iso8 (literal Phase-6a-equivalent reconstruction) built bit-identical
+to 88963b9e — confirming the bug class is the dv_sync CONSUMER, not the bus
+arbiter, not the cpu_cyc gate. Phase 6b is suspended and the broken commit
+(e42ee1e) is reverted. Step 5a alt-slot work (3455df7) and Phase 6a signal
+plumbing (8434077) are KEPT — both work and Step 5a gives ~1.5× Doom.
 
-The bus arbiter at `fpga64_sid_iec.vhd:2620` is a 2-stage clk32 shift
-register → `enableCpu` fires ~6 clk64 cycles after `cpu_cyc` asserts.
-Build C's CONFLICT path (PRECHARGE → tRP → ACTIVE → tRCD → READ → CL) needs
-sample-q=7, which is 1 cycle past the 6-cycle CPU read deadline. KERNAL
-boot's ZP↔stack alternation (different rows, same bank) hits CONFLICT every
-other access → CPU latches the previous access's dout_r → garbage RAM →
-PC bounces $0107-$013B with M=$FFFF FFFF FFFF FFFF.
+### Decision: pivot to full async CPU domain
 
-### Decision point for next session
+After comparing the Gemini 3.5 Flash research roadmap (`docs/Gemini35FlashResearch.md`
++ `docs/gemini_roadmap_vs_current.md`) to current state, the next architectural
+step is to move the P65C816 into its own clock domain (`clk_cpu`) with a
+CDC bridge, matching the real CMD SuperCPU model. This is what the project's
+top-level goal ("20MHz native mode") actually requires and likely sidesteps
+the iso2-iso7 wedge class entirely by forcing explicit CDC synchronization
+instead of hidden sequential paths inside a single clock domain.
 
-Three credible paths, choose one before resuming SDRAM work:
+Phased plan, each phase = one build + defined exit test:
 
-1. **Layer 2** — gate `cpu_cyc_s` advancement on synchronized `sdram_ready`.
-   Significant change to the C64 bus arbiter (fpga64_sid_iec.vhd:2617-2622).
-   Highest risk; unlocks Build C; preserves both 6510 + SCPU compatibility
-   if done carefully.
-2. **Alternative speedup** — pre-PRECHARGE during idle (kills HIT benefit,
-   moot), reclaim EXT slots (iter-1.5 attempt, previously failed), DDR3
-   (high-latency, unsuitable for per-instruction fetch). None obviously
-   better than Layer 2.
-3. **Stop SDRAM speedup** — return to v356-era priorities: investigate
-   Doom's 3 fps render rate (IRQ overhead? JIT cache thrash?), missing
-   SCPU registers, Wolf3D in-game inputs.
+- **A — Save point.** Current step6-rdy-handshake (post-revert) merged into
+  vanilla-cpu-swap → master. Fork `async-cpu-bridge` branch from there.
+- **B — Add `clk_cpu` PLL output unused.** Start at 32 MHz (= clk_sys),
+  electrically inert. Verify Doom hashes unchanged.
+- **C — P65C816 moved into clk_cpu domain.** clk_cpu still = clk_sys, no
+  CDC yet. Should behave identically.
+- **D — Insert CDC bridge.** Double-buffered sync on cpuAddr/cpuDo/cpuWe
+  (CPU→sys) and cpuDi/ack (sys→CPU). RDY/enable pulled low until ack
+  returns. Still 32 MHz — measuring overhead only.
+- **E — Bump clk_cpu to 64 MHz, then 20 MHz native target.** Payoff visible.
+- **F — Full regression.** KERNAL, Lorenz t65+scpu, Doom hashes vs Step 5a,
+  Wolf3D Level 1, REU DMA.
 
-### State of the dev MiSTer
+### What's preserved on step6-rdy-handshake (and now master)
 
-- **Live RBF:** still v356 at `/media/fat/_Test/C64.rbf` (md5 `19839ee...`).
-  Page-mode builds B/C/C2 were deployed and rolled back during this
-  session; the v356 image is what's left.
-- **CORENAME:** `C64_doomturbo` (Doom MGL was the last interactive load).
-- **C64.sdc:** keeps the `*sdram_pm:sdram|sd_*` filter (commit 793fa12).
-  This is the right pattern even if `sdram_pm.v` is byte-equivalent to
-  baseline `sdram.v`, because the entity is named `sdram_pm`.
+| Commit  | What                                                  | Status                    |
+|---------|-------------------------------------------------------|---------------------------|
+| 3455df7 | Step 5a — registered `alt_fire_r`                    | ~1.5× Doom speedup, keep  |
+| 0cee649 | Step 2 — SDRAM-busy backpressure scaffolding         | used by Step 5a, keep     |
+| a65b3f7 | Step 1 — sdram_ready 2-FF synchroniser plumbing      | foundation, keep          |
+| 9f9e2c2 | Revert sdram_pm.v back to Build B                    | Build C abandonment, keep |
+| 793fa12 | C64.sdc filter fix (sdram_pm not sdram)              | required for fitter, keep |
+| 8434077 | Phase 6a — data_valid signal plumbing (no consumer)  | inert plumbing, keep      |
+| 8377734 | Revert Phase 6b                                       | NEW — unblocks baseline   |
 
-### Commits this session
+All vanilla-cpu-swap fixes (v341 through v356, Doom/Wolf3D PLAYABLE,
+$F8+ carve-out, IRQ stub etc.) are intact.
 
-- `9f9e2c2` — revert sdram_pm.v to Build B (page-mode shelved)
-- `793fa12` — C64.sdc filter pattern fix (`sdram` → `sdram_pm`)
-- `50d8bd3` — draft Build C (preserved for future revival)
-- `cc89d27` — Build B (baseline + ready output)
-- `b46aad2` — Build A reset-counter fix
-- `faef16f` — Build A smoke-test wire-up
-
-### Memory updates this session
-
-- `project_sdram_page_mode_needs_layer2.md` — full Build C analysis
-- `feedback_renaming_sdram_entity_breaks_sdc.md` — SDC filter gotcha
-
-## v356 milestones (still valid from yesterday)
+### v356 milestones (still valid)
 
 | Title       | Status   | Verified              | Reproducer                          |
 |-------------|----------|-----------------------|-------------------------------------|
@@ -71,4 +66,31 @@ Three credible paths, choose one before resuming SDRAM work:
 | Lorenz t65  | PASS     | 32m SCPU regtest      | `tools/lorenz_run.py t65 --mins 32` |
 | Lorenz scpu | PASS     | `orazx - ok` at 32m   | `tools/lorenz_run.py scpu --mins 32`|
 
-## Background processes (none active)
+### Open architectural questions for the async-cpu-bridge branch
+
+1. **VIC-II handling.** Real CMD SuperCPU keeps VIC at 1 MHz on the C64
+   motherboard; SuperCPU runs free. Likely the same architecture — VIC
+   stays in clk_sys, async CPU bridges only when slow-side data is needed.
+   Subtleties: VIC's IRQ to CPU crosses domains; screen RAM in SDRAM
+   means VIC reads compete with CPU reads; refresh.
+2. **ZP+stack BRAM cache (Gemini Phase 3).** Optional but very attractive
+   — would let hot-path reads bypass the CDC bridge entirely. Defer until
+   Phase D works, then add in Phase E or later.
+3. **REU DMA path.** Currently `iof_fall_pulse` is falling-edge in clk_sys.
+   In async model, the CPU's STA $DFxx write needs to cross CDC before
+   reu.v sees the cs pulse — adds latency that may or may not break
+   existing REU timing tests.
+4. **Resource budget.** Currently 64% ALMs. Async bridge adds CDC FFs and
+   new arbiter logic. Should fit but worth monitoring.
+
+### Files added this session
+
+- `docs/gemini_roadmap_vs_current.md` — point-by-point evaluation of the
+  Gemini roadmap vs current implementation, with three options analysis
+  (cheap SDC fix / medium cache / real async bridge).
+
+### Pre-existing dirty files left in working tree (intentional, per user)
+
+`.gitignore`, `C64_MiSTer/C64.qpf`, `C64_MiSTer/C64.qsf`, `C64_MiSTer/c64.sv`,
+`build_c64.ps1`, `tools/doom_v342_test.py`, lorenz_run screenshots. Mostly
+line-ending / build-artifact noise; user will triage separately.
