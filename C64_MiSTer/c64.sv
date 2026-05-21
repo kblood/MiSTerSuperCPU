@@ -316,8 +316,15 @@ pll pll
 	.locked(pll_locked)
 );
 
-// Named hook for the CPU clock domain. Aliased to clk_sys today; will be
-// fed by a separate PLL output once the P65C816 moves into its own domain.
+// CPU clock domain. Aliased back to clk_sys (32 MHz) after Phase E.1
+// (2026-05-21) experiments at clk_cpu=clk64 (64 MHz) wedged across THREE
+// configurations: BRIDGE_ACTIVE='0' passthrough, BRIDGE_ACTIVE='1' with
+// bus_rdy=baLoc level signal, BRIDGE_ACTIVE='1' with bus_rdy wired to
+// the arbiter's enableCpu_816 pulse. All three left the CPU parked near
+// the reset vector with SP bouncing and VIC dark. The handoff protocol
+// needs a deeper redesign before 64 MHz can be activated — likely a
+// proper clk_cpu-domain CPU-enable derived from arbiter slot availability,
+// instead of the current CPU-always-running + RDY-stall pattern.
 wire clk_cpu = clk_sys;
 
 wire [63:0] reconfig_to_pll;

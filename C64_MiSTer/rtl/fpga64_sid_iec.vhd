@@ -2693,6 +2693,12 @@ port map (
 	bus_vpa_out     => vpa_816,
 	bus_vda_out     => vda_816,
 	bus_di_in       => cpuDi,
+	-- Phase E.1 (2026-05-21) tried wiring this to `enableCpu_816` (the
+	-- arbiter's per-slot CPU pulse) while clk_cpu=clk64. CPU wedged near
+	-- the reset vector regardless — the bridge's IDLE→WAIT_ACK pattern
+	-- doesn't align with how `enableCpu_816` actually fires (it pulses
+	-- 16x per 32-cycle sysCycleDef, not once per CPU bus access). Real
+	-- 64 MHz activation needs a richer handshake. Back to baLoc for now.
 	bus_rdy_in      => baLoc,
 
 	dbg_is_slow    => cpu816_dbg_is_slow
