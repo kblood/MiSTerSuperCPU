@@ -1268,6 +1268,14 @@ signal cpu_cyc      : std_logic;
 signal cpu_cyc_s    : std_logic_vector(1 downto 0);
 signal turbo_m      : std_logic_vector(2 downto 0);
 
+-- Step 6 Phase 6b (2026-05-21): RDY-handshake CPU enable state machine.
+-- Replaces the cpu_cyc_s(1) fixed-delay predictor. Expected to be ~3 clk32
+-- slower per SDRAM read on Build B (sync flop + state machine pipeline cost),
+-- recovered in Phase 6d via HIT early termination + alt-slot revival.
+signal cpu_cyc_in_flight  : std_logic := '0';
+signal cpu_cyc_is_sdram   : std_logic := '0';
+signal sdram_dv_drop_seen : std_logic := '0';
+
 signal reset        : std_logic := '1';
 
 -- CIA signals
@@ -2694,7 +2702,12 @@ scpu_fast_path <= '1' when supercpu_en = '1'
 -- propagation when alt-slot inputs are folded into the same LUT. To be
 -- re-investigated together with Step 5 (Build C revival), where the
 -- alt-slot becomes actually useful (cycle=3 clk64, busy_cnt tighter).
-cpu_cyc <= '1' when (sdram_busy = '0' and (
+-- Step 6 Phase 6b (2026-05-21): added cpu_cyc_in_flight='0' gate so the
+-- arbiter doesn't issue a new cpu_cyc while the handshake-state-machine
+-- is still waiting on sdram_data_valid_sync from the prior fire. Handshake
+-- cycle takes ~6 clk32 (vs baseline 3); without this gate the CPU0→CPU4
+-- 4-clk32 slot spacing would overwrite the in-flight state.
+cpu_cyc <= '1' when (sdram_busy = '0' and cpu_cyc_in_flight = '0' and (
 				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' ) or
@@ -2742,8 +2755,48 @@ begin
 			alt_fire_r <= '0';
 		end if;
 
+		-- Step 6 Phase 6b (2026-05-21): RDY-handshake replaces cpu_cyc_s(1)
+		-- predictor. Keep cpu_cyc_s for legacy debug / parallel comparison
+		-- but do not drive enableCpu from it.
 		cpu_cyc_s <= cpu_cyc_s(0) & cpu_cyc;
-		enableCpu <= cpu_cyc_s(1);
+		--
+		-- State machine:
+		--   * cpu_cyc fires combinationally at the bus arbiter slot.
+		--   * cpu_cyc_in_flight latches the fire, capturing cs_ram so the
+		--     "is this an SDRAM cycle" classification doesn't depend on a
+		--     mid-cycle cpuAddr glitch.
+		--   * For SDRAM cycles: wait until sdram_data_valid_sync has gone
+		--     LOW (proves we saw the new cycle's clear — guards against
+		--     the "stuck high from prior cycle" race) AND back HIGH.
+		--   * For non-SDRAM cycles ($D000-$DFFF I/O): fire as soon as
+		--     in_flight is latched; cpuDi for I/O regs doesn't depend on
+		--     the SDRAM read path.
+		--   * enableCpu is a 1-clk32 pulse via "and not enableCpu" gating
+		--     (matches the existing cpu_cyc_s pipeline semantics).
+		--   * in_flight clears on enableCpu falling — and we reset
+		--     dv_drop_seen at the same time so the next cycle's "drop"
+		--     detection starts clean.
+		if cpu_cyc = '1' then
+			cpu_cyc_in_flight  <= '1';
+			cpu_cyc_is_sdram   <= cs_ram;
+			sdram_dv_drop_seen <= '0';
+		elsif enableCpu = '1' then
+			cpu_cyc_in_flight  <= '0';
+		end if;
+
+		if cpu_cyc_in_flight = '1' and sdram_data_valid_sync = '0' then
+			sdram_dv_drop_seen <= '1';
+		end if;
+
+		if cpu_cyc_in_flight = '1' and enableCpu = '0' and (
+			(cpu_cyc_is_sdram = '1' and sdram_dv_drop_seen = '1' and sdram_data_valid_sync = '1') or
+			(cpu_cyc_is_sdram = '0')
+		) then
+			enableCpu <= '1';
+		else
+			enableCpu <= '0';
+		end if;
+
 		io_enable <= io_enable and not enableCpu;
 
 		if sysCycle = CYCLE_EXT0 then
