@@ -71,6 +71,12 @@ architecture rtl of scpu_async_bridge is
 	signal cpu_di_latched  : unsigned(7 downto 0) := (others => '0');
 	signal cpu_rdy_latched : std_logic := '1';
 
+	-- Edge detect on the CPU's access lines so a single held vda level
+	-- only triggers one WAIT_ACK entry, not one per clk_cpu cycle.
+	signal cpu_vpa_d : std_logic := '0';
+	signal cpu_vda_d : std_logic := '0';
+	signal access_pulse : std_logic;
+
 begin
 	is_slow_access <= '1' when cpu_addr_hi_in = x"00" else '0';
 
@@ -81,8 +87,12 @@ begin
 			bus_rdy_sync2 <= bus_rdy_sync1;
 			bus_di_sync1  <= bus_di_in;
 			bus_di_sync2  <= bus_di_sync1;
+			cpu_vpa_d     <= cpu_vpa_in;
+			cpu_vda_d     <= cpu_vda_in;
 		end if;
 	end process;
+
+	access_pulse <= (cpu_vpa_in and not cpu_vpa_d) or (cpu_vda_in and not cpu_vda_d);
 
 	-- Slow-path RDY-stall handshake. Inert while BRIDGE_ACTIVE='0' because
 	-- the output mux below selects bus_rdy_in / bus_di_in directly; the
@@ -97,9 +107,9 @@ begin
 				case bridge_state is
 					when IDLE =>
 						cpu_rdy_latched <= '1';
-						if (cpu_vpa_in = '1' or cpu_vda_in = '1') and is_slow_access = '1' then
-							-- Real bus request on the slow path: stall CPU,
-							-- wait for ack from the sys-side arbiter.
+						if access_pulse = '1' and is_slow_access = '1' then
+							-- New slow-path access started this cycle: stall
+							-- CPU and wait for the sys-side ack.
 							cpu_rdy_latched <= '0';
 							bridge_state    <= WAIT_ACK;
 						end if;
