@@ -1,10 +1,10 @@
-# Session handoff — 2026-05-21 (async-cpu-bridge Phases A/B/C done)
+# Session handoff — 2026-05-21 (async-cpu-bridge Phases A–D scaffolding done)
 
-## Status: Phases A/B/C complete. Branch `async-cpu-bridge` carries the inert scaffolding. Phase D is the next perturbation step.
+## Status: Phases A/B/C complete. Phase D cache infrastructure committed but inert (CACHE_ACTIVE='0') after a hardware bring-up failure. Phase E (PLL regen) is the next perturbation step — needs a clk_cpu frequency decision from the user.
 
-**Current branch:** `async-cpu-bridge` (tip `f7ba6d7`)
-**RBF md5 (B + C):** `88963b9e` — bit-identical to vanilla-cpu-swap baseline
-**Saved on remote:** step6-rdy-handshake / vanilla-cpu-swap / master / async-cpu-bridge all pushed
+**Current branch:** `async-cpu-bridge` (tip `5c72dbd`)
+**RBF md5 (B + C + D inert):** `88963b9e` — bit-identical to vanilla-cpu-swap baseline
+**Saved on remote:** step6-rdy-handshake / vanilla-cpu-swap / master pushed; `async-cpu-bridge` local-only past `f7ba6d7`
 
 ### Phase A — Save point. DONE
 Merged step6-rdy-handshake (post-Phase-6b-revert) into vanilla-cpu-swap (`e7a9afb`),
@@ -25,28 +25,37 @@ electrically the same. The T65 6510 and the rest of the bus arbiter stay
 on `clk32`; only the 65C816 has moved. This is the clean separation point
 the future CDC bridge will hang off.
 
-### Phase D — CDC bridge. NOT STARTED
-Real perturbation. When `clk_cpu = clk_sys` the bridge becomes pipeline
-latency rather than true CDC, but it WILL slow per-access throughput (output
-register + req CDC + bus access + ack CDC + input latch ≈ 5-7 clk_sys per
-access on a same-clock build). Doom hashes will change. Open design
-questions before starting:
+### Phase D — CDC bridge scaffolding. INERT (committed `5c72dbd`)
+The `scpu_async_bridge` entity carries the inert CDC scaffolding and the
+ZP+stack write-through cache. Both stay off in the current hardware build:
+`BRIDGE_ACTIVE='0'`, `CACHE_ACTIVE='0'` on the instantiation site. RBF md5
+is therefore still `88963b9e`.
 
-1. **Handshake protocol.** Pulse-based req/ack (one-shot per access) vs
-   level-based valid/ready (held until acknowledged). Pulse is simpler;
-   level is closer to AXI-stream pattern Gemini hinted at.
-2. **Where the synchronizer FFs sit.** Adding them at the entity boundary
-   (just outside cpu_65c816_inst) is the cleanest hookpoint. The bus mux
-   downstream stays unchanged.
-3. **RDY-stall vs enable-gate.** Current CPU is `enable`-gated, not RDY
-   stalled. The Gemini model uses RDY. Switching costs an extra mode
-   bit per slot; staying with enable is faster to validate.
-4. **Same-clock CDC FF count.** When `clk_cpu = clk_sys`, the 2-FF sync
-   chain is technically unnecessary (no metastability between same-edge
-   FFs). Building it anyway preserves the timing closure margin that
-   Phase E (different clk_cpu) will need.
+Sub-status:
+- **D1–D3 (bridge scaffolding):** Built. Bench at
+  `sim/scpu_async_bridge_tb/` covers the IDLE/WAIT_ACK FSM, sync FFs, and
+  edge-detected access pulse. The state machine deadlocks Scenario B
+  unless `bus_rdy_in` is a per-access pulse — current wiring uses `baLoc`
+  which is a level signal, so `BRIDGE_ACTIVE='1'` is not yet a real
+  activation path. Needs a `bus_access_complete_in` port + wiring to
+  `enableCpu_816` before flipping.
+- **D4.1 (cache valid bits):** Committed `885ac7c`. Unwritten ZP returns
+  bus_di_in rather than stale `$00`.
+- **D4.2 (`CACHE_ACTIVE='1'` on hardware):** FAILED. Three increasingly
+  conservative cache patterns all wedge KERNAL boot with every ZP/stack
+  read returning `$AB`:
+    1. LUT-RAM fallback (Quartus refused M10K — "asynchronous read")
+    2. Kitrinx-style same-cycle forwarding (still LUT-RAM)
+    3. c64_ram64k-style shared-variable + 1-deep bypass — Quartus
+       inferred M10K cleanly (DUAL_PORT, no_rw_check), GHDL bench
+       passes, but hardware still wedges identically.
+  GHDL bench scenarios all pass clean → failure is hardware-specific.
+  Likely needs the `cpu_cache.vhd` model (MLAB tags + 8 parallel M10K
+  byte-lane banks) rather than a single 512x8 M10K. Left for a future
+  session to design properly. The cache scaffolding stays in tree so the
+  bench investment is preserved.
 
-### Phase E — Bump clk_cpu. NOT STARTED
+### Phase E — Bump clk_cpu. NOT STARTED — needs operator decision
 Requires regenerating the PLL with a 4th output. Frequency options:
 40 MHz (2× clk_sys, no SDRAM constraint conflict), 64 MHz (= clk64,
 already in PLL), 100 MHz native target.
