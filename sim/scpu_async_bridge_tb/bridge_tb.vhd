@@ -146,7 +146,9 @@ begin
 		reset <= '1';
 		wait for 5 * CLK_PERIOD;
 		reset <= '0';
-		wait for 2 * CLK_PERIOD;
+		-- Bridge cache uses a 513-cycle flush walker after reset to clear
+		-- the MLAB valid bits. Wait it out before exercising the cache.
+		wait for 520 * CLK_PERIOD;
 
 		write(l, string'("=== Scenario A: bus_rdy held HIGH (baLoc wiring) ==="));
 		writeline(output, l);

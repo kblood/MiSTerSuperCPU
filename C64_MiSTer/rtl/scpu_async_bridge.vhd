@@ -81,37 +81,40 @@ architecture rtl of scpu_async_bridge is
 	signal access_pulse : std_logic;
 
 	-- ZP + stack write-through cache. 512 bytes covering bank $00 addresses
-	-- $0000-$01FF — the hot zero page and the 6502 stack. Reads from this
-	-- range are served from cache_dout in 1 clk_cpu when CACHE_ACTIVE='1';
-	-- writes hit the bus normally AND update the cache (write-through).
+	-- $0000-$01FF — the hot zero page and the 6502 stack.
 	--
-	-- cache_valid tracks which bytes the CPU has written. Until a byte has
-	-- been observed, the mux must fall through to bus_di_in — otherwise the
-	-- cache would return $00 for unwritten KERNAL state and corrupt boot.
+	-- Structure mirrors cpu_cache.vhd's tag/valid pattern: data and valid
+	-- both live in MLAB (LUT-based distributed RAM) with combinational
+	-- reads. No M10K port-register, no 1-cycle BRAM latency, no read-
+	-- during-write protection — `no_rw_check` plus the synchronous write
+	-- process is sufficient.
 	--
-	-- Structure mirrors c64_ram64k.vhd:
-	--   - shared variable + := assignment lets Quartus pick the M10K
-	--     inference template. Using a signal with conditional read landed
-	--     us at "uninferred due to asynchronous read logic" → LUT-RAM
-	--     fallback that returned $AB on every ZP read on the first attempt.
-	--   - ramstyle "M10K, no_rw_check" disables the synthesised read-
-	--     during-write protection (the canonical pattern in this repo).
-	--   - cache_we_d1 / cache_din_d1 implement the 1-deep write-bypass that
-	--     covers the RAW hazard introduced by no_rw_check.
+	-- Invalidation uses a 512-cycle flush counter (NOT a bulk reset of
+	-- valid bits). Quartus cannot synthesise `cache_valid <= (others=>'0')`
+	-- as MLAB — it either falls back to LUT-RAM with broken read-during-
+	-- write semantics or refuses inference entirely. See cpu_cache.vhd
+	-- lines 25-26 + 340-342 for the same idiom: a walker that clears one
+	-- valid bit per cycle is MLAB-inferrable, a bulk reset is not.
+	-- Earlier attempts at single-port M10K (see project_bridge_cache_d4_2
+	-- _wedge.md) all wedged KERNAL with $AB on every ZP read because the
+	-- valid bits were left in undefined power-on state.
 	constant CACHE_BYTES : integer := 512;
-	type cache_mem_t is array (0 to CACHE_BYTES - 1) of std_logic_vector(7 downto 0);
-	shared variable cache_mem : cache_mem_t := (others => (others => '0'));
-	signal cache_valid      : std_logic_vector(0 to CACHE_BYTES - 1) := (others => '0');
+	type cache_data_t is array (0 to CACHE_BYTES - 1) of unsigned(7 downto 0);
+	signal cache_data       : cache_data_t;
+	signal cache_valid      : std_logic_vector(0 to CACHE_BYTES - 1);
 	signal cache_hit        : std_logic;
-	signal cache_dout       : unsigned(7 downto 0);
-	signal cache_dout_raw   : unsigned(7 downto 0) := (others => '0');
+	signal cache_dout       : unsigned(7 downto 0) := (others => '0');
 	signal cache_valid_dout : std_logic := '0';
 
-	signal cache_we_d1   : std_logic := '0';
-	signal cache_din_d1  : unsigned(7 downto 0) := (others => '0');
+	-- Flush walker. flush_active starts '1' (signal init) so the very first
+	-- 512 clk_cpu cycles after FPGA load sweep all valid bits to '0'. After
+	-- that the cache fills opportunistically on CPU writes.
+	signal flush_active : std_logic := '1';
+	signal flush_ctr    : unsigned(9 downto 0) := (others => '0');
 
 	attribute ramstyle : string;
-	attribute ramstyle of cache_mem : variable is "M10K, no_rw_check";
+	attribute ramstyle of cache_data  : signal is "MLAB, no_rw_check";
+	attribute ramstyle of cache_valid : signal is "MLAB, no_rw_check";
 
 begin
 	is_slow_access <= '1' when cpu_addr_hi_in = x"00" else '0';
@@ -130,44 +133,41 @@ begin
 
 	access_pulse <= (cpu_vpa_in and not cpu_vpa_d) or (cpu_vda_in and not cpu_vda_d);
 
-	-- Cache hit: bank $00 + addr < $0200. Combinational; the read uses a
-	-- registered cache_dout below to infer block RAM.
-	cache_hit <= '1' when cpu_addr_hi_in = x"00" and cpu_addr_in(15 downto 9) = "0000000" else '0';
+	-- Cache hit: bank $00 + addr < $0200, and the flush walker is done.
+	-- Combinational; reads happen on the same cycle from MLAB.
+	cache_hit <= '1' when cpu_addr_hi_in = x"00"
+	                   and cpu_addr_in(15 downto 9) = "0000000"
+	                   and flush_active = '0'
+	              else '0';
 
-	-- Cache write-through + read path. Wrapped in a generate so the entire
-	-- cache_mem array is absent from the netlist when CACHE_ACTIVE='0' —
-	-- otherwise Quartus would still infer the M10K because the writes are
-	-- live even when the read output is unselected.
+	-- Cache write process: synchronous. Reads (cache_dout / cache_valid_dout)
+	-- are combinational below, served from MLAB. Wrapping in a generate so
+	-- the cache disappears entirely from the netlist when CACHE_ACTIVE='0'.
 	cache_gen : if CACHE_ACTIVE = '1' generate
 		process(clk_cpu) begin
 			if rising_edge(clk_cpu) then
 				if reset = '1' then
-					cache_valid  <= (others => '0');
-					cache_we_d1  <= '0';
-				else
-					cache_we_d1 <= '0';
-					if access_pulse = '1' and cpu_we_in = '1' and cache_hit = '1' then
-						cache_mem(to_integer(cpu_addr_in(8 downto 0))) := std_logic_vector(cpu_do_in);
-						cache_valid(to_integer(cpu_addr_in(8 downto 0))) <= '1';
-						cache_we_d1  <= '1';
-						cache_din_d1 <= cpu_do_in;
+					flush_active <= '1';
+					flush_ctr    <= (others => '0');
+				elsif flush_active = '1' then
+					-- Walk one valid bit per cycle. flush_ctr(9) hits '1' after
+					-- 512 entries cleared (counter goes 0..511 then wraps to 512).
+					cache_valid(to_integer(flush_ctr(8 downto 0))) <= '0';
+					if flush_ctr(9) = '1' then
+						flush_active <= '0';
+					else
+						flush_ctr <= flush_ctr + 1;
 					end if;
+				elsif access_pulse = '1' and cpu_we_in = '1' and cache_hit = '1' then
+					cache_data(to_integer(cpu_addr_in(8 downto 0)))  <= cpu_do_in;
+					cache_valid(to_integer(cpu_addr_in(8 downto 0))) <= '1';
 				end if;
-				-- Unconditional registered reads at process tail — the
-				-- M10K inference template. Both cache_mem (M10K) and
-				-- cache_valid (FFs) sample the same idx on the same edge,
-				-- so cache_dout_raw and cache_valid_dout describe the
-				-- contents of cpu_addr_in @ this edge minus one cycle.
-				cache_dout_raw   <= unsigned(cache_mem(to_integer(cpu_addr_in(8 downto 0))));
-				cache_valid_dout <= cache_valid(to_integer(cpu_addr_in(8 downto 0)));
 			end if;
 		end process;
-	end generate;
 
-	-- 1-deep write-bypass. When the prior cycle wrote to the same address
-	-- whose contents are about to be returned, forward the captured data
-	-- rather than rely on the BRAM port committing in time.
-	cache_dout <= cache_din_d1 when cache_we_d1 = '1' else cache_dout_raw;
+		cache_dout       <= cache_data(to_integer(cpu_addr_in(8 downto 0)));
+		cache_valid_dout <= cache_valid(to_integer(cpu_addr_in(8 downto 0)));
+	end generate;
 
 	-- Slow-path RDY-stall handshake. Inert while BRIDGE_ACTIVE='0' because
 	-- the output mux below selects bus_rdy_in / bus_di_in directly; the

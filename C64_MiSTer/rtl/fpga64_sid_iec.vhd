@@ -2659,13 +2659,14 @@ port map (
 	dbg_state => open
 );
 
--- D4.2 attempt (2026-05-21): CACHE_ACTIVE='1' wedges KERNAL boot — every
--- ZP/stack read returns $AB on hardware regardless of cache_mem inference
--- (LUT-RAM, Kitrinx forwarding, and c64_ram64k-style M10K all produce the
--- same wedge). The GHDL bench passes the cache scenarios, so the failure
--- is hardware-specific — likely a timing or address-mux issue we can't see
--- in sim. Left at '0' until the cache architecture is rethought (probably
--- the same MLAB tag + parallel M10K banks pattern used in cpu_cache.vhd).
+-- D4.2 (2026-05-21): CACHE_ACTIVE='1' wedges KERNAL with $AB on every ZP
+-- read across FOUR different cache patterns: LUT-RAM fallback, Kitrinx
+-- forwarding, c64_ram64k M10K shared-variable, and now MLAB altdpram +
+-- 513-cycle flush walker. GHDL bench passes all four; hardware wedges all
+-- four. Bug class is hardware-specific in a way that doesn't show in sim
+-- — likely cpu_di mux coherency between cache_dout and bus_di_in paths,
+-- or the flush walker leaving the MLAB in a different state than GHDL
+-- expects. See project_bridge_cache_d4_2_wedge.md.
 scpu_async_bridge_inst: entity work.scpu_async_bridge
 generic map (
 	BRIDGE_ACTIVE => '0',
