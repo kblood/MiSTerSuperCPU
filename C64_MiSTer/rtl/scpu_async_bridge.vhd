@@ -84,11 +84,17 @@ architecture rtl of scpu_async_bridge is
 	-- $0000-$01FF — the hot zero page and the 6502 stack. Reads from this
 	-- range are served from cache_dout in 1 clk_cpu when CACHE_ACTIVE='1';
 	-- writes hit the bus normally AND update the cache (write-through).
+	--
+	-- cache_valid tracks which bytes the CPU has written. Until a byte has
+	-- been observed, the mux must fall through to bus_di_in — otherwise the
+	-- cache would return $00 for unwritten KERNAL state and corrupt boot.
 	constant CACHE_BYTES : integer := 512;
 	type cache_mem_t is array (0 to CACHE_BYTES - 1) of unsigned(7 downto 0);
-	signal cache_mem  : cache_mem_t := (others => (others => '0'));
-	signal cache_hit  : std_logic;
-	signal cache_dout : unsigned(7 downto 0) := (others => '0');
+	signal cache_mem        : cache_mem_t := (others => (others => '0'));
+	signal cache_valid      : std_logic_vector(0 to CACHE_BYTES - 1) := (others => '0');
+	signal cache_hit        : std_logic;
+	signal cache_dout       : unsigned(7 downto 0) := (others => '0');
+	signal cache_valid_dout : std_logic := '0';
 
 begin
 	is_slow_access <= '1' when cpu_addr_hi_in = x"00" else '0';
@@ -118,10 +124,14 @@ begin
 	cache_gen : if CACHE_ACTIVE = '1' generate
 		process(clk_cpu) begin
 			if rising_edge(clk_cpu) then
-				if access_pulse = '1' and cpu_we_in = '1' and cache_hit = '1' then
-					cache_mem(to_integer(cpu_addr_in(8 downto 0))) <= cpu_do_in;
+				if reset = '1' then
+					cache_valid <= (others => '0');
+				elsif access_pulse = '1' and cpu_we_in = '1' and cache_hit = '1' then
+					cache_mem(to_integer(cpu_addr_in(8 downto 0)))   <= cpu_do_in;
+					cache_valid(to_integer(cpu_addr_in(8 downto 0))) <= '1';
 				end if;
-				cache_dout <= cache_mem(to_integer(cpu_addr_in(8 downto 0)));
+				cache_dout       <= cache_mem(to_integer(cpu_addr_in(8 downto 0)));
+				cache_valid_dout <= cache_valid(to_integer(cpu_addr_in(8 downto 0)));
 			end if;
 		end process;
 	end generate;
@@ -171,7 +181,7 @@ begin
 	-- mux defaults to direct passthrough so the netlist matches the un-bridged
 	-- build bit-for-bit. CACHE_ACTIVE='1' lets the cache win for ZP+stack
 	-- reads, overriding whichever bridge path is selected.
-	cpu_di_out <= cache_dout      when CACHE_ACTIVE  = '1' and cache_hit = '1' else
+	cpu_di_out <= cache_dout      when CACHE_ACTIVE  = '1' and cache_hit = '1' and cache_valid_dout = '1' else
 	              cpu_di_latched  when BRIDGE_ACTIVE = '1' else
 	              bus_di_in;
 	cpu_rdy_out <= cpu_rdy_latched when BRIDGE_ACTIVE = '1' else bus_rdy_in;
