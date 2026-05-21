@@ -1,8 +1,63 @@
-# Session handoff — 2026-05-21 (stabilisation + async pivot decision)
+# Session handoff — 2026-05-21 (async-cpu-bridge Phases A/B/C done)
 
-## Status: Phase 6b REVERTED. Branch stable at Phase 6a baseline. Pivoting to async CPU bridge.
+## Status: Phases A/B/C complete. Branch `async-cpu-bridge` carries the inert scaffolding. Phase D is the next perturbation step.
 
-**Current branch:** `step6-rdy-handshake`
+**Current branch:** `async-cpu-bridge` (tip `f7ba6d7`)
+**RBF md5 (B + C):** `88963b9e` — bit-identical to vanilla-cpu-swap baseline
+**Saved on remote:** step6-rdy-handshake / vanilla-cpu-swap / master / async-cpu-bridge all pushed
+
+### Phase A — Save point. DONE
+Merged step6-rdy-handshake (post-Phase-6b-revert) into vanilla-cpu-swap (`e7a9afb`),
+then into master (`bb7f3e9`). Branch `async-cpu-bridge` forked from
+vanilla-cpu-swap. All four branches pushed.
+
+### Phase B — clk_cpu wire alias. DONE (commit `708a56f`)
+One-line addition in c64.sv: `wire clk_cpu = clk_sys;`. Names the future CPU
+clock domain without any electrical change. Quartus collapses the alias →
+RBF md5 88963b9e (= baseline). Phase B PASS confirms the synthesis pipeline
+treats the named hook as a no-op.
+
+### Phase C — P65C816 retargeted onto clk_cpu. DONE (commit `f7ba6d7`)
+Added `clk_cpu` input port to `fpga64_sid_iec.vhd` entity, wired from c64.sv
+`fpga64` instantiation, and switched `cpu_65c816_inst.clk` from `clk32` to
+`clk_cpu`. Still 88963b9e — the synthesizer recognises both nets are
+electrically the same. The T65 6510 and the rest of the bus arbiter stay
+on `clk32`; only the 65C816 has moved. This is the clean separation point
+the future CDC bridge will hang off.
+
+### Phase D — CDC bridge. NOT STARTED
+Real perturbation. When `clk_cpu = clk_sys` the bridge becomes pipeline
+latency rather than true CDC, but it WILL slow per-access throughput (output
+register + req CDC + bus access + ack CDC + input latch ≈ 5-7 clk_sys per
+access on a same-clock build). Doom hashes will change. Open design
+questions before starting:
+
+1. **Handshake protocol.** Pulse-based req/ack (one-shot per access) vs
+   level-based valid/ready (held until acknowledged). Pulse is simpler;
+   level is closer to AXI-stream pattern Gemini hinted at.
+2. **Where the synchronizer FFs sit.** Adding them at the entity boundary
+   (just outside cpu_65c816_inst) is the cleanest hookpoint. The bus mux
+   downstream stays unchanged.
+3. **RDY-stall vs enable-gate.** Current CPU is `enable`-gated, not RDY
+   stalled. The Gemini model uses RDY. Switching costs an extra mode
+   bit per slot; staying with enable is faster to validate.
+4. **Same-clock CDC FF count.** When `clk_cpu = clk_sys`, the 2-FF sync
+   chain is technically unnecessary (no metastability between same-edge
+   FFs). Building it anyway preserves the timing closure margin that
+   Phase E (different clk_cpu) will need.
+
+### Phase E — Bump clk_cpu. NOT STARTED
+Requires regenerating the PLL with a 4th output. Frequency options:
+40 MHz (2× clk_sys, no SDRAM constraint conflict), 64 MHz (= clk64,
+already in PLL), 100 MHz native target.
+
+### Phase F — Full regression. NOT STARTED
+KERNAL, Lorenz t65+scpu, Doom hashes vs Step 5a, Wolf3D Level 1, REU DMA.
+
+---
+
+(historical context below — superseded by the Phase A/B/C section above)
+
 **Stabilising commit:** `8377734` — `Revert "feat: Step 6 Phase 6b ..."`
 **Resulting RBF md5:** 88963b9e (= Phase 6a baseline, byte-identical to proven-working build)
 **Merge target:** `vanilla-cpu-swap` → `master` → fork `async-cpu-bridge`
