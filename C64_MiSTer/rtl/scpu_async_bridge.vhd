@@ -5,12 +5,11 @@
 -- decoder so neither the CPU nor the arbiter has to know about clock
 -- domain crossings.
 --
--- Current state: passthrough plus internal address-class decode. The
--- is_slow_access signal classifies bank $00 (C64-compatible space) as
--- needing the slow-path CDC handshake; bank $01+ (SuperRAM / SDRAM) as
--- fast-path. The signal is exposed via the dbg_is_slow output so it
--- survives synthesis. The slow/fast paths themselves are not yet
--- differentiated — both relay unchanged through to the bus.
+-- Current state: passthrough + dead handshake scaffolding. The BRIDGE_ACTIVE
+-- constant is '0', so the cpu_di_out / cpu_rdy_out muxes select the direct
+-- bus signals and the synthesiser eliminates the unused FF chains and state
+-- machine. Flipping BRIDGE_ACTIVE to '1' wakes up the slow-path handshake
+-- (which today still resolves in one clk_cpu because clk_cpu = clk_sys).
 
 library IEEE;
 use IEEE.std_logic_1164.all;
@@ -48,22 +47,87 @@ port (
 end entity;
 
 architecture rtl of scpu_async_bridge is
+	-- Default '0' (passthrough). Later phases promote this to a generic
+	-- driven by an OSD switch.
+	constant BRIDGE_ACTIVE : std_logic := '0';
+
 	signal is_slow_access : std_logic;
+
+	-- clk_sys → clk_cpu sync chains. Two-FF each, sampled on clk_cpu. With
+	-- clk_cpu = clk_sys today they collapse to a 2-cycle pipeline; when
+	-- clk_cpu becomes a real separate clock they prevent metastability.
+	signal bus_rdy_sync1   : std_logic := '1';
+	signal bus_rdy_sync2   : std_logic := '1';
+	signal bus_di_sync1    : unsigned(7 downto 0) := (others => '0');
+	signal bus_di_sync2    : unsigned(7 downto 0) := (others => '0');
+
+	-- Handshake state machine (clk_cpu domain). IDLE = ready to accept the
+	-- CPU's next bus access; WAIT_ACK = a slow-path access is in flight and
+	-- the CPU's RDY is held low until the synced ack returns.
+	type bridge_state_t is (IDLE, WAIT_ACK);
+	signal bridge_state    : bridge_state_t := IDLE;
+	signal cpu_di_latched  : unsigned(7 downto 0) := (others => '0');
+	signal cpu_rdy_latched : std_logic := '1';
+
 begin
-	-- Bank $00 = C64-compatible space. Reads cross clk_sys for RAM/ROM/I/O
-	-- arbitration. Bank $01+ = SuperRAM in SDRAM, reachable directly through
-	-- the data_valid handshake plumbing. The classification is the first
-	-- gate the eventual RDY-stall state machine will look at.
 	is_slow_access <= '1' when cpu_addr_hi_in = x"00" else '0';
 
+	-- CDC sync from clk_sys signals into clk_cpu domain.
+	process(clk_cpu) begin
+		if rising_edge(clk_cpu) then
+			bus_rdy_sync1 <= bus_rdy_in;
+			bus_rdy_sync2 <= bus_rdy_sync1;
+			bus_di_sync1  <= bus_di_in;
+			bus_di_sync2  <= bus_di_sync1;
+		end if;
+	end process;
+
+	-- Slow-path RDY-stall handshake. Inert while BRIDGE_ACTIVE='0' because
+	-- the output mux below selects bus_rdy_in / bus_di_in directly; the
+	-- state and latches are then dead code for the synthesiser.
+	process(clk_cpu) begin
+		if rising_edge(clk_cpu) then
+			if reset = '1' then
+				bridge_state    <= IDLE;
+				cpu_rdy_latched <= '1';
+				cpu_di_latched  <= (others => '0');
+			else
+				case bridge_state is
+					when IDLE =>
+						cpu_rdy_latched <= '1';
+						if (cpu_vpa_in = '1' or cpu_vda_in = '1') and is_slow_access = '1' then
+							-- Real bus request on the slow path: stall CPU,
+							-- wait for ack from the sys-side arbiter.
+							cpu_rdy_latched <= '0';
+							bridge_state    <= WAIT_ACK;
+						end if;
+					when WAIT_ACK =>
+						if bus_rdy_sync2 = '1' then
+							cpu_di_latched  <= bus_di_sync2;
+							cpu_rdy_latched <= '1';
+							bridge_state    <= IDLE;
+						else
+							cpu_rdy_latched <= '0';
+						end if;
+				end case;
+			end if;
+		end if;
+	end process;
+
+	-- Bus side: always passthrough (the bridge does not buffer CPU outputs
+	-- on the way out today; that comes in a later phase if needed).
 	bus_addr_out    <= cpu_addr_in;
 	bus_addr_hi_out <= cpu_addr_hi_in;
 	bus_do_out      <= cpu_do_in;
 	bus_we_out      <= cpu_we_in;
 	bus_vpa_out     <= cpu_vpa_in;
 	bus_vda_out     <= cpu_vda_in;
-	cpu_di_out      <= bus_di_in;
-	cpu_rdy_out     <= bus_rdy_in;
+
+	-- CPU side: when active, the handshake supplies di/rdy; when inert, the
+	-- mux defaults to direct passthrough so the netlist matches the un-bridged
+	-- build bit-for-bit.
+	cpu_di_out  <= cpu_di_latched  when BRIDGE_ACTIVE = '1' else bus_di_in;
+	cpu_rdy_out <= cpu_rdy_latched when BRIDGE_ACTIVE = '1' else bus_rdy_in;
 
 	dbg_is_slow <= is_slow_access;
 end architecture;
