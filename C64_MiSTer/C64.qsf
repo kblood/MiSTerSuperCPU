@@ -14,6 +14,7 @@ set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_RO
 set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
 
 set_global_assignment -name LAST_QUARTUS_VERSION "17.0.2 Lite Edition"
+set_global_assignment -name SDC_FILE C64.sdc
 
 set_global_assignment -name GENERATE_RBF_FILE ON
 set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
@@ -281,6 +282,7 @@ set_global_assignment -name VHDL_FILE rtl/cpu_65c816.vhd
 set_global_assignment -name VERILOG_FILE rtl/mos6526.v
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/rtcF83.sv
 set_global_assignment -name VERILOG_FILE rtl/sdram.v
+set_global_assignment -name VERILOG_FILE rtl/sdram_pm.v
 set_global_assignment -name VHDL_FILE rtl/dprom.vhd
 set_global_assignment -name VHDL_FILE rtl/spram.vhd
 set_global_assignment -name VERILOG_FILE rtl/cartridge.v

@@ -1,86 +1,96 @@
-# Session handoff — 2026-05-19 (afternoon)
+# Session handoff — 2026-05-21 (stabilisation + async pivot decision)
 
-## Major milestone landed: v356 fully validated
+## Status: Phase 6b REVERTED. Branch stable at Phase 6a baseline. Pivoting to async CPU bridge.
 
-**RBF MD5: `19839ee723662d8fb439208dd0ca6e7b`** (3,837,164 bytes)
-**Branch: `vanilla-cpu-swap`** — see `git log --oneline | head -8`
+**Current branch:** `step6-rdy-handshake`
+**Stabilising commit:** `8377734` — `Revert "feat: Step 6 Phase 6b ..."`
+**Resulting RBF md5:** 88963b9e (= Phase 6a baseline, byte-identical to proven-working build)
+**Merge target:** `vanilla-cpu-swap` → `master` → fork `async-cpu-bridge`
 
-### What works on v356
+### Why the revert
 
-| Title    | Status     | Verified by                  | Reproducer                      |
-|----------|------------|------------------------------|---------------------------------|
-| Wolf3D   | PLAYABLE   | E1L1 starting room visible   | menu break via SPACE at HS→demo |
-| Doom     | PLAYABLE   | E1M1 3D corridor + HUD       | `tools/doom_v356_PLAY.py`       |
-| Lorenz t65 | PASS    | runs 32m through SCPU regtest | `tools/lorenz_run.py t65 --mins 32` |
-| Lorenz scpu | PASS   | `orazx - ok` at 32m cap       | `tools/lorenz_run.py scpu --mins 32` |
+Seven consecutive attempts at a Phase 6b dv_sync consumer (iso2-v3 through
+iso7) all wedge on cold boot with PC=$0005, regardless of whether `cpu_cyc`
+is gated. iso8 (literal Phase-6a-equivalent reconstruction) built bit-identical
+to 88963b9e — confirming the bug class is the dv_sync CONSUMER, not the bus
+arbiter, not the cpu_cyc gate. Phase 6b is suspended and the broken commit
+(e42ee1e) is reverted. Step 5a alt-slot work (3455df7) and Phase 6a signal
+plumbing (8434077) are KEPT — both work and Step 5a gives ~1.5× Doom.
 
-### Critical new tooling
+### Decision: pivot to full async CPU domain
 
-- **`tools/mhold.py`** — uinput keyboard that HOLDS a key for N seconds.
-  Required for Doom because HW Doom runs at ~3 fps internal; mtype.py's
-  40 ms tap is shorter than one Doom frame.
-- **`tools/doom_v356_PLAY.py`** — canonical 4-step Doom recipe.
-- **`tools/jtype.py` / `tools/joyfire.py`** — virtual gamepad via uinput
-  (spoofs VID/PID 0810/e501 to pick up the existing C64 map). Doom didn't
-  end up needing this, but it's available for cores that genuinely require
-  joystick input.
+After comparing the Gemini 3.5 Flash research roadmap (`docs/Gemini35FlashResearch.md`
++ `docs/gemini_roadmap_vs_current.md`) to current state, the next architectural
+step is to move the P65C816 into its own clock domain (`clk_cpu`) with a
+CDC bridge, matching the real CMD SuperCPU model. This is what the project's
+top-level goal ("20MHz native mode") actually requires and likely sidesteps
+the iso2-iso7 wedge class entirely by forcing explicit CDC synchronization
+instead of hidden sequential paths inside a single clock domain.
 
-### Memory updates (top of MEMORY.md)
+Phased plan, each phase = one build + defined exit test:
 
-1. **v356 LORENZ REGRESSION PASS** — `project_v356_lorenz_pass.md`
-2. **DOOM PLAYABLE** — `project_doom_v356_PLAYABLE.md`
-3. **WOLF3D PLAYABLE FROM MENU** — `project_wolf3d_v356_RUNS.md`
-4. v356 IRQ wedge fix — `project_wolf3d_v356_irq_wedge_fixed.md`
+- **A — Save point.** Current step6-rdy-handshake (post-revert) merged into
+  vanilla-cpu-swap → master. Fork `async-cpu-bridge` branch from there.
+- **B — Add `clk_cpu` PLL output unused.** Start at 32 MHz (= clk_sys),
+  electrically inert. Verify Doom hashes unchanged.
+- **C — P65C816 moved into clk_cpu domain.** clk_cpu still = clk_sys, no
+  CDC yet. Should behave identically.
+- **D — Insert CDC bridge.** Double-buffered sync on cpuAddr/cpuDo/cpuWe
+  (CPU→sys) and cpuDi/ack (sys→CPU). RDY/enable pulled low until ack
+  returns. Still 32 MHz — measuring overhead only.
+- **E — Bump clk_cpu to 64 MHz, then 20 MHz native target.** Payoff visible.
+- **F — Full regression.** KERNAL, Lorenz t65+scpu, Doom hashes vs Step 5a,
+  Wolf3D Level 1, REU DMA.
 
-### Commits this session (top-down)
+### What's preserved on step6-rdy-handshake (and now master)
 
-- `faf5c4f` — Lorenz regression PASS both modes
-- `61bdafa` — Doom v356 reaches 3D gameplay (mhold.py recipe)
-- `5b63445` — Wolf3D level1 movement test results
-- `3aa3bdf` — Wolf3D v356 PLAYABLE (full menu path)
-- `1e01f23` — Wolf3D attract cycle proof
-- `a953952` — Wolf3D v356 RUNS — extended monitor
-- `db149d6` — v356 RTL fix: universal IRQ ack via $FF00 stub
+| Commit  | What                                                  | Status                    |
+|---------|-------------------------------------------------------|---------------------------|
+| 3455df7 | Step 5a — registered `alt_fire_r`                    | ~1.5× Doom speedup, keep  |
+| 0cee649 | Step 2 — SDRAM-busy backpressure scaffolding         | used by Step 5a, keep     |
+| a65b3f7 | Step 1 — sdram_ready 2-FF synchroniser plumbing      | foundation, keep          |
+| 9f9e2c2 | Revert sdram_pm.v back to Build B                    | Build C abandonment, keep |
+| 793fa12 | C64.sdc filter fix (sdram_pm not sdram)              | required for fitter, keep |
+| 8434077 | Phase 6a — data_valid signal plumbing (no consumer)  | inert plumbing, keep      |
+| 8377734 | Revert Phase 6b                                       | NEW — unblocks baseline   |
 
-## Candidate next tasks (in rough priority order)
+All vanilla-cpu-swap fixes (v341 through v356, Doom/Wolf3D PLAYABLE,
+$F8+ carve-out, IRQ stub etc.) are intact.
 
-1. **Implement missing SCPU registers.** Per
-   `project_scpu_register_implementation_status.md`, $D072/$D073
-   (system 1 MHz), $D074-$D077 (optim mode), $D0BC (detect), $D07E/$D07F
-   (gating), $D0B4 (optim status) are stubbed. Wolf3D may poll one of
-   these during its second wedge; Doom doesn't seem to need them.
+### v356 milestones (still valid)
 
-2. **Investigate Doom's 3 fps render rate.** UART shows main loop
-   spinning $2A:$55A0–$55D2 at ~3 frames/s. Likely causes: IRQ overhead
-   from $FF00 stub, slow SuperRAM access for JIT recompiler, unmapped
-   ROM-bank stalls. Could improve to 6-10 fps with targeted RTL work.
+| Title       | Status   | Verified              | Reproducer                          |
+|-------------|----------|-----------------------|-------------------------------------|
+| Wolf3D      | PLAYABLE | E1L1 starting room    | menu break via SPACE at HS→demo     |
+| Doom        | PLAYABLE | E1M1 3D corridor+HUD  | `tools/doom_v356_PLAY.py`           |
+| Lorenz t65  | PASS     | 32m SCPU regtest      | `tools/lorenz_run.py t65 --mins 32` |
+| Lorenz scpu | PASS     | `orazx - ok` at 32m   | `tools/lorenz_run.py scpu --mins 32`|
 
-3. **Wolf3D "Working..." wedge** (after setup screen). Memory notes the
-   Bliss-Box second wedge case-study is now superseded by Turbo Off →
-   Smart 4x being the actual cause. With v356, Wolf3D reaches L1 starting
-   room but is stuck — keyboard movement keys don't advance the player.
-   Joystick port 2 may be required for in-game movement.
+### Open architectural questions for the async-cpu-bridge branch
 
-4. **Doom in-game inputs.** Tested 2026-05-19: keyboard (all arrows +
-   WASD/IJKL/CTRL/SPACE/ALT/TAB/ESC up to 10 s sustained holds) AND
-   virtual USB gamepad at js0/joyA/port-2 (real device unbound) — NO
-   view change. View stays static; player does not move/turn/shoot.
-   Hash flips are face-icon animation only. Likely DEMO playback or
-   port-1 vs port-2 mapping. See `project_doom_v356_ingame_unresponsive.md`
-   for next-probe ideas.
+1. **VIC-II handling.** Real CMD SuperCPU keeps VIC at 1 MHz on the C64
+   motherboard; SuperCPU runs free. Likely the same architecture — VIC
+   stays in clk_sys, async CPU bridges only when slow-side data is needed.
+   Subtleties: VIC's IRQ to CPU crosses domains; screen RAM in SDRAM
+   means VIC reads compete with CPU reads; refresh.
+2. **ZP+stack BRAM cache (Gemini Phase 3).** Optional but very attractive
+   — would let hot-path reads bypass the CDC bridge entirely. Defer until
+   Phase D works, then add in Phase E or later.
+3. **REU DMA path.** Currently `iof_fall_pulse` is falling-edge in clk_sys.
+   In async model, the CPU's STA $DFxx write needs to cross CDC before
+   reu.v sees the cs pulse — adds latency that may or may not break
+   existing REU timing tests.
+4. **Resource budget.** Currently 64% ALMs. Async bridge adds CDC FFs and
+   new arbiter logic. Should fit but worth monitoring.
 
-5. **U64 differential** — Ultimate 64 hardware is available at 192.168.50.94
-   for cross-validation if any new bug surfaces.
+### Files added this session
 
-## State of the dev MiSTer
+- `docs/gemini_roadmap_vs_current.md` — point-by-point evaluation of the
+  Gemini roadmap vs current implementation, with three options analysis
+  (cheap SDC fix / medium cache / real async bridge).
 
-- **CORENAME**: `C64_doomturbo` (last loaded was the doom MGL)
-- **RBF**: v356 at `/media/fat/_Test/C64.rbf` (md5 `19839ee...`)
-- **Bliss-Box / usb gamepad / 8BitDo keyboard**: all rebinded after
-  earlier USB-unbind tests for the joystick rabbit hole.
-- **C64.cfg**: standard turbo config; `C64_doomturbo.cfg` mirrored for
-  the Doom MGL's setname.
+### Pre-existing dirty files left in working tree (intentional, per user)
 
-## Background processes (none active)
-
-No long-running scripts on either side as of commit `faf5c4f`.
+`.gitignore`, `C64_MiSTer/C64.qpf`, `C64_MiSTer/C64.qsf`, `C64_MiSTer/c64.sv`,
+`build_c64.ps1`, `tools/doom_v342_test.py`, lorenz_run screenshots. Mostly
+line-ending / build-artifact noise; user will triage separately.

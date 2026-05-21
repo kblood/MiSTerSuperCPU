@@ -177,6 +177,19 @@ port(
 	supercpu_en   : in  std_logic := '0';
 	supercpu_bank : out std_logic_vector(7 downto 0);   -- bank byte (A23-A16); $00 when 6510 active
 	emu_mode_816  : out std_logic;                      -- '1' = emulation mode (always '1' when 6510 active)
+	-- SDRAM backpressure (Layer 2 prep, 2026-05-20).
+	-- sdram_ready='1' when the SDRAM controller is idle and safe to start
+	-- a new access. Synchronised to clk32 inside this entity. Step 1 only
+	-- wires + synchronises this; Step 2 will gate cpu_cyc on it for the
+	-- alt-slot fast-path. Default '1' so the port stays compile-compatible
+	-- with any unwired instantiation.
+	sdram_ready   : in  std_logic := '1';
+	-- Step 6 Phase 6a (2026-05-20): "dout_r is fresh" handshake from
+	-- sdram_pm. Level signal — set post-sample edge, cleared at next
+	-- ce-edge. Phase 6b consumer replaces the cpu_cyc_s fixed shift
+	-- with a wait on sdram_data_valid_sync. Default '1' keeps the port
+	-- compile-compatible with non-handshake-aware instantiations.
+	sdram_data_valid : in std_logic := '1';
 	-- Phase D: external SDRAM mux gates the SuperRAM SDRAM cycle on
 	-- cpu_has_bus so VIC-II reads (during VIC slots) never resolve to a
 	-- stale supercpu_bank value left over from the prior CPU instruction.
@@ -713,6 +726,54 @@ signal cs_color     : std_logic;
 signal cs_cia1      : std_logic;
 signal cs_cia2      : std_logic;
 signal cs_ram       : std_logic;
+-- Layer 2 backpressure (Step 1, 2026-05-20):
+-- 2-FF synchroniser bringing sdram_ready (clk64-domain output of sdram_pm)
+-- into the clk32 domain. The sync chain is kept for Step 5 (Build C
+-- revival) where the actual ready edge timing matters. Step 2 below
+-- uses a *local* counter (cycle-accurate, no sync latency) for backpressure.
+signal sdram_ready_sync : std_logic_vector(1 downto 0) := "11";
+attribute preserve : boolean;
+attribute preserve of sdram_ready_sync : signal is true;
+
+-- Step 6 Phase 6a (2026-05-20): single-flop sync of sdram_data_valid into
+-- the clk32 domain. data_valid is a level signal that stays high for
+-- several clk64 between sample-edge and next ce-edge, so single-flop is
+-- metastability-safe. `preserve` prevents Quartus from optimising the
+-- signal away while the Phase 6b consumer is being built.
+signal sdram_data_valid_sync : std_logic := '1';
+attribute preserve of sdram_data_valid_sync : signal is true;
+
+-- Option C Mitigation A — SCPU SuperRAM alt-slot fast-path (Step 2, 2026-05-20).
+-- scpu_fast_path is '1' when the SCPU CPU core is executing in a SuperRAM
+-- bank (≠ $00) and the current access does not hit I/O ($D000-$DFFF) and
+-- no DMA is active. NOTE: the alt-slot consumer of this signal (CYCLE_CPU2/
+-- 6/A/E + scpu_fast_path) was bench-removed at Step 2 commit because empirically
+-- folding it into cpu_cyc wedges Doom even with the SDRAM-busy gate that
+-- static analysis says should block every fire on Build B. The signal is
+-- driven (kept for Step 5 revival) but currently has no consumer — Quartus
+-- will dead-strip it. See cpu_cyc assignment below + docs/plan_supercpu_speedup_stepped.md.
+signal scpu_fast_path : std_logic;
+
+-- Local counter that predicts SDRAM busy time. Starts at 3 (= 4 clk32 = 8
+-- clk64) when a cpu_cyc fires on a cs_ram=1 access, ticks down on each
+-- clk32 until it reaches 0. Any cpu_cyc fire is blocked while sdram_busy='1'.
+-- For Build B's baseline 8-clk64 SDRAM cycle this matches today's cadence
+-- exactly: CPU0→CPU4 spacing of 4 clk32 leaves the counter at 0 by CPU4,
+-- so existing terms are not blocked. For Build C HIT path (3 clk64) this
+-- can be tightened in Step 5.
+signal sdram_busy_cnt : unsigned(2 downto 0) := (others => '0');
+signal sdram_busy     : std_logic;
+
+-- Step 5 trial (2026-05-20, side branch step5-altslot-registered):
+-- Registered alt-slot fire signal — recovery from the Step 2 alt-slot wedge.
+-- Latched at CPU1/5/9/D under busy='0' + scpu_fast_path + cs_ram, then ORed
+-- into cpu_cyc combinationally. Goal: keep cpu_cyc → ramCE → cart_ce hazard-
+-- free by feeding alt-slot through a register output (no LUT cluster shared
+-- with the main combinational gate). On Build B (counter=3, 4-clk32 SDRAM
+-- cycle) sdram_busy=1 at CPU1 so alt_fire_r latches 0 → no alt fire → bit-
+-- identical behaviour to Step 2 / bisect-1. On Build C HIT (counter=1)
+-- alt_fire_r latches 1 → CPU2 fires next clk32 → 8 MHz cadence.
+signal alt_fire_r : std_logic := '0';
 signal cpuWe        : std_logic;
 signal cpuWe_pre    : std_logic;
 signal cpuAddr      : unsigned(15 downto 0);
@@ -2607,15 +2668,80 @@ ramDout <= cpuDo;
 ramAddr <= systemAddr;
 ramWE   <= systemWe when sysCycle >= CYCLE_CPU0 else '0';
 ramCE   <= cs_ram when sysCycle = CYCLE_VIC0 or cpu_cyc = '1' else '0';
-cpu_cyc <= '1' when 
+
+-- Step 2 (Mitigation A, 2026-05-20) combinational helpers.
+-- sdram_busy: asserted while the local predictor counter is non-zero.
+-- scpu_fast_path: asserted when SCPU is executing in a SuperRAM bank
+-- (≠ $00), not hitting I/O, and no DMA active. Alt-slot CPU enables
+-- (CPU2/6/A/E) are admitted only on this path; main-slot terms below
+-- are unchanged in semantics — they're still gated on cs_ram which
+-- becomes '1' for bank ≠ $00 via scpu_long_access in fpga64_buslogic.
+sdram_busy     <= '1' when sdram_busy_cnt /= "000" else '0';
+scpu_fast_path <= '1' when supercpu_en = '1'
+                       and addr_hi_816 /= x"00"
+                       and cs_io = '0'
+                       and dma_active = '0' else '0';
+
+-- Step 2 (2026-05-20): busy-counter backpressure infrastructure.
+-- Main-slot terms gated on sdram_busy='0'. With Build B's 8-clk64 SDRAM
+-- cycle, the counter is 0 at every CPU0/4/8/C boundary, so this gate is
+-- a no-op for today's cadence (verified PASS, 6/6 Doom hashes vs v356).
+-- The alt-slot fast-path (CPU2/6/A/E + scpu_fast_path) is INTENTIONALLY
+-- omitted at this step: empirically, simply adding the alt-slot term to
+-- cpu_cyc (with either OUTER or INNER busy gate) wedges Doom even
+-- though static analysis shows the gate should block every fire on
+-- Build B. Suspect: synthesis-level hazard on cpu_cyc → ramCE → cart_ce
+-- propagation when alt-slot inputs are folded into the same LUT. To be
+-- re-investigated together with Step 5 (Build C revival), where the
+-- alt-slot becomes actually useful (cycle=3 clk64, busy_cnt tighter).
+cpu_cyc <= '1' when (sdram_busy = '0' and (
 				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' ) or
-				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1')) else '0';
+				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1'))
+			)) or alt_fire_r = '1' else '0';
 				
 process(clk32)
 begin
 	if rising_edge(clk32) then
+		-- Layer 2 sync (Step 1, 2026-05-20): bring sdram_ready into clk32.
+		-- 2-FF chain. Consumer wired in Step 2.
+		sdram_ready_sync <= sdram_ready_sync(0) & sdram_ready;
+
+		-- Step 6 Phase 6a (2026-05-20): single-flop sync of sdram_data_valid.
+		-- Consumer (RDY-handshake gate replacing cpu_cyc_s) lands in Phase 6b.
+		sdram_data_valid_sync <= sdram_data_valid;
+
+		-- Step 2 (Mitigation A, 2026-05-20): local SDRAM-busy predictor.
+		-- Reset to 3 on any cpu_cyc fire that drives an SDRAM transaction
+		-- (cs_ram = '1' covers bank-$00 RAM AND SuperRAM via the
+		-- scpu_long_access OR in fpga64_buslogic.vhd:551). Decrement one
+		-- per clk32 down to 0. Build B baseline SDRAM cycle = 8 clk64 =
+		-- 4 clk32 → counter is 0 by the next main slot (CPU0→CPU4 is 4
+		-- clk32), preserving today's cadence. Alt-slot CPU2 (2 clk32
+		-- later) sees counter ≠ 0 with Build B → blocked. Counter
+		-- decrement length will be tightened in Step 5 once Build C's
+		-- 3-clk64 HIT path is back.
+		if cpu_cyc = '1' and cs_ram = '1' then
+			sdram_busy_cnt <= "011";
+		elsif sdram_busy_cnt /= "000" then
+			sdram_busy_cnt <= sdram_busy_cnt - 1;
+		end if;
+
+		-- Step 5 trial: latch alt-slot fire decision one clk32 ahead of
+		-- the alt slot itself (at CPU1/5/9/D). cpu_cyc then sees alt-slot
+		-- via a clean register output rather than a combinational LUT
+		-- cluster, avoiding the Step 2 wedge.
+		if (sysCycle = CYCLE_CPU1 or sysCycle = CYCLE_CPU5
+		    or sysCycle = CYCLE_CPU9 or sysCycle = CYCLE_CPUD)
+		   and scpu_fast_path = '1'
+		   and cs_ram = '1'
+		   and sdram_busy = '0' then
+			alt_fire_r <= '1';
+		else
+			alt_fire_r <= '0';
+		end if;
+
 		cpu_cyc_s <= cpu_cyc_s(0) & cpu_cyc;
 		enableCpu <= cpu_cyc_s(1);
 		io_enable <= io_enable and not enableCpu;

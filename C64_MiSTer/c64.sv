@@ -1010,7 +1010,13 @@ end
 assign SDRAM_CKE  = 1;
 
 wire [7:0] sdram_data;
-sdram sdram
+wire sdram_ready;  // Layer 1 page-mode controller — ready output unused
+                   // until Layer 2 bus-arbiter backpressure lands.
+// Step 6 Phase 6a (2026-05-20): "dout_r is fresh" handshake from sdram_pm.
+// Wired through to fpga64_sid_iec for the future RDY-handshake gate that
+// replaces the busy_counter + cpu_cyc_s fixed timing.
+wire sdram_data_valid;
+sdram_pm sdram
 (
 	.sd_addr(SDRAM_A),
 	.sd_data(SDRAM_DQ),
@@ -1036,7 +1042,9 @@ sdram sdram
 	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : ext_cycle ? reu_ram_ce   : cart_ce         ),
 	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : ext_cycle ? reu_ram_we   : cart_we         ),
 	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : ext_cycle ? reu_ram_dout : cart_wrdata     ),
-	.dout( sdram_data )
+	.dout( sdram_data ),
+	.ready( sdram_ready ),
+	.data_valid( sdram_data_valid )
 );
 
 // Phase D SuperRAM address mux. Combinational so the SCPU CPU cycle's address
@@ -1895,6 +1903,12 @@ fpga64_sid_iec fpga64
 	.supercpu_bank(supercpu_bank),
 	.emu_mode_816(supercpu_emul),
 	.cpu_has_bus(cpu_has_bus),
+	// Layer 2 backpressure (Step 1, 2026-05-20): wire SDRAM ready into the
+	// arbiter so Step 2 can gate cpu_cyc on it.
+	.sdram_ready(sdram_ready),
+	// Step 6 Phase 6a (2026-05-20): "dout_r is fresh" handshake. Consumer
+	// (RDY-handshake gate) lands in Phase 6b.
+	.sdram_data_valid(sdram_data_valid),
 
 	.dbg_raster_line(scpu_dbg_raster),
 	.dbg_d018       (scpu_dbg_d018),
