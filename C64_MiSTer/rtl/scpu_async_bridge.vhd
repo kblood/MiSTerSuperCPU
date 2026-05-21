@@ -16,6 +16,12 @@ use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
 
 entity scpu_async_bridge is
+generic (
+	-- '0' = passthrough (today's hardware default); '1' = activate the
+	-- slow-path handshake. Held as a generic so the GHDL bench can flip
+	-- it independently of the synthesised hardware build.
+	BRIDGE_ACTIVE : std_logic := '0'
+);
 port (
 	clk_cpu       : in  std_logic;
 	clk_sys       : in  std_logic;
@@ -47,10 +53,6 @@ port (
 end entity;
 
 architecture rtl of scpu_async_bridge is
-	-- Default '0' (passthrough). Later phases promote this to a generic
-	-- driven by an OSD switch.
-	constant BRIDGE_ACTIVE : std_logic := '0';
-
 	signal is_slow_access : std_logic;
 
 	-- clk_sys → clk_cpu sync chains. Two-FF each, sampled on clk_cpu. With
