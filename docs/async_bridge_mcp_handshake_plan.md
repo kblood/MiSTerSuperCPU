@@ -360,3 +360,31 @@ When implementation begins:
 - `C64_MiSTer/rtl/fpga64_sid_iec.vhd:2670-2705` — port rewiring (F.1, no-op commit)
 - `C64_MiSTer/c64.sv:319-328` — clk_cpu source flip (F.3)
 - `C64_MiSTer/C64.sdc` — async clock-group declarations (F.3)
+
+---
+
+# Appendix A — Phase F.0 confirmation (2026-05-21)
+
+**Claim 1 — `enableCpu_816` is a single clk32-cycle pulse, fires once per CPU bus advance in non-DMA SuperCPU mode: PASS.**
+
+Verified at `fpga64_sid_iec.vhd:2604`: `enableCpu_816 <= enableCpu and not dma_active and supercpu_en;`. `enableCpu` is the registered output of a 2-stage shift register (`fpga64_sid_iec.vhd:2800-2801`: `cpu_cyc_s <= cpu_cyc_s(0) & cpu_cyc; enableCpu <= cpu_cyc_s(1);`), so it's exactly one clk32 wide. `cpu_cyc` is the per-slot CPU cycle gate combinationally derived from sysCycleDef + turbo masks + sdram_busy_cnt. `dma_active` is the REU/cartridge DMA-in-progress latch (set at CYCLE_EXT1/5 from `dma_req`). Verdict accepted as the sink-side capture strobe.
+
+**Claim 2 — `cpuDi` is a purely combinational mux, single concurrent assignment at line 1650: PASS.**
+
+Grep for `cpuDi\s*<=` returns exactly one hit at line 1650. The assignment spans lines 1650–2087 as one big conditional-expression cascade selecting between SuperCPU register intercepts, native vector intercepts, $F8-$FF ROM stubs, SDRAM `ramDin` for non-$00 banks, and `cpuDi_raw` (buslogic) as fallback. No clocked re-driver. Safe to wire `bus_di_in => cpuDi` and capture combinationally on the sink ack cycle.
+
+**Claim 3 — `bus_di_in` (= cpuDi) is valid on the clk32 edge where the CPU samples (one edge after enableCpu_816 rises): PASS, after careful re-analysis.**
+
+The Explore agent's initial reading flagged this as FAIL, claiming SDRAM read data wouldn't be settled when `enableCpu_816` fires. That reading was mechanically wrong. Closer inspection of the arbiter's timing chain at `fpga64_sid_iec.vhd:2780-2801`:
+
+- `cpu_cyc='1'` fires only when `sdram_busy_cnt='000'` AND it's a CPU slot (the busy counter blocks `cpu_cyc` from firing during an in-flight SDRAM cycle).
+- The same edge that observes `cpu_cyc='1'` sets `sdram_busy_cnt<="011"` and shifts `cpu_cyc_s(0)<='1'`. SDRAM begins its 3-clk32 read pipeline at this edge.
+- 2 clk32 cycles later, `enableCpu` rises (via the shift register). At this point `sdram_busy_cnt` has decremented to ~1 and the SDRAM data is arriving at `ramDin`.
+- The CPU's standard CE-gated FF pattern samples `cpuDi` at the *next* clk32 rising edge after `enableCpu` is high. By then `sdram_busy_cnt='000'` and `cpuDi=ramData` is the correct read response.
+
+My F.1 sink-side process captures `bus_di_in` on the same clk32 rising edge where `bus_ack_pulse_in='1'` was sampled (i.e., the edge AFTER enableCpu rose). This mirrors what the CPU itself does — same timing, same data. The existing passthrough (`cpuDi <= bus_di_in`) has been working for SDRAM reads for the whole fork's history, which would not be possible if the agent's reading were correct.
+
+**Decision point #1 resolution — write-data treatment on sink-side ack:**
+On a CPU write the bridge's sink-side captures `bus_di_in` into `bus_di_reg` regardless of `we`, then toggles ack. The capture is meaningless on writes (the arbiter consumes `bus_do_out`, not `bus_di_in`, for the write path) but the captured byte is dontcare because the CPU side ignores `cpu_di_out` when `we='1'`. This matches the default in the decision-point table; no FSM branching on `we` needed.
+
+**F.0 → F.1 transition:** all three claims passed; the F.1 bridge as written captures at the correct moment; no FSM changes required from the original plan.

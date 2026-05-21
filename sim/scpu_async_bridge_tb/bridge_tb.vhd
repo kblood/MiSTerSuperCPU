@@ -1,27 +1,32 @@
 -- bridge_tb.vhd
 --
--- Stand-alone testbench for scpu_async_bridge.
+-- Stand-alone testbench for scpu_async_bridge (F.2 phase).
 --
 -- Strategy: instantiate the bridge with BRIDGE_ACTIVE='1' (the future
--- hardware path), drive the CPU side with a sequence of synthetic
--- requests, drive the bus side with a model arbiter, and emit a trace
--- of every clk_cpu edge so the state machine's behaviour is auditable.
+-- hardware path) and CACHE_ACTIVE='0' (cache disabled for handshake
+-- testing). Drive the CPU side at clk_cpu @ 64 MHz with synthetic
+-- requests, drive the bus side at clk_sys @ 32 MHz with a model
+-- arbiter that emits a single-cycle ack pulse after a programmable
+-- stall, and emit traces of both clock domains so the MCP / word-sync
+-- handshake's round-trip is auditable.
 --
--- Two scenarios are exercised back-to-back in the same run:
+-- This bench validates the toggle-FF request / ack-pulse handshake:
+--   * CPU side toggles cpu_req_toggle_reg on vpa|vda assertion,
+--     drops cpu_rdy_out, waits for sync'd ack-toggle round-trip.
+--   * Bus side 2-FF-syncs the request toggle, edge-detects it to
+--     set bus_request_pending_reg, samples bus_di_in when the model
+--     arbiter pulses bus_ack_pulse_in, then toggles bus_ack_toggle_reg.
 --
---   Scenario A  -  bus_rdy_in held high. This is the "baLoc" wiring
---                  state we currently have in fpga64_sid_iec.vhd.
---                  Expected (buggy): bridge exits WAIT_ACK on the very
---                  next clk_cpu edge and latches whatever value
---                  bus_di_in carries at that moment, which has nothing
---                  to do with a real bus-access completion.
+-- Scenarios:
 --
---   Scenario B  -  bus_rdy_in held low until the model arbiter has
---                  responded with the correct data, then pulsed high
---                  for one clk_sys cycle. This is the wiring the
---                  bridge actually needs.
---                  Expected (correct): cpu_di_out carries the arbiter's
---                  data once cpu_rdy_out returns high.
+--   E - 1-cycle arbiter response (fast slot, single read)
+--   F - 4-cycle stall (models REU contention)
+--   G - 16-cycle stall (models IO slot wait)
+--   H - back-to-back accesses (stall_cycles=2)
+--   I - write then read same address (stall_cycles=2)
+--
+-- Each scenario ends with an `assert` so the bench fails loudly on
+-- mismatch instead of printing TRACE lines for manual review.
 
 library IEEE;
 use IEEE.std_logic_1164.all;
@@ -33,6 +38,10 @@ entity bridge_tb is
 end entity;
 
 architecture sim of bridge_tb is
+
+	-- Two independent clock domains
+	constant CLK_SYS_PERIOD : time := 31.25 ns;   -- 32 MHz arbiter / bus
+	constant CLK_CPU_PERIOD : time := 15.625 ns;  -- 64 MHz CPU
 
 	signal clk_cpu : std_logic := '0';
 	signal clk_sys : std_logic := '0';
@@ -50,9 +59,9 @@ architecture sim of bridge_tb is
 	signal cpu_di      : unsigned(7 downto 0);
 	signal cpu_rdy     : std_logic;
 
-	-- Bus-side (model arbiter drives these)
-	signal bus_di      : unsigned(7 downto 0) := (others => '0');
-	signal bus_rdy     : std_logic := '0';
+	-- Bus-side ack (model arbiter drives these)
+	signal bus_di        : unsigned(7 downto 0) := (others => '0');
+	signal bus_ack_pulse : std_logic := '0';
 
 	-- Bridge outputs to the bus (we only observe these)
 	signal bus_addr    : unsigned(15 downto 0);
@@ -63,8 +72,22 @@ architecture sim of bridge_tb is
 	signal bus_vda     : std_logic;
 	signal dbg_is_slow : std_logic;
 
-	-- 32 MHz both sides
-	constant CLK_PERIOD : time := 31.25 ns;
+	-- Model arbiter control: stimulus sets this before each access
+	signal stall_cycles  : integer := 1;
+
+	-- Cross-process flag the stimulus can use to wait for the bridge
+	-- to settle a request (cpu_rdy_out returning '1').
+	signal stim_done     : std_logic := '0';
+
+	-- Helper: compute the model arbiter's expected data byte for a
+	-- given (bank, addr). Defined as low(addr) XOR bank so each test
+	-- address has a unique, predictable value.
+	function expected_data(addr : unsigned(15 downto 0);
+	                       bank : unsigned(7 downto 0))
+	                       return unsigned is
+	begin
+		return unsigned(addr(7 downto 0)) xor bank;
+	end function;
 
 	-- Helper to print one observation line
 	procedure log_line(
@@ -93,15 +116,44 @@ architecture sim of bridge_tb is
 		writeline(output, l);
 	end procedure;
 
+	procedure log_bus(
+		l        : inout line;
+		t_now    : in time;
+		raddr    : in unsigned(15 downto 0);
+		rbank    : in unsigned(7 downto 0);
+		rvpa     : in std_logic;
+		rvda     : in std_logic;
+		rwe      : in std_logic;
+		rack     : in std_logic;
+		rdi_in   : in unsigned(7 downto 0)) is
+	begin
+		write(l, time'image(t_now));
+		write(l, string'(" BUS  bank="));
+		hwrite(l, std_logic_vector(rbank));
+		write(l, string'(" addr="));
+		hwrite(l, std_logic_vector(raddr));
+		write(l, string'(" vpa="));
+		write(l, rvpa);
+		write(l, string'(" vda="));
+		write(l, rvda);
+		write(l, string'(" we="));
+		write(l, rwe);
+		write(l, string'(" ack="));
+		write(l, rack);
+		write(l, string'(" bus_di="));
+		hwrite(l, std_logic_vector(rdi_in));
+		writeline(output, l);
+	end procedure;
+
 begin
 
-	-- Clocks
-	clk_cpu <= not clk_cpu after CLK_PERIOD / 2;
-	clk_sys <= not clk_sys after CLK_PERIOD / 2;
+	-- Independent clock generators (no phase relationship between domains)
+	clk_cpu <= not clk_cpu after CLK_CPU_PERIOD / 2;
+	clk_sys <= not clk_sys after CLK_SYS_PERIOD / 2;
 
 	-- DUT
 	dut : entity work.scpu_async_bridge
-		generic map (BRIDGE_ACTIVE => '1', CACHE_ACTIVE => '1')
+		generic map (BRIDGE_ACTIVE => '1', CACHE_ACTIVE => '0')
 		port map (
 			clk_cpu        => clk_cpu,
 			clk_sys        => clk_sys,
@@ -116,132 +168,229 @@ begin
 			cpu_di_out     => cpu_di,
 			cpu_rdy_out    => cpu_rdy,
 
-			bus_addr_out    => bus_addr,
-			bus_addr_hi_out => bus_addr_hi,
-			bus_do_out      => bus_do,
-			bus_we_out      => bus_we,
-			bus_vpa_out     => bus_vpa,
-			bus_vda_out     => bus_vda,
-			bus_di_in       => bus_di,
-			bus_rdy_in      => bus_rdy,
+			bus_addr_out     => bus_addr,
+			bus_addr_hi_out  => bus_addr_hi,
+			bus_do_out       => bus_do,
+			bus_we_out       => bus_we,
+			bus_vpa_out      => bus_vpa,
+			bus_vda_out      => bus_vda,
+			bus_di_in        => bus_di,
+			bus_ack_pulse_in => bus_ack_pulse,
 
-			dbg_is_slow    => dbg_is_slow
+			dbg_is_slow      => dbg_is_slow
 		);
 
 	-- Per-clk_cpu trace
-	trace : process(clk_cpu)
+	trace_cpu : process(clk_cpu)
 		variable l : line;
 	begin
 		if rising_edge(clk_cpu) then
-			log_line(l, now, string'("TRACE"),
+			log_line(l, now, string'("TCPU "),
 				cpu_addr, cpu_addr_hi, cpu_di, cpu_rdy, dbg_is_slow);
+		end if;
+	end process;
+
+	-- Per-clk_sys trace (handshake visibility on the bus side)
+	trace_sys : process(clk_sys)
+		variable l : line;
+	begin
+		if rising_edge(clk_sys) then
+			log_bus(l, now, bus_addr, bus_addr_hi,
+				bus_vpa, bus_vda, bus_we, bus_ack_pulse, bus_di);
+		end if;
+	end process;
+
+	-- Model arbiter: watches bus_vpa/vda rising edge, waits
+	-- `stall_cycles` clk_sys ticks, then drives bus_di to the
+	-- expected_data value and pulses bus_ack_pulse_in high for
+	-- exactly one clk_sys cycle. Default ack='0' otherwise.
+	model_arb : process(clk_sys)
+		variable prev_vreq    : std_logic := '0';
+		variable wait_cnt     : integer   := 0;
+		variable pending      : std_logic := '0';
+		variable v_req_now    : std_logic := '0';
+	begin
+		if rising_edge(clk_sys) then
+			-- Default: drive ack low each cycle unless we fire it below
+			bus_ack_pulse <= '0';
+
+			-- Edge-detect the bus request (vpa or vda asserted)
+			v_req_now := bus_vpa or bus_vda;
+
+			if reset = '1' then
+				prev_vreq := '0';
+				wait_cnt  := 0;
+				pending   := '0';
+				bus_di    <= (others => '0');
+			else
+				if pending = '0' and v_req_now = '1' and prev_vreq = '0' then
+					-- New request: schedule the ack
+					pending  := '1';
+					wait_cnt := stall_cycles;
+					-- Pre-drive the data value the arbiter would return.
+					-- For writes, the bench still drives a value but the
+					-- bridge will ignore di on its captured side because
+					-- the CPU consumes nothing on a we='1' completion;
+					-- it only needs the ack to release cpu_rdy.
+					bus_di <= expected_data(bus_addr, bus_addr_hi);
+				elsif pending = '1' then
+					if wait_cnt > 1 then
+						wait_cnt := wait_cnt - 1;
+					else
+						-- Fire the single-cycle ack pulse
+						bus_ack_pulse <= '1';
+						pending  := '0';
+						wait_cnt := 0;
+					end if;
+				end if;
+			end if;
+
+			prev_vreq := v_req_now;
 		end if;
 	end process;
 
 	-- Stimulus
 	stim : process
-		variable l : line;
+		variable l        : line;
+		variable expected : unsigned(7 downto 0);
+		variable wait_n   : integer;
+
+		-- Issue a single CPU access and wait for cpu_rdy_out to
+		-- come back high. Uses signal-level waits to avoid the classic
+		-- VHDL race where `wait until rising_edge(clk)` resumes before
+		-- other clock-sensitive processes' new assignments take effect.
+		procedure cpu_access(
+			bank      : in unsigned(7 downto 0);
+			addr      : in unsigned(15 downto 0);
+			we        : in std_logic;
+			do        : in unsigned(7 downto 0);
+			max_wait  : in time) is
+		begin
+			wait until rising_edge(clk_cpu);
+			cpu_addr_hi <= bank;
+			cpu_addr    <= addr;
+			cpu_do      <= do;
+			cpu_we      <= we;
+			cpu_vpa     <= '0';
+			cpu_vda     <= '1';
+
+			-- Wait for bridge to drop rdy (request accepted)
+			wait until cpu_rdy = '0' for max_wait;
+			assert cpu_rdy = '0'
+				report "cpu_access: bridge never dropped cpu_rdy"
+				severity error;
+
+			-- Wait for bridge to raise rdy (ack round-tripped)
+			wait until cpu_rdy = '1' for max_wait;
+			assert cpu_rdy = '1'
+				report "cpu_access: ack-toggle never returned"
+				severity error;
+
+			-- De-assert request after completion. Hold one more clk_cpu
+			-- so the bridge's idle path sees vda='0' before the next call.
+			cpu_vda <= '0';
+			cpu_we  <= '0';
+			wait until rising_edge(clk_cpu);
+		end procedure;
+
 	begin
-		-- Reset
+		-- Reset: hold for 5 clk_sys cycles, then release
 		reset <= '1';
-		wait for 5 * CLK_PERIOD;
+		wait for 5 * CLK_SYS_PERIOD;
 		reset <= '0';
-		-- Bridge cache uses a 513-cycle flush walker after reset to clear
-		-- the MLAB valid bits. Wait it out before exercising the cache.
-		wait for 520 * CLK_PERIOD;
+		-- Settle a couple of clk_cpu cycles before stimulus
+		wait for 4 * CLK_CPU_PERIOD;
 
-		write(l, string'("=== Scenario A: bus_rdy held HIGH (baLoc wiring) ==="));
+		----------------------------------------------------------------
+		-- Scenario E: 1-cycle arbiter response, single read @ $00:D012
+		----------------------------------------------------------------
+		write(l, string'("=== Scenario E: 1-cycle ack, read $00:D012 ==="));
 		writeline(output, l);
+		stall_cycles <= 1;
+		cpu_access(x"00", x"D012", '0', x"00", 40 * CLK_CPU_PERIOD);
+		expected := expected_data(x"D012", x"00");
+		assert cpu_di = expected
+			report "Scenario E FAILED: cpu_di mismatch"
+			severity error;
 
-		bus_rdy <= '1';
-		bus_di  <= x"AA";
+		wait for 4 * CLK_CPU_PERIOD;
 
-		-- Bank $00 slow read at $D012 (VIC raster)
-		wait until rising_edge(clk_cpu);
-		cpu_addr_hi <= x"00";
-		cpu_addr    <= x"D012";
-		cpu_vpa     <= '0';
-		cpu_vda     <= '1';
-		cpu_we      <= '0';
-
-		-- Hold one clk_cpu and observe
-		wait for 6 * CLK_PERIOD;
-
-		-- Stop driving the access
-		cpu_vda <= '0';
-		wait for 2 * CLK_PERIOD;
-
-		write(l, string'("=== Scenario B: bus_rdy gated by model arbiter ==="));
+		----------------------------------------------------------------
+		-- Scenario F: 4-cycle stall (REU contention model)
+		----------------------------------------------------------------
+		write(l, string'("=== Scenario F: 4-cycle stall, read $00:D012 ==="));
 		writeline(output, l);
+		stall_cycles <= 4;
+		cpu_access(x"00", x"D012", '0', x"00", 60 * CLK_CPU_PERIOD);
+		expected := expected_data(x"D012", x"00");
+		assert cpu_di = expected
+			report "Scenario F FAILED: cpu_di mismatch"
+			severity error;
 
-		-- Arbiter is silent for a few cycles, then drives bus_di and pulses bus_rdy
-		bus_rdy <= '0';
-		bus_di  <= x"5A";
+		wait for 4 * CLK_CPU_PERIOD;
 
-		wait until rising_edge(clk_cpu);
-		cpu_addr_hi <= x"00";
-		cpu_addr    <= x"D012";
-		cpu_vda     <= '1';
-
-		-- Wait 4 cycles to simulate slow-bus delay
-		wait for 4 * CLK_PERIOD;
-
-		-- Arbiter answers with correct data + 1-cycle ack pulse
-		bus_di  <= x"5A";
-		bus_rdy <= '1';
-		wait for CLK_PERIOD;
-		bus_rdy <= '0';
-
-		-- Continue observing the bridge settle
-		wait for 6 * CLK_PERIOD;
-
-		cpu_vda <= '0';
-		wait for 4 * CLK_PERIOD;
-
-		write(l, string'("=== Scenario C: fast-path read (bank $02 SuperRAM) ==="));
+		----------------------------------------------------------------
+		-- Scenario G: 16-cycle stall (IO slot wait model)
+		----------------------------------------------------------------
+		write(l, string'("=== Scenario G: 16-cycle stall, read $02:1234 ==="));
 		writeline(output, l);
+		stall_cycles <= 16;
+		cpu_access(x"02", x"1234", '0', x"00", 120 * CLK_CPU_PERIOD);
+		expected := expected_data(x"1234", x"02");
+		assert cpu_di = expected
+			report "Scenario G FAILED: cpu_di mismatch"
+			severity error;
 
-		bus_rdy <= '0';
-		wait until rising_edge(clk_cpu);
-		cpu_addr_hi <= x"02";
-		cpu_addr    <= x"1234";
-		cpu_vda     <= '1';
+		wait for 4 * CLK_CPU_PERIOD;
 
-		wait for 4 * CLK_PERIOD;
-		cpu_vda <= '0';
-		wait for 2 * CLK_PERIOD;
-
-		write(l, string'("=== Scenario D: ZP write-through + cache read ($00:0042) ==="));
+		----------------------------------------------------------------
+		-- Scenario H: back-to-back accesses (no idle gap), stall=2
+		--
+		-- The cpu_access procedure already keeps vda=0 only for one
+		-- clk_cpu tick between calls. Two back-to-back invocations
+		-- model a CPU that immediately re-asserts vda on the next
+		-- request. The request toggle must flip cleanly for both.
+		----------------------------------------------------------------
+		write(l, string'("=== Scenario H: back-to-back reads ==="));
 		writeline(output, l);
+		stall_cycles <= 2;
+		cpu_access(x"00", x"0010", '0', x"00", 50 * CLK_CPU_PERIOD);
+		expected := expected_data(x"0010", x"00");
+		assert cpu_di = expected
+			report "Scenario H FAILED: first read cpu_di mismatch"
+			severity error;
 
-		-- Step 1: CPU write of $7F to $00:0042
-		bus_rdy <= '0';
-		bus_di  <= x"00";
-		wait until rising_edge(clk_cpu);
-		cpu_addr_hi <= x"00";
-		cpu_addr    <= x"0042";
-		cpu_do      <= x"7F";
-		cpu_we      <= '1';
-		cpu_vda     <= '1';
+		-- Immediately issue the second read (no extra wait gap)
+		cpu_access(x"00", x"0011", '0', x"00", 50 * CLK_CPU_PERIOD);
+		expected := expected_data(x"0011", x"00");
+		assert cpu_di = expected
+			report "Scenario H FAILED: second read cpu_di mismatch"
+			severity error;
 
-		-- Pulse one cycle (typical write completes immediately at the cache)
-		wait for CLK_PERIOD;
-		cpu_vda <= '0';
+		wait for 4 * CLK_CPU_PERIOD;
 
-		-- Provide ack so the slow-path leg also completes (write still goes
-		-- through to the bus even on cache hit; write-through).
-		bus_rdy <= '1';
-		wait for CLK_PERIOD;
-		bus_rdy <= '0';
+		----------------------------------------------------------------
+		-- Scenario I: write then read same address, stall=2
+		--
+		-- The bench is testing the handshake, not memory semantics:
+		-- the model arbiter doesn't store the write. It ack's both
+		-- requests and returns expected_data() on the read.
+		----------------------------------------------------------------
+		write(l, string'("=== Scenario I: write then read $00:0042 ==="));
+		writeline(output, l);
+		stall_cycles <= 2;
+		-- Write $7F to $00:0042 (we accept whatever cpu_di returns;
+		-- writes don't define a read value, but the bridge still
+		-- needs to see ack to release cpu_rdy).
+		cpu_access(x"00", x"0042", '1', x"7F", 50 * CLK_CPU_PERIOD);
+		-- Read the same address
+		cpu_access(x"00", x"0042", '0', x"00", 50 * CLK_CPU_PERIOD);
+		expected := expected_data(x"0042", x"00");
+		assert cpu_di = expected
+			report "Scenario I FAILED: read-after-write cpu_di mismatch"
+			severity error;
 
-		wait for 3 * CLK_PERIOD;
-
-		-- Step 2: CPU read of $00:0042 — expect cache_dout = $7F
-		cpu_we <= '0';
-		wait until rising_edge(clk_cpu);
-		cpu_vda <= '1';
-		wait for 5 * CLK_PERIOD;
-		cpu_vda <= '0';
+		wait for 4 * CLK_CPU_PERIOD;
 
 		write(l, string'("=== DONE ==="));
 		writeline(output, l);

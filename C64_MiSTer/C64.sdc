@@ -62,3 +62,42 @@ set_multicycle_path -setup 4 \
 set_multicycle_path -hold 3 \
                     -from [get_registers {*P65C816:cpu|*}] \
                     -to   [get_registers {*sdram_pm:sdram|sd_*}]
+
+# Phase F.3 (2026-05-21) — scpu_async_bridge MCP / word-synchronizer CDC.
+# Once clk_cpu is split off from clk_sys (c64.sv: wire clk_cpu = clk64),
+# the bridge's req/ack toggle bits cross between counter[1] (clk64) and
+# counter[2] (clk32) via dedicated 2-FF synchronizer chains, tagged with
+# SYNCHRONIZER_IDENTIFICATION attributes inside scpu_async_bridge.vhd.
+# This false-paths the synchronizer endpoints so TimeQuest doesn't try
+# to time setup/hold across the asynchronous boundary. The existing
+# multicycle constraints above remain authoritative for the non-bridge
+# clk64<->clk32 paths (SDRAM dout, sd_addr).
+#
+# Refs: docs/hdl-coding-guidelines/{23-cdc-single-bit,24-cdc-multi-bit,
+# 40-timing-closure-and-sdc}.md, docs/async_bridge_mcp_handshake_plan.md.
+set_false_path -from [get_registers {*scpu_async_bridge_inst|cpu_req_toggle_reg}] \
+               -to   [get_registers {*scpu_async_bridge_inst|req_sync1_reg}]
+set_false_path -from [get_registers {*scpu_async_bridge_inst|bus_ack_toggle_reg}] \
+               -to   [get_registers {*scpu_async_bridge_inst|ack_sync1_reg}]
+# Payload bus from latched request regs to clk_sys-domain consumers:
+# the payload is held stable for the entire round-trip (payload-stable-
+# hold, doc 24 §3.3). Setup/hold on these paths is irrelevant; ack-toggle
+# round-trip is the only sequencing.
+set_false_path -from [get_registers {*scpu_async_bridge_inst|cpu_req_addr_reg*}] \
+               -to   [get_clocks {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk}]
+set_false_path -from [get_registers {*scpu_async_bridge_inst|cpu_req_addr_hi_reg*}] \
+               -to   [get_clocks {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk}]
+set_false_path -from [get_registers {*scpu_async_bridge_inst|cpu_req_do_reg*}] \
+               -to   [get_clocks {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk}]
+set_false_path -from [get_registers {*scpu_async_bridge_inst|cpu_req_we_reg}] \
+               -to   [get_clocks {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk}]
+set_false_path -from [get_registers {*scpu_async_bridge_inst|cpu_req_vpa_reg}] \
+               -to   [get_clocks {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk}]
+set_false_path -from [get_registers {*scpu_async_bridge_inst|cpu_req_vda_reg}] \
+               -to   [get_clocks {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk}]
+# Reverse direction: bus_di_reg (clk_sys) -> bus_di_capture_reg (clk_cpu).
+# bus_di_reg is held stable from the cycle the arbiter pulses
+# bus_ack_pulse_in until the next request, so the clk_cpu capture is
+# always reading a settled value.
+set_false_path -from [get_registers {*scpu_async_bridge_inst|bus_di_reg*}] \
+               -to   [get_registers {*scpu_async_bridge_inst|bus_di_capture_reg*}]

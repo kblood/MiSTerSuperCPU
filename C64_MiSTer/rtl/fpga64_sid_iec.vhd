@@ -2660,13 +2660,17 @@ port map (
 );
 
 -- D4.2 (2026-05-21): CACHE_ACTIVE='1' wedges KERNAL with $AB on every ZP
--- read across FOUR different cache patterns: LUT-RAM fallback, Kitrinx
--- forwarding, c64_ram64k M10K shared-variable, and now MLAB altdpram +
--- 513-cycle flush walker. GHDL bench passes all four; hardware wedges all
--- four. Bug class is hardware-specific in a way that doesn't show in sim
--- — likely cpu_di mux coherency between cache_dout and bus_di_in paths,
--- or the flush walker leaving the MLAB in a different state than GHDL
--- expects. See project_bridge_cache_d4_2_wedge.md.
+-- read across FOUR different cache patterns; rolled back, scaffolding
+-- preserved. Phase F.5 revisits once the F.1 MCP rewrite collapses the
+-- cpu_di mux topology. See project_bridge_cache_d4_2_wedge.md.
+--
+-- Phase F.1 (2026-05-21): bridge rewritten to MCP / word-synchronizer
+-- handshake per docs/async_bridge_mcp_handshake_plan.md. Port renamed
+-- bus_rdy_in -> bus_ack_pulse_in (single-cycle clk_sys pulse, not level)
+-- and wired to enableCpu_816 — the arbiter's CPU-slot pulse, which IS
+-- the cycle the CPU latches cpuDi. With BRIDGE_ACTIVE='0' the new MCP
+-- FSM is dead-output (cpu_di_out muxes to bus_di_in passthrough),
+-- preserving baseline behavior bit-for-bit.
 scpu_async_bridge_inst: entity work.scpu_async_bridge
 generic map (
 	BRIDGE_ACTIVE => '0',
@@ -2686,22 +2690,16 @@ port map (
 	cpu_di_out     => cpu816_di_to_cpu,
 	cpu_rdy_out    => cpu816_rdy_to_cpu,
 
-	bus_addr_out    => cpuAddr_816,
-	bus_addr_hi_out => addr_hi_816,
-	bus_do_out      => cpuDo_816,
-	bus_we_out      => cpuWe_816,
-	bus_vpa_out     => vpa_816,
-	bus_vda_out     => vda_816,
-	bus_di_in       => cpuDi,
-	-- Phase E.1 (2026-05-21) tried wiring this to `enableCpu_816` (the
-	-- arbiter's per-slot CPU pulse) while clk_cpu=clk64. CPU wedged near
-	-- the reset vector regardless — the bridge's IDLE→WAIT_ACK pattern
-	-- doesn't align with how `enableCpu_816` actually fires (it pulses
-	-- 16x per 32-cycle sysCycleDef, not once per CPU bus access). Real
-	-- 64 MHz activation needs a richer handshake. Back to baLoc for now.
-	bus_rdy_in      => baLoc,
+	bus_addr_out     => cpuAddr_816,
+	bus_addr_hi_out  => addr_hi_816,
+	bus_do_out       => cpuDo_816,
+	bus_we_out       => cpuWe_816,
+	bus_vpa_out      => vpa_816,
+	bus_vda_out      => vda_816,
+	bus_di_in        => cpuDi,
+	bus_ack_pulse_in => enableCpu_816,
 
-	dbg_is_slow    => cpu816_dbg_is_slow
+	dbg_is_slow      => cpu816_dbg_is_slow
 );
 
 -- CPU-output mux: select active CPU's outputs.
