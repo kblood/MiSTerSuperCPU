@@ -316,6 +316,10 @@ pll pll
 	.locked(pll_locked)
 );
 
+// Named hook for the CPU clock domain. Aliased to clk_sys today; will be
+// fed by a separate PLL output once the P65C816 moves into its own domain.
+wire clk_cpu = clk_sys;
+
 wire [63:0] reconfig_to_pll;
 wire [63:0] reconfig_from_pll;
 wire        cfg_waitrequest;
