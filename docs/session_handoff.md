@@ -1,160 +1,44 @@
-# Session handoff — 2026-05-21 (async-cpu-bridge Phases A–D scaffolding done)
+# Session handoff — 2026-05-22 (Phase F.1/F.2/F.3 prep landed; HW deploy gated on MiSTer cooperation)
 
-## Status: Phases A/B/C complete. Phase D cache infrastructure committed but inert (CACHE_ACTIVE='0') after a hardware bring-up failure. Phase E (PLL regen) is the next perturbation step — needs a clk_cpu frequency decision from the user.
+## Status: F.1 + Build B both compiled cleanly. HW deploy blocked by other agent's core occupancy. Resume by deploying when MiSTer frees up.
 
-**Current branch:** `async-cpu-bridge` (tip `5c72dbd`)
-**RBF md5 (B + C + D inert):** `88963b9e` — bit-identical to vanilla-cpu-swap baseline
-**Saved on remote:** step6-rdy-handshake / vanilla-cpu-swap / master pushed; `async-cpu-bridge` local-only past `f7ba6d7`
+**Current branch:** `vanilla-cpu-swap` (tip `7f9dced` — "async-bridge Phase F.1-F.3 prep")
+**Uncommitted working-tree change:** `fpga64_sid_iec.vhd:2676 BRIDGE_ACTIVE => '1'` (Build B; flip back to `'0'` for the baseline-match build).
 
-### Phase A — Save point. DONE
-Merged step6-rdy-handshake (post-Phase-6b-revert) into vanilla-cpu-swap (`e7a9afb`),
-then into master (`bb7f3e9`). Branch `async-cpu-bridge` forked from
-vanilla-cpu-swap. All four branches pushed.
+### What's in the tree right now
+- **Bridge rewrite** (`rtl/scpu_async_bridge.vhd`, 290 lines): full MCP / word-synchronizer handshake. Source FSM `CPU_IDLE` → `CPU_WAIT_ACK`; sink-side `req_sync1/2_reg` + `ack_toggle`. Payload-stable-hold via `cpu_req_*_reg` registers. `preserve` + `SYNCHRONIZER_IDENTIFICATION FORCED IF ASYNCHRONOUS` attributes on all 4 sync FFs.
+- **Bus mux fix** (committed): when `BRIDGE_ACTIVE='0'` all `bus_*_out` ports passthrough live CPU signals (not stale latched regs). When `BRIDGE_ACTIVE='1'` they drive `cpu_req_*_reg` gated by `bus_request_pending_reg`.
+- **Bench** (`sim/scpu_async_bridge_tb/bridge_tb.vhd`, 401 lines): two independent clocks (CLK_SYS_PERIOD=31.25ns, CLK_CPU_PERIOD=15.625ns). Model arbiter with programmable `stall_cycles`. Five scenarios E/F/G/H/I all assert clean.
+- **SDC** (`C64.sdc`): `set_false_path` declarations for bridge MCP CDC endpoints (req/ack toggle → sync1; payload bus; capture register).
+- **Plan doc** (`docs/async_bridge_mcp_handshake_plan.md`): 6-phase plan F.0–F.5 with Appendix A confirming F.0 claims (PASS/PASS/PASS, corrected the F.0 agent's SDRAM-stale claim).
 
-### Phase B — clk_cpu wire alias. DONE (commit `708a56f`)
-One-line addition in c64.sv: `wire clk_cpu = clk_sys;`. Names the future CPU
-clock domain without any electrical change. Quartus collapses the alias →
-RBF md5 88963b9e (= baseline). Phase B PASS confirms the synthesis pipeline
-treats the named hook as a no-op.
+### Build results (this session)
 
-### Phase C — P65C816 retargeted onto clk_cpu. DONE (commit `f7ba6d7`)
-Added `clk_cpu` input port to `fpga64_sid_iec.vhd` entity, wired from c64.sv
-`fpga64` instantiation, and switched `cpu_65c816_inst.clk` from `clk32` to
-`clk_cpu`. Still 88963b9e — the synthesizer recognises both nets are
-electrically the same. The T65 6510 and the rest of the bus arbiter stay
-on `clk32`; only the 65C816 has moved. This is the clean separation point
-the future CDC bridge will hang off.
+| Build | Generic | RBF md5 | ALMs | Setup slack | Sync chains |
+|---|---|---|---|---|---|
+| F.1 baseline | `BRIDGE_ACTIVE=>'0'` | `64116f31f0d6b3a2678db2736c123b51` | 26,783 / 64% | +0.108 ns | 403 |
+| F.1c Build B | `BRIDGE_ACTIVE=>'1'` | `0e414443fe8c31af3b08192d2d067455` | 26,550 / 63% | +0.625 ns | 568 |
 
-### Phase D — CDC bridge scaffolding. INERT (committed `5c72dbd`)
-The `scpu_async_bridge` entity carries the inert CDC scaffolding and the
-ZP+stack write-through cache. Both stay off in the current hardware build:
-`BRIDGE_ACTIVE='0'`, `CACHE_ACTIVE='0'` on the instantiation site. RBF md5
-is therefore still `88963b9e`.
+Both archived in `C64_MiSTer/builds/` with timestamps `20260521T221546Z` / `20260521T224957Z`.
+Setup/hold both positive on both flavors. Build B reports a 1-register shortest chain — investigated, all 4 bridge sync regs carry `preserve`+`SYNCHRONIZER_IDENTIFICATION FORCED IF ASYNCHRONOUS`; the 1-FF chain Quartus finds is unrelated noise (single-clock build, no real CDC paths yet — that comes in F.3).
 
-Sub-status:
-- **D1–D3 (bridge scaffolding):** Built. Bench at
-  `sim/scpu_async_bridge_tb/` covers the IDLE/WAIT_ACK FSM, sync FFs, and
-  edge-detected access pulse. The state machine deadlocks Scenario B
-  unless `bus_rdy_in` is a per-access pulse — current wiring uses `baLoc`
-  which is a level signal, so `BRIDGE_ACTIVE='1'` is not yet a real
-  activation path. Needs a `bus_access_complete_in` port + wiring to
-  `enableCpu_816` before flipping.
-- **D4.1 (cache valid bits):** Committed `885ac7c`. Unwritten ZP returns
-  bus_di_in rather than stale `$00`.
-- **D4.2 (`CACHE_ACTIVE='1'` on hardware):** FAILED. Three increasingly
-  conservative cache patterns all wedge KERNAL boot with every ZP/stack
-  read returning `$AB`:
-    1. LUT-RAM fallback (Quartus refused M10K — "asynchronous read")
-    2. Kitrinx-style same-cycle forwarding (still LUT-RAM)
-    3. c64_ram64k-style shared-variable + 1-deep bypass — Quartus
-       inferred M10K cleanly (DUAL_PORT, no_rw_check), GHDL bench
-       passes, but hardware still wedges identically.
-  GHDL bench scenarios all pass clean → failure is hardware-specific.
-  Likely needs the `cpu_cache.vhd` model (MLAB tags + 8 parallel M10K
-  byte-lane banks) rather than a single 512x8 M10K. Left for a future
-  session to design properly. The cache scaffolding stays in tree so the
-  bench investment is preserved.
+### GHDL bench — PASS at two clock domains
+`sim/scpu_async_bridge_tb/run_bridge_tb.ps1 -StopTime 25us` runs to `=== DONE ===` with no assertions firing. Five scenarios verify single-cycle ack, 4-cycle stall, 16-cycle stall, back-to-back reads, write-then-read across bank boundaries.
 
-### Phase E — Bump clk_cpu. NOT STARTED — needs operator decision
-Requires regenerating the PLL with a 4th output. Frequency options:
-40 MHz (2× clk_sys, no SDRAM constraint conflict), 64 MHz (= clk64,
-already in PLL), 100 MHz native target.
+### What's NEXT
+1. **Wait for MiSTer to free.** Current `/tmp/CORENAME=CDTV-DuneMVP` (other agent's CD32 work). Empty `/tmp/mister_session.lock`. /media/fat/_Test/C64.rbf still the May 21 21:59 build.
+2. **Deploy F.1 baseline first.** RBF `64116f31...` to `/media/fat/_Test/C64.rbf`. Power-cycle or load_core C64. KERNAL must boot to READY identical to pre-F.1.
+3. **Deploy Build B (BRIDGE_ACTIVE='1').** RBF `0e414443...`. Same hardware test. This validates the MCP handshake at clk_cpu=clk_sys=32MHz (same-clock, so no real CDC, but the FSM gymnastics still run).
+4. **F.3 — flip clk_cpu=clk64.** Edit `c64.sv:328 wire clk_cpu = clk_sys;` → `wire clk_cpu = clk64;`. Rebuild. Deploy. This is where Phase E.1 wedged; Phase F's MCP should make it work.
+5. **F.4 regression.** Lorenz Disk1 (t65 + scpu, 30 min cap), Doom mhold sequence, Wolf3D menu walk. Hashes vs v356 baselines.
 
-### Phase F — Full regression. NOT STARTED
-KERNAL, Lorenz t65+scpu, Doom hashes vs Step 5a, Wolf3D Level 1, REU DMA.
+### Phase F plan and decision points
+Full plan at `docs/async_bridge_mcp_handshake_plan.md`. All 5 decision points defaulted (write-data don't-care on writes, unified MCP, 2-FF chain depth, drop-to-48MHz fallback, MLAB→flop fallback for F.5).
 
----
+### Open items (no action required this session)
+- 1-register shortest sync chain in Build B report — re-check Synchronizer Statistics in F.3 build to see if it persists when real CDC paths exist.
+- Cache (F.5) deferred until F.3 + F.4 prove the MCP unlocks 64 MHz.
+- `c64.sv:1779-1780` notes "hardcoded turbo_mode(2'b10)" in CLAUDE.md is STALE per `project_wolf3d_post_space_wedge_was_turbo_off` memory; turbo is OSD-driven from `status[47:46]`.
 
-(historical context below — superseded by the Phase A/B/C section above)
-
-**Stabilising commit:** `8377734` — `Revert "feat: Step 6 Phase 6b ..."`
-**Resulting RBF md5:** 88963b9e (= Phase 6a baseline, byte-identical to proven-working build)
-**Merge target:** `vanilla-cpu-swap` → `master` → fork `async-cpu-bridge`
-
-### Why the revert
-
-Seven consecutive attempts at a Phase 6b dv_sync consumer (iso2-v3 through
-iso7) all wedge on cold boot with PC=$0005, regardless of whether `cpu_cyc`
-is gated. iso8 (literal Phase-6a-equivalent reconstruction) built bit-identical
-to 88963b9e — confirming the bug class is the dv_sync CONSUMER, not the bus
-arbiter, not the cpu_cyc gate. Phase 6b is suspended and the broken commit
-(e42ee1e) is reverted. Step 5a alt-slot work (3455df7) and Phase 6a signal
-plumbing (8434077) are KEPT — both work and Step 5a gives ~1.5× Doom.
-
-### Decision: pivot to full async CPU domain
-
-After comparing the Gemini 3.5 Flash research roadmap (`docs/Gemini35FlashResearch.md`
-+ `docs/gemini_roadmap_vs_current.md`) to current state, the next architectural
-step is to move the P65C816 into its own clock domain (`clk_cpu`) with a
-CDC bridge, matching the real CMD SuperCPU model. This is what the project's
-top-level goal ("20MHz native mode") actually requires and likely sidesteps
-the iso2-iso7 wedge class entirely by forcing explicit CDC synchronization
-instead of hidden sequential paths inside a single clock domain.
-
-Phased plan, each phase = one build + defined exit test:
-
-- **A — Save point.** Current step6-rdy-handshake (post-revert) merged into
-  vanilla-cpu-swap → master. Fork `async-cpu-bridge` branch from there.
-- **B — Add `clk_cpu` PLL output unused.** Start at 32 MHz (= clk_sys),
-  electrically inert. Verify Doom hashes unchanged.
-- **C — P65C816 moved into clk_cpu domain.** clk_cpu still = clk_sys, no
-  CDC yet. Should behave identically.
-- **D — Insert CDC bridge.** Double-buffered sync on cpuAddr/cpuDo/cpuWe
-  (CPU→sys) and cpuDi/ack (sys→CPU). RDY/enable pulled low until ack
-  returns. Still 32 MHz — measuring overhead only.
-- **E — Bump clk_cpu to 64 MHz, then 20 MHz native target.** Payoff visible.
-- **F — Full regression.** KERNAL, Lorenz t65+scpu, Doom hashes vs Step 5a,
-  Wolf3D Level 1, REU DMA.
-
-### What's preserved on step6-rdy-handshake (and now master)
-
-| Commit  | What                                                  | Status                    |
-|---------|-------------------------------------------------------|---------------------------|
-| 3455df7 | Step 5a — registered `alt_fire_r`                    | ~1.5× Doom speedup, keep  |
-| 0cee649 | Step 2 — SDRAM-busy backpressure scaffolding         | used by Step 5a, keep     |
-| a65b3f7 | Step 1 — sdram_ready 2-FF synchroniser plumbing      | foundation, keep          |
-| 9f9e2c2 | Revert sdram_pm.v back to Build B                    | Build C abandonment, keep |
-| 793fa12 | C64.sdc filter fix (sdram_pm not sdram)              | required for fitter, keep |
-| 8434077 | Phase 6a — data_valid signal plumbing (no consumer)  | inert plumbing, keep      |
-| 8377734 | Revert Phase 6b                                       | NEW — unblocks baseline   |
-
-All vanilla-cpu-swap fixes (v341 through v356, Doom/Wolf3D PLAYABLE,
-$F8+ carve-out, IRQ stub etc.) are intact.
-
-### v356 milestones (still valid)
-
-| Title       | Status   | Verified              | Reproducer                          |
-|-------------|----------|-----------------------|-------------------------------------|
-| Wolf3D      | PLAYABLE | E1L1 starting room    | menu break via SPACE at HS→demo     |
-| Doom        | PLAYABLE | E1M1 3D corridor+HUD  | `tools/doom_v356_PLAY.py`           |
-| Lorenz t65  | PASS     | 32m SCPU regtest      | `tools/lorenz_run.py t65 --mins 32` |
-| Lorenz scpu | PASS     | `orazx - ok` at 32m   | `tools/lorenz_run.py scpu --mins 32`|
-
-### Open architectural questions for the async-cpu-bridge branch
-
-1. **VIC-II handling.** Real CMD SuperCPU keeps VIC at 1 MHz on the C64
-   motherboard; SuperCPU runs free. Likely the same architecture — VIC
-   stays in clk_sys, async CPU bridges only when slow-side data is needed.
-   Subtleties: VIC's IRQ to CPU crosses domains; screen RAM in SDRAM
-   means VIC reads compete with CPU reads; refresh.
-2. **ZP+stack BRAM cache (Gemini Phase 3).** Optional but very attractive
-   — would let hot-path reads bypass the CDC bridge entirely. Defer until
-   Phase D works, then add in Phase E or later.
-3. **REU DMA path.** Currently `iof_fall_pulse` is falling-edge in clk_sys.
-   In async model, the CPU's STA $DFxx write needs to cross CDC before
-   reu.v sees the cs pulse — adds latency that may or may not break
-   existing REU timing tests.
-4. **Resource budget.** Currently 64% ALMs. Async bridge adds CDC FFs and
-   new arbiter logic. Should fit but worth monitoring.
-
-### Files added this session
-
-- `docs/gemini_roadmap_vs_current.md` — point-by-point evaluation of the
-  Gemini roadmap vs current implementation, with three options analysis
-  (cheap SDC fix / medium cache / real async bridge).
-
-### Pre-existing dirty files left in working tree (intentional, per user)
-
-`.gitignore`, `C64_MiSTer/C64.qpf`, `C64_MiSTer/C64.qsf`, `C64_MiSTer/c64.sv`,
-`build_c64.ps1`, `tools/doom_v342_test.py`, lorenz_run screenshots. Mostly
-line-ending / build-artifact noise; user will triage separately.
+### Files modified this session (uncommitted at handoff)
+- `C64_MiSTer/rtl/fpga64_sid_iec.vhd:2676` — `BRIDGE_ACTIVE => '1'` (Build B state). Flip back to `'0'` for baseline rebuild.
