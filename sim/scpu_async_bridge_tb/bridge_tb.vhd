@@ -101,7 +101,7 @@ begin
 
 	-- DUT
 	dut : entity work.scpu_async_bridge
-		generic map (BRIDGE_ACTIVE => '1')
+		generic map (BRIDGE_ACTIVE => '1', CACHE_ACTIVE => '1')
 		port map (
 			clk_cpu        => clk_cpu,
 			clk_sys        => clk_sys,
@@ -206,6 +206,40 @@ begin
 		cpu_vda     <= '1';
 
 		wait for 4 * CLK_PERIOD;
+		cpu_vda <= '0';
+		wait for 2 * CLK_PERIOD;
+
+		write(l, string'("=== Scenario D: ZP write-through + cache read ($00:0042) ==="));
+		writeline(output, l);
+
+		-- Step 1: CPU write of $7F to $00:0042
+		bus_rdy <= '0';
+		bus_di  <= x"00";
+		wait until rising_edge(clk_cpu);
+		cpu_addr_hi <= x"00";
+		cpu_addr    <= x"0042";
+		cpu_do      <= x"7F";
+		cpu_we      <= '1';
+		cpu_vda     <= '1';
+
+		-- Pulse one cycle (typical write completes immediately at the cache)
+		wait for CLK_PERIOD;
+		cpu_vda <= '0';
+
+		-- Provide ack so the slow-path leg also completes (write still goes
+		-- through to the bus even on cache hit; write-through).
+		bus_rdy <= '1';
+		wait for CLK_PERIOD;
+		bus_rdy <= '0';
+
+		wait for 3 * CLK_PERIOD;
+
+		-- Step 2: CPU read of $00:0042 — expect cache_dout = $7F
+		cpu_we <= '0';
+		wait until rising_edge(clk_cpu);
+		cpu_vda <= '1';
+		wait for 5 * CLK_PERIOD;
+		cpu_vda <= '0';
 
 		write(l, string'("=== DONE ==="));
 		writeline(output, l);

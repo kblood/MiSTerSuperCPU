@@ -20,7 +20,10 @@ generic (
 	-- '0' = passthrough (today's hardware default); '1' = activate the
 	-- slow-path handshake. Held as a generic so the GHDL bench can flip
 	-- it independently of the synthesised hardware build.
-	BRIDGE_ACTIVE : std_logic := '0'
+	BRIDGE_ACTIVE : std_logic := '0';
+	-- '0' = no fast-path cache (today); '1' = serve ZP+stack reads from a
+	-- bridge-local BRAM with CPU writes write-through to both cache and bus.
+	CACHE_ACTIVE  : std_logic := '0'
 );
 port (
 	clk_cpu       : in  std_logic;
@@ -77,6 +80,16 @@ architecture rtl of scpu_async_bridge is
 	signal cpu_vda_d : std_logic := '0';
 	signal access_pulse : std_logic;
 
+	-- ZP + stack write-through cache. 512 bytes covering bank $00 addresses
+	-- $0000-$01FF — the hot zero page and the 6502 stack. Reads from this
+	-- range are served from cache_dout in 1 clk_cpu when CACHE_ACTIVE='1';
+	-- writes hit the bus normally AND update the cache (write-through).
+	constant CACHE_BYTES : integer := 512;
+	type cache_mem_t is array (0 to CACHE_BYTES - 1) of unsigned(7 downto 0);
+	signal cache_mem  : cache_mem_t := (others => (others => '0'));
+	signal cache_hit  : std_logic;
+	signal cache_dout : unsigned(7 downto 0) := (others => '0');
+
 begin
 	is_slow_access <= '1' when cpu_addr_hi_in = x"00" else '0';
 
@@ -93,6 +106,25 @@ begin
 	end process;
 
 	access_pulse <= (cpu_vpa_in and not cpu_vpa_d) or (cpu_vda_in and not cpu_vda_d);
+
+	-- Cache hit: bank $00 + addr < $0200. Combinational; the read uses a
+	-- registered cache_dout below to infer block RAM.
+	cache_hit <= '1' when cpu_addr_hi_in = x"00" and cpu_addr_in(15 downto 9) = "0000000" else '0';
+
+	-- Cache write-through + read path. Wrapped in a generate so the entire
+	-- cache_mem array is absent from the netlist when CACHE_ACTIVE='0' —
+	-- otherwise Quartus would still infer the M10K because the writes are
+	-- live even when the read output is unselected.
+	cache_gen : if CACHE_ACTIVE = '1' generate
+		process(clk_cpu) begin
+			if rising_edge(clk_cpu) then
+				if access_pulse = '1' and cpu_we_in = '1' and cache_hit = '1' then
+					cache_mem(to_integer(cpu_addr_in(8 downto 0))) <= cpu_do_in;
+				end if;
+				cache_dout <= cache_mem(to_integer(cpu_addr_in(8 downto 0)));
+			end if;
+		end process;
+	end generate;
 
 	-- Slow-path RDY-stall handshake. Inert while BRIDGE_ACTIVE='0' because
 	-- the output mux below selects bus_rdy_in / bus_di_in directly; the
@@ -137,8 +169,11 @@ begin
 
 	-- CPU side: when active, the handshake supplies di/rdy; when inert, the
 	-- mux defaults to direct passthrough so the netlist matches the un-bridged
-	-- build bit-for-bit.
-	cpu_di_out  <= cpu_di_latched  when BRIDGE_ACTIVE = '1' else bus_di_in;
+	-- build bit-for-bit. CACHE_ACTIVE='1' lets the cache win for ZP+stack
+	-- reads, overriding whichever bridge path is selected.
+	cpu_di_out <= cache_dout      when CACHE_ACTIVE  = '1' and cache_hit = '1' else
+	              cpu_di_latched  when BRIDGE_ACTIVE = '1' else
+	              bus_di_in;
 	cpu_rdy_out <= cpu_rdy_latched when BRIDGE_ACTIVE = '1' else bus_rdy_in;
 
 	dbg_is_slow <= is_slow_access;
