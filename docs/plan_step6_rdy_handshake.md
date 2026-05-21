@@ -73,43 +73,20 @@ match Step 5a baseline.
 
 Goal: prove the handshake gating works on the known-good Build B SDRAM controller.
 
-1. Replace `enableCpu <= cpu_cyc_s(1);` with a state-machine consumer:
-   - `in_flight` latches on cpu_cyc, clears on enableCpu.
-   - `dv_drop_seen` set when in_flight=1 AND data_valid_sync='0' (proves we
-     saw the new cycle's clear; guards against the "stuck high from prior
-     cycle" race).
-   - enableCpu fires on the edge where in_flight=1 AND dv_drop_seen=1 AND
-     data_valid_sync='1' AND not already_fired (one-shot pulse).
-2. Keep the cpu_cyc_s shift register as a parallel reference signal so we can
-   compare timing on UART traces but DON'T drive enableCpu from it anymore.
+1. Replace `enableCpu <= cpu_cyc_s(1);` with logic that holds enableCpu low until
+   `data_valid_sync(0) = '1'` after a cpu_cyc fire.
+2. Keep the cpu_cyc_s shift register as a one-shot "edge detector" tracking
+   in-flight CPU cycles, but use `data_valid` (not a fixed delay) to release.
 3. Add a guard so non-SDRAM cycles (e.g., I/O at $D000-$DFFF that bypass SDRAM)
-   still fire enableCpu without waiting (use `cs_ram` at cpu_cyc-fire time to
+   still fire enableCpu without waiting (use `cs_ram` and `cart_mem_req` to
    decide which path is in flight).
 
-**Performance — this is the gotcha that supersedes the original plan claim**:
-Build B's existing `cpu_cyc_s(1)` pipeline drives enableCpu at clk32 K+2 with
-ZERO slack — CPU samples cpuDi at K+3 the same cycle dout_r becomes fresh
-(clk64 #2K+6 = pre-edge of K+3). The handshake `data_valid_sync` can't go high
-until clk32 K+3 (sync flop captures data_valid which rose post-edge #2K+5 =
-pre-edge #2K+6 = pre-edge K+3). So a pure-handshake gate fires enableCpu at
-K+3, CPU samples at K+4 → **+1 clk32 = ~33 % slowdown on every Build B SDRAM
-read.** This is INHERENT to using a handshake instead of a predictor.
+**Risk**: Build B's `data_valid` fires at clk64 #2K+5 post, sync sees it at
+clk32 K+3 rising — same edge as the existing cpu_cyc_s(1) pipeline drives
+enableCpu. So this should be functionally equivalent on Build B. Any difference
+is a bug.
 
-**Why this is still the right move**: the predictor is correct ONLY for
-uniform-length cycles. v1-v4 wedged because the conditional stall on top of
-the predictor introduced synthesis hazards. The handshake is universally
-correct and pays the +1 clk32 cost only on the COLD path; Phase 6c HIT path
-amortizes by halving cycle length; Phase 6d HIT early termination + alt-slot
-recovers more than the cost. Net Doom speedup vs Step 5a expected ≥ 1.0×
-even at Phase 6b (slower per-cycle but no other regressions), and > 2× by
-Phase 6d.
-
-**Exit criteria**:
-- Build succeeds, Lorenz t65 PASS, Lorenz scpu PASS, KERNAL boots clean.
-- Doom progresses through R_Init (visible by t=120s on UART) — may be 1-2
-  frames behind Step 5a baseline; that's expected.
-- If Doom WEDGES (no progress past v356 baseline at t=120s), there's a bug
-  in the handshake gate — investigate, don't roll back.
+**Exit criteria**: same as Phase 6a.
 
 ### Phase 6c — re-introduce Build C (page-mode sdram_pm)
 
@@ -195,35 +172,3 @@ If any phase introduces a regression that can't be diagnosed in 1-2 build iterat
    solution: skip the wait if `cs_ram = '0'` at cpu_cyc-fire time.
 3. **DMA cycles**: REU DMA bypasses the CPU entirely (`dma_active='1'`). Confirm
    the gate doesn't interfere with DMA path.
-
-## Sketch — Phase 6b consumer pseudocode
-
-```vhdl
--- declarations
-signal in_flight       : std_logic := '0';
-signal dv_drop_seen    : std_logic := '0';
-signal cyc_is_sdram    : std_logic := '0';  -- latched cs_ram at fire time
-
--- in the clk32 process:
-if cpu_cyc = '1' then
-    in_flight     <= '1';
-    cyc_is_sdram  <= cs_ram;   -- non-SDRAM cycles bypass the wait
-    dv_drop_seen  <= '0';
-elsif enableCpu = '1' then
-    in_flight     <= '0';
-end if;
-
-if in_flight = '1' and sdram_data_valid_sync = '0' then
-    dv_drop_seen <= '1';
-end if;
-
--- enableCpu is one-shot: assert only when in_flight transitions out.
--- Compose the fire condition then AND with not enableCpu_prev for pulse shaping.
-fire_cond <= in_flight and
-             ((cyc_is_sdram and dv_drop_seen and sdram_data_valid_sync) or
-              (not cyc_is_sdram));   -- I/O cycles fire as soon as in_flight=1
-enableCpu <= fire_cond and not enableCpu;  -- one-cycle pulse
-```
-
-Note: the `cs_ram` term at cpu_cyc fire-time is captured as `cyc_is_sdram`
-so a long I/O cycle doesn't see a mid-cycle cs_ram glitch and re-classify.
