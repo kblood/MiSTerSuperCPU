@@ -1,0 +1,333 @@
+#!/usr/bin/env python3
+"""Analyze v2/v3/v4 JSR + JMP-indirect rings + DL gate variables.
+
+v2 line format (114 bytes):
+  F:#### PC:###### P:## V:## ## ## ## YX:#### WP:###### CG:#### CY:#### J:#### #### #### #### M:#### #### #### ####
+v3 adds " G:## ## ##" (gate variables $40/$44/$5C) -> 125 bytes.
+v4 adds " N:###### I:###### B:## C3:#### C9:####" -> 164 bytes.
+  N  = main-thread PC (last opcode fetch with I-flag clear)
+  I  = IRQ-thread PC  (last opcode fetch with I-flag set)
+  B  = wait-loop variable $0045
+  C3 = opcode-fetch count for page $30 (FLI body)
+  C9 = opcode-fetch count for page $97 (SCPU divergent ROM region)
+
+Reports:
+  - Top JSR PCs (4 per frame ring -> 4000 entries / 1000 frames)
+  - Top JMP-indirect targets (M: ring)
+  - JSR page distribution per mode
+  - First-N frame J/M side-by-side
+  - (v3) Gate variable distributions and per-frame bands
+  - (v4) Main-thread PC distribution, IRQ-thread PC, $45 dynamics, C3/C9 deltas
+"""
+import sys, re, collections
+
+LINE_RE = re.compile(
+    r"F:(?P<f>[0-9A-F]+)\s+"
+    r"PC:(?P<pc>[0-9A-F]+)\s+"
+    r"P:(?P<p>[0-9A-F]+)\s+"
+    r"V:(?P<v0>[0-9A-F]+)\s+(?P<v1>[0-9A-F]+)\s+(?P<v2>[0-9A-F]+)\s+(?P<v3>[0-9A-F]+)\s+"
+    r"YX:(?P<yx>[0-9A-F]+)\s+"
+    r"WP:(?P<wp>[0-9A-F]+)\s+"
+    r"(?:CG|W1):(?P<cg>[0-9A-F]+)\s+"
+    r"CY:(?P<cy>[0-9A-F]+)\s+"
+    r"J:(?P<j0>[0-9A-F]+)\s+(?P<j1>[0-9A-F]+)\s+(?P<j2>[0-9A-F]+)\s+(?P<j3>[0-9A-F]+)\s+"
+    r"M:(?P<m0>[0-9A-F]+)\s+(?P<m1>[0-9A-F]+)\s+(?P<m2>[0-9A-F]+)\s+(?P<m3>[0-9A-F]+)"
+    r"(?:\s+G:(?P<g40>[0-9A-F]+)\s+(?P<g44>[0-9A-F]+)\s+(?P<g5c>[0-9A-F]+))?"
+    r"(?:\s+N:(?P<n>[0-9A-F]+)\s+I:(?P<ii>[0-9A-F]+)\s+B:(?P<b>[0-9A-F]+)(?:\s+C3:(?P<c3>[0-9A-F]+)\s+C9:(?P<c9>[0-9A-F]+))?(?:\s+SP:(?P<sp0x>[0-9A-F]+)\s+(?P<sp0y>[0-9A-F]+)\s+(?P<sp1x>[0-9A-F]+)\s+(?P<sp1y>[0-9A-F]+))?(?:\s+(?:IR|VW):(?P<irc>[0-9A-F]+)\s+(?:IV|AC):(?P<ivr>[0-9A-F]+))?)?"
+    r"(?:\s+W5:(?P<w5c0>[0-9A-F]+)\s+(?P<w5c1>[0-9A-F]+)\s+(?P<w5c2>[0-9A-F]+)\s+(?P<w5c3>[0-9A-F]+)\s+N5:(?P<n5>[0-9A-F]+))?"
+    r"(?:\s+IF:(?P<irf>[0-9A-F]+)\s+VC:(?P<ivc>[0-9A-F]+)(?:\s+DR:(?P<dr>[0-9A-F]+)\s+DS:(?P<ds>[0-9A-F]+))?(?:\s+WC:(?P<wc>[0-9A-F]+)\s+RR:(?P<rr>[0-9A-F]+)\s+DV:(?P<dv>[0-9A-F]+))?(?:\s+D9:(?P<d9>[0-9A-F]+)\s+P9:(?P<p9>[0-9A-F]+)\s+S:(?P<s9>[0-9A-F]+))?(?:\s+AW:(?P<aw>[0-9A-F]+)\s+PA:(?P<pa>[0-9A-F]+))?)?"
+)
+
+
+def load(path):
+    rows = []
+    for line in open(path):
+        m = LINE_RE.search(line)
+        if not m:
+            continue
+        row = {
+            'f': int(m['f'], 16), 'pc': int(m['pc'], 16),
+            'j': [int(m[f'j{i}'], 16) for i in range(4)],
+            'm': [int(m[f'm{i}'], 16) for i in range(4)],
+        }
+        if m['g40'] is not None:
+            row['g40'] = int(m['g40'], 16)
+            row['g44'] = int(m['g44'], 16)
+            row['g5c'] = int(m['g5c'], 16)
+        if m['n'] is not None:
+            row['n']  = int(m['n'],  16)
+            row['ii'] = int(m['ii'], 16)
+            row['b']  = int(m['b'],  16)
+            if m['c3'] is not None:
+                row['c3'] = int(m['c3'], 16)
+                row['c9'] = int(m['c9'], 16)
+            if m['sp0x'] is not None:
+                row['sp0x'] = int(m['sp0x'], 16)
+                row['sp0y'] = int(m['sp0y'], 16)
+                row['sp1x'] = int(m['sp1x'], 16)
+                row['sp1y'] = int(m['sp1y'], 16)
+            if m['irc'] is not None:
+                row['irc'] = int(m['irc'], 16)  # irq_combined rise count
+                row['ivr'] = int(m['ivr'], 16)  # irq_vic rise count
+        if m['w5c0'] is not None:
+            row['w5c'] = [int(m[f'w5c{i}'], 16) for i in range(4)]
+            row['n5']  = int(m['n5'], 16)
+        if m['irf'] is not None:
+            row['irf'] = int(m['irf'], 16)
+            row['ivc'] = int(m['ivc'], 16)
+            if m['dr'] is not None:
+                row['dr']  = int(m['dr'],  16)
+                row['ds']  = int(m['ds'],  16)
+            if m['wc'] is not None:
+                row['wc']  = int(m['wc'], 16)  # cycles since IRQ_N falling
+                row['rr']  = int(m['rr'], 16)  # raster line at $D012 write
+                row['dv']  = int(m['dv'], 16)  # value written to $D012
+            if m['d9'] is not None:
+                row['d9']  = int(m['d9'], 16)  # last cpuDo on $D019 write
+                row['p9']  = int(m['p9'], 16)  # writer PC of last $D019 write
+                row['s9']  = int(m['s9'], 16)  # sticky 8-bit OR of $D019 cpuDo
+            if m['aw'] is not None:
+                row['aw']  = int(m['aw'], 16)  # ack-write count (cpuDo bit 0 = 1)
+                row['pa']  = int(m['pa'], 16)  # PC of most-recent ack write
+        rows.append(row)
+    return rows
+
+
+def report(rows, label):
+    print(f'\n== {label}  frames:{len(rows)} ==')
+    j_all = [j for r in rows for j in r['j']]
+    m_all = [mm for r in rows for mm in r['m']]
+    j_pages = collections.Counter((j >> 8) & 0xFF for j in j_all)
+    m_pages = collections.Counter((mm >> 8) & 0xFF for mm in m_all)
+    j_top = collections.Counter(j_all).most_common(15)
+    m_top = collections.Counter(m_all).most_common(15)
+
+    print('  JSR top-15 (4× per frame):')
+    for pc, c in j_top:
+        print(f'    {pc:04X}  {c:5d}  ({100*c/len(j_all):5.1f}%)')
+    print('  JSR page distribution (top 10):')
+    for p, c in sorted(j_pages.items(), key=lambda kv: -kv[1])[:10]:
+        print(f'    page ${p:02X}  {100*c/len(j_all):5.1f}%')
+
+    print('  JMP-ind target top-15 (4× per frame):')
+    for pc, c in m_top:
+        print(f'    {pc:04X}  {c:5d}  ({100*c/len(m_all):5.1f}%)')
+    print('  JMP-ind page distribution (top 10):')
+    for p, c in sorted(m_pages.items(), key=lambda kv: -kv[1])[:10]:
+        print(f'    page ${p:02X}  {100*c/len(m_all):5.1f}%')
+
+    if rows and 'g40' in rows[0]:
+        print('  Gate variables ($40 BNE-zero gate / $44 BEQ-zero gate / $5C IRQ counter):')
+        g40 = collections.Counter(r['g40'] for r in rows)
+        g44 = collections.Counter(r['g44'] for r in rows)
+        g5c = collections.Counter(r['g5c'] for r in rows)
+        print(f'    $40 zero rate: {100*g40.get(0,0)/len(rows):5.1f}%   top vals: {[hex(v) for v,_ in g40.most_common(5)]}')
+        print(f'    $44 zero rate: {100*g44.get(0,0)/len(rows):5.1f}%   top vals: {[hex(v) for v,_ in g44.most_common(5)]}')
+        print(f'    $5C zero rate: {100*g5c.get(0,0)/len(rows):5.1f}%   top vals: {[hex(v) for v,_ in g5c.most_common(5)]}')
+        # Gate predicate: game advance fires iff $44 == 0 AND $40 != 0
+        n_advance = sum(1 for r in rows if r['g44'] == 0 and r['g40'] != 0)
+        print(f'    GAME-ADVANCE-LIKELY frames ($44==0 AND $40!=0): {100*n_advance/len(rows):5.1f}%')
+
+    if rows and 'n' in rows[0]:
+        print('  v4 main/IRQ PC + page counters:')
+        n_pages = collections.Counter((r['n']  >> 8) & 0xFF for r in rows)
+        i_pages = collections.Counter((r['ii'] >> 8) & 0xFF for r in rows)
+        b_dist  = collections.Counter(r['b']  for r in rows)
+        n_top   = collections.Counter(r['n']  for r in rows).most_common(10)
+        i_top   = collections.Counter(r['ii'] for r in rows).most_common(10)
+        print('    main-thread PC top-10 (sampled at vblank):')
+        for pc, c in n_top:
+            print(f'      {pc:06X}  {c:5d}  ({100*c/len(rows):5.1f}%)')
+        print('    main-thread PC page distribution (top 8):')
+        for p, c in sorted(n_pages.items(), key=lambda kv: -kv[1])[:8]:
+            print(f'      page ${p:02X}  {100*c/len(rows):5.1f}%')
+        print('    IRQ-thread PC top-10 (sampled at vblank):')
+        for pc, c in i_top:
+            print(f'      {pc:06X}  {c:5d}  ({100*c/len(rows):5.1f}%)')
+        print(f'    $0045 (wait-loop var): top values: {[(hex(v), c) for v, c in b_dist.most_common(5)]}')
+        # C3/C9 deltas: monotonic counters, take last - first to get total over capture
+        if len(rows) > 1 and 'c3' in rows[0]:
+            d3 = (rows[-1]['c3'] - rows[0]['c3']) & 0xFFFF
+            d9 = (rows[-1]['c9'] - rows[0]['c9']) & 0xFFFF
+            print(f'    C3 delta (page $30 opcode fetches): {d3} over {len(rows)} frames ({d3/len(rows):.1f}/frame)')
+            print(f'    C9 delta (page $97 opcode fetches): {d9} over {len(rows)} frames ({d9/len(rows):.1f}/frame)')
+
+    # v265: d001_last_pc surfaces in CG slot — only meaningful with d001 writes.
+    # Use the field as a generic "last-CG-slot value" reporter.
+    if rows and 'cg' in rows[0]:
+        cg_dist = collections.Counter(r['cg'] for r in rows if 'cg' in r)
+        cg_top = cg_dist.most_common(8)
+        if cg_top:
+            print('  v265 CG-slot (= W1 = d001_last_pc[15:0] in v265+ builds):')
+            for v, c in cg_top:
+                print(f'    ${v:04X}  {c:5d}  ({100*c/len(rows):5.1f}%)')
+
+    # v264: sprite-position last-write values
+    sp_rows = [r for r in rows if 'sp0x' in r]
+    if sp_rows:
+        print('  v264 sprite positions ($D000=spr0_x, $D001=spr0_y, $D002=spr1_x, $D003=spr1_y):')
+        for key, label in [('sp0x','spr0_x'),('sp0y','spr0_y'),('sp1x','spr1_x'),('sp1y','spr1_y')]:
+            dist = collections.Counter(r[key] for r in sp_rows)
+            top = [(f'${v:02X}', c) for v, c in dist.most_common(8)]
+            uniq = len(dist)
+            print(f'    {label} unique:{uniq:3d}  top: {top}')
+        # First-12 frames sprite snapshot
+        print('    first 12 frames spr0_x spr0_y / spr1_x spr1_y:')
+        for i, r in enumerate(sp_rows[:12]):
+            print(f'      {i:>3}  {r["sp0x"]:02X} {r["sp0y"]:02X}  /  {r["sp1x"]:02X} {r["sp1y"]:02X}')
+
+    w5_rows = [r for r in rows if 'w5c' in r]
+    if w5_rows:
+        print('  v262 $005C write-ring (4-deep, oldest..newest) + writes/frame:')
+        # Per-position distributions across all rows
+        for pos in range(4):
+            dist = collections.Counter(r['w5c'][pos] for r in w5_rows)
+            top = [(f'${v:02X}', c) for v, c in dist.most_common(5)]
+            print(f'    pos[{pos}] top: {top}')
+        # Aggregate "what values ever appear in the ring"
+        all_vals = [v for r in w5_rows for v in r['w5c']]
+        all_dist = collections.Counter(all_vals).most_common(8)
+        print(f'    all-positions distribution (top 8): {[(f"${v:02X}", c) for v,c in all_dist]}')
+        # Writes-per-frame from N5 deltas
+        if len(w5_rows) > 1:
+            dn5 = (w5_rows[-1]['n5'] - w5_rows[0]['n5']) & 0xFFFF
+            print(f'    N5 delta (writes to $005C): {dn5} over {len(w5_rows)} frames ({dn5/len(w5_rows):.2f}/frame)')
+        # First-12 raw rings to read the cycle directly
+        print('    first 12 frames raw rings:')
+        for i, r in enumerate(w5_rows[:12]):
+            print(f'      {i:>3}  {" ".join(f"{v:02X}" for v in r["w5c"])}  N5:{r["n5"]:04X}')
+
+    irf_rows = [r for r in rows if 'irf' in r]
+    if irf_rows:
+        print('  v263 IRQ-source counters + $D019 read-side:')
+        if len(irf_rows) > 1:
+            dif = (irf_rows[-1]['irf'] - irf_rows[0]['irf']) & 0xFFFF
+            div = (irf_rows[-1]['ivc'] - irf_rows[0]['ivc']) & 0xFFFF
+            print(f'    IF delta (IRQ_N falling edges):     {dif:6d} over {len(irf_rows)} frames ({dif/len(irf_rows):.2f}/frame)')
+            print(f'    VC delta ($FFFE/$FFFF vec fetches): {div:6d} over {len(irf_rows)} frames ({div/len(irf_rows):.2f}/frame)')
+            print(f'    VC/IF ratio: {div/max(dif,1):.2f}  (>2.0 means tail-chain on same source pulse; ~1.0 = 1 vec per pulse; ~2.0 = each entry fetches 2 bytes)')
+        if 'dr' in irf_rows[0]:
+            dr_dist = collections.Counter(r['dr'] for r in irf_rows)
+            ds_or   = 0
+            for r in irf_rows: ds_or |= r['ds']
+            print(f'    DR ($D019 last-read) top 5: {[(f"${v:02X}", c) for v, c in dr_dist.most_common(5)]}')
+            print(f'    DS (cumulative seen-bits 0..3) sticky-OR across capture: ${ds_or:X}')
+            for v, c in dr_dist.most_common(3):
+                bits = []
+                if v & 0x01: bits.append('IRST')
+                if v & 0x02: bits.append('IMBC')
+                if v & 0x04: bits.append('IMMC')
+                if v & 0x08: bits.append('ILP')
+                print(f'      ${v:02X} = {"+".join(bits) if bits else "(no source bits)"}  (top bit is IRQ-pending flag)')
+
+    irc_rows = [r for r in rows if 'irc' in r]
+    if irc_rows and len(irc_rows) > 1:
+        # In v269 builds: irc=vic_d019_wr (myWr_a $D019), ivr=vic_resetraster
+        # In v268 builds: irc=irq_combined rises, ivr=irq_vic rises
+        # Reporter prints both interpretations.
+        print('  v269 VIC-internal IRQ ack diagnostics (also v268 IRQ rise counters):')
+        dirc = (irc_rows[-1]['irc'] - irc_rows[0]['irc']) & 0xFFFF
+        divr = (irc_rows[-1]['ivr'] - irc_rows[0]['ivr']) & 0xFFFF
+        n = len(irc_rows)
+        print(f'    VW=IR delta (myWr_a $D019 hits / irq_combined rises): {dirc:6d} ({dirc/n:.2f}/frame)')
+        print(f'    AC=IV delta (resetRasterIrq pulses / irq_vic rises):  {divr:6d} ({divr/n:.2f}/frame)')
+        # v269 interpretation
+        if dirc == 0:
+            print('    => v269: myWr_a never fires for $D019 -> ALIGNMENT failure (write doesnt reach VIC).')
+        elif dirc > 0 and divr == 0:
+            print('    => v269: myWr_a fires but resetRasterIrq never pulses -> di_r(0)=0 (DATA bit-0 corruption).')
+        elif dirc > 0 and divr > 0 and dirc != divr:
+            print('    => v269: counts diverge -> some myWr_a $D019 hits had di_r(0)=0 -> partial DATA corruption.')
+        elif dirc > 0 and divr > 0:
+            print('    => v269: ack reaches VIC (alignment + data fine). IRST race elsewhere.')
+
+    wc_rows = [r for r in rows if 'wc' in r]
+    if wc_rows:
+        print('  v267 $D012 raster-IRQ tail-chain timing (Path B1):')
+        wc_vals = [r['wc'] for r in wc_rows]
+        rr_vals = [r['rr'] for r in wc_rows]
+        dv_vals = [r['dv'] for r in wc_rows]
+        # WC = clk32 cycles between LAST IRQ_N falling and LAST $D012 write.
+        # At 32 MHz clk32, 1 cycle = 31.25 ns; 1 raster line ~63 us = 2016 clk32.
+        wc_avg = sum(wc_vals)/len(wc_vals)
+        wc_min = min(wc_vals)
+        wc_max = max(wc_vals)
+        print(f'    WC (cycles since IRQ_N fall to $D012 write):')
+        print(f'      min  = {wc_min:5d} clk32 ({wc_min/32:.1f} us)')
+        print(f'      avg  = {wc_avg:7.1f} clk32 ({wc_avg/32:.1f} us)')
+        print(f'      max  = {wc_max:5d} clk32 ({wc_max/32:.1f} us)')
+        print(f'      0xFFFF saturation count (no IRQ in capture window): {sum(1 for v in wc_vals if v == 0xFFFF)}')
+        wc_top = collections.Counter(wc_vals).most_common(8)
+        print(f'    WC top values: {[(v, c) for v, c in wc_top]}')
+        # raster-vs-compare diff
+        diffs = [(rr - dv) & 0xFFF for rr, dv in zip(rr_vals, dv_vals)]
+        # signed diff: rr - dv (rr can wrap 0..311; small positive = behind beam = bad)
+        signed_diffs = [(rr - dv) for rr, dv in zip(rr_vals, dv_vals)]
+        behind = sum(1 for d in signed_diffs if d > 0 and d < 64)
+        ahead  = sum(1 for d in signed_diffs if d <= 0 or d >= 64)
+        print(f'    Raster vs $D012 compare value:')
+        print(f'      RR (current raster at write) top 5: {[(v, c) for v, c in collections.Counter(rr_vals).most_common(5)]}')
+        print(f'      DV ($D012 value written) top 5:     {[(v, c) for v, c in collections.Counter(dv_vals).most_common(5)]}')
+        print(f'      "behind beam" count (RR>DV, RR-DV<64): {behind}/{len(wc_rows)} ({100*behind/max(len(wc_rows),1):.1f}%)')
+        print(f'      "ahead of beam" count: {ahead}/{len(wc_rows)} ({100*ahead/max(len(wc_rows),1):.1f}%)')
+        print('    first 12 frames raw (WC, RR, DV):')
+        for i, r in enumerate(wc_rows[:12]):
+            print(f'      {i:>3}  WC:{r["wc"]:04X} RR:{r["rr"]:03X}({r["rr"]:>3d})  DV:{r["dv"]:02X}({r["dv"]:>3d})  diff:{(r["rr"]-r["dv"]):+4d}')
+
+    d9_rows = [r for r in rows if 'd9' in r]
+    if d9_rows:
+        print('  v270 $D019 writer-PC + sticky cpuDo OR:')
+        d9_top = collections.Counter(r['d9'] for r in d9_rows).most_common(8)
+        p9_top = collections.Counter(r['p9'] for r in d9_rows).most_common(8)
+        s9_final = d9_rows[-1]['s9']
+        s9_bits = ', '.join(f'b{i}' for i in range(8) if (s9_final >> i) & 1)
+        print(f'    last cpuDo (D9) top 8: {[(f"${v:02X}", c) for v, c in d9_top]}')
+        print(f'    writer PC (P9) top 8: {[(f"${v:06X}", c) for v, c in p9_top]}')
+        print(f'    sticky 8-bit OR (S9) at end: ${s9_final:02X}  bits set: [{s9_bits if s9_bits else "(none)"}]')
+        if s9_final & 0x01:
+            print(f'    => SCPU/T65 wrote bit 0 = 1 to $D019 at least once. IRST ack DID happen.')
+        else:
+            print(f'    => Bit 0 NEVER set in any $D019 write -> handler ALWAYS clears IRST-ack bit before STA.')
+
+    aw_rows = [r for r in rows if 'aw' in r]
+    if aw_rows:
+        print('  v271 $D019 ack-write counter + ack-write PC:')
+        # AW is a free-running counter; per-frame rate = (last - first) / nframes
+        aw_first, aw_last = aw_rows[0]['aw'], aw_rows[-1]['aw']
+        aw_delta = (aw_last - aw_first) & 0xFFFF
+        nf = len(aw_rows)
+        rate = aw_delta / max(nf, 1)
+        print(f'    AW delta (writes with cpuDo bit 0 = 1): {aw_delta} over {nf} frames ({rate:.2f}/frame)')
+        # PA is the most-recent ack PC. If AW=0 across the whole run on SCPU,
+        # PA stays at whatever it was at boot (or 0).
+        pa_top = collections.Counter(r['pa'] for r in aw_rows).most_common(8)
+        print(f'    ack-write PC (PA) top 8: {[(f"${v:06X}", c) for v, c in pa_top]}')
+        if rate < 0.5:
+            print(f'    => AW < 0.5/frame: handler is NOT acking IRST in the steady state.')
+        elif 0.5 <= rate <= 1.5:
+            print(f'    => AW ~1/frame: handler acks IRST once per raster IRQ. Healthy. PA = ack instr PC.')
+        else:
+            print(f'    => AW > 1.5/frame: multiple acks per frame (over-acking or tail-chain).')
+
+
+def main():
+    if len(sys.argv) < 3:
+        print('Usage: dl_uart_rings.py <t65.txt> <scpu.txt>')
+        sys.exit(1)
+    t = load(sys.argv[1])
+    s = load(sys.argv[2])
+    report(t, 'T65')
+    report(s, 'SCPU')
+
+    print('\n== Time-aligned first-12 frames J/M side by side ==')
+    print(f'  {"#":>3}  {"T65 J ring":<24}  {"T65 M ring":<24}  | {"SCPU J ring":<24}  {"SCPU M ring":<24}')
+    for i in range(min(12, len(t), len(s))):
+        tj = ' '.join(f'{x:04X}' for x in t[i]['j'])
+        tm = ' '.join(f'{x:04X}' for x in t[i]['m'])
+        sj = ' '.join(f'{x:04X}' for x in s[i]['j'])
+        sm = ' '.join(f'{x:04X}' for x in s[i]['m'])
+        print(f'  {i:>3}  {tj:<24}  {tm:<24}  | {sj:<24}  {sm:<24}')
+
+
+if __name__ == '__main__':
+    main()

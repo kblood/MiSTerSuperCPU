@@ -1,0 +1,8 @@
+t65  t= 60s  md5=76697fe6a392
+t65  t=120s  md5=912ae263d431
+t65  t=180s  md5=a49511fdfc3e
+t65  t=240s  md5=6cf01b65f63c
+scpu  t= 60s  md5=7b03f4ef3c75
+scpu  t=120s  md5=314a151bb778
+scpu  t=180s  md5=a9e9f00578d7
+scpu  t=240s  md5=aafdd74243ff

@@ -1,0 +1,38 @@
+start: 0e674482f9
+=== sustained 10s hold: up ===
+  t0 0e674482f9
+  t5  0e674482f9
+  t10 0e674482f9
+  up: no change
+=== sustained 10s hold: down ===
+  t0 0e674482f9
+  t5  0e674482f9
+  t10 978407454c
+  down: STATE CHANGED
+=== sustained 10s hold: left ===
+  t0 978407454c
+  t5  978407454c
+  t10 978407454c
+  left: no change
+=== sustained 10s hold: right ===
+  t0 978407454c
+  t5  0e674482f9
+  t10 0e674482f9
+  right: STATE CHANGED
+=== sustained 10s hold: space ===
+  t0 0e674482f9
+  t5  0e674482f9
+  t10 0e674482f9
+  space: no change
+=== sustained 10s hold: rctrl ===
+  t0 0e674482f9
+  t5  0e674482f9
+  t10 0e674482f9
+  rctrl: no change
+=== sustained 10s hold: tab ===
+  t0 0e674482f9
+  t5  0e674482f9
+  t10 978407454c
+  tab: STATE CHANGED
+=== CONTROL: 10s no input ===
+  ctrl: t0=978407454c t5=978407454c t10=978407454c

@@ -33,6 +33,7 @@ entity P65C816 is
 		  DBG_X	: out std_logic_vector(15 downto 0);
 		  DBG_Y	: out std_logic_vector(15 downto 0);
 		  DBG_D	: out std_logic_vector(15 downto 0);
+		  DBG_A	: out std_logic_vector(15 downto 0);
 		  DBG_STATE	: out std_logic_vector(3 downto 0)
     );
 end P65C816;
@@ -40,6 +41,7 @@ end P65C816;
 architecture rtl of P65C816 is
 
 	signal A, X, Y, D, SP, T : std_logic_vector(15 downto 0);
+	signal SP_busread        : std_logic_vector(15 downto 0);
 	signal PBR, DBR : std_logic_vector(7 downto 0);
 	signal P    : std_logic_vector(8 downto 0);
 	signal PC    : std_logic_vector(15 downto 0);
@@ -61,6 +63,16 @@ architecture rtl of P65C816 is
 	signal WAIExec, STPExec : std_logic;
 	signal NMI_SYNC : std_logic;
 	signal NMI_ACTIVE, IRQ_ACTIVE : std_logic;
+	-- v272: NMOS RMW double-write detection. rmw_decode='1' for the 28
+	-- read-modify-write opcodes that operate on memory (matches the
+	-- existing process-local `rmw` variable used for MLB). The modify
+	-- cycle of those opcodes follows a unique microcode pattern
+	-- (LOAD_T="10", OUT_BUS="000", BUS_CTRL[5:3]="100"); when EF=1 we
+	-- need to inject an OLD-value write at that cycle to mimic the
+	-- NMOS 6502 RMW double-write semantic that DL relies on for VIC
+	-- IRQ ack via INC $D019.
+	signal rmw_decode       : std_logic;
+	signal rmw_modify_cycle : std_logic;
 	signal OLD_NMI_N, OLD_NMI2_N : std_logic;
 	signal RDY_IN_DELAYED : std_logic;
 	signal ADDR_BUS : std_logic_vector(23 downto 0);
@@ -227,13 +239,20 @@ begin
 			 '1' when (MC.LOAD_AXY(1) = '1') and XF = '0' and EF = '0' else
 			 '0';
 			 
+	-- v261: TSC (BUS_CTRL=101) — in emu mode force high byte to $01 so software
+	-- reading SP via TSC sees the page-1-normalized value. Ports iigs commit
+	-- 401ea5e behaviour. Defensive: our SP-write paths already normalise to
+	-- page 1 (lines 347..400), but a stray non-$01 high byte from RST/XCE
+	-- transitions could leak through without this mask.
+	SP_busread <= (x"01" & SP(7 downto 0)) when EF = '1' else SP;
+
 	with MC.BUS_CTRL(5 downto 3) select
 		SB <= A           when "000",
 				X           when "001",
 				Y           when "010",
 				D           when "011",
 				T           when "100",
-				SP          when "101",
+				SP_busread  when "101",
 				x"00" & PBR when "110",
 				x"00" & DBR when "111",
 				x"0000"	   when others;
@@ -269,6 +288,42 @@ begin
 	XF <= P(4);
 	EF <= P(8);
 
+	-- v272: RMW opcode decode (mirrors the per-process `rmw` variable
+	-- at the VPB/MLB stage below). Excludes accumulator-mode INC/DEC
+	-- ($1A, $3A) which never touch memory. TSB/TRB ($04/$0C/$14/$1C)
+	-- ARE included: SST shows real silicon performs an NMOS-style
+	-- double-write on these too in emu mode (v273 verified).
+	rmw_decode <=
+		'1' when IR = x"06" or IR = x"0E" or IR = x"16" or IR = x"1E" or
+		         IR = x"C6" or IR = x"CE" or IR = x"D6" or IR = x"DE" or
+		         IR = x"E6" or IR = x"EE" or IR = x"F6" or IR = x"FE" or
+		         IR = x"46" or IR = x"4E" or IR = x"56" or IR = x"5E" or
+		         IR = x"26" or IR = x"2E" or IR = x"36" or IR = x"3E" or
+		         IR = x"66" or IR = x"6E" or IR = x"76" or IR = x"7E" or
+		         IR = x"14" or IR = x"1C" or IR = x"04" or IR = x"0C"
+		else '0';
+
+	-- v272: NMOS RMW modify-cycle override. Fires when:
+	--   * E=1 (emulation mode -- MF is forced to 1 here so 8-bit memory)
+	--   * Current opcode is one of the 28 memory RMW instructions
+	--   * Microcode is in the modify cycle: LOAD_T="10" (ALU result -> T)
+	--     and OUT_BUS="000" (no natural bus output for this cycle).
+	-- (v273 broadened: removed BUS_CTRL[5:3]="100" check that only matched
+	--  INC/DEC variants. Shift/rotate/TSB/TRB use BUS_CTRL="000100"; the
+	--  modify-cycle signature LOAD_T="10"+OUT_BUS="000" is already
+	--  unique within rmw_decode=1 microcode, since LOAD_T="10" only
+	--  appears at the ALU-result-to-T cycle.)
+	-- When asserted: drive D_OUT=T(7:0) (OLD value), force WE=0, and
+	-- force ADDR_INC=0 in the address process so the address points at
+	-- AA+0 (read/write target) instead of AA+1 (the natural slot 4
+	-- address used by the 16-bit-mode read of the high byte).
+	rmw_modify_cycle <=
+		'1' when EF = '1'
+		         and rmw_decode = '1'
+		         and MC.LOAD_T = "10"
+		         and MC.OUT_BUS = "000"
+		    else '0';
+
 	EF_OUT <= EF;
 	DBG_PC <= PC;
 	DBG_SP <= SP;
@@ -279,9 +334,11 @@ begin
 	DBG_X  <= X;
 	DBG_Y  <= Y;
 	DBG_D  <= D;
+	DBG_A  <= A;
 	DBG_STATE <= std_logic_vector(STATE);
 
 	process(CLK, RST_N)
+		variable next_xf : std_logic;
 	begin
 		if RST_N = '0' then
 			A <= (others=>'0');
@@ -295,6 +352,8 @@ begin
 			-- Force when: entering emulation (P(0)=1), OR leaving emulation (P(8)=1).
 			-- Only skip when both=0 (native mode with C=0, stays native).
 			-- Fix from iigs_simulation: original only checked P(0), missing native→emu case.
+			-- v305 attempt: tried `EN = '1'` guard — did NOT fix the post-XCE drop
+			-- on hardware; reverted. Bug is elsewhere; see project_xce_drops_next_instruction.md.
 			if (IR = x"FB" and (P(0) = '1' or P(8) = '1') and MC.LOAD_P = "101") then
 				X(15 downto 8) <= x"00";
 				Y(15 downto 8) <= x"00";
@@ -332,8 +391,26 @@ begin
 					end if;
 				end if; 
 				
-				oldXF <= XF;
-				if XF = '1' and oldXF = '0' and EF = '0' then
+				-- Predict the XF value that P is about to take this edge so
+				-- the X/Y high-byte clear fires on the SAME edge as the
+				-- XF=0->1 transition. SST/silicon captures final.x with the
+				-- high byte already cleared after the PLP/RTI/SEP commit;
+				-- the previous oldXF-lagged form fired one cycle too late.
+				case MC.LOAD_P is
+					when "011" =>                                   -- PLP / RTI
+						next_xf := D_IN(4) or EF;
+					when "110" =>                                   -- SEP / REP
+						if IR(5) = '1' then
+							next_xf := XF or (DR(4) and not EF);
+						else
+							next_xf := XF and not (DR(4) and not EF);
+						end if;
+					when others =>
+						next_xf := XF;
+				end case;
+
+				oldXF <= next_xf;
+				if next_xf = '1' and XF = '0' and EF = '0' then
 					X(15 downto 8) <= x"00";
 					Y(15 downto 8) <= x"00";
 				end if;
@@ -422,7 +499,17 @@ begin
 							IR = x"EB" or IR = x"AB" or IR = x"5B" or IR = x"BA" then
 							P(1 downto 0) <= ZO & CO; P(7 downto 6) <= SO & VO; -- ALU
 						end if;
-					when "010" => P(2) <= '1'; P(3) <= '0';		-- BRK/COP
+					when "010" =>
+						-- v261 (2026-05-02): align with VICE behaviour.
+						-- VICE x64sc (6510core.c:436-475) and xscpu64
+						-- (65816core.c:1724-1754) both clear D on IRQ entry
+						-- in BOTH native and emu mode. v253's NMOS-style
+						-- D-preservation diverged from VICE without fixing
+						-- DL anyway, so we match VICE. See
+						-- docs/cpu_vice_emulation_comparison.md.
+						P(2) <= '1';
+						P(3) <= '0';
+						-- BRK/COP/IRQ/NMI
 					when "011" => P(7 downto 6) <= D_IN(7 downto 6); P(5) <= D_IN(5) or EF; P(4) <= D_IN(4) or EF; P(3 downto 0) <= D_IN(3 downto 0); -- RTI/PLP
 					when "100" => 
 						case IR(7 downto 6) is
@@ -461,10 +548,13 @@ begin
 			PBR <= (others=>'0');
 			DBR <= (others=>'0');
 		elsif rising_edge(CLK) then
-			-- XCE: clear D register when entering/leaving emulation mode (same condition as SP/X/Y)
-			if (IR = x"FB" and (P(0) = '1' or P(8) = '1') and MC.LOAD_P = "101") then
-				D <= (others=>'0');
-			elsif EN = '1' then
+			-- XCE per WDC datasheet swaps E<->C only; D is preserved across
+			-- mode transitions. The previous "clear D on XCE" hack diverged
+			-- from real silicon (CMD SuperCPU, Apple IIgs) and breaks
+			-- prelude-based register priming used by SingleStepTests/65816.
+			-- Removed 2026-05-02 (v273); regression-checked against the v272
+			-- sweep (BASIC, decomp_stress, asterix, DL).
+			if EN = '1' then
 				DR <= D_IN;
 				
 				case MC.LOAD_T is
@@ -480,10 +570,17 @@ begin
 				end case;
 				
 				case MC.LOAD_DKB is
-					when "01" => 
+					when "01" =>
 						D <= AluIntR;
-					when "10" => 
-						if IR = x"00" or IR = x"02" then	--BRK/COP reset PBR
+					when "10" =>
+						-- v261: also clear PBR on hardware IRQ/NMI entry to
+						-- match VICE 65816core.c:1753 (`reg_pbr=0` after IRQ
+						-- vector load). Previously only BRK/COP cleared PBR;
+						-- on a hardware interrupt the else-branch loaded PBR
+						-- with the PCL byte from $FFFE — wrong semantically,
+						-- though latent in DL because DL never sets PBR.
+						if IR = x"00" or IR = x"02"
+						   or IsIRQInterrupt = '1' or IsNMIInterrupt = '1' then
 							PBR <= (others=>'0');
 						else
 							PBR <= D_IN;
@@ -501,7 +598,11 @@ begin
 	end process;
 	
 	--Data bus
-	D_OUT <= P(7) & P(6) & (P(5) or EF) & ((P(4) or (not GotInterrupt and EF)) and not (GotInterrupt and (IsIRQInterrupt or IsNMIInterrupt) and EF)) & P(3 downto 0) when MC.OUT_BUS = "001" else
+	-- v272: override with OLD T(7:0) during NMOS RMW modify cycle. T
+	-- has not yet latched the ALU result this cycle, so T(7:0) is the
+	-- value just read in the previous cycle.
+	D_OUT <= T(7 downto 0) when rmw_modify_cycle = '1' else
+				P(7) & P(6) & (P(5) or EF) & ((P(4) or (not GotInterrupt and EF)) and not (GotInterrupt and (IsIRQInterrupt or IsNMIInterrupt) and EF)) & P(3 downto 0) when MC.OUT_BUS = "001" else
 				PC(15 downto 8) when MC.OUT_BUS = "010" and MC.BYTE_SEL(1) = '1' else
 				PC(7 downto 0) when MC.OUT_BUS = "010" and MC.BYTE_SEL(1) = '0' else
 				AA(15 downto 8) when MC.OUT_BUS = "011" and MC.BYTE_SEL(1) = '1' else
@@ -512,10 +613,12 @@ begin
 				DR when MC.OUT_BUS = "110" else
 				x"00";
 		
-	process(MC, IsResetInterrupt)
+	process(MC, IsResetInterrupt, rmw_modify_cycle)
 	begin
 		WE <= '1';
-		if MC.OUT_BUS /= "000" and IsResetInterrupt = '0' then
+		-- v272: NMOS RMW modify cycle is normally OUT_BUS="000" (no
+		-- write); force WE=0 to issue the OLD-value write.
+		if (MC.OUT_BUS /= "000" or rmw_modify_cycle = '1') and IsResetInterrupt = '0' then
 			WE <= '0';
 		end if;
 	end process;
@@ -600,10 +703,16 @@ begin
 	
 	
 	--Address bus
-	process(MC, PC, AA, DX, SP, EF, PBR, DBR, AB, IsResetInterrupt, IsABORTInterrupt, IsNMIInterrupt, IsIRQInterrupt, IsCOPInterrupt)
+	process(MC, PC, AA, DX, SP, EF, PBR, DBR, AB, IsResetInterrupt, IsABORTInterrupt, IsNMIInterrupt, IsIRQInterrupt, IsCOPInterrupt, rmw_modify_cycle)
 	variable ADDR_INC : unsigned(15 downto 0);
 	begin
 		ADDR_INC := (15 downto 2 => '0', 1 => MC.ADDR_INC(1), 0 => MC.ADDR_INC(0));
+		-- v272: NMOS RMW double-write addresses AA+0 (the operand byte),
+		-- not AA+1 (which is the slot 4 default for 16-bit second-byte
+		-- access). Zero ADDR_INC so the address mux below produces base+0.
+		if rmw_modify_cycle = '1' then
+			ADDR_INC := (others => '0');
+		end if;
 		case MC.ADDR_BUS is
 			when "0000" => 
 				ADDR_BUS <= PBR & PC; 
@@ -615,11 +724,27 @@ begin
 				
 			when "0010"=>
 				ADDR_BUS <= PBR & std_logic_vector(unsigned(AA(15 downto 0)) + ADDR_INC);
-			when "0110"=> 
-				ADDR_BUS <= x"00" & std_logic_vector(unsigned(AA(15 downto 0)) + ADDR_INC);
+			when "0110"=>
+				-- NMOS JMP ($xxFF) page-wrap in emu mode (E=1): real NMOS 6502
+				-- increments only AA(7:0) when reading successive bytes of an
+				-- indirect target through bank 0 -- JMP ($02FF) reads lo from
+				-- $02FF and hi from $0200, NOT $0300. Mirrors the EF-gated
+				-- wrap already used by ADDR_BUS="0111" (DP indirect) below.
+				if EF = '1' then
+					ADDR_BUS <= x"00" & AA(15 downto 8) & std_logic_vector(unsigned(AA(7 downto 0)) + ADDR_INC(7 downto 0));
+				else
+					ADDR_BUS <= x"00" & std_logic_vector(unsigned(AA(15 downto 0)) + ADDR_INC);
+				end if;
 				
-			when "0011" | "0111" => 
-				if EF = '0' or MC.ADDR_BUS(2) = '0' then
+			when "0011" | "0111" =>
+				-- DP indirect pointer-byte read. ADDR_BUS="0111" requests
+				-- NMOS-style emu-mode page wrap on the +1 byte. Real WDC
+				-- silicon (per SST traces) only wraps when DPL=0 (DP is
+				-- page-aligned); when DPL!=0 the ptr+1 increment is full
+				-- 16-bit and may cross a page boundary. Gate the wrap on
+				-- D(7:0)=0 to match silicon. Fixes ~262 fails across the
+				-- 8 (DP,X) opcodes (ORA/AND/EOR/ADC/STA/LDA/CMP/SBC).
+				if EF = '0' or MC.ADDR_BUS(2) = '0' or D(7 downto 0) /= x"00" then
 					ADDR_BUS <= x"00" & std_logic_vector(unsigned(DX) + ADDR_INC);
 				else
 					ADDR_BUS <= x"00" & DX(15 downto 8) & std_logic_vector(unsigned(DX(7 downto 0)) + ADDR_INC(7 downto 0));
@@ -677,7 +802,23 @@ begin
 			VPB <= '1';
 		end if;
 
-		if (MC.ADDR_BUS = "0001" or MC.ADDR_BUS = "0011" or MC.ADDR_BUS = "0111") and rmw = '1' then
+		-- MLB asserts (low) during the read-modify-write portion of any of
+		-- the 28 RMW opcodes. Per WDC, the lock covers the read, the
+		-- modify (internal), and the write -- but not the operand fetches
+		-- or the page-cross IO before the read.
+		--   * Operand fetches use ADDR_BUS="0000" (PBR:PC) -> excluded.
+		--   * RMW data accesses use ADDR_BUS in {"0001","0011","0101","0111"}
+		--     for ABS/DP/ABS,X/STK respectively. The DP,X variants reuse
+		--     the DP "0011" pattern. ABS,X uses "0101", which the older
+		--     gate omitted entirely (v273 SST sweep caught this).
+		--   * The page-cross IO of ABS,X also has ADDR_BUS="0101" but
+		--     VA="00" and LOAD_T="00", so we additionally require
+		--     VA /= "00" or the modify-cycle signature LOAD_T="10".
+		if rmw = '1'
+		   and (MC.ADDR_BUS = "0001" or MC.ADDR_BUS = "0011"
+		        or MC.ADDR_BUS = "0101" or MC.ADDR_BUS = "0111")
+		   and (MC.VA /= "00" or MC.LOAD_T = "10")
+		then
 			MLB <= '0';
 		else
 			MLB <= '1';

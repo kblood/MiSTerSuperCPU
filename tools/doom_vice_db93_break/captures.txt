@@ -1,0 +1,53 @@
+VICE break at $41:$DB93 captures (90s window)
+============================================================
+
+--- BREAK #1 ---
+#1 (Stop on  exec db93)  246/$0f6,  55/$37 18
+.C:db93  69 E0       ADC #$E0   23386537
+(C:$db93) 
+  PB ADDR CREG X    Y    STCK DPRE DB NVMXDIZC E LIN CYC.SB
+.;2b db93 fdc8 0000 0016 01ff 0000 00 10000000 0 246 055.18
+(C:$db93) 
+>C:07b0  65 8e 85 8a  a2 00 00 a5  c0 c5 88 a5  c2 e5 8a 50   E????@@??E.?B??p
+>C:07c0  03                                                   c
+(C:$07c1) 
+--- BREAK #2 ---
+#1 (Stop on  exec db93)  274/$112,  43/$2b 4
+.C:db93  69 E0       ADC #$E0   23388289
+(C:$db93) 
+  PB ADDR CREG X    Y    STCK DPRE DB NVMXDIZC E LIN CYC.SB
+.;2b db93 fdc8 0000 000e 01ff 0000 00 10000000 0 274 043.04
+(C:$db93) 
+>C:07b0  65 8e 85 8a  a2 00 00 a5  c0 c5 88 a5  c2 e5 8a 50   E????@@??E.?B??p
+>C:07c0  03                                                   c
+(C:$07c1) 
+--- BREAK #3 ---
+#1 (Stop on  exec db93)   44/$02c,  22/$16 13
+.C:db93  69 E0       ADC #$E0   23393434
+(C:$db93) 
+  PB ADDR CREG X    Y    STCK DPRE DB NVMXDIZC E LIN CYC.SB
+.;2b db93 fde0 0000 0016 01ff 0000 00 10000000 0 044 022.13
+(C:$db93) 
+>C:07b0  65 8e 85 8a  a2 00 00 a5  c0 c5 88 a5  c2 e5 8a 50   E????@@??E.?B??p
+>C:07c0  03                                                   c
+(C:$07c1) 
+--- BREAK #4 ---
+#1 (Stop on  exec db93)  311/$137,  47/$2f 2
+.C:db93  69 E0       ADC #$E0   23429936
+(C:$db93) 
+  PB ADDR CREG X    Y    STCK DPRE DB NVMXDIZC E LIN CYC.SB
+.;2b db93 fdc0 0000 0016 01ff 0000 00 10000000 0 311 047.02
+(C:$db93) 
+>C:07b0  65 8e 85 8a  a2 00 00 a5  c0 c5 88 a5  c2 e5 8a 50   E????@@??E.?B??p
+>C:07c0  03                                                   c
+(C:$07c1) 
+--- BREAK #5 ---
+#1 (Stop on  exec db93)  138/$08a,  29/$1d 3
+.C:db93  18          CLC   27939899
+(C:$db93) 
+  PB ADDR CREG X    Y    STCK DPRE DB NVMXDIZC E LIN CYC.SB
+.;20 db93 0088 0000 000c 01ff 0000 00 00000000 0 138 029.03
+(C:$db93) 
+>C:07b0  85 c4 a0 1a  00 b7 f4 85  c6 a0 14 00  b7 f4 85 c0   ?D z@???F t@????
+>C:07c0  a0                                                    
+(C:$07c1) 

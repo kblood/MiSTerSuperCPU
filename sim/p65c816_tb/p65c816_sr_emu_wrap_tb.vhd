@@ -1,30 +1,33 @@
 -- p65c816_sr_emu_wrap_tb.vhd
 --
 -- Verifies emu-mode stack-relative addressing ($A3 LDA sr,S).
--- VICE semantics: loc = (reg_sp + p1) & 0xffff; if emul then loc = (loc & 0xff) | 0x100.
--- I.e. in emu mode the high byte of the effective address is ALWAYS $01
--- regardless of SPL+operand carry.
 --
--- Failing pattern without the fix:
---   SP = $01F0, LDA $10,S  →  DX = $0200 (carry propagated into DH)
---   Correct:                  DX = $0100  (wrap within page 01)
+-- 2026-05-03 PASS/FAIL inverted: SingleStepTests/65816 real-hardware traces
+-- show that emu-mode stack-relative addressing does NOT wrap within page 1 —
+-- the SPL+operand carry propagates into DH normally. VICE wraps and was
+-- previously cited as authoritative; bench was originally written against
+-- VICE, then rewritten against silicon when SST results landed.
+--
+-- Reference: SP = $01F0, LDA $10,S
+--   SST/silicon: DX = $0200 (carry propagated into DH) — value at $0200 = $CC
+--   VICE wrong:  DX = $0100 (wrap within page 01)         — value at $0100 = $BB
 --
 -- Test sequence (runs in emulation mode — CPU enters emu on reset):
 --   $0800 78         SEI
 --   $0801 A2 F0      LDX #$F0
 --   $0803 9A         TXS                     ; SP = $01F0 (emu forces hi=$01)
 --   $0804 A9 BB      LDA #$BB
---   $0806 8D 00 01   STA $0100               ; byte at $0100 = $BB (target)
+--   $0806 8D 00 01   STA $0100               ; byte at $0100 = $BB (VICE trap)
 --   $0809 A9 CC      LDA #$CC
---   $080B 8D 00 02   STA $0200               ; byte at $0200 = $CC (bug trap)
+--   $080B 8D 00 02   STA $0200               ; byte at $0200 = $CC (silicon target)
 --   $080E A3 10      LDA $10,S               ; SP+$10 = $01F0+$10 = cross page
 --   $0810 8D 00 30   STA $3000               ; marker: A after sr read
 --   $0813 A9 EE      LDA #$EE
 --   $0815 8D 30 30   STA $3030               ; end sentinel
 --   $0818 4C 18 08   JMP $0818               ; spin
 --
--- PASS: $3000 == $BB (address wrapped to $0100)
--- FAIL: $3000 == $CC (bug: address went to $0200)
+-- PASS: $3000 == $CC (carried into DH, address $0200) — SST/silicon semantics
+-- FAIL: $3000 == $BB (page-1 wrap to $0100)            — VICE incorrectly
 
 library IEEE;
 use IEEE.std_logic_1164.all;
@@ -200,11 +203,11 @@ begin
         if result_seen = '0' then
             report "FAIL: $3000 never written -- CPU never reached STA after LDA $10,S"
                 severity warning;
-        elsif result_value = x"BB" then
-            report "PASS: stack-relative read wrapped to $0100 (VICE semantics)"
-                severity note;
         elsif result_value = x"CC" then
-            report "FAIL: stack-relative read went to $0200 -- BUG REPRODUCES (carry propagated into DH)"
+            report "PASS: stack-relative read carried into DH ($0200) -- SST/silicon semantics"
+                severity note;
+        elsif result_value = x"BB" then
+            report "FAIL: stack-relative read wrapped to $0100 -- VICE-style page-1 wrap (incorrect)"
                 severity warning;
         else
             report "FAIL: $3000 = unexpected value $" & to_hstring(result_value) & " (neither $BB nor $CC)"

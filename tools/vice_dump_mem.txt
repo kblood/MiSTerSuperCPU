@@ -1,0 +1,6 @@
+; Runs at initbreak hit
+m $0100 $01ff
+m $8000 $80ff
+m $cb00 $cbff
+r
+q

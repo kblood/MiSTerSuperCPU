@@ -1,0 +1,67 @@
+mode: t65
+max_min: 32
+shots: 60
+frozen_at: 1922s (time-cap)
+final md5: 18c6e3ac5cf2
+
+series:
+  t=    0s  00_after_run.png  md5=00d185fcc3cc
+  t=   29s  0029s.png  md5=5f3a0fc64e76
+  t=   62s  0062s.png  md5=4d49a119ef30
+  t=   95s  0095s.png  md5=373a10e364ee
+  t=  127s  0127s.png  md5=ad302a49aa20
+  t=  160s  0160s.png  md5=d2a02adb8417
+  t=  193s  0193s.png  md5=aca6398e2156
+  t=  225s  0225s.png  md5=a306544b0cdb
+  t=  258s  0258s.png  md5=2b3d6e03de17
+  t=  291s  0291s.png  md5=abc4e4cd68f1
+  t=  323s  0323s.png  md5=cff81b905bda
+  t=  356s  0356s.png  md5=cc6961c6fe6c
+  t=  388s  0388s.png  md5=5284a7c09c50
+  t=  421s  0421s.png  md5=220b2459dfc4
+  t=  454s  0454s.png  md5=2c104fa9f2ae
+  t=  486s  0486s.png  md5=c0a80237a713
+  t=  519s  0519s.png  md5=a31122025a3f
+  t=  551s  0551s.png  md5=1471dd7f2bf2
+  t=  584s  0584s.png  md5=c4cfb8970e8c
+  t=  617s  0617s.png  md5=e2730fdf382f
+  t=  649s  0649s.png  md5=c838c5101795
+  t=  682s  0682s.png  md5=64f3731ea3ec
+  t=  715s  0715s.png  md5=d91aac4f01e5
+  t=  747s  0747s.png  md5=7bd8326530e1
+  t=  780s  0780s.png  md5=bc3573a7ded1
+  t=  813s  0813s.png  md5=0013344a15b4
+  t=  845s  0845s.png  md5=236329ed9f85
+  t=  878s  0878s.png  md5=28f19f34ffdb
+  t=  910s  0910s.png  md5=4e349b753e77
+  t=  943s  0943s.png  md5=092d80618f7f
+  t=  976s  0976s.png  md5=47a49b28ed40
+  t= 1008s  1008s.png  md5=0224bf9fb4d5
+  t= 1041s  1041s.png  md5=df88c0177ef0
+  t= 1074s  1074s.png  md5=8a2bf2090aa3
+  t= 1106s  1106s.png  md5=4feafb4b9bb9
+  t= 1139s  1139s.png  md5=5c40820e986f
+  t= 1172s  1172s.png  md5=508027a35ba3
+  t= 1204s  1204s.png  md5=98d2fcd9f43b
+  t= 1237s  1237s.png  md5=6d2d481453d1
+  t= 1269s  1269s.png  md5=f6f1ecf6f382
+  t= 1302s  1302s.png  md5=3c8dd233463b
+  t= 1335s  1335s.png  md5=77374130f2ad
+  t= 1367s  1367s.png  md5=6063daa042c1
+  t= 1400s  1400s.png  md5=5c2ae8581a3c
+  t= 1433s  1433s.png  md5=e4a86f7f14a2
+  t= 1465s  1465s.png  md5=d4ce56a98648
+  t= 1498s  1498s.png  md5=2d2a210fbaf1
+  t= 1530s  1530s.png  md5=44e75378a901
+  t= 1563s  1563s.png  md5=2b2a1febf3a7
+  t= 1596s  1596s.png  md5=49aecd255484
+  t= 1628s  1628s.png  md5=8551309db466
+  t= 1661s  1661s.png  md5=0332b80be2f6
+  t= 1694s  1694s.png  md5=2af305b1b224
+  t= 1726s  1726s.png  md5=f99ddcd45f3d
+  t= 1759s  1759s.png  md5=dcbe60715543
+  t= 1792s  1792s.png  md5=521abefb392e
+  t= 1824s  1824s.png  md5=859909914cab
+  t= 1857s  1857s.png  md5=653864de1809
+  t= 1889s  1889s.png  md5=8ef8367d15b0
+  t= 1922s  1922s.png  md5=ebe1b36a142c

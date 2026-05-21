@@ -1,0 +1,68 @@
+--- Lorenz Disk1 [scpu] up to 32 min ---
+  cfg byte10 -> 0x0c
+  cfg verified: 0c
+  core reloaded; settling 8s for KERNAL READY
+  MGL loaded, settling 4s before key sequence
+  sending key sequence: LOAD"*",8,1 + RUN
+  shot @ t=0:  00_after_run.png  md5=0a27c8bd4470
+  t=   29s  0029s.png  md5=52675d26b250  CHANGE
+  t=   62s  0062s.png  md5=489efc138f2c  CHANGE
+  t=   95s  0095s.png  md5=0f66a03af5e8  CHANGE
+  t=  127s  0127s.png  md5=46cf39ba6e4f  CHANGE
+  t=  160s  0160s.png  md5=264ab0d220c2  CHANGE
+  t=  193s  0193s.png  md5=1da837e393c2  CHANGE
+  t=  225s  0225s.png  md5=f50a7ae66c3f  CHANGE
+  t=  258s  0258s.png  md5=c5a73369e3eb  CHANGE
+  t=  290s  0290s.png  md5=1bc744121181  CHANGE
+  t=  323s  0323s.png  md5=12adf836dcfa  CHANGE
+  t=  356s  0356s.png  md5=5d693ad97165  CHANGE
+  t=  388s  0388s.png  md5=5051b165dc15  CHANGE
+  t=  421s  0421s.png  md5=dbe95791781b  CHANGE
+  t=  454s  0454s.png  md5=1615142ca54e  CHANGE
+  t=  486s  0486s.png  md5=75cc161cf145  CHANGE
+  t=  519s  0519s.png  md5=6cd32966ecee  CHANGE
+  t=  551s  0551s.png  md5=6bbdf9cbe172  CHANGE
+  t=  584s  0584s.png  md5=54cfbd39ef67  CHANGE
+  t=  617s  0617s.png  md5=6b29cf33007f  CHANGE
+  t=  649s  0649s.png  md5=f202c8d4a112  CHANGE
+  t=  682s  0682s.png  md5=a7646a0d8e0b  CHANGE
+  t=  715s  0715s.png  md5=4efd618e1d60  CHANGE
+  t=  747s  0747s.png  md5=50e0193a273c  CHANGE
+  t=  780s  0780s.png  md5=1c948af1a656  CHANGE
+  t=  813s  0813s.png  md5=a1e60dc9b5e9  CHANGE
+  t=  845s  0845s.png  md5=e9d68b269623  CHANGE
+  t=  878s  0878s.png  md5=34479c86c516  CHANGE
+  t=  910s  0910s.png  md5=0c54dfb8e5b7  CHANGE
+  t=  943s  0943s.png  md5=7aa3e2309df6  CHANGE
+  t=  976s  0976s.png  md5=f1018b08aada  CHANGE
+  t= 1008s  1008s.png  md5=db5ea206977b  CHANGE
+  t= 1041s  1041s.png  md5=48d35ebef476  CHANGE
+  t= 1074s  1074s.png  md5=e9333eef1b60  CHANGE
+  t= 1106s  1106s.png  md5=fbbd713a3160  CHANGE
+  t= 1139s  1139s.png  md5=65f856e6b0ca  CHANGE
+  t= 1171s  1171s.png  md5=babae593cd70  CHANGE
+  t= 1204s  1204s.png  md5=092bb1e74c85  CHANGE
+  t= 1237s  1237s.png  md5=ddd8980fff19  CHANGE
+  t= 1269s  1269s.png  md5=21d4814ec9c8  CHANGE
+  t= 1302s  1302s.png  md5=af03dc22098f  CHANGE
+  t= 1335s  1335s.png  md5=c3cdaa997098  CHANGE
+  t= 1367s  1367s.png  md5=be25c42710f3  CHANGE
+  t= 1400s  1400s.png  md5=89d623a14e30  CHANGE
+  t= 1432s  1432s.png  md5=11dcc849c31d  CHANGE
+  t= 1465s  1465s.png  md5=82f2d39fc3e2  CHANGE
+  t= 1498s  1498s.png  md5=a11672881753  CHANGE
+  t= 1530s  1530s.png  md5=cec8ab029cdb  CHANGE
+  t= 1563s  1563s.png  md5=3c2045c11af2  CHANGE
+  t= 1596s  1596s.png  md5=425dadd913a4  CHANGE
+  t= 1628s  1628s.png  md5=fb30bf5f66f9  CHANGE
+  t= 1661s  1661s.png  md5=611e39b784e0  CHANGE
+  t= 1693s  1693s.png  md5=c6859392a050  CHANGE
+  t= 1726s  1726s.png  md5=b7101c54358d  CHANGE
+  t= 1759s  1759s.png  md5=a95f269897cc  CHANGE
+  t= 1791s  1791s.png  md5=a501e588f76f  CHANGE
+  t= 1824s  1824s.png  md5=f47e55e7f1f2  CHANGE
+  t= 1857s  1857s.png  md5=415c177ab988  CHANGE
+  t= 1889s  1889s.png  md5=f0fdb3482eec  CHANGE
+  t= 1922s  1922s.png  md5=1b25f0c0f981  CHANGE
+  FINAL: final.png  md5=2acc0a40c4f9
+  summary -> C:\LLM\C64\MiSTerSuperCPU\tools\lorenz_run\scpu\_summary.txt

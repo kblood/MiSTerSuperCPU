@@ -1,0 +1,21 @@
+start: 0e674482f9
+=== unbind real usb gamepad (usb-1.5) ===
+unbind-rc=1
+js slots after unbind: /dev/input/js0
+/dev/input/js1
+/dev/input/js2
+=== virtual gamepad: hold up 5s ===
+  pre=0e674482f9 mid=0e674482f9 post=0e674482f9   ===
+=== virtual gamepad: hold down 5s ===
+  pre=b1d250119b mid=b1d250119b post=b1d250119b   ===
+=== virtual gamepad: hold left 5s ===
+  pre=b1d250119b mid=0e674482f9 post=0e674482f9 MOVED
+=== virtual gamepad: hold right 5s ===
+  pre=0e674482f9 mid=0e674482f9 post=0e674482f9   ===
+=== virtual gamepad: tap FIRE ===
+  pre=0e674482f9 post=978407454c MOVED
+=== re-bind usb-1.5 ===
+bind-rc=1
+js slots after rebind: /dev/input/js0
+/dev/input/js1
+/dev/input/js2

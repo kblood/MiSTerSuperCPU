@@ -1,0 +1,137 @@
+
+== T65  frames:1002 ==
+  JSR top-15 (4× per frame):
+    8103    200  (  5.0%)
+    9CF7    139  (  3.5%)
+    1C83    135  (  3.4%)
+    1C0F    119  (  3.0%)
+    9CA8    112  (  2.8%)
+    1CA8    104  (  2.6%)
+    9D1F     90  (  2.2%)
+    9C83     88  (  2.2%)
+    9CAB     88  (  2.2%)
+    1D1C     84  (  2.1%)
+    9C5B     83  (  2.1%)
+    9C0C     81  (  2.0%)
+    1C58     81  (  2.0%)
+    1CAB     80  (  2.0%)
+    9C0F     77  (  1.9%)
+  JSR page distribution (top 10):
+    page $9C   24.4%
+    page $1C   22.5%
+    page $1B    9.3%
+    page $9B    8.9%
+    page $1D    7.4%
+    page $9D    6.6%
+    page $81    5.0%
+    page $1A    4.0%
+    page $9A    3.7%
+    page $19    1.9%
+  JMP-ind target top-15 (4× per frame):
+    19EB     80  (  2.0%)
+    9C0F     75  (  1.9%)
+    9C83     70  (  1.7%)
+    9D47     67  (  1.7%)
+    1D47     65  (  1.6%)
+    1A13     65  (  1.6%)
+    1D1F     65  (  1.6%)
+    9CAB     65  (  1.6%)
+    9D44     62  (  1.5%)
+    9C5B     60  (  1.5%)
+    9A84     56  (  1.4%)
+    9B23     50  (  1.2%)
+    1AAF     50  (  1.2%)
+    1BE7     50  (  1.2%)
+    9D1F     50  (  1.2%)
+  JMP-ind page distribution (top 10):
+    page $9C   10.5%
+    page $9A    9.8%
+    page $1A    9.7%
+    page $19    7.4%
+    page $1B    7.2%
+    page $9B    7.1%
+    page $1C    7.1%
+    page $99    6.8%
+    page $1D    5.1%
+    page $9D    5.0%
+  Gate variables ($40 BNE-zero gate / $44 BEQ-zero gate / $5C IRQ counter):
+    $40 zero rate: 100.0%   top vals: ['0x0']
+    $44 zero rate: 100.0%   top vals: ['0x0']
+    $5C zero rate:  20.1%   top vals: ['0x1', '0x0', '0x4', '0x3', '0x2']
+    GAME-ADVANCE-LIKELY frames ($44==0 AND $40!=0):   0.0%
+
+== SCPU  frames:1001 ==
+  JSR top-15 (4× per frame):
+    8105    600  ( 15.0%)
+    880F    156  (  3.9%)
+    8C14    143  (  3.6%)
+    8CC3    111  (  2.8%)
+    8907     62  (  1.5%)
+    88AB     60  (  1.5%)
+    1F41     58  (  1.4%)
+    8B86     53  (  1.3%)
+    8B69     50  (  1.2%)
+    8D18     32  (  0.8%)
+    8BBD     30  (  0.7%)
+    1D47     28  (  0.7%)
+    0083     27  (  0.7%)
+    8D1A     27  (  0.7%)
+    9A13     26  (  0.6%)
+  JSR page distribution (top 10):
+    page $81   15.0%
+    page $8C    6.6%
+    page $88    5.9%
+    page $99    5.0%
+    page $9A    4.4%
+    page $9B    4.4%
+    page $9C    4.3%
+    page $8B    4.2%
+    page $1B    4.2%
+    page $19    3.9%
+  JMP-ind target top-15 (4× per frame):
+    3380   1057  ( 26.4%)
+    3300   1027  ( 25.6%)
+    8A7D     25  (  0.6%)
+    9A87     24  (  0.6%)
+    1A13     23  (  0.6%)
+    9A13     23  (  0.6%)
+    9B23     21  (  0.5%)
+    1D47     18  (  0.4%)
+    1E2F     17  (  0.4%)
+    1B4B     17  (  0.4%)
+    1977     16  (  0.4%)
+    9A3B     16  (  0.4%)
+    9956     16  (  0.4%)
+    1746     15  (  0.4%)
+    1DBB     15  (  0.4%)
+  JMP-ind page distribution (top 10):
+    page $33   52.0%
+    page $9A    4.7%
+    page $1A    3.7%
+    page $9B    3.6%
+    page $19    3.4%
+    page $1B    3.3%
+    page $99    3.1%
+    page $18    3.0%
+    page $1D    2.5%
+    page $1C    2.5%
+  Gate variables ($40 BNE-zero gate / $44 BEQ-zero gate / $5C IRQ counter):
+    $40 zero rate: 100.0%   top vals: ['0x0']
+    $44 zero rate: 100.0%   top vals: ['0x0']
+    $5C zero rate:  33.4%   top vals: ['0x0', '0x3', '0x1', '0x2']
+    GAME-ADVANCE-LIKELY frames ($44==0 AND $40!=0):   0.0%
+
+== Time-aligned first-12 frames J/M side by side ==
+    #  T65 J ring                T65 M ring                | SCPU J ring               SCPU M ring             
+    0  9B70 9B97 9C5B 9C83       99EB 9C33 9D44 9D47       | 1BBF 1BE7 1BE9 1CBD       1977 199F 1A13 1A5F     
+    1  9B70 9B97 9C5B 9C83       99EB 9C33 9D44 9D47       | 9791 9828 98E5 99C8       3300 3300 92B1 9803     
+    2  1B97 1BE4 1C83 8103       155B 157F 194C 1D44       | 880F 880F 880F 8105       92B1 9803 3300 3300     
+    3  1B97 1B97 1BE4 1C83       155B 157F 194C 1D44       | 9C12 9C38 9E7F 9E7F       9803 3300 3300 3300     
+    4  1B97 1B97 1BE4 1C83       155B 157F 194C 1D44       | 9E7F 8105 184E 1A13       3300 3380 3380 1088     
+    5  1B97 1B97 1BE4 1C83       155B 157F 194C 1D44       | 8C14 8C14 8C14 8105       3380 1088 3380 3380     
+    6  1B97 1B97 1BE4 1C83       155B 157F 194C 1D44       | 1C83 1E2F 1E7F 1EF3       3380 3380 1B7B 1E2F     
+    7  9BE4 9C0F 9C58 8103       9533 9B23 9B48 9CCF       | 9791 9828 984E 9874       1B7B 1E2F 3300 3300     
+    8  9BE4 9BE4 9C0F 9C58       9533 9B23 9B48 9CCF       | 880F 880F 880F 8105       3300 3300 3300 3300     
+    9  9BE4 9BE4 9C0F 9C58       9533 9B23 9B48 9CCF       | 9E2F 9E2F 9E7F 9E7F       3300 3300 3300 9E2F     
+   10  9BE4 9BE4 9C0F 9C58       9533 9B23 9B48 9CCF       | 176C 184E 189A 19A2       14DB 15ED 16B7 184E     
+   11  9BE4 9BE4 9C0F 9C58       9533 9B23 9B48 9CCF       | 8B86 8B86 8B86 8105       16B7 184E 3380 3380     

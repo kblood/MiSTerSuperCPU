@@ -1,161 +1,96 @@
-# Session Handoff — 2026-04-29 — v169 shipped (M10K R3) + Task #25
+# Session handoff — 2026-05-21 (stabilisation + async pivot decision)
 
-Last updated: 2026-04-29 ~01:20 UTC. Overwritten each session.
+## Status: Phase 6b REVERTED. Branch stable at Phase 6a baseline. Pivoting to async CPU bridge.
 
-## One-line status
+**Current branch:** `step6-rdy-handshake`
+**Stabilising commit:** `8377734` — `Revert "feat: Step 6 Phase 6b ..."`
+**Resulting RBF md5:** 88963b9e (= Phase 6a baseline, byte-identical to proven-working build)
+**Merge target:** `vanilla-cpu-swap` → `master` → fork `async-cpu-bridge`
 
-**v169 is the new shipped baseline (cache 4KB, ALM 79 %, RAM 98 %).
-Loop ran for 3 tasks: (#1) Asterix MGL autorun — v168 attempted,
-FAILED (start_strk timing was wrong layer; PRG-load reset masked by
-cold-boot RESET is the real bug); (#25) BRAM probe wiring — DONE
-(commit 82bd475); (#3 = M10K R3) cache 8KB→4KB — VALIDATED on
-hardware (commit 4275388, v169). Surprise: cache halving freed ALMs
-not M10K blocks — Quartus had packed cache into minimum-size blocks
-already.**
+### Why the revert
 
-## Recent commits (top of master)
+Seven consecutive attempts at a Phase 6b dv_sync consumer (iso2-v3 through
+iso7) all wedge on cold boot with PC=$0005, regardless of whether `cpu_cyc`
+is gated. iso8 (literal Phase-6a-equivalent reconstruction) built bit-identical
+to 88963b9e — confirming the bug class is the dv_sync CONSUMER, not the bus
+arbiter, not the cpu_cyc gate. Phase 6b is suspended and the broken commit
+(e42ee1e) is reverted. Step 5a alt-slot work (3455df7) and Phase 6a signal
+plumbing (8434077) are KEPT — both work and Step 5a gives ~1.5× Doom.
 
-```
-4275388  M10K R3: shrink cpu_cache from 8KB to 4KB              [HEAD]
-8713403  v168: defer start_strk auto-RUN pulse until reset_n=1
-82bd475  Task #25: wire BRAM probe through c64_reduced_top_v2
-c420134  kernal_drain bench: external-name probes + lower PASS bar
-f0958f9  docs: handoff captures Phase A finding (v164 cpu_cache exonerated)
-30978eb  Phase A bench fix: stimulus timing — exonerates v164 cpu_cache half
-4a714de  Phase A: kickstart-drain GHDL bench (sim discriminator HEAD vs v164)
-```
+### Decision: pivot to full async CPU domain
 
-## Loop progress
+After comparing the Gemini 3.5 Flash research roadmap (`docs/Gemini35FlashResearch.md`
++ `docs/gemini_roadmap_vs_current.md`) to current state, the next architectural
+step is to move the P65C816 into its own clock domain (`clk_cpu`) with a
+CDC bridge, matching the real CMD SuperCPU model. This is what the project's
+top-level goal ("20MHz native mode") actually requires and likely sidesteps
+the iso2-iso7 wedge class entirely by forcing explicit CDC synchronization
+instead of hidden sequential paths inside a single clock domain.
 
-### Task #1 — Asterix MGL autorun (status: FIX ATTEMPTED, NOT WORKING)
+Phased plan, each phase = one build + defined exit test:
 
-v168 commit 8713403 deferred the `start_strk` pulse until `reset_n=1`,
-hypothesising the act SM was clearing act on reset. Hardware test
-2026-04-29 ~00:11 UTC:
+- **A — Save point.** Current step6-rdy-handshake (post-revert) merged into
+  vanilla-cpu-swap → master. Fork `async-cpu-bridge` branch from there.
+- **B — Add `clk_cpu` PLL output unused.** Start at 32 MHz (= clk_sys),
+  electrically inert. Verify Doom hashes unchanged.
+- **C — P65C816 moved into clk_cpu domain.** clk_cpu still = clk_sys, no
+  CDC yet. Should behave identically.
+- **D — Insert CDC bridge.** Double-buffered sync on cpuAddr/cpuDo/cpuWe
+  (CPU→sys) and cpuDi/ack (sys→CPU). RDY/enable pulled low until ack
+  returns. Still 32 MHz — measuring overhead only.
+- **E — Bump clk_cpu to 64 MHz, then 20 MHz native target.** Payoff visible.
+- **F — Full regression.** KERNAL, Lorenz t65+scpu, Doom hashes vs Step 5a,
+  Wolf3D Level 1, REU DMA.
 
-- Vanilla BASIC: GREEN (`.v168_vanilla.png`).
-- SCPU library sweep: 10/10 PASS (`logs/scpu_sweep_20260429T001728.csv`).
-- `asterix.mgl`: STILL HANGS at corrupt-BASIC READY
-  (`.v168_asterix_mgl.png`). PEEK returns OUT OF MEMORY.
+### What's preserved on step6-rdy-handshake (and now master)
 
-Real bug, deeper than start_strk: under MGL initial-startup,
-ioctl_download rises while cold-boot RESET is asserted, so the
-PRG-load-reset trigger at `c64.sv:447` (`~old_download &
-ioctl_download & load_prg`) loses to the RESET branch at line 443.
-By the time RESET deasserts, ioctl_download has no fresh rising edge
-→ 100000-cycle PRG re-reset never fires → BASIC NEW chain incomplete
-→ BASIC pointers stay corrupt.
+| Commit  | What                                                  | Status                    |
+|---------|-------------------------------------------------------|---------------------------|
+| 3455df7 | Step 5a — registered `alt_fire_r`                    | ~1.5× Doom speedup, keep  |
+| 0cee649 | Step 2 — SDRAM-busy backpressure scaffolding         | used by Step 5a, keep     |
+| a65b3f7 | Step 1 — sdram_ready 2-FF synchroniser plumbing      | foundation, keep          |
+| 9f9e2c2 | Revert sdram_pm.v back to Build B                    | Build C abandonment, keep |
+| 793fa12 | C64.sdc filter fix (sdram_pm not sdram)              | required for fitter, keep |
+| 8434077 | Phase 6a — data_valid signal plumbing (no consumer)  | inert plumbing, keep      |
+| 8377734 | Revert Phase 6b                                       | NEW — unblocks baseline   |
 
-v168 fix is theoretically sound for one race and harmless to vanilla
-+ sweep — KEPT in tree. v170 next attempt: extend PRG-load-reset
-trigger to also fire on RESET-fall + ioctl_download-still-high.
+All vanilla-cpu-swap fixes (v341 through v356, Doom/Wolf3D PLAYABLE,
+$F8+ carve-out, IRQ stub etc.) are intact.
 
-Memory: `project_v168_start_strk_defer_partial.md`.
+### v356 milestones (still valid)
 
-### Task #25 — BRAM probe wiring (status: DONE)
+| Title       | Status   | Verified              | Reproducer                          |
+|-------------|----------|-----------------------|-------------------------------------|
+| Wolf3D      | PLAYABLE | E1L1 starting room    | menu break via SPACE at HS→demo     |
+| Doom        | PLAYABLE | E1M1 3D corridor+HUD  | `tools/doom_v356_PLAY.py`           |
+| Lorenz t65  | PASS     | 32m SCPU regtest      | `tools/lorenz_run.py t65 --mins 32` |
+| Lorenz scpu | PASS     | `orazx - ok` at 32m   | `tools/lorenz_run.py scpu --mins 32`|
 
-Commit 82bd475. `sim/c64_reduced_harness/c64_reduced_top_v2.vhd` now
-exposes the c64_ram64k.ram shared variable through `bram_probe_data`
-via VHDL-2008 external-name upward path
-`<< variable ^.dut.dut.ram64k_inst.ram : ram_t >>`. Works because all
-4 benches label the c64_reduced_top_v2 instance `dut`. Zero synthesis
-impact (sim-only).
+### Open architectural questions for the async-cpu-bridge branch
 
-GHDL gotcha discovered: external-name aliases inside sensitized
-processes (`process(clk32)`) crash with TYPES.INTERNAL_ERROR. Use
-wait-based process. Documented for future sim work.
+1. **VIC-II handling.** Real CMD SuperCPU keeps VIC at 1 MHz on the C64
+   motherboard; SuperCPU runs free. Likely the same architecture — VIC
+   stays in clk_sys, async CPU bridges only when slow-side data is needed.
+   Subtleties: VIC's IRQ to CPU crosses domains; screen RAM in SDRAM
+   means VIC reads compete with CPU reads; refresh.
+2. **ZP+stack BRAM cache (Gemini Phase 3).** Optional but very attractive
+   — would let hot-path reads bypass the CDC bridge entirely. Defer until
+   Phase D works, then add in Phase E or later.
+3. **REU DMA path.** Currently `iof_fall_pulse` is falling-edge in clk_sys.
+   In async model, the CPU's STA $DFxx write needs to cross CDC before
+   reu.v sees the cs pulse — adds latency that may or may not break
+   existing REU timing tests.
+4. **Resource budget.** Currently 64% ALMs. Async bridge adds CDC FFs and
+   new arbiter logic. Should fit but worth monitoring.
 
-Sim regressions still PASS:
-- `run_kernal_drain.sh`: 64189/65536 bank-$00 nonzero
-- `run_harness_v2.sh`: 84/84
+### Files added this session
 
-Memory: `project_task25_bram_probe_wiring.md`.
+- `docs/gemini_roadmap_vs_current.md` — point-by-point evaluation of the
+  Gemini roadmap vs current implementation, with three options analysis
+  (cheap SDC fix / medium cache / real async bridge).
 
-### Task #3 — M10K R3 cache shrink (status: VALIDATED ON HARDWARE)
+### Pre-existing dirty files left in working tree (intentional, per user)
 
-Commit 4275388. v169 build 2026-04-29 01:07:31. md5
-`631729e1a24a5bf46436ad555dfd47e5` cached at `.v169_built.rbf`.
-
-Hardware results:
-- Vanilla BASIC: GREEN (`.v169_vanilla.png`).
-- Sweep: 10/10 PASS (`logs/scpu_sweep_20260429T011706.csv`).
-- bank01_sram_tb: 10/10 PASS (sim regression).
-- Resource: ALM 85 % → **79 %** (-2264 ALMs). RAM 540/553 = 98 %
-  **UNCHANGED** (Quartus packing already minimised block count;
-  halving the 8KB cache did NOT free M10K blocks).
-
-Surprise: the m10k_reclaim_plan predicted ~4 M10K blocks freed; the
-actual win is in ALMs, not M10K. Future M10K reclaim plans must
-target bigger arrays or eliminate whole consumers.
-
-Memory: `project_m10k_r3_cache_shrink.md` (updated with hardware
-results and corrected expectations).
-
-## What's on the dev MiSTer right now
-
-- `/media/fat/_Test/C64.rbf` = **v169** (4275388 + 8713403, md5
-  `631729e1a24a5bf46436ad555dfd47e5`). Vanilla GREEN, sweep 10/10.
-  ALM 79 %, RAM 98 %.
-- v168 cached at `.v168_built.rbf` md5
-  `8ba431fd2192799d14e0260913129473` (start_strk fix only,
-  superseded).
-- v167 cached at `.v167_restored.rbf` md5
-  `9cbd4b6b8e52d1957f528cb486a27ae5` (pre-v168/v169, for fast
-  revert if regression appears).
-- v169 cached at `.v169_built.rbf`.
-
-## Open task graph (post-loop)
-
-- **Task #1 (deferred)** — extend PRG-load-reset trigger condition to
-  fire on RESET-fall + ioctl_download-still-high. v168's start_strk
-  fix is in place but doesn't cover this. Next attempt: v170.
-- **Task #3 follow-up** — once v169 builds, deploy + smoke vanilla +
-  sweep + asterix-via-load_prg + bank01_sram_tb. If all pass, v169
-  becomes new baseline; if any fail, revert 4275388.
-- **Task #26 (still open)** — hardware bisect of fpga64_sid_iec.vhd
-  v164 subsets. Closed structurally per
-  `project_v166_bisect_failed_three_rounds.md` — only revisit if a
-  new approach replaces the cache_hit_rd-on-write fanout.
-- **$D078 Step 2** — move cache flush off $D078, deferred until
-  multi-program demand justifies.
-- **Task #14 system bench** — wire scpu64.mif into
-  simple_sdram_model.vhd so kernal_drain can exercise kickstart ROM
-  path. Still 3-5h work; deferred while bisect is closed.
-
-## Useful commands cheat-sheet
-
-```bash
-# Deploy current build
-python tools/mister_debug.py deploy C64_MiSTer/output_files/C64.rbf
-
-# Smoke vanilla BASIC
-python tools/mister_debug.py uart 8
-python tools/mister_debug.py screen vanilla.png
-
-# Run full SCPU library sweep
-python tools/scpu_library_sweep.py
-
-# Asterix title via load_prg path (NOT MGL — MGL still broken)
-python tools/mister_debug.py load_prg asterix.prg
-python tools/mister_debug.py keys "RUN" && python tools/mister_debug.py keys "enter"
-
-# Bank-$01 dprom unit bench (regression guard for v167 RTL)
-bash sim/p65c816_tb/run_bank01_sram_tb.sh   # 10/10 PASS expected
-
-# Kickstart-drain bench (HEAD baseline + v164 verifier)
-bash sim/p65c816_tb/run_kickstart_drain_only.sh  # 8/8 PASS on HEAD
-
-# Harness benches (system-level regression guards)
-bash sim/c64_reduced_harness/run_harness_v2.sh    # 84/84 PASS
-bash sim/c64_reduced_harness/run_kernal_drain.sh  # bank-$00 nonzero ≥32k
-```
-
-## Do-not-touch list
-
-- `/media/fat/_Computer/C64.rbf` — must stay vanilla MiSTer.
-- v164 path-(b) revival is shelved per
-  `project_v166_bisect_failed_three_rounds.md`. Do not re-attempt
-  without a fresh approach.
-- v167 RAM was at 98 %; v169 (M10K R3) targets ~96 %. Any new M10K
-  consumer still needs another reclaim pass (R4 chargen_d/p ~3
-  blocks each).
+`.gitignore`, `C64_MiSTer/C64.qpf`, `C64_MiSTer/C64.qsf`, `C64_MiSTer/c64.sv`,
+`build_c64.ps1`, `tools/doom_v342_test.py`, lorenz_run screenshots. Mostly
+line-ending / build-artifact noise; user will triage separately.

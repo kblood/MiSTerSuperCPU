@@ -1,0 +1,10 @@
+logname "C:\\LLM\\C64\\MiSTerSuperCPU\\tools\\vice_vectors_out.log"
+log on
+break exec cb00
+x
+m fffa fffe
+m fffe ffff
+m 0314 031f
+m c001 c010
+log off
+quit

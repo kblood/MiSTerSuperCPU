@@ -25,8 +25,7 @@ set_global_assignment -name MIN_CORE_JUNCTION_TEMP "-40"
 set_global_assignment -name MAX_CORE_JUNCTION_TEMP 100
 set_global_assignment -name POWER_PRESET_COOLING_SOLUTION "23 MM HEAT SINK WITH 200 LFPM AIRFLOW"
 set_global_assignment -name POWER_BOARD_THERMAL_MODEL "NONE (CONSERVATIVE)"
-# Quartus 17 compatibility: assignment introduced in newer versions.
-# set_global_assignment -name TIMING_ANALYZER_MULTICORNER_ANALYSIS OFF
+set_global_assignment -name TIMEQUEST_MULTICORNER_ANALYSIS OFF
 set_global_assignment -name OPTIMIZE_POWER_DURING_FITTING OFF
 set_global_assignment -name FINAL_PLACEMENT_OPTIMIZATION ALWAYS
 set_global_assignment -name FITTER_EFFORT "STANDARD FIT"
@@ -273,21 +272,17 @@ set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED_*
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to BTN_*
 set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to BTN_*
 source files.qip
-set_global_assignment -name QIP_FILE rtl/65C816/65C816.qip
-set_global_assignment -name VHDL_FILE rtl/cpu_65c816.vhd
-set_global_assignment -name VHDL_FILE rtl/cpu_cache.vhd
-set_global_assignment -name VHDL_FILE rtl/c64_ram64k.vhd
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug_overlay.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug_uart_tx.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug_uart_fmt.sv
 set_global_assignment -name QIP_FILE rtl/sid/sid.qip
 set_global_assignment -name QIP_FILE rtl/opl3/opl3.qip
 set_global_assignment -name QIP_FILE rtl/iec_drive/iec_drive.qip
 set_global_assignment -name QIP_FILE rtl/t65/t65.qip
+set_global_assignment -name QIP_FILE rtl/65C816/65C816.qip
 set_global_assignment -name VHDL_FILE rtl/cpu_6510.vhd
+set_global_assignment -name VHDL_FILE rtl/cpu_65c816.vhd
 set_global_assignment -name VERILOG_FILE rtl/mos6526.v
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/rtcF83.sv
 set_global_assignment -name VERILOG_FILE rtl/sdram.v
+set_global_assignment -name VERILOG_FILE rtl/sdram_pm.v
 set_global_assignment -name VHDL_FILE rtl/dprom.vhd
 set_global_assignment -name VHDL_FILE rtl/spram.vhd
 set_global_assignment -name VERILOG_FILE rtl/cartridge.v
@@ -301,21 +296,10 @@ set_global_assignment -name VHDL_FILE rtl/fpga64_rgbcolor.vhd
 set_global_assignment -name VHDL_FILE rtl/fpga64_keyboard.vhd
 set_global_assignment -name VHDL_FILE rtl/fpga64_buslogic.vhd
 set_global_assignment -name VHDL_FILE rtl/fpga64_sid_iec.vhd
+set_global_assignment -name QIP_FILE rtl/debug/debug.qip
 set_global_assignment -name SYSTEMVERILOG_FILE c64.sv
-# Modular debug gates (see docs/debug_infrastructure_modular_plan.md).
-# Default: full debug. Set DEBUG_ENABLE=1 for full debug; or selectively
-# define individual categories (DBG_TRACE / DBG_UART / DBG_OVERLAY /
-# DBG_BUS_CAPTURE) and leave DEBUG_ENABLE undefined for narrow builds.
-# Release: comment the line below (or set DEBUG_RELEASE=1) which
-# suppresses the ifndef-default in c64.sv. build_c64.ps1 -Release /
-# -Debug / -Dbg* flags patch this line automatically; DBG_TRACE and
-# DBG_BUS_CAPTURE are forwarded to fpga64_sid_iec via shadow localparams
-# so the VHDL generic no longer needs patching.
-set_global_assignment -name VERILOG_MACRO "DEBUG_ENABLE=1"
-set_global_assignment -name ENABLE_SIGNALTAP ON
-set_global_assignment -name USE_SIGNALTAP_FILE supercpu_debug.stp
-set_global_assignment -name SIGNALTAP_FILE supercpu_debug.stp
-
-
-
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
+
+# Default debug build: turn the layered debug overlay on. C64_release.qsf
+# defines DEBUG_RELEASE=1 instead so synthesis collapses the overlay tree.
+set_global_assignment -name VERILOG_MACRO "DEBUG_ENABLE=1"

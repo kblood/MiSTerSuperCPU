@@ -56,6 +56,10 @@ SPECIAL = {
     'f7':65,'f8':66,'f9':67,'f10':68,'f11':87,'f12':88,
     'up':103,'down':108,'left':105,'right':106,
     'home':102,'end':107,'pgup':104,'pgdn':109,
+    'ctrl':29,'lctrl':29,'rctrl':97,
+    'alt':56,'lalt':56,'ralt':100,
+    'shift':42,'lshift':42,'rshift':54,
+    'super':125,'meta':125,  # C= key on C64 typically maps here
 }
 
 def create_uinput():

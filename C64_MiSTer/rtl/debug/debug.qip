@@ -1,0 +1,36 @@
+# debug.qip - layered debug overlay infrastructure
+#
+# Macro hierarchy (define in C64.qsf for default debug build, leave undef in
+# C64_release.qsf for vanilla bit-identical synth):
+#   DEBUG_ENABLE     master toggle (cascades to all DBG_* unless caller
+#                    has set finer gates explicitly)
+#   DEBUG_RELEASE    overrides everything OFF (set in C64_release.qsf)
+#   DBG_OVERLAY      pixel injection + renderer
+#   DBG_CAP_REU      $DFxx capture
+#   DBG_CAP_VIC_WR   $D018/$D016/$DD00 + raster capture
+#   DBG_CAP_CPU_STATE  PC / P / S / flags capture
+#   DBG_CAP_FRAME    frame counter
+#   DBG_LAYOUT       integer (1..N) selecting which fields render where
+#   DBG_UART         per-frame ASCII line emitter (debug_uart_pool_fmt +
+#                    debug_uart_tx) — overrides UART_TXD when enabled
+#
+# When DBG_OVERLAY is undef, all renderer/format/capture wires reduce to
+# direct pass-throughs and synthesis collapses them.
+
+# Include search paths for `include "debug_pkg.svh"`
+set_global_assignment -name SEARCH_PATH rtl/debug
+
+# Capture stubs (zero-emitting until commit 5).
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/capture/cap_reu.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/capture/cap_vic_wr.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/capture/cap_cpu_state.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/capture/cap_frame.sv
+
+# Pixel-rate renderer + font + format module.
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/debug_overlay_renderer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/debug_overlay_format.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/debug_font_4x6.sv
+
+# UART formatter + serializer (gated by DBG_UART).
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/debug_uart_pool_fmt.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/debug/debug_uart_tx.sv

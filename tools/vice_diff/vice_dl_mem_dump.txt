@@ -1,0 +1,3047 @@
+# DL memory + disasm dump (x64sc, settled DL)
+
+=== 0002-0003 BYTES ===
+(C:$3097) 
+=== 0002-0003 DISASM ===
+(C:$3097) 
+=== 0040-0070 BYTES ===
+>C:0002  00 33                                                @3
+(C:$0004) 
+=== 0040-0070 DISASM ===
+.C:0002  00          BRK
+.C:0003  33 B1       RLA ($B1),Y
+(C:$0005) >C:0040  00 00 
+=== 0079-008b BYTES ===
+00 00  00 ff 00 00  00 15 48 07  27 00 00 00   @@@@@�@@@uhg'@@@
+>C:0050  19 00 00 03  4c 00 00 00  fe 00 00 00  03 00 00 00   y@@cl@@@�@@@c@@@
+>C:0060  00 8c ad 04  dc 29 07 49  07 4a 85 6f  90 00 10 03   @��d�)gigj�O.@pc
+>C:0070  ea                                                   �
+(C:$0071) .C:0040  00          BRK
+
+=== 0079-008b DISASM ===
+.C:0041  00          BRK
+.C:0042  00          BRK
+.C:0043  00          BRK
+.C:0044  00          BRK
+.C:0045  FF 00 00    ISB $0000,X
+.C:0048  00          BRK
+.C:0049  15 48       ORA $48,X
+.C:004b  07 27       SLO $27
+.C:004d  00          BRK
+.C:004e  00          BRK
+.C:004f  00          BRK
+.C:0050  19 00 00    ORA $0000,Y
+.C:0053  03 4C       SLO ($4C,X)
+.C:0055  00          BRK
+.C:0056  00          BRK
+.C:0057  00          BRK
+.C:0058  FE 00 00    INC $0000,X
+.C:005b  00          BRK
+.C:005c  03 00       SLO ($00,X)
+.C:005e  00          BRK
+.C:005f  00          BRK
+.C:0060  00          BRK
+.C:0061  8C AD 04    STY $04AD
+.C:0064  DC 29 07    NOOP $0729,X
+.C:0067  49 07       EOR #$07
+.C:0069  4A          LSR A
+.C:006a  85 6F       STA $6F
+.C:006c  90 00       BCC $006E
+.C:006e  10 03       BPL $0073
+.C:0070  EA          NOP
+(C:$0071) >C:0079  a9 
+=== 3300-33ff BYTES ===
+40 8d 02  df a5 5b 8d  06 df a5 59  8d 04 df a0   �@.bߥ[.fߥy.d� 
+>C:0089  ff 6c 02                                             �Lb
+(C:$008c) 
+=== 3300-33ff DISASM ===
+.C:0079  A9 40       LDA #$40
+.C:007b  8D 02 DF    STA $DF02
+.C:007e  A5 5B       LDA $5B
+.C:0080  8D 06 DF    STA $DF06
+.C:0083  A5 59       LDA $59
+.C:0085  8D 04 DF    STA $DF04
+.C:0088  A0 FF       LDY #$FF
+.C:008a  6C 02 00    JMP ($0002)
+(C:$008d) >C:3300  4c 00 
+=== 8100-81ff BYTES ===
+32 a9  34 85 01 a2  20 bd df 82  9d ff 0f ca   l@2�4�a� �߂.�oJ
+>C:3310  d0 f7 a0 6c  a9 10 8d 20  33 a9 90 8d  23 33 bd 00   P� L�p. 3�..#3�@
+>C:3320  7c 9d 00 fc  e8 d0 f7 ee  20 33 ee 23  33 88 d0 ee   �.@��P�� 3�#3.P�
+>C:3330  a9 35 85 01  a9 80 85 02  a9 33 85 03  a9 01 8d 26   �5�a�.�b�3�c�a.&
+>C:3340  81 a9 04 85  5c 8d 65 81  a9 f0 8d 79  31 8d 79 32   .�d�\.E.��.Y1.Y2
+>C:3350  a9 fe 85 2b  a9 07 85 2c  a2 2b bd 83  33 95 62 ca   ���+�g�,�+��3�BJ
+>C:3360  10 f8 a9 60  8d 64 81 20  25 81 a9 a2  8d 64 81 60   p���.D. %.��.D.�
+>C:3370  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:3380  4c 00 31 ad  04 dc 29 07  49 07 4a 85  6f 90 00 10   l@1�d�)gigj�O.@p
+>C:3390  00 ea ea ea  18 a9 19 8d  07 df a9 40  8d 02 df a5   @���x�y.gߩ@.bߥ
+>C:33a0  5b 8d 06 df  a5 59 8d 04  df a0 ff 6c  02 00 00 00   [.fߥy.d� �Lb@@@
+>C:33b0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:33c0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:33d0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:33e0  00 0f 0f 0f  0f 0f 00 00  00 04 09 06  00 00 00 00   @ooooo@@@dif@@@@
+>C:33f0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+(C:$3400) 
+=== 8100-81ff DISASM ===
+.C:3300  4C 00 32    JMP $3200
+.C:3303  A9 34       LDA #$34
+.C:3305  85 01       STA $01
+.C:3307  A2 20       LDX #$20
+.C:3309  BD DF 82    LDA $82DF,X
+.C:330c  9D FF 0F    STA $0FFF,X
+.C:330f  CA          DEX
+.C:3310  D0 F7       BNE $3309
+.C:3312  A0 6C       LDY #$6C
+.C:3314  A9 10       LDA #$10
+.C:3316  8D 20 33    STA $3320
+.C:3319  A9 90       LDA #$90
+.C:331b  8D 23 33    STA $3323
+.C:331e  BD 00 7C    LDA $7C00,X
+.C:3321  9D 00 FC    STA $FC00,X
+.C:3324  E8          INX
+.C:3325  D0 F7       BNE $331E
+.C:3327  EE 20 33    INC $3320
+.C:332a  EE 23 33    INC $3323
+.C:332d  88          DEY
+.C:332e  D0 EE       BNE $331E
+.C:3330  A9 35       LDA #$35
+.C:3332  85 01       STA $01
+.C:3334  A9 80       LDA #$80
+.C:3336  85 02       STA $02
+.C:3338  A9 33       LDA #$33
+.C:333a  85 03       STA $03
+.C:333c  A9 01       LDA #$01
+.C:333e  8D 26 81    STA $8126
+.C:3341  A9 04       LDA #$04
+.C:3343  85 5C       STA $5C
+.C:3345  8D 65 81    STA $8165
+.C:3348  A9 F0       LDA #$F0
+.C:334a  8D 79 31    STA $3179
+.C:334d  8D 79 32    STA $3279
+.C:3350  A9 FE       LDA #$FE
+.C:3352  85 2B       STA $2B
+.C:3354  A9 07       LDA #$07
+.C:3356  85 2C       STA $2C
+.C:3358  A2 2B       LDX #$2B
+.C:335a  BD 83 33    LDA $3383,X
+.C:335d  95 62       STA $62,X
+.C:335f  CA          DEX
+.C:3360  10 F8       BPL $335A
+.C:3362  A9 60       LDA #$60
+.C:3364  8D 64 81    STA $8164
+.C:3367  20 25 81    JSR $8125
+.C:336a  A9 A2       LDA #$A2
+.C:336c  8D 64 81    STA $8164
+.C:336f  60          RTS
+.C:3370  00          BRK
+.C:3371  00          BRK
+.C:3372  00          BRK
+.C:3373  00          BRK
+.C:3374  00          BRK
+.C:3375  00          BRK
+.C:3376  00          BRK
+.C:3377  00          BRK
+.C:3378  00          BRK
+.C:3379  00          BRK
+.C:337a  00          BRK
+.C:337b  00          BRK
+.C:337c  00          BRK
+.C:337d  00          BRK
+.C:337e  00          BRK
+.C:337f  00          BRK
+.C:3380  4C 00 31    JMP $3100
+.C:3383  AD 04 DC    LDA $DC04
+.C:3386  29 07       AND #$07
+.C:3388  49 07       EOR #$07
+.C:338a  4A          LSR A
+.C:338b  85 6F       STA $6F
+.C:338d  90 00       BCC $338F
+.C:338f  10 00       BPL $3391
+.C:3391  EA          NOP
+.C:3392  EA          NOP
+.C:3393  EA          NOP
+.C:3394  18          CLC
+.C:3395  A9 19       LDA #$19
+.C:3397  8D 07 DF    STA $DF07
+.C:339a  A9 40       LDA #$40
+.C:339c  8D 02 DF    STA $DF02
+.C:339f  A5 5B       LDA $5B
+.C:33a1  8D 06 DF    STA $DF06
+.C:33a4  A5 59       LDA $59
+.C:33a6  8D 04 DF    STA $DF04
+.C:33a9  A0 FF       LDY #$FF
+.C:33ab  6C 02 00    JMP ($0002)
+.C:33ae  00          BRK
+.C:33af  00          BRK
+.C:33b0  00          BRK
+.C:33b1  00          BRK
+.C:33b2  00          BRK
+.C:33b3  00          BRK
+.C:33b4  00          BRK
+.C:33b5  00          BRK
+.C:33b6  00          BRK
+.C:33b7  00          BRK
+.C:33b8  00          BRK
+.C:33b9  00          BRK
+.C:33ba  00          BRK
+.C:33bb  00          BRK
+.C:33bc  00          BRK
+.C:33bd  00          BRK
+.C:33be  00          BRK
+.C:33bf  00          BRK
+.C:33c0  00          BRK
+.C:33c1  00          BRK
+.C:33c2  00          BRK
+.C:33c3  00          BRK
+.C:33c4  00          BRK
+.C:33c5  00          BRK
+.C:33c6  00          BRK
+.C:33c7  00          BRK
+.C:33c8  00          BRK
+.C:33c9  00          BRK
+.C:33ca  00          BRK
+.C:33cb  00          BRK
+.C:33cc  00          BRK
+.C:33cd  00          BRK
+.C:33ce  00          BRK
+.C:33cf  00          BRK
+.C:33d0  00          BRK
+.C:33d1  00          BRK
+.C:33d2  00          BRK
+.C:33d3  00          BRK
+.C:33d4  00          BRK
+.C:33d5  00          BRK
+.C:33d6  00          BRK
+.C:33d7  00          BRK
+.C:33d8  00          BRK
+.C:33d9  00          BRK
+.C:33da  00          BRK
+.C:33db  00          BRK
+.C:33dc  00          BRK
+.C:33dd  00          BRK
+.C:33de  00          BRK
+.C:33df  00          BRK
+.C:33e0  00          BRK
+.C:33e1  0F 0F 0F    SLO $0F0F
+.C:33e4  0F 0F 00    SLO $000F
+.C:33e7  00          BRK
+.C:33e8  00          BRK
+.C:33e9  04 09       NOOP $09
+.C:33eb  06 00       ASL $00
+.C:33ed  00          BRK
+.C:33ee  00          BRK
+.C:33ef  00          BRK
+.C:33f0  00          BRK
+.C:33f1  00          BRK
+.C:33f2  00          BRK
+.C:33f3  00          BRK
+.C:33f4  00          BRK
+.C:33f5  00          BRK
+.C:33f6  00          BRK
+.C:33f7  00          BRK
+.C:33f8  00          BRK
+.C:33f9  00          BRK
+.C:33fa  00          BRK
+.C:33fb  00          BRK
+.C:33fc  00          BRK
+.C:33fd  00          BRK
+.C:33fe  00          BRK
+.C:33ff  00          BRK
+(C:$3400) 
+=== 8800-88ff BYTES ===
+>C:8100  a6 5c ca 30  1a 20 34 8d  a5 44 d0 10  a5 40 f0 0c   �\J0z 4.�dPp�@�l
+>C:8110  f8 a5 40 38  e9 01 85 40  d8 4c 4e 1f  4c 66 81 a5   ��@8�a�@Xln_lF.�
+>C:8120  02 49 80 85  02 a0 bb 88  d0 23 e6 2b  e6 2b d0 02   bi.�b �.P#�+�+Pb
+>C:8130  e6 2c b1 2b  aa 29 f0 4a  4a 4a 8d 3e  81 6c 12 7f   �,�+�)�jjj.>.Lr�
+>C:8140  8a 8d 53 81  09 40 8d 59  81 c8 b1 2b  a8 8c 26 81   �.s.i@.y.H�+��&.
+>C:8150  a4 12 be 91  80 a5 11 18  79 d1 80 86  12 85 11 bd   �r��.�qxYQ.�r�q�
+>C:8160  ac 84 85 10  a2 04 86 5c  40 c8 b1 2b  85 2b 8a 29   ���p�d�\@H�+�+�)
+>C:8170  0f 85 2c 88  f0 bc c8 b1  2b 4c 5b 81  a9 e0 8d 79   o�,.��H�+l[.� .Y
+>C:8180  31 8d 79 32  c8 b1 2b 8d  26 81 4c 64  81 a5 48 f0   1.Y2H�+.&.lD.�h�
+>C:8190  16 a9 00 85  48 4c 2a 81  8a 29 0f c5  41 d0 1b 20   v�@�hl*.�)oEaP[ 
+>C:81a0  aa 1f a2 00  20 7a 87 c8  18 b1 2b 65  2b 85 2b a9   �_�@ Z�Hx�+E+�+�
+>C:81b0  00 65 2c 85  2c a0 00 4c  32 81 4c d4  81 8a 29 0f   @E,�, @l2.lT.�)o
+>C:81c0  c9 0f f0 10  c5 41 d0 df  20 aa 1f a5  41 f0 05 a2   Io�pEaP� �_�a�e�
+>C:81d0  00 20 7a 87  a9 00 85 41  4c 2a 81 e0  50 d0 03 4c   @ Z��@�al*. pPcl
+>C:81e0  77 1f e0 51  d0 03 4c 7a  1f e0 52 d0  05 c6 46 4c   W_ qPclZ_ rPeFfl
+>C:81f0  87 1f e0 53  d0 07 c6 46  c6 46 4c 87  1f 4c 97 1f   �_ sPgFfFfl�_l�_
+(C:$8200) 
+=== 8800-88ff DISASM ===
+.C:8100  A6 5C       LDX $5C
+.C:8102  CA          DEX
+.C:8103  30 1A       BMI $811F
+.C:8105  20 34 8D    JSR $8D34
+.C:8108  A5 44       LDA $44
+.C:810a  D0 10       BNE $811C
+.C:810c  A5 40       LDA $40
+.C:810e  F0 0C       BEQ $811C
+.C:8110  F8          SED
+.C:8111  A5 40       LDA $40
+.C:8113  38          SEC
+.C:8114  E9 01       SBC #$01
+.C:8116  85 40       STA $40
+.C:8118  D8          CLD
+.C:8119  4C 4E 1F    JMP $1F4E
+.C:811c  4C 66 81    JMP $8166
+.C:811f  A5 02       LDA $02
+.C:8121  49 80       EOR #$80
+.C:8123  85 02       STA $02
+.C:8125  A0 BB       LDY #$BB
+.C:8127  88          DEY
+.C:8128  D0 23       BNE $814D
+.C:812a  E6 2B       INC $2B
+.C:812c  E6 2B       INC $2B
+.C:812e  D0 02       BNE $8132
+.C:8130  E6 2C       INC $2C
+.C:8132  B1 2B       LDA ($2B),Y
+.C:8134  AA          TAX
+.C:8135  29 F0       AND #$F0
+.C:8137  4A          LSR A
+.C:8138  4A          LSR A
+.C:8139  4A          LSR A
+.C:813a  8D 3E 81    STA $813E
+.C:813d  6C 12 7F    JMP ($7F12)
+.C:8140  8A          TXA
+.C:8141  8D 53 81    STA $8153
+.C:8144  09 40       ORA #$40
+.C:8146  8D 59 81    STA $8159
+.C:8149  C8          INY
+.C:814a  B1 2B       LDA ($2B),Y
+.C:814c  A8          TAY
+.C:814d  8C 26 81    STY $8126
+.C:8150  A4 12       LDY $12
+.C:8152  BE 91 80    LDX $8091,Y
+.C:8155  A5 11       LDA $11
+.C:8157  18          CLC
+.C:8158  79 D1 80    ADC $80D1,Y
+.C:815b  86 12       STX $12
+.C:815d  85 11       STA $11
+.C:815f  BD AC 84    LDA $84AC,X
+.C:8162  85 10       STA $10
+.C:8164  A2 04       LDX #$04
+.C:8166  86 5C       STX $5C
+.C:8168  40          RTI
+.C:8169  C8          INY
+.C:816a  B1 2B       LDA ($2B),Y
+.C:816c  85 2B       STA $2B
+.C:816e  8A          TXA
+.C:816f  29 0F       AND #$0F
+.C:8171  85 2C       STA $2C
+.C:8173  88          DEY
+.C:8174  F0 BC       BEQ $8132
+.C:8176  C8          INY
+.C:8177  B1 2B       LDA ($2B),Y
+.C:8179  4C 5B 81    JMP $815B
+.C:817c  A9 E0       LDA #$E0
+.C:817e  8D 79 31    STA $3179
+.C:8181  8D 79 32    STA $3279
+.C:8184  C8          INY
+.C:8185  B1 2B       LDA ($2B),Y
+.C:8187  8D 26 81    STA $8126
+.C:818a  4C 64 81    JMP $8164
+.C:818d  A5 48       LDA $48
+.C:818f  F0 16       BEQ $81A7
+.C:8191  A9 00       LDA #$00
+.C:8193  85 48       STA $48
+.C:8195  4C 2A 81    JMP $812A
+.C:8198  8A          TXA
+.C:8199  29 0F       AND #$0F
+.C:819b  C5 41       CMP $41
+.C:819d  D0 1B       BNE $81BA
+.C:819f  20 AA 1F    JSR $1FAA
+.C:81a2  A2 00       LDX #$00
+.C:81a4  20 7A 87    JSR $877A
+.C:81a7  C8          INY
+.C:81a8  18          CLC
+.C:81a9  B1 2B       LDA ($2B),Y
+.C:81ab  65 2B       ADC $2B
+.C:81ad  85 2B       STA $2B
+.C:81af  A9 00       LDA #$00
+.C:81b1  65 2C       ADC $2C
+.C:81b3  85 2C       STA $2C
+.C:81b5  A0 00       LDY #$00
+.C:81b7  4C 32 81    JMP $8132
+.C:81ba  4C D4 81    JMP $81D4
+.C:81bd  8A          TXA
+.C:81be  29 0F       AND #$0F
+.C:81c0  C9 0F       CMP #$0F
+.C:81c2  F0 10       BEQ $81D4
+.C:81c4  C5 41       CMP $41
+.C:81c6  D0 DF       BNE $81A7
+.C:81c8  20 AA 1F    JSR $1FAA
+.C:81cb  A5 41       LDA $41
+.C:81cd  F0 05       BEQ $81D4
+.C:81cf  A2 00       LDX #$00
+.C:81d1  20 7A 87    JSR $877A
+.C:81d4  A9 00       LDA #$00
+.C:81d6  85 41       STA $41
+.C:81d8  4C 2A 81    JMP $812A
+.C:81db  E0 50       CPX #$50
+.C:81dd  D0 03       BNE $81E2
+.C:81df  4C 77 1F    JMP $1F77
+.C:81e2  E0 51       CPX #$51
+.C:81e4  D0 03       BNE $81E9
+.C:81e6  4C 7A 1F    JMP $1F7A
+.C:81e9  E0 52       CPX #$52
+.C:81eb  D0 05       BNE $81F2
+.C:81ed  C6 46       DEC $46
+.C:81ef  4C 87 1F    JMP $1F87
+.C:81f2  E0 53       CPX #$53
+.C:81f4  D0 07       BNE $81FD
+.C:81f6  C6 46       DEC $46
+.C:81f8  C6 46       DEC $46
+.C:81fa  4C 87 1F    JMP $1F87
+.C:81fd  4C 97 1F    JMP $1F97
+(C:$8200) 
+=== 8900-89ff BYTES ===
+>C:8800  a9 2b 8d 02  df a9 25 8d  07 df a9 00  8d 08 df 8d   �+.bߩ%.gߩ@.h�.
+>C:8810  04 df a5 11  8d 06 df a6  10 8e 05 df  a0 fd a9 40   dߥq.fߦp�e� ��@
+>C:8820  05 02 8d 03  df 8c 01 df  a9 7b 8d 02  df a9 25 8d   eb.cߌaߩ�.bߩ%.
+>C:8830  04 df 8c 01  df a9 cb 8d  02 df a9 4a  8d 04 df 8c   dߌaߩK.bߩj.dߌ
+>C:8840  01 df a9 1b  8d 02 df a9  41 05 02 8d  03 df a9 6f   aߩ[.bߩaeb.cߩO
+>C:8850  8d 04 df 8c  01 df a9 6b  8d 02 df a9  94 8d 04 df   .dߌaߩK.bߩ�.d�
+>C:8860  8c 01 df a9  bb 8d 02 df  a9 b9 8d 04  df 8c 01 df   �aߩ�.bߩ�.dߌa�
+>C:8870  a9 0b 8d 02  df a9 42 05  02 8d 03 df  a9 de 8d 04   �k.bߩbeb.cߩ�.d
+>C:8880  df 8c 01 df  a9 5b 8d 02  df a9 03 8d  04 df e8 8e   ߌaߩ[.bߩc.dߨ�
+>C:8890  05 df a9 65  8d 07 df a9  01 8d 08 df  8c 01 df a9   eߩE.gߩa.hߌaߩ
+>C:88a0  2b 8d 02 df  a9 44 05 02  8d 03 df a9  68 8d 04 df   +.bߩdeb.cߩH.d�
+>C:88b0  e8 8e 05 df  a9 25 8d 07  df a9 00 8d  08 df 8c 01   ��eߩ%.gߩ@.hߌa
+>C:88c0  df a9 7b 8d  02 df a9 8d  8d 04 df 8c  01 df a9 cb   ߩ�.bߩ..dߌaߩK
+>C:88d0  8d 02 df a9  b2 8d 04 df  8c 01 df a9  1b 8d 02 df   .bߩ�.dߌaߩ[.b�
+>C:88e0  a9 45 05 02  8d 03 df a9  d7 8d 04 df  8c 01 df a9   �eeb.cߩW.dߌaߩ
+>C:88f0  6b 8d 02 df  a9 fc 8d 04  df 8c 01 df  a9 bb 8d 02   K.bߩ�.dߌaߩ�.b
+(C:$8900) 
+=== 8900-89ff DISASM ===
+.C:8800  A9 2B       LDA #$2B
+.C:8802  8D 02 DF    STA $DF02
+.C:8805  A9 25       LDA #$25
+.C:8807  8D 07 DF    STA $DF07
+.C:880a  A9 00       LDA #$00
+.C:880c  8D 08 DF    STA $DF08
+.C:880f  8D 04 DF    STA $DF04
+.C:8812  A5 11       LDA $11
+.C:8814  8D 06 DF    STA $DF06
+.C:8817  A6 10       LDX $10
+.C:8819  8E 05 DF    STX $DF05
+.C:881c  A0 FD       LDY #$FD
+.C:881e  A9 40       LDA #$40
+.C:8820  05 02       ORA $02
+.C:8822  8D 03 DF    STA $DF03
+.C:8825  8C 01 DF    STY $DF01
+.C:8828  A9 7B       LDA #$7B
+.C:882a  8D 02 DF    STA $DF02
+.C:882d  A9 25       LDA #$25
+.C:882f  8D 04 DF    STA $DF04
+.C:8832  8C 01 DF    STY $DF01
+.C:8835  A9 CB       LDA #$CB
+.C:8837  8D 02 DF    STA $DF02
+.C:883a  A9 4A       LDA #$4A
+.C:883c  8D 04 DF    STA $DF04
+.C:883f  8C 01 DF    STY $DF01
+.C:8842  A9 1B       LDA #$1B
+.C:8844  8D 02 DF    STA $DF02
+.C:8847  A9 41       LDA #$41
+.C:8849  05 02       ORA $02
+.C:884b  8D 03 DF    STA $DF03
+.C:884e  A9 6F       LDA #$6F
+.C:8850  8D 04 DF    STA $DF04
+.C:8853  8C 01 DF    STY $DF01
+.C:8856  A9 6B       LDA #$6B
+.C:8858  8D 02 DF    STA $DF02
+.C:885b  A9 94       LDA #$94
+.C:885d  8D 04 DF    STA $DF04
+.C:8860  8C 01 DF    STY $DF01
+.C:8863  A9 BB       LDA #$BB
+.C:8865  8D 02 DF    STA $DF02
+.C:8868  A9 B9       LDA #$B9
+.C:886a  8D 04 DF    STA $DF04
+.C:886d  8C 01 DF    STY $DF01
+.C:8870  A9 0B       LDA #$0B
+.C:8872  8D 02 DF    STA $DF02
+.C:8875  A9 42       LDA #$42
+.C:8877  05 02       ORA $02
+.C:8879  8D 03 DF    STA $DF03
+.C:887c  A9 DE       LDA #$DE
+.C:887e  8D 04 DF    STA $DF04
+.C:8881  8C 01 DF    STY $DF01
+.C:8884  A9 5B       LDA #$5B
+.C:8886  8D 02 DF    STA $DF02
+.C:8889  A9 03       LDA #$03
+.C:888b  8D 04 DF    STA $DF04
+.C:888e  E8          INX
+.C:888f  8E 05 DF    STX $DF05
+.C:8892  A9 65       LDA #$65
+.C:8894  8D 07 DF    STA $DF07
+.C:8897  A9 01       LDA #$01
+.C:8899  8D 08 DF    STA $DF08
+.C:889c  8C 01 DF    STY $DF01
+.C:889f  A9 2B       LDA #$2B
+.C:88a1  8D 02 DF    STA $DF02
+.C:88a4  A9 44       LDA #$44
+.C:88a6  05 02       ORA $02
+.C:88a8  8D 03 DF    STA $DF03
+.C:88ab  A9 68       LDA #$68
+.C:88ad  8D 04 DF    STA $DF04
+.C:88b0  E8          INX
+.C:88b1  8E 05 DF    STX $DF05
+.C:88b4  A9 25       LDA #$25
+.C:88b6  8D 07 DF    STA $DF07
+.C:88b9  A9 00       LDA #$00
+.C:88bb  8D 08 DF    STA $DF08
+.C:88be  8C 01 DF    STY $DF01
+.C:88c1  A9 7B       LDA #$7B
+.C:88c3  8D 02 DF    STA $DF02
+.C:88c6  A9 8D       LDA #$8D
+.C:88c8  8D 04 DF    STA $DF04
+.C:88cb  8C 01 DF    STY $DF01
+.C:88ce  A9 CB       LDA #$CB
+.C:88d0  8D 02 DF    STA $DF02
+.C:88d3  A9 B2       LDA #$B2
+.C:88d5  8D 04 DF    STA $DF04
+.C:88d8  8C 01 DF    STY $DF01
+.C:88db  A9 1B       LDA #$1B
+.C:88dd  8D 02 DF    STA $DF02
+.C:88e0  A9 45       LDA #$45
+.C:88e2  05 02       ORA $02
+.C:88e4  8D 03 DF    STA $DF03
+.C:88e7  A9 D7       LDA #$D7
+.C:88e9  8D 04 DF    STA $DF04
+.C:88ec  8C 01 DF    STY $DF01
+.C:88ef  A9 6B       LDA #$6B
+.C:88f1  8D 02 DF    STA $DF02
+.C:88f4  A9 FC       LDA #$FC
+.C:88f6  8D 04 DF    STA $DF04
+.C:88f9  8C 01 DF    STY $DF01
+.C:88fc  A9 BB       LDA #$BB
+.C:88fe  8D 02 DF    STA $DF02
+(C:$8901) 
+=== 8b00-8bff BYTES ===
+>C:8900  df a9 21 8d  04 df e8 8e  05 df 8c 01  df a9 0b 8d   ߩ!.dߨ�eߌaߩk.
+>C:8910  02 df a9 46  05 02 8d 03  df a9 46 8d  04 df 8c 01   bߩfeb.cߩf.dߌa
+>C:8920  df a9 5b 8d  02 df a9 6b  8d 04 df a9  65 8d 07 df   ߩ[.bߩK.dߩE.g�
+>C:8930  a9 01 8d 08  df 8c 01 df  a9 2b 8d 02  df a9 48 05   �a.hߌaߩ+.bߩhe
+>C:8940  02 8d 03 df  a9 d0 8d 04  df e8 8e 05  df a9 25 8d   b.cߩP.dߨ�eߩ%.
+>C:8950  07 df a9 00  8d 08 df 8c  01 df a9 7b  8d 02 df a9   gߩ@.hߌaߩ�.bߩ
+>C:8960  f5 8d 04 df  8c 01 df a9  cb 8d 02 df  a9 1a 8d 04   �.dߌaߩK.bߩz.d
+>C:8970  df e8 8e 05  df 8c 01 df  a9 1b 8d 02  df a9 49 05   ߨ�eߌaߩ[.bߩie
+>C:8980  02 8d 03 df  a9 3f 8d 04  df 8c 01 df  a9 6b 8d 02   b.cߩ?.dߌaߩK.b
+>C:8990  df a9 64 8d  04 df 8c 01  df a9 bb 8d  02 df a9 89   ߩD.dߌaߩ�.bߩ�
+>C:89a0  8d 04 df 8c  01 df a9 0b  8d 02 df a9  4a 05 02 8d   .dߌaߩk.bߩjeb.
+>C:89b0  03 df a9 ae  8d 04 df 8c  01 df a9 5b  8d 02 df a9   cߩ�.dߌaߩ[.bߩ
+>C:89c0  d3 8d 04 df  a9 65 8d 07  df a9 01 8d  08 df 8c 01   S.dߩE.gߩa.hߌa
+>C:89d0  df a9 28 8d  02 df a9 4c  05 02 8d 03  df a9 38 8d   ߩ(.bߩleb.cߩ8.
+>C:89e0  04 df e8 e8  8e 05 df a9  28 8d 07 df  a9 00 8d 08   dߨ��eߩ(.gߩ@.h
+>C:89f0  df 8c 01 df  a9 78 8d 02  df a9 60 8d  04 df 8c 01   ߌaߩX.bߩ�.dߌa
+(C:$8a00) 
+=== 8b00-8bff DISASM ===
+.C:8900  DF A9 21    DCP $21A9,X
+.C:8903  8D 04 DF    STA $DF04
+.C:8906  E8          INX
+.C:8907  8E 05 DF    STX $DF05
+.C:890a  8C 01 DF    STY $DF01
+.C:890d  A9 0B       LDA #$0B
+.C:890f  8D 02 DF    STA $DF02
+.C:8912  A9 46       LDA #$46
+.C:8914  05 02       ORA $02
+.C:8916  8D 03 DF    STA $DF03
+.C:8919  A9 46       LDA #$46
+.C:891b  8D 04 DF    STA $DF04
+.C:891e  8C 01 DF    STY $DF01
+.C:8921  A9 5B       LDA #$5B
+.C:8923  8D 02 DF    STA $DF02
+.C:8926  A9 6B       LDA #$6B
+.C:8928  8D 04 DF    STA $DF04
+.C:892b  A9 65       LDA #$65
+.C:892d  8D 07 DF    STA $DF07
+.C:8930  A9 01       LDA #$01
+.C:8932  8D 08 DF    STA $DF08
+.C:8935  8C 01 DF    STY $DF01
+.C:8938  A9 2B       LDA #$2B
+.C:893a  8D 02 DF    STA $DF02
+.C:893d  A9 48       LDA #$48
+.C:893f  05 02       ORA $02
+.C:8941  8D 03 DF    STA $DF03
+.C:8944  A9 D0       LDA #$D0
+.C:8946  8D 04 DF    STA $DF04
+.C:8949  E8          INX
+.C:894a  8E 05 DF    STX $DF05
+.C:894d  A9 25       LDA #$25
+.C:894f  8D 07 DF    STA $DF07
+.C:8952  A9 00       LDA #$00
+.C:8954  8D 08 DF    STA $DF08
+.C:8957  8C 01 DF    STY $DF01
+.C:895a  A9 7B       LDA #$7B
+.C:895c  8D 02 DF    STA $DF02
+.C:895f  A9 F5       LDA #$F5
+.C:8961  8D 04 DF    STA $DF04
+.C:8964  8C 01 DF    STY $DF01
+.C:8967  A9 CB       LDA #$CB
+.C:8969  8D 02 DF    STA $DF02
+.C:896c  A9 1A       LDA #$1A
+.C:896e  8D 04 DF    STA $DF04
+.C:8971  E8          INX
+.C:8972  8E 05 DF    STX $DF05
+.C:8975  8C 01 DF    STY $DF01
+.C:8978  A9 1B       LDA #$1B
+.C:897a  8D 02 DF    STA $DF02
+.C:897d  A9 49       LDA #$49
+.C:897f  05 02       ORA $02
+.C:8981  8D 03 DF    STA $DF03
+.C:8984  A9 3F       LDA #$3F
+.C:8986  8D 04 DF    STA $DF04
+.C:8989  8C 01 DF    STY $DF01
+.C:898c  A9 6B       LDA #$6B
+.C:898e  8D 02 DF    STA $DF02
+.C:8991  A9 64       LDA #$64
+.C:8993  8D 04 DF    STA $DF04
+.C:8996  8C 01 DF    STY $DF01
+.C:8999  A9 BB       LDA #$BB
+.C:899b  8D 02 DF    STA $DF02
+.C:899e  A9 89       LDA #$89
+.C:89a0  8D 04 DF    STA $DF04
+.C:89a3  8C 01 DF    STY $DF01
+.C:89a6  A9 0B       LDA #$0B
+.C:89a8  8D 02 DF    STA $DF02
+.C:89ab  A9 4A       LDA #$4A
+.C:89ad  05 02       ORA $02
+.C:89af  8D 03 DF    STA $DF03
+.C:89b2  A9 AE       LDA #$AE
+.C:89b4  8D 04 DF    STA $DF04
+.C:89b7  8C 01 DF    STY $DF01
+.C:89ba  A9 5B       LDA #$5B
+.C:89bc  8D 02 DF    STA $DF02
+.C:89bf  A9 D3       LDA #$D3
+.C:89c1  8D 04 DF    STA $DF04
+.C:89c4  A9 65       LDA #$65
+.C:89c6  8D 07 DF    STA $DF07
+.C:89c9  A9 01       LDA #$01
+.C:89cb  8D 08 DF    STA $DF08
+.C:89ce  8C 01 DF    STY $DF01
+.C:89d1  A9 28       LDA #$28
+.C:89d3  8D 02 DF    STA $DF02
+.C:89d6  A9 4C       LDA #$4C
+.C:89d8  05 02       ORA $02
+.C:89da  8D 03 DF    STA $DF03
+.C:89dd  A9 38       LDA #$38
+.C:89df  8D 04 DF    STA $DF04
+.C:89e2  E8          INX
+.C:89e3  E8          INX
+.C:89e4  8E 05 DF    STX $DF05
+.C:89e7  A9 28       LDA #$28
+.C:89e9  8D 07 DF    STA $DF07
+.C:89ec  A9 00       LDA #$00
+.C:89ee  8D 08 DF    STA $DF08
+.C:89f1  8C 01 DF    STY $DF01
+.C:89f4  A9 78       LDA #$78
+.C:89f6  8D 02 DF    STA $DF02
+.C:89f9  A9 60       LDA #$60
+.C:89fb  8D 04 DF    STA $DF04
+.C:89fe  8C 01 DF    STY $DF01
+(C:$8a01) 
+=== 8c00-8cff BYTES ===
+>C:8b00  78 05 02 8d  03 df a9 e0  8d 04 df 8c  01 df a9 53   Xeb.cߩ .dߌaߩs
+>C:8b10  8d 02 df a9  05 8d 04 df  e8 8e 05 df  8c 01 df a9   .bߩe.dߨ�eߌaߩ
+>C:8b20  a3 8d 02 df  a9 2a 8d 04  df 8c 01 df  a9 f3 8d 02   �.bߩ*.dߌaߩ�.b
+>C:8b30  df a9 4f 8d  04 df 8c 01  df a9 43 8d  02 df a9 79   ߩo.dߌaߩc.bߩY
+>C:8b40  05 02 8d 03  df a9 74 8d  04 df 8c 01  df a9 93 8d   eb.cߩT.dߌaߩ�.
+>C:8b50  02 df a9 99  8d 04 df 8c  01 df a9 e3  8d 02 df a9   bߩ..dߌaߩ�.bߩ
+>C:8b60  be 8d 04 df  8c 01 df a9  33 8d 02 df  a9 7a 05 02   �.dߌaߩ3.bߩZeb
+>C:8b70  8d 03 df a9  e3 8d 04 df  8c 01 df a9  03 8d 02 df   .cߩ�.dߌaߩc.b�
+>C:8b80  a0 a1 a9 58  05 02 8d 03  df a9 08 8d  04 df e8 8e    ��xeb.cߩh.dߨ�
+>C:8b90  05 df 8c 01  df c6 01 8c  00 ff e6 01  a9 53 8d 02   eߌa�Fa�@��a�s.b
+>C:8ba0  df a9 2d 8d  04 df 8c 01  df c6 01 8c  00 ff e6 01   ߩ-.dߌa�Fa�@��a
+>C:8bb0  a9 a3 8d 02  df a9 52 8d  04 df 8c 01  df c6 01 8c   ��.bߩr.dߌa�Fa�
+>C:8bc0  00 ff e6 01  a9 f3 8d 02  df a9 77 8d  04 df 8c 01   @��a��.bߩW.dߌa
+>C:8bd0  df c6 01 8c  00 ff e6 01  a9 43 8d 02  df a9 59 05   �Fa�@��a�c.bߩye
+>C:8be0  02 8d 03 df  a9 9c 8d 04  df 8c 01 df  c6 01 8c 00   b.cߩ�.dߌa�Fa�@
+>C:8bf0  ff e6 01 a9  93 8d 02 df  a9 c1 8d 04  df 8c 01 df   ��a��.bߩA.dߌa�
+(C:$8c00) 
+=== 8c00-8cff DISASM ===
+.C:8b00  78          SEI
+.C:8b01  05 02       ORA $02
+.C:8b03  8D 03 DF    STA $DF03
+.C:8b06  A9 E0       LDA #$E0
+.C:8b08  8D 04 DF    STA $DF04
+.C:8b0b  8C 01 DF    STY $DF01
+.C:8b0e  A9 53       LDA #$53
+.C:8b10  8D 02 DF    STA $DF02
+.C:8b13  A9 05       LDA #$05
+.C:8b15  8D 04 DF    STA $DF04
+.C:8b18  E8          INX
+.C:8b19  8E 05 DF    STX $DF05
+.C:8b1c  8C 01 DF    STY $DF01
+.C:8b1f  A9 A3       LDA #$A3
+.C:8b21  8D 02 DF    STA $DF02
+.C:8b24  A9 2A       LDA #$2A
+.C:8b26  8D 04 DF    STA $DF04
+.C:8b29  8C 01 DF    STY $DF01
+.C:8b2c  A9 F3       LDA #$F3
+.C:8b2e  8D 02 DF    STA $DF02
+.C:8b31  A9 4F       LDA #$4F
+.C:8b33  8D 04 DF    STA $DF04
+.C:8b36  8C 01 DF    STY $DF01
+.C:8b39  A9 43       LDA #$43
+.C:8b3b  8D 02 DF    STA $DF02
+.C:8b3e  A9 79       LDA #$79
+.C:8b40  05 02       ORA $02
+.C:8b42  8D 03 DF    STA $DF03
+.C:8b45  A9 74       LDA #$74
+.C:8b47  8D 04 DF    STA $DF04
+.C:8b4a  8C 01 DF    STY $DF01
+.C:8b4d  A9 93       LDA #$93
+.C:8b4f  8D 02 DF    STA $DF02
+.C:8b52  A9 99       LDA #$99
+.C:8b54  8D 04 DF    STA $DF04
+.C:8b57  8C 01 DF    STY $DF01
+.C:8b5a  A9 E3       LDA #$E3
+.C:8b5c  8D 02 DF    STA $DF02
+.C:8b5f  A9 BE       LDA #$BE
+.C:8b61  8D 04 DF    STA $DF04
+.C:8b64  8C 01 DF    STY $DF01
+.C:8b67  A9 33       LDA #$33
+.C:8b69  8D 02 DF    STA $DF02
+.C:8b6c  A9 7A       LDA #$7A
+.C:8b6e  05 02       ORA $02
+.C:8b70  8D 03 DF    STA $DF03
+.C:8b73  A9 E3       LDA #$E3
+.C:8b75  8D 04 DF    STA $DF04
+.C:8b78  8C 01 DF    STY $DF01
+.C:8b7b  A9 03       LDA #$03
+.C:8b7d  8D 02 DF    STA $DF02
+.C:8b80  A0 A1       LDY #$A1
+.C:8b82  A9 58       LDA #$58
+.C:8b84  05 02       ORA $02
+.C:8b86  8D 03 DF    STA $DF03
+.C:8b89  A9 08       LDA #$08
+.C:8b8b  8D 04 DF    STA $DF04
+.C:8b8e  E8          INX
+.C:8b8f  8E 05 DF    STX $DF05
+.C:8b92  8C 01 DF    STY $DF01
+.C:8b95  C6 01       DEC $01
+.C:8b97  8C 00 FF    STY $FF00
+.C:8b9a  E6 01       INC $01
+.C:8b9c  A9 53       LDA #$53
+.C:8b9e  8D 02 DF    STA $DF02
+.C:8ba1  A9 2D       LDA #$2D
+.C:8ba3  8D 04 DF    STA $DF04
+.C:8ba6  8C 01 DF    STY $DF01
+.C:8ba9  C6 01       DEC $01
+.C:8bab  8C 00 FF    STY $FF00
+.C:8bae  E6 01       INC $01
+.C:8bb0  A9 A3       LDA #$A3
+.C:8bb2  8D 02 DF    STA $DF02
+.C:8bb5  A9 52       LDA #$52
+.C:8bb7  8D 04 DF    STA $DF04
+.C:8bba  8C 01 DF    STY $DF01
+.C:8bbd  C6 01       DEC $01
+.C:8bbf  8C 00 FF    STY $FF00
+.C:8bc2  E6 01       INC $01
+.C:8bc4  A9 F3       LDA #$F3
+.C:8bc6  8D 02 DF    STA $DF02
+.C:8bc9  A9 77       LDA #$77
+.C:8bcb  8D 04 DF    STA $DF04
+.C:8bce  8C 01 DF    STY $DF01
+.C:8bd1  C6 01       DEC $01
+.C:8bd3  8C 00 FF    STY $FF00
+.C:8bd6  E6 01       INC $01
+.C:8bd8  A9 43       LDA #$43
+.C:8bda  8D 02 DF    STA $DF02
+.C:8bdd  A9 59       LDA #$59
+.C:8bdf  05 02       ORA $02
+.C:8be1  8D 03 DF    STA $DF03
+.C:8be4  A9 9C       LDA #$9C
+.C:8be6  8D 04 DF    STA $DF04
+.C:8be9  8C 01 DF    STY $DF01
+.C:8bec  C6 01       DEC $01
+.C:8bee  8C 00 FF    STY $FF00
+.C:8bf1  E6 01       INC $01
+.C:8bf3  A9 93       LDA #$93
+.C:8bf5  8D 02 DF    STA $DF02
+.C:8bf8  A9 C1       LDA #$C1
+.C:8bfa  8D 04 DF    STA $DF04
+.C:8bfd  8C 01 DF    STY $DF01
+(C:$8c00) 
+=== 8d00-8dff BYTES ===
+>C:8c00  c6 01 8c 00  ff e6 01 a9  e3 8d 02 df  a9 e6 8d 04   Fa�@��a��.bߩ�.d
+>C:8c10  df 8c 01 df  c6 01 8c 00  ff e6 01 a9  33 8d 02 df   ߌa�Fa�@��a�3.b�
+>C:8c20  a9 5a 05 02  8d 03 df a9  0b 8d 04 df  e8 8e 05 df   �zeb.cߩk.dߨ�e�
+>C:8c30  8c 01 df c6  01 8c 00 ff  e6 01 a9 00  8d 02 df a9   �a�Fa�@��a�@.bߩ
+>C:8c40  5c 05 02 8d  03 df a9 30  8d 04 df a9  28 8d 07 df   \eb.cߩ0.dߩ(.g�
+>C:8c50  8c 01 df c6  01 8c 00 ff  e6 01 a9 50  8d 02 df a9   �a�Fa�@��a�p.bߩ
+>C:8c60  58 8d 04 df  8c 01 df c6  01 8c 00 ff  e6 01 a9 a0   x.dߌa�Fa�@��a� 
+>C:8c70  8d 02 df a9  80 8d 04 df  8c 01 df c6  01 8c 00 ff   .bߩ..dߌa�Fa�@�
+>C:8c80  e6 01 a9 f0  8d 02 df a9  a8 8d 04 df  8c 01 df c6   �a��.bߩ�.dߌa�F
+>C:8c90  01 8c 00 ff  e6 01 a9 40  8d 02 df a9  5d 05 02 8d   a�@��a�@.bߩ]eb.
+>C:8ca0  03 df a9 d0  8d 04 df 8c  01 df c6 01  8c 00 ff e6   cߩP.dߌa�Fa�@��
+>C:8cb0  01 a9 90 8d  02 df a9 f8  8d 04 df 8c  01 df c6 01   a�..bߩ�.dߌa�Fa
+>C:8cc0  8c 00 ff e6  01 a9 e0 8d  02 df a9 20  8d 04 df e8   �@��a� .bߩ .dߨ
+>C:8cd0  8e 05 df 8c  01 df c6 01  8c 00 ff e6  01 a9 30 8d   �eߌa�Fa�@��a�0.
+>C:8ce0  02 df a9 5e  05 02 8d 03  df a9 48 8d  04 df 8c 01   bߩ^eb.cߩh.dߌa
+>C:8cf0  df c6 01 8c  00 ff e6 01  a9 80 8d 02  df a9 02 05   �Fa�@��a�..bߩbe
+(C:$8d00) .C:8c00  C6 01       DEC $01
+.C:8c02  8C 00 FF    STY $FF00
+.C:8c05  E6 01       INC $01
+
+=== 8d00-8dff DISASM ===
+.C:8c07  A9 E3       LDA #$E3
+.C:8c09  8D 02 DF    STA $DF02
+.C:8c0c  A9 E6       LDA #$E6
+.C:8c0e  8D 04 DF    STA $DF04
+.C:8c11  8C 01 DF    STY $DF01
+.C:8c14  C6 01       DEC $01
+.C:8c16  8C 00 FF    STY $FF00
+.C:8c19  E6 01       INC $01
+.C:8c1b  A9 33       LDA #$33
+.C:8c1d  8D 02 DF    STA $DF02
+.C:8c20  A9 5A       LDA #$5A
+.C:8c22  05 02       ORA $02
+.C:8c24  8D 03 DF    STA $DF03
+.C:8c27  A9 0B       LDA #$0B
+.C:8c29  8D 04 DF    STA $DF04
+.C:8c2c  E8          INX
+.C:8c2d  8E 05 DF    STX $DF05
+.C:8c30  8C 01 DF    STY $DF01
+.C:8c33  C6 01       DEC $01
+.C:8c35  8C 00 FF    STY $FF00
+.C:8c38  E6 01       INC $01
+.C:8c3a  A9 00       LDA #$00
+.C:8c3c  8D 02 DF    STA $DF02
+.C:8c3f  A9 5C       LDA #$5C
+.C:8c41  05 02       ORA $02
+.C:8c43  8D 03 DF    STA $DF03
+.C:8c46  A9 30       LDA #$30
+.C:8c48  8D 04 DF    STA $DF04
+.C:8c4b  A9 28       LDA #$28
+.C:8c4d  8D 07 DF    STA $DF07
+.C:8c50  8C 01 DF    STY $DF01
+.C:8c53  C6 01       DEC $01
+.C:8c55  8C 00 FF    STY $FF00
+.C:8c58  E6 01       INC $01
+.C:8c5a  A9 50       LDA #$50
+.C:8c5c  8D 02 DF    STA $DF02
+.C:8c5f  A9 58       LDA #$58
+.C:8c61  8D 04 DF    STA $DF04
+.C:8c64  8C 01 DF    STY $DF01
+.C:8c67  C6 01       DEC $01
+.C:8c69  8C 00 FF    STY $FF00
+.C:8c6c  E6 01       INC $01
+.C:8c6e  A9 A0       LDA #$A0
+.C:8c70  8D 02 DF    STA $DF02
+.C:8c73  A9 80       LDA #$80
+.C:8c75  8D 04 DF    STA $DF04
+.C:8c78  8C 01 DF    STY $DF01
+.C:8c7b  C6 01       DEC $01
+.C:8c7d  8C 00 FF    STY $FF00
+.C:8c80  E6 01       INC $01
+.C:8c82  A9 F0       LDA #$F0
+.C:8c84  8D 02 DF    STA $DF02
+.C:8c87  A9 A8       LDA #$A8
+.C:8c89  8D 04 DF    STA $DF04
+.C:8c8c  8C 01 DF    STY $DF01
+.C:8c8f  C6 01       DEC $01
+.C:8c91  8C 00 FF    STY $FF00
+.C:8c94  E6 01       INC $01
+.C:8c96  A9 40       LDA #$40
+.C:8c98  8D 02 DF    STA $DF02
+.C:8c9b  A9 5D       LDA #$5D
+.C:8c9d  05 02       ORA $02
+.C:8c9f  8D 03 DF    STA $DF03
+.C:8ca2  A9 D0       LDA #$D0
+.C:8ca4  8D 04 DF    STA $DF04
+.C:8ca7  8C 01 DF    STY $DF01
+.C:8caa  C6 01       DEC $01
+.C:8cac  8C 00 FF    STY $FF00
+.C:8caf  E6 01       INC $01
+.C:8cb1  A9 90       LDA #$90
+.C:8cb3  8D 02 DF    STA $DF02
+.C:8cb6  A9 F8       LDA #$F8
+.C:8cb8  8D 04 DF    STA $DF04
+.C:8cbb  8C 01 DF    STY $DF01
+.C:8cbe  C6 01       DEC $01
+.C:8cc0  8C 00 FF    STY $FF00
+.C:8cc3  E6 01       INC $01
+.C:8cc5  A9 E0       LDA #$E0
+.C:8cc7  8D 02 DF    STA $DF02
+.C:8cca  A9 20       LDA #$20
+.C:8ccc  8D 04 DF    STA $DF04
+.C:8ccf  E8          INX
+.C:8cd0  8E 05 DF    STX $DF05
+.C:8cd3  8C 01 DF    STY $DF01
+.C:8cd6  C6 01       DEC $01
+.C:8cd8  8C 00 FF    STY $FF00
+.C:8cdb  E6 01       INC $01
+.C:8cdd  A9 30       LDA #$30
+.C:8cdf  8D 02 DF    STA $DF02
+.C:8ce2  A9 5E       LDA #$5E
+.C:8ce4  05 02       ORA $02
+.C:8ce6  8D 03 DF    STA $DF03
+.C:8ce9  A9 48       LDA #$48
+.C:8ceb  8D 04 DF    STA $DF04
+.C:8cee  8C 01 DF    STY $DF01
+.C:8cf1  C6 01       DEC $01
+.C:8cf3  8C 00 FF    STY $FF00
+.C:8cf6  E6 01       INC $01
+.C:8cf8  A9 80       LDA #$80
+.C:8cfa  8D 02 DF    STA $DF02
+.C:8cfd  A9 02       LDA #$02
+.C:8cff  05 02       ORA $02
+(C:$8d01) 
+=== 3000-31ff BYTES ===
+>C:8d00  02 8d 03 df  a9 70 8d 04  df a9 fd 8d  01 df a9 00   b.cߩP.dߩ�.aߩ@
+>C:8d10  8d 02 df 8d  07 df a9 50  05 02 8d 03  df a9 98 8d   .b�.gߩpeb.cߩ..
+>C:8d20  04 df a9 03  8d 08 df 8c  01 df c6 01  8c 00 ff e6   dߩc.hߌa�Fa�@��
+>C:8d30  01 4c 00 81  a0 00 8c 02  dc 8c 03 dc  ad 00 dc 29   al@. @�b܌cܭ@�)
+>C:8d40  1f c9 1f f0  0e c8 4a b0  fc c4 4e f0  39 84 41 84   _I_�nHj��Dn�9�a�
+>C:8d50  4e d0 33 a0  00 84 4e a9  ff 8d 02 dc  a9 00 8d 00   nP3 @�n��.bܩ@.@
+>C:8d60  dc ad 01 dc  c9 ff f0 1c  a9 fb 8d 00  dc ad 01 dc   ܭa�I��\��.@ܭa�
+>C:8d70  29 01 d0 10  c8 c4 42 f0  0d f8 a5 40  18 69 01 85   )aPpHDb�m��@xIa�
+>C:8d80  40 d8 84 43  84 42 60 a9  00 85 41 85  43 20 34 8d   @X�c�b��@�a�c 4.
+>C:8d90  18 a5 43 f0  03 38 b0 04  a5 41 f0 eb  60 20 34 8d   x�c�c8�d�a��� 4.
+>C:8da0  a5 4e d0 f9  60 2c 12 d0  10 fb 2c 12  d0 30 fb ca   �nP��,rPp�,rP0�J
+>C:8db0  d0 f3 60 a0  0b 20 a0 1f  4a 90 10 aa  b9 af 87 48   P�� k  _j.p����h
+>C:8dc0  b9 bc 87 99  af 87 68 99  bc 87 8a 4a  90 0e b9 bc   ���.��H.���j.n��
+>C:8dd0  87 48 b9 c9  87 99 bc 87  68 99 c9 87  88 10 d6 60   �h�I�.��H.I�.pV�
+>C:8de0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:8df0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+(C:$8e00) 
+=== 3000-31ff DISASM ===
+.C:8d00  02          JAM
+.C:8d01  8D 03 DF    STA $DF03
+.C:8d04  A9 70       LDA #$70
+.C:8d06  8D 04 DF    STA $DF04
+.C:8d09  A9 FD       LDA #$FD
+.C:8d0b  8D 01 DF    STA $DF01
+.C:8d0e  A9 00       LDA #$00
+.C:8d10  8D 02 DF    STA $DF02
+.C:8d13  8D 07 DF    STA $DF07
+.C:8d16  A9 50       LDA #$50
+.C:8d18  05 02       ORA $02
+.C:8d1a  8D 03 DF    STA $DF03
+.C:8d1d  A9 98       LDA #$98
+.C:8d1f  8D 04 DF    STA $DF04
+.C:8d22  A9 03       LDA #$03
+.C:8d24  8D 08 DF    STA $DF08
+.C:8d27  8C 01 DF    STY $DF01
+.C:8d2a  C6 01       DEC $01
+.C:8d2c  8C 00 FF    STY $FF00
+.C:8d2f  E6 01       INC $01
+.C:8d31  4C 00 81    JMP $8100
+.C:8d34  A0 00       LDY #$00
+.C:8d36  8C 02 DC    STY $DC02
+.C:8d39  8C 03 DC    STY $DC03
+.C:8d3c  AD 00 DC    LDA $DC00
+.C:8d3f  29 1F       AND #$1F
+.C:8d41  C9 1F       CMP #$1F
+.C:8d43  F0 0E       BEQ $8D53
+.C:8d45  C8          INY
+.C:8d46  4A          LSR A
+.C:8d47  B0 FC       BCS $8D45
+.C:8d49  C4 4E       CPY $4E
+.C:8d4b  F0 39       BEQ $8D86
+.C:8d4d  84 41       STY $41
+.C:8d4f  84 4E       STY $4E
+.C:8d51  D0 33       BNE $8D86
+.C:8d53  A0 00       LDY #$00
+.C:8d55  84 4E       STY $4E
+.C:8d57  A9 FF       LDA #$FF
+.C:8d59  8D 02 DC    STA $DC02
+.C:8d5c  A9 00       LDA #$00
+.C:8d5e  8D 00 DC    STA $DC00
+.C:8d61  AD 01 DC    LDA $DC01
+.C:8d64  C9 FF       CMP #$FF
+.C:8d66  F0 1C       BEQ $8D84
+.C:8d68  A9 FB       LDA #$FB
+.C:8d6a  8D 00 DC    STA $DC00
+.C:8d6d  AD 01 DC    LDA $DC01
+.C:8d70  29 01       AND #$01
+.C:8d72  D0 10       BNE $8D84
+.C:8d74  C8          INY
+.C:8d75  C4 42       CPY $42
+.C:8d77  F0 0D       BEQ $8D86
+.C:8d79  F8          SED
+.C:8d7a  A5 40       LDA $40
+.C:8d7c  18          CLC
+.C:8d7d  69 01       ADC #$01
+.C:8d7f  85 40       STA $40
+.C:8d81  D8          CLD
+.C:8d82  84 43       STY $43
+.C:8d84  84 42       STY $42
+.C:8d86  60          RTS
+.C:8d87  A9 00       LDA #$00
+.C:8d89  85 41       STA $41
+.C:8d8b  85 43       STA $43
+.C:8d8d  20 34 8D    JSR $8D34
+.C:8d90  18          CLC
+.C:8d91  A5 43       LDA $43
+.C:8d93  F0 03       BEQ $8D98
+.C:8d95  38          SEC
+.C:8d96  B0 04       BCS $8D9C
+.C:8d98  A5 41       LDA $41
+.C:8d9a  F0 EB       BEQ $8D87
+.C:8d9c  60          RTS
+.C:8d9d  20 34 8D    JSR $8D34
+.C:8da0  A5 4E       LDA $4E
+.C:8da2  D0 F9       BNE $8D9D
+.C:8da4  60          RTS
+.C:8da5  2C 12 D0    BIT $D012
+.C:8da8  10 FB       BPL $8DA5
+.C:8daa  2C 12 D0    BIT $D012
+.C:8dad  30 FB       BMI $8DAA
+.C:8daf  CA          DEX
+.C:8db0  D0 F3       BNE $8DA5
+.C:8db2  60          RTS
+.C:8db3  A0 0B       LDY #$0B
+.C:8db5  20 A0 1F    JSR $1FA0
+.C:8db8  4A          LSR A
+.C:8db9  90 10       BCC $8DCB
+.C:8dbb  AA          TAX
+.C:8dbc  B9 AF 87    LDA $87AF,Y
+.C:8dbf  48          PHA
+.C:8dc0  B9 BC 87    LDA $87BC,Y
+.C:8dc3  99 AF 87    STA $87AF,Y
+.C:8dc6  68          PLA
+.C:8dc7  99 BC 87    STA $87BC,Y
+.C:8dca  8A          TXA
+.C:8dcb  4A          LSR A
+.C:8dcc  90 0E       BCC $8DDC
+.C:8dce  B9 BC 87    LDA $87BC,Y
+.C:8dd1  48          PHA
+.C:8dd2  B9 C9 87    LDA $87C9,Y
+.C:8dd5  99 BC 87    STA $87BC,Y
+.C:8dd8  68          PLA
+.C:8dd9  99 C9 87    STA $87C9,Y
+.C:8ddc  88          DEY
+.C:8ddd  10 D6       BPL $8DB5
+.C:8ddf  60          RTS
+.C:8de0  00          BRK
+.C:8de1  00          BRK
+.C:8de2  00          BRK
+.C:8de3  00          BRK
+.C:8de4  00          BRK
+.C:8de5  00          BRK
+.C:8de6  00          BRK
+.C:8de7  00          BRK
+.C:8de8  00          BRK
+.C:8de9  00          BRK
+.C:8dea  00          BRK
+.C:8deb  00          BRK
+.C:8dec  00          BRK
+.C:8ded  00          BRK
+.C:8dee  00          BRK
+.C:8def  00          BRK
+.C:8df0  00          BRK
+.C:8df1  00          BRK
+.C:8df2  00          BRK
+.C:8df3  00          BRK
+.C:8df4  00          BRK
+.C:8df5  00          BRK
+.C:8df6  00          BRK
+.C:8df7  00          BRK
+.C:8df8  00          BRK
+.C:8df9  00          BRK
+.C:8dfa  00          BRK
+.C:8dfb  00          BRK
+.C:8dfc  00          BRK
+.C:8dfd  00          BRK
+.C:8dfe  00          BRK
+.C:8dff  00          BRK
+(C:$8e00) 
+=== 3200-32ff BYTES ===
+>C:3000  78 20 03 33  a9 01 8d 0d  dc a9 00 8d  0e dc a9 00   X c3�a.mܩ@.nܩ@
+>C:3010  a2 2f bd d0  31 9d 00 d0  ca 10 f7 a9  3a 85 3a a2   �/�P1.@PJp��:�:�
+>C:3020  07 bd b8 31  9d 01 df ca  10 f7 ad 0d  dc a2 07 a9   g��1.a�Jp��mܢg�
+>C:3030  40 bd f8 23  9d f8 03 9d  f8 83 bd b0  31 9d f8 7f   @��#.�c.����1.��
+>C:3040  9d f8 ff a9  fe 9d f8 07  9d f8 87 ca  10 e3 a9 3e   .����.�g.��Jp��>
+>C:3050  8d 04 dc a9  00 8d 05 dc  a9 11 a0 ff  cc 12 d0 d0   .dܩ@.eܩq �LrPP
+>C:3060  fb a2 0a ca  d0 fd c8 cc  12 d0 f0 02  d1 00 a2 09   ��jJP�HLrP�bQ@�i
+>C:3070  ca d0 fd c1  00 c8 cc 12  d0 f0 02 c5  00 a2 0a ca   JP�A@HLrP�bE@�jJ
+>C:3080  d0 fd ea c8  cc 12 d0 d0  00 8d 0e dc  ad 19 d0 ee   P��HLrPP@.nܭyP�
+>C:3090  19 d0 58 a5  45 f0 03 4c  93 30 4c 2b  8f 00 00 00   yPx�e�cl�0l+.@@@
+>C:30a0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:30b0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:30c0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:30d0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:30e0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:30f0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:3100  8c 18 d0 a9  02 8d 00 dd  a2 2b 8e 01  d0 8e 03 d0   �xP�b.@ݢ+�aP�cP
+>C:3110  8e 05 d0 8e  07 d0 8e 09  d0 8e 0b d0  8e 0d d0 8e   �eP�gP�iP�kP�mP�
+>C:3120  0f d0 ae e0  33 8e 28 d0  ae e1 33 8e  29 d0 ae e2   oP� 3�(P��3�)P��
+>C:3130  33 8e 2a d0  ae e3 33 8e  2b d0 ae e4  33 8e 2c d0   3�*P��3�+P��3�,P
+>C:3140  ae e5 33 8e  2d d0 a2 aa  8e 01 d0 8e  03 d0 8e 05   ��3�-P���aP�cP�e
+>C:3150  d0 8e 07 d0  8e 09 d0 8e  0b d0 8e 0d  d0 8e 0f d0   P�gP�iP�kP�mP�oP
+>C:3160  09 01 8d bc  19 a9 00 8c  17 d0 99 18  d0 8c 17 d0   ia.�y�@�wP.xP�wP
+>C:3170  a6 5c 8d 08  df 8d 03 df  bd f0 32 8d  37 8e ee 19   �\.h�.c߽�2.7��y
+>C:3180  d0 ad e8 33  8d 26 d0 ad  e9 33 8d 25  d0 ad eb 33   P��3.&P��3.%P��3
+>C:3190  8d 27 d0 ad  ea 33 8d 2e  d0 a5 5a 8d  05 df a9 38   .'P��3..P�z.eߩ8
+>C:31a0  a0 78 8c 18  d0 a2 3e 4c  00 10 00 00  00 00 00 00    X�xP�>l@p@@@@@@
+>C:31b0  30 30 30 30  30 30 62 00  fc c0 31 f0  00 8f 10 00   000000B@��1�@.p@
+>C:31c0  00 11 22 33  44 55 66 77  88 99 aa bb  cc dd ee ff   @q"3duFW..��Lݮ�
+>C:31d0  18 2b 30 2b  60 2b 90 2b  c0 2b f0 2b  20 2b 18 2b   x+0+�+.+�+�+ +x+
+>C:31e0  40 78 2a 00  00 ff 08 00  14 00 01 ff  80 7e 00 00   @X*@@�h@t@a�.�@@
+>C:31f0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+(C:$3200) 
+=== 3200-32ff DISASM ===
+.C:3000  78          SEI
+.C:3001  20 03 33    JSR $3303
+.C:3004  A9 01       LDA #$01
+.C:3006  8D 0D DC    STA $DC0D
+.C:3009  A9 00       LDA #$00
+.C:300b  8D 0E DC    STA $DC0E
+.C:300e  A9 00       LDA #$00
+.C:3010  A2 2F       LDX #$2F
+.C:3012  BD D0 31    LDA $31D0,X
+.C:3015  9D 00 D0    STA $D000,X
+.C:3018  CA          DEX
+.C:3019  10 F7       BPL $3012
+.C:301b  A9 3A       LDA #$3A
+.C:301d  85 3A       STA $3A
+.C:301f  A2 07       LDX #$07
+.C:3021  BD B8 31    LDA $31B8,X
+.C:3024  9D 01 DF    STA $DF01,X
+.C:3027  CA          DEX
+.C:3028  10 F7       BPL $3021
+.C:302a  AD 0D DC    LDA $DC0D
+.C:302d  A2 07       LDX #$07
+.C:302f  A9 40       LDA #$40
+.C:3031  BD F8 23    LDA $23F8,X
+.C:3034  9D F8 03    STA $03F8,X
+.C:3037  9D F8 83    STA $83F8,X
+.C:303a  BD B0 31    LDA $31B0,X
+.C:303d  9D F8 7F    STA $7FF8,X
+.C:3040  9D F8 FF    STA $FFF8,X
+.C:3043  A9 FE       LDA #$FE
+.C:3045  9D F8 07    STA $07F8,X
+.C:3048  9D F8 87    STA $87F8,X
+.C:304b  CA          DEX
+.C:304c  10 E3       BPL $3031
+.C:304e  A9 3E       LDA #$3E
+.C:3050  8D 04 DC    STA $DC04
+.C:3053  A9 00       LDA #$00
+.C:3055  8D 05 DC    STA $DC05
+.C:3058  A9 11       LDA #$11
+.C:305a  A0 FF       LDY #$FF
+.C:305c  CC 12 D0    CPY $D012
+.C:305f  D0 FB       BNE $305C
+.C:3061  A2 0A       LDX #$0A
+.C:3063  CA          DEX
+.C:3064  D0 FD       BNE $3063
+.C:3066  C8          INY
+.C:3067  CC 12 D0    CPY $D012
+.C:306a  F0 02       BEQ $306E
+.C:306c  D1 00       CMP ($00),Y
+.C:306e  A2 09       LDX #$09
+.C:3070  CA          DEX
+.C:3071  D0 FD       BNE $3070
+.C:3073  C1 00       CMP ($00,X)
+.C:3075  C8          INY
+.C:3076  CC 12 D0    CPY $D012
+.C:3079  F0 02       BEQ $307D
+.C:307b  C5 00       CMP $00
+.C:307d  A2 0A       LDX #$0A
+.C:307f  CA          DEX
+.C:3080  D0 FD       BNE $307F
+.C:3082  EA          NOP
+.C:3083  C8          INY
+.C:3084  CC 12 D0    CPY $D012
+.C:3087  D0 00       BNE $3089
+.C:3089  8D 0E DC    STA $DC0E
+.C:308c  AD 19 D0    LDA $D019
+.C:308f  EE 19 D0    INC $D019
+.C:3092  58          CLI
+.C:3093  A5 45       LDA $45
+.C:3095  F0 03       BEQ $309A
+.C:3097  4C 93 30    JMP $3093
+.C:309a  4C 2B 8F    JMP $8F2B
+.C:309d  00          BRK
+.C:309e  00          BRK
+.C:309f  00          BRK
+.C:30a0  00          BRK
+.C:30a1  00          BRK
+.C:30a2  00          BRK
+.C:30a3  00          BRK
+.C:30a4  00          BRK
+.C:30a5  00          BRK
+.C:30a6  00          BRK
+.C:30a7  00          BRK
+.C:30a8  00          BRK
+.C:30a9  00          BRK
+.C:30aa  00          BRK
+.C:30ab  00          BRK
+.C:30ac  00          BRK
+.C:30ad  00          BRK
+.C:30ae  00          BRK
+.C:30af  00          BRK
+.C:30b0  00          BRK
+.C:30b1  00          BRK
+.C:30b2  00          BRK
+.C:30b3  00          BRK
+.C:30b4  00          BRK
+.C:30b5  00          BRK
+.C:30b6  00          BRK
+.C:30b7  00          BRK
+.C:30b8  00          BRK
+.C:30b9  00          BRK
+.C:30ba  00          BRK
+.C:30bb  00          BRK
+.C:30bc  00          BRK
+.C:30bd  00          BRK
+.C:30be  00          BRK
+.C:30bf  00          BRK
+.C:30c0  00          BRK
+.C:30c1  00          BRK
+.C:30c2  00          BRK
+.C:30c3  00          BRK
+.C:30c4  00          BRK
+.C:30c5  00          BRK
+.C:30c6  00          BRK
+.C:30c7  00          BRK
+.C:30c8  00          BRK
+.C:30c9  00          BRK
+.C:30ca  00          BRK
+.C:30cb  00          BRK
+.C:30cc  00          BRK
+.C:30cd  00          BRK
+.C:30ce  00          BRK
+.C:30cf  00          BRK
+.C:30d0  00          BRK
+.C:30d1  00          BRK
+.C:30d2  00          BRK
+.C:30d3  00          BRK
+.C:30d4  00          BRK
+.C:30d5  00          BRK
+.C:30d6  00          BRK
+.C:30d7  00          BRK
+.C:30d8  00          BRK
+.C:30d9  00          BRK
+.C:30da  00          BRK
+.C:30db  00          BRK
+.C:30dc  00          BRK
+.C:30dd  00          BRK
+.C:30de  00          BRK
+.C:30df  00          BRK
+.C:30e0  00          BRK
+.C:30e1  00          BRK
+.C:30e2  00          BRK
+.C:30e3  00          BRK
+.C:30e4  00          BRK
+.C:30e5  00          BRK
+.C:30e6  00          BRK
+.C:30e7  00          BRK
+.C:30e8  00          BRK
+.C:30e9  00          BRK
+.C:30ea  00          BRK
+.C:30eb  00          BRK
+.C:30ec  00          BRK
+.C:30ed  00          BRK
+.C:30ee  00          BRK
+.C:30ef  00          BRK
+.C:30f0  00          BRK
+.C:30f1  00          BRK
+.C:30f2  00          BRK
+.C:30f3  00          BRK
+.C:30f4  00          BRK
+.C:30f5  00          BRK
+.C:30f6  00          BRK
+.C:30f7  00          BRK
+.C:30f8  00          BRK
+.C:30f9  00          BRK
+.C:30fa  00          BRK
+.C:30fb  00          BRK
+.C:30fc  00          BRK
+.C:30fd  00          BRK
+.C:30fe  00          BRK
+.C:30ff  00          BRK
+.C:3100  8C 18 D0    STY $D018
+.C:3103  A9 02       LDA #$02
+.C:3105  8D 00 DD    STA $DD00
+.C:3108  A2 2B       LDX #$2B
+.C:310a  8E 01 D0    STX $D001
+.C:310d  8E 03 D0    STX $D003
+.C:3110  8E 05 D0    STX $D005
+.C:3113  8E 07 D0    STX $D007
+.C:3116  8E 09 D0    STX $D009
+.C:3119  8E 0B D0    STX $D00B
+.C:311c  8E 0D D0    STX $D00D
+.C:311f  8E 0F D0    STX $D00F
+.C:3122  AE E0 33    LDX $33E0
+.C:3125  8E 28 D0    STX $D028
+.C:3128  AE E1 33    LDX $33E1
+.C:312b  8E 29 D0    STX $D029
+.C:312e  AE E2 33    LDX $33E2
+.C:3131  8E 2A D0    STX $D02A
+.C:3134  AE E3 33    LDX $33E3
+.C:3137  8E 2B D0    STX $D02B
+.C:313a  AE E4 33    LDX $33E4
+.C:313d  8E 2C D0    STX $D02C
+.C:3140  AE E5 33    LDX $33E5
+.C:3143  8E 2D D0    STX $D02D
+.C:3146  A2 AA       LDX #$AA
+.C:3148  8E 01 D0    STX $D001
+.C:314b  8E 03 D0    STX $D003
+.C:314e  8E 05 D0    STX $D005
+.C:3151  8E 07 D0    STX $D007
+.C:3154  8E 09 D0    STX $D009
+.C:3157  8E 0B D0    STX $D00B
+.C:315a  8E 0D D0    STX $D00D
+.C:315d  8E 0F D0    STX $D00F
+.C:3160  09 01       ORA #$01
+.C:3162  8D BC 19    STA $19BC
+.C:3165  A9 00       LDA #$00
+.C:3167  8C 17 D0    STY $D017
+.C:316a  99 18 D0    STA $D018,Y
+.C:316d  8C 17 D0    STY $D017
+.C:3170  A6 5C       LDX $5C
+.C:3172  8D 08 DF    STA $DF08
+.C:3175  8D 03 DF    STA $DF03
+.C:3178  BD F0 32    LDA $32F0,X
+.C:317b  8D 37 8E    STA $8E37
+.C:317e  EE 19 D0    INC $D019
+.C:3181  AD E8 33    LDA $33E8
+.C:3184  8D 26 D0    STA $D026
+.C:3187  AD E9 33    LDA $33E9
+.C:318a  8D 25 D0    STA $D025
+.C:318d  AD EB 33    LDA $33EB
+.C:3190  8D 27 D0    STA $D027
+.C:3193  AD EA 33    LDA $33EA
+.C:3196  8D 2E D0    STA $D02E
+.C:3199  A5 5A       LDA $5A
+.C:319b  8D 05 DF    STA $DF05
+.C:319e  A9 38       LDA #$38
+.C:31a0  A0 78       LDY #$78
+.C:31a2  8C 18 D0    STY $D018
+.C:31a5  A2 3E       LDX #$3E
+.C:31a7  4C 00 10    JMP $1000
+.C:31aa  00          BRK
+.C:31ab  00          BRK
+.C:31ac  00          BRK
+.C:31ad  00          BRK
+.C:31ae  00          BRK
+.C:31af  00          BRK
+.C:31b0  30 30       BMI $31E2
+.C:31b2  30 30       BMI $31E4
+.C:31b4  30 30       BMI $31E6
+.C:31b6  62          JAM
+.C:31b7  00          BRK
+.C:31b8  FC C0 31    NOOP $31C0,X
+.C:31bb  F0 00       BEQ $31BD
+.C:31bd  8F 10 00    SAX $0010
+.C:31c0  00          BRK
+.C:31c1  11 22       ORA ($22),Y
+.C:31c3  33 44       RLA ($44),Y
+.C:31c5  55 66       EOR $66,X
+.C:31c7  77 88       RRA $88,X
+.C:31c9  99 AA BB    STA $BBAA,Y
+.C:31cc  CC DD EE    CPY $EEDD
+.C:31cf  FF 18 2B    ISB $2B18,X
+.C:31d2  30 2B       BMI $31FF
+.C:31d4  60          RTS
+.C:31d5  2B 90       ANC #$90
+.C:31d7  2B C0       ANC #$C0
+.C:31d9  2B F0       ANC #$F0
+.C:31db  2B 20       ANC #$20
+.C:31dd  2B 18       ANC #$18
+.C:31df  2B 40       ANC #$40
+.C:31e1  78          SEI
+.C:31e2  2A          ROL A
+.C:31e3  00          BRK
+.C:31e4  00          BRK
+.C:31e5  FF 08 00    ISB $0008,X
+.C:31e8  14 00       NOOP $00,X
+.C:31ea  01 FF       ORA ($FF,X)
+.C:31ec  80 7E       NOOP #$7E
+.C:31ee  00          BRK
+.C:31ef  00          BRK
+.C:31f0  00          BRK
+.C:31f1  00          BRK
+.C:31f2  00          BRK
+.C:31f3  00          BRK
+.C:31f4  00          BRK
+.C:31f5  00          BRK
+.C:31f6  00          BRK
+.C:31f7  00          BRK
+.C:31f8  00          BRK
+.C:31f9  00          BRK
+.C:31fa  00          BRK
+.C:31fb  00          BRK
+.C:31fc  00          BRK
+.C:31fd  00          BRK
+.C:31fe  00          BRK
+.C:31ff  00          BRK
+(C:$3200) 
+=== 8500-85ff BYTES ===
+>C:3200  8c 18 d0 a9  00 8d 00 dd  a2 2b 8e 01  d0 8e 03 d0   �xP�@.@ݢ+�aP�cP
+>C:3210  8e 05 d0 8e  07 d0 8e 09  d0 8e 0b d0  8e 0d d0 8e   �eP�gP�iP�kP�mP�
+>C:3220  0f d0 ae e0  b3 8e 28 d0  ae e1 b3 8e  29 d0 ae e2   oP� ��(P����)P��
+>C:3230  b3 8e 2a d0  ae e3 b3 8e  2b d0 ae e4  b3 8e 2c d0   ��*P����+P����,P
+>C:3240  ae e5 b3 8e  2d d0 a2 aa  8e 01 d0 8e  03 d0 8e 05   ����-P���aP�cP�e
+>C:3250  d0 8e 07 d0  8e 09 d0 8e  0b d0 8e 0d  d0 8e 0f d0   P�gP�iP�kP�mP�oP
+>C:3260  09 01 8d bc  99 a9 00 8c  17 d0 99 18  d0 8c 17 d0   ia.�.�@�wP.xP�wP
+>C:3270  a6 5c 8d 08  df 8d 03 df  bd f0 32 8d  37 8e ee 19   �\.h�.c߽�2.7��y
+>C:3280  d0 ad e8 b3  8d 26 d0 ad  e9 b3 8d 25  d0 ad eb b3   P���.&P���.%P���
+>C:3290  8d 27 d0 ad  ea b3 8d 2e  d0 a5 5a 8d  05 df a9 38   .'P���..P�z.eߩ8
+>C:32a0  a0 78 8c 18  d0 a2 3e 4c  00 90 00 00  00 00 00 00    X�xP�>l@.@@@@@@
+>C:32b0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:32c0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:32d0  84 81 81 81  81 81 81 81  81 81 81 81  81 81 81 81   �...............
+>C:32e0  82 81 81 81  81 81 81 81  81 81 81 81  81 81 81 81   �...............
+>C:32f0  80 85 88 83  81 81 81 81  81 81 81 81  81 81 81 81   .�.�............
+(C:$3300) .C:3200  8C 18 D0    STY $D018
+.C:3203  A9 00       LDA #$00
+.C:3205  8D 00 DD    STA $DD00
+
+=== 8500-85ff DISASM ===
+.C:3208  A2 2B       LDX #$2B
+.C:320a  8E 01 D0    STX $D001
+.C:320d  8E 03 D0    STX $D003
+.C:3210  8E 05 D0    STX $D005
+.C:3213  8E 07 D0    STX $D007
+.C:3216  8E 09 D0    STX $D009
+.C:3219  8E 0B D0    STX $D00B
+.C:321c  8E 0D D0    STX $D00D
+.C:321f  8E 0F D0    STX $D00F
+.C:3222  AE E0 B3    LDX $B3E0
+.C:3225  8E 28 D0    STX $D028
+.C:3228  AE E1 B3    LDX $B3E1
+.C:322b  8E 29 D0    STX $D029
+.C:322e  AE E2 B3    LDX $B3E2
+.C:3231  8E 2A D0    STX $D02A
+.C:3234  AE E3 B3    LDX $B3E3
+.C:3237  8E 2B D0    STX $D02B
+.C:323a  AE E4 B3    LDX $B3E4
+.C:323d  8E 2C D0    STX $D02C
+.C:3240  AE E5 B3    LDX $B3E5
+.C:3243  8E 2D D0    STX $D02D
+.C:3246  A2 AA       LDX #$AA
+.C:3248  8E 01 D0    STX $D001
+.C:324b  8E 03 D0    STX $D003
+.C:324e  8E 05 D0    STX $D005
+.C:3251  8E 07 D0    STX $D007
+.C:3254  8E 09 D0    STX $D009
+.C:3257  8E 0B D0    STX $D00B
+.C:325a  8E 0D D0    STX $D00D
+.C:325d  8E 0F D0    STX $D00F
+.C:3260  09 01       ORA #$01
+.C:3262  8D BC 99    STA $99BC
+.C:3265  A9 00       LDA #$00
+.C:3267  8C 17 D0    STY $D017
+.C:326a  99 18 D0    STA $D018,Y
+.C:326d  8C 17 D0    STY $D017
+.C:3270  A6 5C       LDX $5C
+.C:3272  8D 08 DF    STA $DF08
+.C:3275  8D 03 DF    STA $DF03
+.C:3278  BD F0 32    LDA $32F0,X
+.C:327b  8D 37 8E    STA $8E37
+.C:327e  EE 19 D0    INC $D019
+.C:3281  AD E8 B3    LDA $B3E8
+.C:3284  8D 26 D0    STA $D026
+.C:3287  AD E9 B3    LDA $B3E9
+.C:328a  8D 25 D0    STA $D025
+.C:328d  AD EB B3    LDA $B3EB
+.C:3290  8D 27 D0    STA $D027
+.C:3293  AD EA B3    LDA $B3EA
+.C:3296  8D 2E D0    STA $D02E
+.C:3299  A5 5A       LDA $5A
+.C:329b  8D 05 DF    STA $DF05
+.C:329e  A9 38       LDA #$38
+.C:32a0  A0 78       LDY #$78
+.C:32a2  8C 18 D0    STY $D018
+.C:32a5  A2 3E       LDX #$3E
+.C:32a7  4C 00 90    JMP $9000
+.C:32aa  00          BRK
+.C:32ab  00          BRK
+.C:32ac  00          BRK
+.C:32ad  00          BRK
+.C:32ae  00          BRK
+.C:32af  00          BRK
+.C:32b0  00          BRK
+.C:32b1  00          BRK
+.C:32b2  00          BRK
+.C:32b3  00          BRK
+.C:32b4  00          BRK
+.C:32b5  00          BRK
+.C:32b6  00          BRK
+.C:32b7  00          BRK
+.C:32b8  00          BRK
+.C:32b9  00          BRK
+.C:32ba  00          BRK
+.C:32bb  00          BRK
+.C:32bc  00          BRK
+.C:32bd  00          BRK
+.C:32be  00          BRK
+.C:32bf  00          BRK
+.C:32c0  00          BRK
+.C:32c1  00          BRK
+.C:32c2  00          BRK
+.C:32c3  00          BRK
+.C:32c4  00          BRK
+.C:32c5  00          BRK
+.C:32c6  00          BRK
+.C:32c7  00          BRK
+.C:32c8  00          BRK
+.C:32c9  00          BRK
+.C:32ca  00          BRK
+.C:32cb  00          BRK
+.C:32cc  00          BRK
+.C:32cd  00          BRK
+.C:32ce  00          BRK
+.C:32cf  00          BRK
+.C:32d0  84 81       STY $81
+.C:32d2  81 81       STA ($81,X)
+.C:32d4  81 81       STA ($81,X)
+.C:32d6  81 81       STA ($81,X)
+.C:32d8  81 81       STA ($81,X)
+.C:32da  81 81       STA ($81,X)
+.C:32dc  81 81       STA ($81,X)
+.C:32de  81 81       STA ($81,X)
+.C:32e0  82 81       NOOP #$81
+.C:32e2  81 81       STA ($81,X)
+.C:32e4  81 81       STA ($81,X)
+.C:32e6  81 81       STA ($81,X)
+.C:32e8  81 81       STA ($81,X)
+.C:32ea  81 81       STA ($81,X)
+.C:32ec  81 81       STA ($81,X)
+.C:32ee  81 81       STA ($81,X)
+.C:32f0  80 85       NOOP #$85
+.C:32f2  88          DEY
+.C:32f3  83 81       SAX ($81,X)
+.C:32f5  81 81       STA ($81,X)
+.C:32f7  81 81       STA ($81,X)
+.C:32f9  81 81       STA ($81,X)
+.C:32fb  81 81       STA ($81,X)
+.C:32fd  81 81       STA ($81,X)
+.C:32ff  81 4C       STA ($4C,X)
+(C:$3301) >C:8500 
+=== 1f00-1fff BYTES ===
+ a9 04 8d 02  df a9 20 05  02 8d 03 df  a9 98 8d 04   �d.bߩ eb.cߩ..d
+>C:8510  df a5 10 18  69 11 aa 8e  05 df a5 11  8d 06 df a9   ߥpxIq��eߥq.fߩ
+>C:8520  7c 8d 07 df  a9 02 8d 08  df a0 fd 8c  01 df a9 28   �.gߩb.h� ��aߩ(
+>C:8530  05 02 8d 03  df a9 14 8d  04 df e8 e8  e8 8e 05 df   eb.cߩt.dߨ���e�
+>C:8540  8c 01 df a9  00 8d 02 df  a9 25 05 02  8d 03 df a9   �aߩ@.bߩ%eb.cߩ
+>C:8550  90 8d 04 df  e8 e8 8e 05  df a9 80 8d  07 df a9 01   ..dߨ��eߩ..gߩa
+>C:8560  8d 08 df 8c  01 df a9 2d  05 02 8d 03  df a9 10 8d   .hߌaߩ-eb.cߩp.
+>C:8570  04 df e8 e8  8e 05 df 8c  01 df a9 a8  8d 02 df a9   dߨ��eߌaߩ�.bߩ
+>C:8580  22 05 02 8d  03 df a9 90  8d 04 df e8  8e 05 df a9   "eb.cߩ..dߨ�eߩ
+>C:8590  a0 8d 07 df  a9 00 8d 08  df 8c 01 df  a9 48 8d 02    .gߩ@.hߌaߩh.b
+>C:85a0  df a9 27 05  02 8d 03 df  a9 30 8d 04  df e8 8e 05   ߩ'eb.cߩ0.dߨ�e
+>C:85b0  df 8c 01 df  a9 4b 8d 02  df a9 23 05  02 8d 03 df   ߌaߩk.bߩ#eb.c�
+>C:85c0  a9 d0 8d 04  df a9 25 8d  07 df 8c 01  df a9 73 8d   �P.dߩ%.gߌaߩS.
+>C:85d0  02 df a9 f5  8d 04 df 8c  01 df a9 9b  8d 02 df a9   bߩ�.dߌaߩ�.bߩ
+>C:85e0  1a 8d 04 df  e8 8e 05 df  8c 01 df a9  c3 8d 02 df   z.dߨ�eߌaߩC.b�
+>C:85f0  a9 3f 8d 04  df 8c 01 df  a9 83 8d 02  df a9 26 05   �?.dߌaߩ�.bߩ&e
+(C:$8600) 
+=== 1f00-1fff DISASM ===
+.C:8500  A9 04       LDA #$04
+.C:8502  8D 02 DF    STA $DF02
+.C:8505  A9 20       LDA #$20
+.C:8507  05 02       ORA $02
+.C:8509  8D 03 DF    STA $DF03
+.C:850c  A9 98       LDA #$98
+.C:850e  8D 04 DF    STA $DF04
+.C:8511  A5 10       LDA $10
+.C:8513  18          CLC
+.C:8514  69 11       ADC #$11
+.C:8516  AA          TAX
+.C:8517  8E 05 DF    STX $DF05
+.C:851a  A5 11       LDA $11
+.C:851c  8D 06 DF    STA $DF06
+.C:851f  A9 7C       LDA #$7C
+.C:8521  8D 07 DF    STA $DF07
+.C:8524  A9 02       LDA #$02
+.C:8526  8D 08 DF    STA $DF08
+.C:8529  A0 FD       LDY #$FD
+.C:852b  8C 01 DF    STY $DF01
+.C:852e  A9 28       LDA #$28
+.C:8530  05 02       ORA $02
+.C:8532  8D 03 DF    STA $DF03
+.C:8535  A9 14       LDA #$14
+.C:8537  8D 04 DF    STA $DF04
+.C:853a  E8          INX
+.C:853b  E8          INX
+.C:853c  E8          INX
+.C:853d  8E 05 DF    STX $DF05
+.C:8540  8C 01 DF    STY $DF01
+.C:8543  A9 00       LDA #$00
+.C:8545  8D 02 DF    STA $DF02
+.C:8548  A9 25       LDA #$25
+.C:854a  05 02       ORA $02
+.C:854c  8D 03 DF    STA $DF03
+.C:854f  A9 90       LDA #$90
+.C:8551  8D 04 DF    STA $DF04
+.C:8554  E8          INX
+.C:8555  E8          INX
+.C:8556  8E 05 DF    STX $DF05
+.C:8559  A9 80       LDA #$80
+.C:855b  8D 07 DF    STA $DF07
+.C:855e  A9 01       LDA #$01
+.C:8560  8D 08 DF    STA $DF08
+.C:8563  8C 01 DF    STY $DF01
+.C:8566  A9 2D       LDA #$2D
+.C:8568  05 02       ORA $02
+.C:856a  8D 03 DF    STA $DF03
+.C:856d  A9 10       LDA #$10
+.C:856f  8D 04 DF    STA $DF04
+.C:8572  E8          INX
+.C:8573  E8          INX
+.C:8574  8E 05 DF    STX $DF05
+.C:8577  8C 01 DF    STY $DF01
+.C:857a  A9 A8       LDA #$A8
+.C:857c  8D 02 DF    STA $DF02
+.C:857f  A9 22       LDA #$22
+.C:8581  05 02       ORA $02
+.C:8583  8D 03 DF    STA $DF03
+.C:8586  A9 90       LDA #$90
+.C:8588  8D 04 DF    STA $DF04
+.C:858b  E8          INX
+.C:858c  8E 05 DF    STX $DF05
+.C:858f  A9 A0       LDA #$A0
+.C:8591  8D 07 DF    STA $DF07
+.C:8594  A9 00       LDA #$00
+.C:8596  8D 08 DF    STA $DF08
+.C:8599  8C 01 DF    STY $DF01
+.C:859c  A9 48       LDA #$48
+.C:859e  8D 02 DF    STA $DF02
+.C:85a1  A9 27       LDA #$27
+.C:85a3  05 02       ORA $02
+.C:85a5  8D 03 DF    STA $DF03
+.C:85a8  A9 30       LDA #$30
+.C:85aa  8D 04 DF    STA $DF04
+.C:85ad  E8          INX
+.C:85ae  8E 05 DF    STX $DF05
+.C:85b1  8C 01 DF    STY $DF01
+.C:85b4  A9 4B       LDA #$4B
+.C:85b6  8D 02 DF    STA $DF02
+.C:85b9  A9 23       LDA #$23
+.C:85bb  05 02       ORA $02
+.C:85bd  8D 03 DF    STA $DF03
+.C:85c0  A9 D0       LDA #$D0
+.C:85c2  8D 04 DF    STA $DF04
+.C:85c5  A9 25       LDA #$25
+.C:85c7  8D 07 DF    STA $DF07
+.C:85ca  8C 01 DF    STY $DF01
+.C:85cd  A9 73       LDA #$73
+.C:85cf  8D 02 DF    STA $DF02
+.C:85d2  A9 F5       LDA #$F5
+.C:85d4  8D 04 DF    STA $DF04
+.C:85d7  8C 01 DF    STY $DF01
+.C:85da  A9 9B       LDA #$9B
+.C:85dc  8D 02 DF    STA $DF02
+.C:85df  A9 1A       LDA #$1A
+.C:85e1  8D 04 DF    STA $DF04
+.C:85e4  E8          INX
+.C:85e5  8E 05 DF    STX $DF05
+.C:85e8  8C 01 DF    STY $DF01
+.C:85eb  A9 C3       LDA #$C3
+.C:85ed  8D 02 DF    STA $DF02
+.C:85f0  A9 3F       LDA #$3F
+.C:85f2  8D 04 DF    STA $DF04
+.C:85f5  8C 01 DF    STY $DF01
+.C:85f8  A9 83       LDA #$83
+.C:85fa  8D 02 DF    STA $DF02
+.C:85fd  A9 26       LDA #$26
+.C:85ff  05 02       ORA $02
+(C:$8601) 
+=== 8f00-8fff BYTES ===
+>C:1f00  2a d0 a0 0f  8c 2b d0 a0  0f 8c 2c d0  a0 0f 8c 2d   *P o�+P o�,P o�-
+>C:1f10  d0 a0 88 8c  18 d0 a0 0f  8e 11 d0 8c  28 d0 a0 0f   P .�xP o�qP�(P o
+>C:1f20  8c 29 d0 a0  0f 8c 2a d0  a0 0f 8c 2b  d0 a0 0f 8c   �)P o�*P o�+P o�
+>C:1f30  2c d0 a0 0f  8c 2d d0 a0  18 8c 18 d0  a0 10 8c 11   ,P o�-P x�xP p�q
+>C:1f40  d0 4c 00 8e  85 44 8d ef  83 a9 00 85  45 40 a9 05   Pl@��d.���@�e@�e
+>C:1f50  85 47 a9 00  85 48 85 46  85 4d 85 3d  85 3e 85 3f   �g�@�h�f�m�=�>�?
+>C:1f60  20 b3 8d 20  b3 8d a9 90  4c 44 1f a4  46 e6 46 b9    �. �.�.ld_�f�f�
+>C:1f70  af 87 f0 f7  4c 44 1f 4c  6b 1f a4 4d  c0 08 f0 07   ����ld_lK_�m�h�g
+>C:1f80  a5 44 99 d5  87 e6 4d e6  48 f8 a5 47  38 e9 01 85   �d.U��m�h��g8�a�
+>C:1f90  47 d8 f0 07  4c 6b 1f a9  00 85 47 a9  00 4c 44 1f   gX�glK_�@�g�@ld_
+>C:1fa0  ad 1b d4 c5  58 f0 f9 85  58 60 a2 02  a9 51 18 f8   �[TEx���x��b�qx�
+>C:1fb0  65 3d 85 3d  8a 65 3e 85  3e a9 00 65  3f 85 3f d8   E=�=�E>�>�@E?�?X
+>C:1fc0  60 fd f0 ae  f0 00 00 10  00 00 00 00  00 00 00 00   �����@@p@@@@@@@@
+>C:1fd0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:1fe0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:1ff0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+(C:$2000) 
+=== 8f00-8fff DISASM ===
+.C:1f00  2A          ROL A
+.C:1f01  D0 A0       BNE $1EA3
+.C:1f03  0F 8C 2B    SLO $2B8C
+.C:1f06  D0 A0       BNE $1EA8
+.C:1f08  0F 8C 2C    SLO $2C8C
+.C:1f0b  D0 A0       BNE $1EAD
+.C:1f0d  0F 8C 2D    SLO $2D8C
+.C:1f10  D0 A0       BNE $1EB2
+.C:1f12  88          DEY
+.C:1f13  8C 18 D0    STY $D018
+.C:1f16  A0 0F       LDY #$0F
+.C:1f18  8E 11 D0    STX $D011
+.C:1f1b  8C 28 D0    STY $D028
+.C:1f1e  A0 0F       LDY #$0F
+.C:1f20  8C 29 D0    STY $D029
+.C:1f23  A0 0F       LDY #$0F
+.C:1f25  8C 2A D0    STY $D02A
+.C:1f28  A0 0F       LDY #$0F
+.C:1f2a  8C 2B D0    STY $D02B
+.C:1f2d  A0 0F       LDY #$0F
+.C:1f2f  8C 2C D0    STY $D02C
+.C:1f32  A0 0F       LDY #$0F
+.C:1f34  8C 2D D0    STY $D02D
+.C:1f37  A0 18       LDY #$18
+.C:1f39  8C 18 D0    STY $D018
+.C:1f3c  A0 10       LDY #$10
+.C:1f3e  8C 11 D0    STY $D011
+.C:1f41  4C 00 8E    JMP $8E00
+.C:1f44  85 44       STA $44
+.C:1f46  8D EF 83    STA $83EF
+.C:1f49  A9 00       LDA #$00
+.C:1f4b  85 45       STA $45
+.C:1f4d  40          RTI
+.C:1f4e  A9 05       LDA #$05
+.C:1f50  85 47       STA $47
+.C:1f52  A9 00       LDA #$00
+.C:1f54  85 48       STA $48
+.C:1f56  85 46       STA $46
+.C:1f58  85 4D       STA $4D
+.C:1f5a  85 3D       STA $3D
+.C:1f5c  85 3E       STA $3E
+.C:1f5e  85 3F       STA $3F
+.C:1f60  20 B3 8D    JSR $8DB3
+.C:1f63  20 B3 8D    JSR $8DB3
+.C:1f66  A9 90       LDA #$90
+.C:1f68  4C 44 1F    JMP $1F44
+.C:1f6b  A4 46       LDY $46
+.C:1f6d  E6 46       INC $46
+.C:1f6f  B9 AF 87    LDA $87AF,Y
+.C:1f72  F0 F7       BEQ $1F6B
+.C:1f74  4C 44 1F    JMP $1F44
+.C:1f77  4C 6B 1F    JMP $1F6B
+.C:1f7a  A4 4D       LDY $4D
+.C:1f7c  C0 08       CPY #$08
+.C:1f7e  F0 07       BEQ $1F87
+.C:1f80  A5 44       LDA $44
+.C:1f82  99 D5 87    STA $87D5,Y
+.C:1f85  E6 4D       INC $4D
+.C:1f87  E6 48       INC $48
+.C:1f89  F8          SED
+.C:1f8a  A5 47       LDA $47
+.C:1f8c  38          SEC
+.C:1f8d  E9 01       SBC #$01
+.C:1f8f  85 47       STA $47
+.C:1f91  D8          CLD
+.C:1f92  F0 07       BEQ $1F9B
+.C:1f94  4C 6B 1F    JMP $1F6B
+.C:1f97  A9 00       LDA #$00
+.C:1f99  85 47       STA $47
+.C:1f9b  A9 00       LDA #$00
+.C:1f9d  4C 44 1F    JMP $1F44
+.C:1fa0  AD 1B D4    LDA $D41B
+.C:1fa3  C5 58       CMP $58
+.C:1fa5  F0 F9       BEQ $1FA0
+.C:1fa7  85 58       STA $58
+.C:1fa9  60          RTS
+.C:1faa  A2 02       LDX #$02
+.C:1fac  A9 51       LDA #$51
+.C:1fae  18          CLC
+.C:1faf  F8          SED
+.C:1fb0  65 3D       ADC $3D
+.C:1fb2  85 3D       STA $3D
+.C:1fb4  8A          TXA
+.C:1fb5  65 3E       ADC $3E
+.C:1fb7  85 3E       STA $3E
+.C:1fb9  A9 00       LDA #$00
+.C:1fbb  65 3F       ADC $3F
+.C:1fbd  85 3F       STA $3F
+.C:1fbf  D8          CLD
+.C:1fc0  60          RTS
+.C:1fc1  FD F0 AE    SBC $AEF0,X
+.C:1fc4  F0 00       BEQ $1FC6
+.C:1fc6  00          BRK
+.C:1fc7  10 00       BPL $1FC9
+.C:1fc9  00          BRK
+.C:1fca  00          BRK
+.C:1fcb  00          BRK
+.C:1fcc  00          BRK
+.C:1fcd  00          BRK
+.C:1fce  00          BRK
+.C:1fcf  00          BRK
+.C:1fd0  00          BRK
+.C:1fd1  00          BRK
+.C:1fd2  00          BRK
+.C:1fd3  00          BRK
+.C:1fd4  00          BRK
+.C:1fd5  00          BRK
+.C:1fd6  00          BRK
+.C:1fd7  00          BRK
+.C:1fd8  00          BRK
+.C:1fd9  00          BRK
+.C:1fda  00          BRK
+.C:1fdb  00          BRK
+.C:1fdc  00          BRK
+.C:1fdd  00          BRK
+.C:1fde  00          BRK
+.C:1fdf  00          BRK
+.C:1fe0  00          BRK
+.C:1fe1  00          BRK
+.C:1fe2  00          BRK
+.C:1fe3  00          BRK
+.C:1fe4  00          BRK
+.C:1fe5  00          BRK
+.C:1fe6  00          BRK
+.C:1fe7  00          BRK
+.C:1fe8  00          BRK
+.C:1fe9  00          BRK
+.C:1fea  00          BRK
+.C:1feb  00          BRK
+.C:1fec  00          BRK
+.C:1fed  00          BRK
+.C:1fee  00          BRK
+.C:1fef  00          BRK
+.C:1ff0  00          BRK
+.C:1ff1  00          BRK
+.C:1ff2  00          BRK
+.C:1ff3  00          BRK
+.C:1ff4  00          BRK
+.C:1ff5  00          BRK
+.C:1ff6  00          BRK
+.C:1ff7  00          BRK
+.C:1ff8  00          BRK
+.C:1ff9  00          BRK
+.C:1ffa  00          BRK
+.C:1ffb  00          BRK
+.C:1ffc  00          BRK
+.C:1ffd  00          BRK
+.C:1ffe  00          BRK
+.C:1fff  00          BRK
+(C:$2000) 
+=== 9700-99ff BYTES ===
+>C:8f00  20 9e 8e a5  44 20 b0 8e  20 c7 8e 20  87 8d b0 04    ���d �� G� �.�d
+>C:8f10  c9 05 d0 f4  a5 44 d0 07  a5 40 f0 03  4c 4e 1f ee   IeP��dPg�@�cln_�
+>C:8f20  20 d0 20 9d  8d 4c 2b 8f  4c f8 8e 78  ad 0d dc ad    P ..l+.l��X�mܭ
+>C:8f30  0d dd 20 00  82 20 c7 8e  a2 32 20 a5  8d a9 00 8d   m� @� G��2 �.�@.
+>C:8f40  00 df a5 44  d0 02 a9 80  8d 0b df a9  00 8d c6 1f   @ߥdPb�..kߩ@.F_
+>C:8f50  a0 9f 8d c2  1f 8c c3 1f  a2 07 bd c1  1f 9d 01 df    �.B_�C_�g�A_.a�
+>C:8f60  ca 10 f7 ad  c2 1f 18 69  10 90 01 c8  ee c6 1f d0   Jp��B_xIp.aH�F_P
+>C:8f70  e1 a2 00 bd  00 9f dd e0  83 d0 ad e8  e0 10 d0 f3   ��@�@�� �P�� pP�
+>C:8f80  a2 32 20 a5  8d a2 00 8e  15 d0 a9 08  8d 16 d0 ad   �2 �.�@�uP�h.vP�
+>C:8f90  1c 9f 8d 18  d0 a9 01 8d  00 dd ad 1e  9f 8d 18 d0   \�.xP�a.@ݭ^�.xP
+>C:8fa0  a9 36 85 01  a9 0b 8d 11  d0 a9 00 8d  20 d0 8d 21   �6�a�k.qP�@. P.!
+>C:8fb0  d0 a9 a0 8d  c1 8f a9 08  8d c4 8f a2  00 a0 08 bd   P� .A.�h.D.�@ h�
+>C:8fc0  00 a0 9d 00  08 e8 d0 f7  ee c1 8f ee  c4 8f 88 d0   @ .@h�P��A.�D..P
+>C:8fd0  ee a2 2f bd  d0 9f 9d b0  84 ca 10 f7  86 45 a5 47   ��/�P�.��Jp��e�g
+>C:8fe0  f0 07 a2 00  a9 49 20 ae  1f a9 00 85  41 85 43 4c   �g�@�i �_�@�a�cl
+>C:8ff0  00 30 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @0@@@@@@@@@@@@@@
+(C:$9000) 
+=== 9700-99ff DISASM ===
+.C:8f00  20 9E 8E    JSR $8E9E
+.C:8f03  A5 44       LDA $44
+.C:8f05  20 B0 8E    JSR $8EB0
+.C:8f08  20 C7 8E    JSR $8EC7
+.C:8f0b  20 87 8D    JSR $8D87
+.C:8f0e  B0 04       BCS $8F14
+.C:8f10  C9 05       CMP #$05
+.C:8f12  D0 F4       BNE $8F08
+.C:8f14  A5 44       LDA $44
+.C:8f16  D0 07       BNE $8F1F
+.C:8f18  A5 40       LDA $40
+.C:8f1a  F0 03       BEQ $8F1F
+.C:8f1c  4C 4E 1F    JMP $1F4E
+.C:8f1f  EE 20 D0    INC $D020
+.C:8f22  20 9D 8D    JSR $8D9D
+.C:8f25  4C 2B 8F    JMP $8F2B
+.C:8f28  4C F8 8E    JMP $8EF8
+.C:8f2b  78          SEI
+.C:8f2c  AD 0D DC    LDA $DC0D
+.C:8f2f  AD 0D DD    LDA $DD0D
+.C:8f32  20 00 82    JSR $8200
+.C:8f35  20 C7 8E    JSR $8EC7
+.C:8f38  A2 32       LDX #$32
+.C:8f3a  20 A5 8D    JSR $8DA5
+.C:8f3d  A9 00       LDA #$00
+.C:8f3f  8D 00 DF    STA $DF00
+.C:8f42  A5 44       LDA $44
+.C:8f44  D0 02       BNE $8F48
+.C:8f46  A9 80       LDA #$80
+.C:8f48  8D 0B DF    STA $DF0B
+.C:8f4b  A9 00       LDA #$00
+.C:8f4d  8D C6 1F    STA $1FC6
+.C:8f50  A0 9F       LDY #$9F
+.C:8f52  8D C2 1F    STA $1FC2
+.C:8f55  8C C3 1F    STY $1FC3
+.C:8f58  A2 07       LDX #$07
+.C:8f5a  BD C1 1F    LDA $1FC1,X
+.C:8f5d  9D 01 DF    STA $DF01,X
+.C:8f60  CA          DEX
+.C:8f61  10 F7       BPL $8F5A
+.C:8f63  AD C2 1F    LDA $1FC2
+.C:8f66  18          CLC
+.C:8f67  69 10       ADC #$10
+.C:8f69  90 01       BCC $8F6C
+.C:8f6b  C8          INY
+.C:8f6c  EE C6 1F    INC $1FC6
+.C:8f6f  D0 E1       BNE $8F52
+.C:8f71  A2 00       LDX #$00
+.C:8f73  BD 00 9F    LDA $9F00,X
+.C:8f76  DD E0 83    CMP $83E0,X
+.C:8f79  D0 AD       BNE $8F28
+.C:8f7b  E8          INX
+.C:8f7c  E0 10       CPX #$10
+.C:8f7e  D0 F3       BNE $8F73
+.C:8f80  A2 32       LDX #$32
+.C:8f82  20 A5 8D    JSR $8DA5
+.C:8f85  A2 00       LDX #$00
+.C:8f87  8E 15 D0    STX $D015
+.C:8f8a  A9 08       LDA #$08
+.C:8f8c  8D 16 D0    STA $D016
+.C:8f8f  AD 1C 9F    LDA $9F1C
+.C:8f92  8D 18 D0    STA $D018
+.C:8f95  A9 01       LDA #$01
+.C:8f97  8D 00 DD    STA $DD00
+.C:8f9a  AD 1E 9F    LDA $9F1E
+.C:8f9d  8D 18 D0    STA $D018
+.C:8fa0  A9 36       LDA #$36
+.C:8fa2  85 01       STA $01
+.C:8fa4  A9 0B       LDA #$0B
+.C:8fa6  8D 11 D0    STA $D011
+.C:8fa9  A9 00       LDA #$00
+.C:8fab  8D 20 D0    STA $D020
+.C:8fae  8D 21 D0    STA $D021
+.C:8fb1  A9 A0       LDA #$A0
+.C:8fb3  8D C1 8F    STA $8FC1
+.C:8fb6  A9 08       LDA #$08
+.C:8fb8  8D C4 8F    STA $8FC4
+.C:8fbb  A2 00       LDX #$00
+.C:8fbd  A0 08       LDY #$08
+.C:8fbf  BD 00 A0    LDA $A000,X
+.C:8fc2  9D 00 08    STA $0800,X
+.C:8fc5  E8          INX
+.C:8fc6  D0 F7       BNE $8FBF
+.C:8fc8  EE C1 8F    INC $8FC1
+.C:8fcb  EE C4 8F    INC $8FC4
+.C:8fce  88          DEY
+.C:8fcf  D0 EE       BNE $8FBF
+.C:8fd1  A2 2F       LDX #$2F
+.C:8fd3  BD D0 9F    LDA $9FD0,X
+.C:8fd6  9D B0 84    STA $84B0,X
+.C:8fd9  CA          DEX
+.C:8fda  10 F7       BPL $8FD3
+.C:8fdc  86 45       STX $45
+.C:8fde  A5 47       LDA $47
+.C:8fe0  F0 07       BEQ $8FE9
+.C:8fe2  A2 00       LDX #$00
+.C:8fe4  A9 49       LDA #$49
+.C:8fe6  20 AE 1F    JSR $1FAE
+.C:8fe9  A9 00       LDA #$00
+.C:8feb  85 41       STA $41
+.C:8fed  85 43       STA $43
+.C:8fef  4C 00 30    JMP $3000
+.C:8ff2  00          BRK
+.C:8ff3  00          BRK
+.C:8ff4  00          BRK
+.C:8ff5  00          BRK
+.C:8ff6  00          BRK
+.C:8ff7  00          BRK
+.C:8ff8  00          BRK
+.C:8ff9  00          BRK
+.C:8ffa  00          BRK
+.C:8ffb  00          BRK
+.C:8ffc  00          BRK
+.C:8ffd  00          BRK
+.C:8ffe  00          BRK
+.C:8fff  00          BRK
+(C:$9000) >C:9700 
+=== 1700-19ff BYTES ===
+ 18 d0 a0 3c  8c 11 d0 a0  06 8c 28 d0  a0 0f 8c 29   xP <�qP f�(P o�)
+>C:9710  d0 a0 06 8c  2a d0 a0 09  8c 2b d0 a0  0f 8c 2c d0   P f�*P i�+P o�,P
+>C:9720  a0 00 8c 2d  d0 a0 08 8c  18 d0 a0 0e  8e 11 d0 8c    @�-P h�xP n�qP�
+>C:9730  28 d0 a0 0f  8c 29 d0 a0  06 8c 2a d0  a0 09 8c 2b   (P o�)P f�*P i�+
+>C:9740  d0 a0 e4 8c  2e d0 a0 7e  8c 27 d0 a0  78 8c 18 d0   P ��.P ތ'P X�xP
+>C:9750  8d 11 d0 a0  0e 8c 28 d0  a0 0f 8c 29  d0 a0 06 8c   .qP n�(P o�)P f�
+>C:9760  2a d0 a0 06  8c 2b d0 a0  76 8c 27 d0  a0 09 8c 2d   *P f�+P V�'P i�-
+>C:9770  d0 a0 68 8c  18 d0 a4 3a  8c 11 d0 a0  0e 8c 28 d0   P H�xP�:�qP n�(P
+>C:9780  a0 0f 8c 29  d0 a0 06 8c  2a d0 a0 06  8c 2b d0 a0    o�)P f�*P f�+P 
+>C:9790  e6 8c 2e d0  a0 74 8c 27  d0 a0 e8 8c  18 d0 a0 3c   ��.P T�'P ��xP <
+>C:97a0  8c 11 d0 a0  0e 8c 28 d0  a0 0f 8c 29  d0 a0 06 8c   �qP n�(P o�)P f�
+>C:97b0  2a d0 a0 06  8c 2b d0 a0  0f 8c 2c d0  a0 09 8c 2d   *P f�+P o�,P i�-
+>C:97c0  d0 a0 d8 8c  18 d0 a0 09  8e 11 d0 8c  28 d0 a0 0f   P X�xP i�qP�(P o
+>C:97d0  8c 29 d0 a0  06 8c 2a d0  a0 06 8c 2b  d0 a0 04 8c   �)P f�*P f�+P d�
+>C:97e0  2c d0 a0 00  8c 2d d0 a0  38 8c 18 d0  8d 11 d0 a0   ,P @�-P 8�xP.qP 
+>C:97f0  06 8c 28 d0  a0 0f 8c 29  d0 a0 06 8c  2a d0 a0 06   f�(P o�)P f�*P f
+>C:9800  8c 2b d0 a0  54 8c 25 d0  a0 79 8c 27  d0 a0 28 8c   �+P t�%P Y�'P (�
+>C:9810  18 d0 a4 3a  8c 11 d0 a0  09 8c 28 d0  a0 0f 8c 29   xP�:�qP i�(P o�)
+>C:9820  d0 a0 69 8c  26 d0 a0 00  8c 2b d0 a0  00 8c 2c d0   P I�&P @�+P @�,P
+>C:9830  a0 76 8c 27  d0 a0 18 8c  18 d0 a0 3c  8c 11 d0 a0    V�'P x�xP <�qP 
+>C:9840  09 8c 28 d0  a0 0f 8c 29  d0 a0 06 8c  2a d0 a0 60   i�(P o�)P f�*P �
+>C:9850  8c 26 d0 a0  09 8c 2c d0  a0 79 8c 27  d0 a0 08 8c   �&P i�,P Y�'P h�
+>C:9860  18 d0 a0 0e  8e 11 d0 8c  28 d0 a0 0f  8c 29 d0 a0   xP n�qP�(P o�)P 
+>C:9870  06 8c 2a d0  a0 06 8c 2b  d0 a0 09 8c  2c d0 a0 7e   f�*P f�+P i�,P �
+>C:9880  8c 27 d0 a0  78 8c 18 d0  8d 11 d0 a0  0e 8c 28 d0   �'P X�xP.qP n�(P
+>C:9890  a0 0f 8c 29  d0 a0 59 8c  25 d0 a0 09  8c 2b d0 a0    o�)P y�%P i�+P 
+>C:98a0  04 8c 2c d0  a0 74 8c 27  d0 a0 68 8c  18 d0 a4 3a   d�,P T�'P H�xP�:
+>C:98b0  8c 11 d0 a0  06 8c 28 d0  a0 0f 8c 29  d0 a0 06 8c   �qP f�(P o�)P f�
+>C:98c0  2a d0 a0 00  8c 2b d0 a0  04 8c 2c d0  a0 5e 8c 25   *P @�+P d�,P ^�%
+>C:98d0  d0 a0 e8 8c  18 d0 a0 3c  8c 11 d0 a0  06 8c 28 d0   P ��xP <�qP f�(P
+>C:98e0  a0 0f 8c 29  d0 a0 06 8c  2a d0 a0 00  8c 2b d0 a0    o�)P f�*P @�+P 
+>C:98f0  04 8c 2c d0  a0 79 8c 27  d0 a0 d8 8c  18 d0 a0 09   d�,P Y�'P X�xP i
+>C:9900  8e 11 d0 8c  28 d0 a0 0f  8c 29 d0 a0  0f 8c 2a d0   �qP�(P o�)P o�*P
+>C:9910  a0 00 8c 2b  d0 a0 04 8c  2c d0 a0 00  8c 2d d0 a0    @�+P d�,P @�-P 
+>C:9920  38 8c 18 d0  8d 11 d0 a0  09 8c 28 d0  a0 0f 8c 29   8�xP.qP i�(P o�)
+>C:9930  d0 a0 09 8c  2a d0 a0 00  8c 2b d0 a0  04 8c 2c d0   P i�*P @�+P d�,P
+>C:9940  a0 54 8c 25  d0 a0 28 8c  18 d0 a4 3a  8c 11 d0 a0    t�%P (�xP�:�qP 
+>C:9950  09 8c 28 d0  a0 0f 8c 29  d0 a0 09 8c  2a d0 a0 00   i�(P o�)P i�*P @
+>C:9960  8c 2b d0 a0  d4 8c 05 d0  a0 76 8c 27  d0 a0 18 8c   �+P T�eP V�'P x�
+>C:9970  18 d0 a0 3c  8c 11 d0 a0  09 8c 28 d0  a0 0f 8c 29   xP <�qP i�(P o�)
+>C:9980  d0 a0 00 8c  2a d0 a0 00  8c 2b d0 a0  59 8c 25 d0   P @�*P @�+P y�%P
+>C:9990  a0 74 8c 27  d0 a0 08 8c  18 d0 a0 0e  8e 11 d0 8c    T�'P h�xP n�qP�
+>C:99a0  28 d0 a0 0f  8c 29 d0 a0  09 8c 2a d0  a0 00 8c 2b   (P o�)P i�*P @�+
+>C:99b0  d0 a0 04 8c  2c d0 a0 00  8c 2d d0 a0  01 8c 00 dd   P d�,P @�-P a�@�
+>C:99c0  8d 11 d0 a0  0a 8c 28 d0  a0 06 8c 29  d0 a0 0e 8c   .qP j�(P f�)P n�
+>C:99d0  2a d0 a0 54  8c 25 d0 a0  79 8c 27 d0  a0 0f 8c 2d   *P t�%P Y�'P o�-
+>C:99e0  d0 a0 98 8c  18 d0 a4 3a  8c 11 d0 a0  09 8c 28 d0   P .�xP�:�qP i�(P
+>C:99f0  a0 06 8c 29  d0 a0 0e 8c  2a d0 a0 00  8c 2b d0 a0    f�)P n�*P @�+P 
+(C:$9a00) 
+=== 1700-19ff DISASM ===
+.C:9700  18          CLC
+.C:9701  D0 A0       BNE $96A3
+.C:9703  3C 8C 11    NOOP $118C,X
+.C:9706  D0 A0       BNE $96A8
+.C:9708  06 8C       ASL $8C
+.C:970a  28          PLP
+.C:970b  D0 A0       BNE $96AD
+.C:970d  0F 8C 29    SLO $298C
+.C:9710  D0 A0       BNE $96B2
+.C:9712  06 8C       ASL $8C
+.C:9714  2A          ROL A
+.C:9715  D0 A0       BNE $96B7
+.C:9717  09 8C       ORA #$8C
+.C:9719  2B D0       ANC #$D0
+.C:971b  A0 0F       LDY #$0F
+.C:971d  8C 2C D0    STY $D02C
+.C:9720  A0 00       LDY #$00
+.C:9722  8C 2D D0    STY $D02D
+.C:9725  A0 08       LDY #$08
+.C:9727  8C 18 D0    STY $D018
+.C:972a  A0 0E       LDY #$0E
+.C:972c  8E 11 D0    STX $D011
+.C:972f  8C 28 D0    STY $D028
+.C:9732  A0 0F       LDY #$0F
+.C:9734  8C 29 D0    STY $D029
+.C:9737  A0 06       LDY #$06
+.C:9739  8C 2A D0    STY $D02A
+.C:973c  A0 09       LDY #$09
+.C:973e  8C 2B D0    STY $D02B
+.C:9741  A0 E4       LDY #$E4
+.C:9743  8C 2E D0    STY $D02E
+.C:9746  A0 7E       LDY #$7E
+.C:9748  8C 27 D0    STY $D027
+.C:974b  A0 78       LDY #$78
+.C:974d  8C 18 D0    STY $D018
+.C:9750  8D 11 D0    STA $D011
+.C:9753  A0 0E       LDY #$0E
+.C:9755  8C 28 D0    STY $D028
+.C:9758  A0 0F       LDY #$0F
+.C:975a  8C 29 D0    STY $D029
+.C:975d  A0 06       LDY #$06
+.C:975f  8C 2A D0    STY $D02A
+.C:9762  A0 06       LDY #$06
+.C:9764  8C 2B D0    STY $D02B
+.C:9767  A0 76       LDY #$76
+.C:9769  8C 27 D0    STY $D027
+.C:976c  A0 09       LDY #$09
+.C:976e  8C 2D D0    STY $D02D
+.C:9771  A0 68       LDY #$68
+.C:9773  8C 18 D0    STY $D018
+.C:9776  A4 3A       LDY $3A
+.C:9778  8C 11 D0    STY $D011
+.C:977b  A0 0E       LDY #$0E
+.C:977d  8C 28 D0    STY $D028
+.C:9780  A0 0F       LDY #$0F
+.C:9782  8C 29 D0    STY $D029
+.C:9785  A0 06       LDY #$06
+.C:9787  8C 2A D0    STY $D02A
+.C:978a  A0 06       LDY #$06
+.C:978c  8C 2B D0    STY $D02B
+.C:978f  A0 E6       LDY #$E6
+.C:9791  8C 2E D0    STY $D02E
+.C:9794  A0 74       LDY #$74
+.C:9796  8C 27 D0    STY $D027
+.C:9799  A0 E8       LDY #$E8
+.C:979b  8C 18 D0    STY $D018
+.C:979e  A0 3C       LDY #$3C
+.C:97a0  8C 11 D0    STY $D011
+.C:97a3  A0 0E       LDY #$0E
+.C:97a5  8C 28 D0    STY $D028
+.C:97a8  A0 0F       LDY #$0F
+.C:97aa  8C 29 D0    STY $D029
+.C:97ad  A0 06       LDY #$06
+.C:97af  8C 2A D0    STY $D02A
+.C:97b2  A0 06       LDY #$06
+.C:97b4  8C 2B D0    STY $D02B
+.C:97b7  A0 0F       LDY #$0F
+.C:97b9  8C 2C D0    STY $D02C
+.C:97bc  A0 09       LDY #$09
+.C:97be  8C 2D D0    STY $D02D
+.C:97c1  A0 D8       LDY #$D8
+.C:97c3  8C 18 D0    STY $D018
+.C:97c6  A0 09       LDY #$09
+.C:97c8  8E 11 D0    STX $D011
+.C:97cb  8C 28 D0    STY $D028
+.C:97ce  A0 0F       LDY #$0F
+.C:97d0  8C 29 D0    STY $D029
+.C:97d3  A0 06       LDY #$06
+.C:97d5  8C 2A D0    STY $D02A
+.C:97d8  A0 06       LDY #$06
+.C:97da  8C 2B D0    STY $D02B
+.C:97dd  A0 04       LDY #$04
+.C:97df  8C 2C D0    STY $D02C
+.C:97e2  A0 00       LDY #$00
+.C:97e4  8C 2D D0    STY $D02D
+.C:97e7  A0 38       LDY #$38
+.C:97e9  8C 18 D0    STY $D018
+.C:97ec  8D 11 D0    STA $D011
+.C:97ef  A0 06       LDY #$06
+.C:97f1  8C 28 D0    STY $D028
+.C:97f4  A0 0F       LDY #$0F
+.C:97f6  8C 29 D0    STY $D029
+.C:97f9  A0 06       LDY #$06
+.C:97fb  8C 2A D0    STY $D02A
+.C:97fe  A0 06       LDY #$06
+.C:9800  8C 2B D0    STY $D02B
+.C:9803  A0 54       LDY #$54
+.C:9805  8C 25 D0    STY $D025
+.C:9808  A0 79       LDY #$79
+.C:980a  8C 27 D0    STY $D027
+.C:980d  A0 28       LDY #$28
+.C:980f  8C 18 D0    STY $D018
+.C:9812  A4 3A       LDY $3A
+.C:9814  8C 11 D0    STY $D011
+.C:9817  A0 09       LDY #$09
+.C:9819  8C 28 D0    STY $D028
+.C:981c  A0 0F       LDY #$0F
+.C:981e  8C 29 D0    STY $D029
+.C:9821  A0 69       LDY #$69
+.C:9823  8C 26 D0    STY $D026
+.C:9826  A0 00       LDY #$00
+.C:9828  8C 2B D0    STY $D02B
+.C:982b  A0 00       LDY #$00
+.C:982d  8C 2C D0    STY $D02C
+.C:9830  A0 76       LDY #$76
+.C:9832  8C 27 D0    STY $D027
+.C:9835  A0 18       LDY #$18
+.C:9837  8C 18 D0    STY $D018
+.C:983a  A0 3C       LDY #$3C
+.C:983c  8C 11 D0    STY $D011
+.C:983f  A0 09       LDY #$09
+.C:9841  8C 28 D0    STY $D028
+.C:9844  A0 0F       LDY #$0F
+.C:9846  8C 29 D0    STY $D029
+.C:9849  A0 06       LDY #$06
+.C:984b  8C 2A D0    STY $D02A
+.C:984e  A0 60       LDY #$60
+.C:9850  8C 26 D0    STY $D026
+.C:9853  A0 09       LDY #$09
+.C:9855  8C 2C D0    STY $D02C
+.C:9858  A0 79       LDY #$79
+.C:985a  8C 27 D0    STY $D027
+.C:985d  A0 08       LDY #$08
+.C:985f  8C 18 D0    STY $D018
+.C:9862  A0 0E       LDY #$0E
+.C:9864  8E 11 D0    STX $D011
+.C:9867  8C 28 D0    STY $D028
+.C:986a  A0 0F       LDY #$0F
+.C:986c  8C 29 D0    STY $D029
+.C:986f  A0 06       LDY #$06
+.C:9871  8C 2A D0    STY $D02A
+.C:9874  A0 06       LDY #$06
+.C:9876  8C 2B D0    STY $D02B
+.C:9879  A0 09       LDY #$09
+.C:987b  8C 2C D0    STY $D02C
+.C:987e  A0 7E       LDY #$7E
+.C:9880  8C 27 D0    STY $D027
+.C:9883  A0 78       LDY #$78
+.C:9885  8C 18 D0    STY $D018
+.C:9888  8D 11 D0    STA $D011
+.C:988b  A0 0E       LDY #$0E
+.C:988d  8C 28 D0    STY $D028
+.C:9890  A0 0F       LDY #$0F
+.C:9892  8C 29 D0    STY $D029
+.C:9895  A0 59       LDY #$59
+.C:9897  8C 25 D0    STY $D025
+.C:989a  A0 09       LDY #$09
+.C:989c  8C 2B D0    STY $D02B
+.C:989f  A0 04       LDY #$04
+.C:98a1  8C 2C D0    STY $D02C
+.C:98a4  A0 74       LDY #$74
+.C:98a6  8C 27 D0    STY $D027
+.C:98a9  A0 68       LDY #$68
+.C:98ab  8C 18 D0    STY $D018
+.C:98ae  A4 3A       LDY $3A
+.C:98b0  8C 11 D0    STY $D011
+.C:98b3  A0 06       LDY #$06
+.C:98b5  8C 28 D0    STY $D028
+.C:98b8  A0 0F       LDY #$0F
+.C:98ba  8C 29 D0    STY $D029
+.C:98bd  A0 06       LDY #$06
+.C:98bf  8C 2A D0    STY $D02A
+.C:98c2  A0 00       LDY #$00
+.C:98c4  8C 2B D0    STY $D02B
+.C:98c7  A0 04       LDY #$04
+.C:98c9  8C 2C D0    STY $D02C
+.C:98cc  A0 5E       LDY #$5E
+.C:98ce  8C 25 D0    STY $D025
+.C:98d1  A0 E8       LDY #$E8
+.C:98d3  8C 18 D0    STY $D018
+.C:98d6  A0 3C       LDY #$3C
+.C:98d8  8C 11 D0    STY $D011
+.C:98db  A0 06       LDY #$06
+.C:98dd  8C 28 D0    STY $D028
+.C:98e0  A0 0F       LDY #$0F
+.C:98e2  8C 29 D0    STY $D029
+.C:98e5  A0 06       LDY #$06
+.C:98e7  8C 2A D0    STY $D02A
+.C:98ea  A0 00       LDY #$00
+.C:98ec  8C 2B D0    STY $D02B
+.C:98ef  A0 04       LDY #$04
+.C:98f1  8C 2C D0    STY $D02C
+.C:98f4  A0 79       LDY #$79
+.C:98f6  8C 27 D0    STY $D027
+.C:98f9  A0 D8       LDY #$D8
+.C:98fb  8C 18 D0    STY $D018
+.C:98fe  A0 09       LDY #$09
+.C:9900  8E 11 D0    STX $D011
+.C:9903  8C 28 D0    STY $D028
+.C:9906  A0 0F       LDY #$0F
+.C:9908  8C 29 D0    STY $D029
+.C:990b  A0 0F       LDY #$0F
+.C:990d  8C 2A D0    STY $D02A
+.C:9910  A0 00       LDY #$00
+.C:9912  8C 2B D0    STY $D02B
+.C:9915  A0 04       LDY #$04
+.C:9917  8C 2C D0    STY $D02C
+.C:991a  A0 00       LDY #$00
+.C:991c  8C 2D D0    STY $D02D
+.C:991f  A0 38       LDY #$38
+.C:9921  8C 18 D0    STY $D018
+.C:9924  8D 11 D0    STA $D011
+.C:9927  A0 09       LDY #$09
+.C:9929  8C 28 D0    STY $D028
+.C:992c  A0 0F       LDY #$0F
+.C:992e  8C 29 D0    STY $D029
+.C:9931  A0 09       LDY #$09
+.C:9933  8C 2A D0    STY $D02A
+.C:9936  A0 00       LDY #$00
+.C:9938  8C 2B D0    STY $D02B
+.C:993b  A0 04       LDY #$04
+.C:993d  8C 2C D0    STY $D02C
+.C:9940  A0 54       LDY #$54
+.C:9942  8C 25 D0    STY $D025
+.C:9945  A0 28       LDY #$28
+.C:9947  8C 18 D0    STY $D018
+.C:994a  A4 3A       LDY $3A
+.C:994c  8C 11 D0    STY $D011
+.C:994f  A0 09       LDY #$09
+.C:9951  8C 28 D0    STY $D028
+.C:9954  A0 0F       LDY #$0F
+.C:9956  8C 29 D0    STY $D029
+.C:9959  A0 09       LDY #$09
+.C:995b  8C 2A D0    STY $D02A
+.C:995e  A0 00       LDY #$00
+.C:9960  8C 2B D0    STY $D02B
+.C:9963  A0 D4       LDY #$D4
+.C:9965  8C 05 D0    STY $D005
+.C:9968  A0 76       LDY #$76
+.C:996a  8C 27 D0    STY $D027
+.C:996d  A0 18       LDY #$18
+.C:996f  8C 18 D0    STY $D018
+.C:9972  A0 3C       LDY #$3C
+.C:9974  8C 11 D0    STY $D011
+.C:9977  A0 09       LDY #$09
+.C:9979  8C 28 D0    STY $D028
+.C:997c  A0 0F       LDY #$0F
+.C:997e  8C 29 D0    STY $D029
+.C:9981  A0 00       LDY #$00
+.C:9983  8C 2A D0    STY $D02A
+.C:9986  A0 00       LDY #$00
+.C:9988  8C 2B D0    STY $D02B
+.C:998b  A0 59       LDY #$59
+.C:998d  8C 25 D0    STY $D025
+.C:9990  A0 74       LDY #$74
+.C:9992  8C 27 D0    STY $D027
+.C:9995  A0 08       LDY #$08
+.C:9997  8C 18 D0    STY $D018
+.C:999a  A0 0E       LDY #$0E
+.C:999c  8E 11 D0    STX $D011
+.C:999f  8C 28 D0    STY $D028
+.C:99a2  A0 0F       LDY #$0F
+.C:99a4  8C 29 D0    STY $D029
+.C:99a7  A0 09       LDY #$09
+.C:99a9  8C 2A D0    STY $D02A
+.C:99ac  A0 00       LDY #$00
+.C:99ae  8C 2B D0    STY $D02B
+.C:99b1  A0 04       LDY #$04
+.C:99b3  8C 2C D0    STY $D02C
+.C:99b6  A0 00       LDY #$00
+.C:99b8  8C 2D D0    STY $D02D
+.C:99bb  A0 01       LDY #$01
+.C:99bd  8C 00 DD    STY $DD00
+.C:99c0  8D 11 D0    STA $D011
+.C:99c3  A0 0A       LDY #$0A
+.C:99c5  8C 28 D0    STY $D028
+.C:99c8  A0 06       LDY #$06
+.C:99ca  8C 29 D0    STY $D029
+.C:99cd  A0 0E       LDY #$0E
+.C:99cf  8C 2A D0    STY $D02A
+.C:99d2  A0 54       LDY #$54
+.C:99d4  8C 25 D0    STY $D025
+.C:99d7  A0 79       LDY #$79
+.C:99d9  8C 27 D0    STY $D027
+.C:99dc  A0 0F       LDY #$0F
+.C:99de  8C 2D D0    STY $D02D
+.C:99e1  A0 98       LDY #$98
+.C:99e3  8C 18 D0    STY $D018
+.C:99e6  A4 3A       LDY $3A
+.C:99e8  8C 11 D0    STY $D011
+.C:99eb  A0 09       LDY #$09
+.C:99ed  8C 28 D0    STY $D028
+.C:99f0  A0 06       LDY #$06
+.C:99f2  8C 29 D0    STY $D029
+.C:99f5  A0 0E       LDY #$0E
+.C:99f7  8C 2A D0    STY $D02A
+.C:99fa  A0 00       LDY #$00
+.C:99fc  8C 2B D0    STY $D02B
+.C:99ff  A0 04       LDY #$04
+(C:$9a01) 
+=== 8200-82ff BYTES ===
+>C:1700  18 d0 a0 3c  8c 11 d0 a0  06 8c 28 d0  a0 0f 8c 29   xP <�qP f�(P o�)
+>C:1710  d0 a0 04 8c  2a d0 a0 09  8c 2b d0 a0  54 8c 25 d0   P d�*P i�+P t�%P
+>C:1720  a0 00 8c 2d  d0 a0 08 8c  18 d0 a0 0e  8e 11 d0 8c    @�-P h�xP n�qP�
+>C:1730  28 d0 a0 0f  8c 29 d0 a0  04 8c 2a d0  a0 06 8c 2b   (P o�)P d�*P f�+
+>C:1740  d0 a0 0f 8c  2c d0 a0 7e  8c 27 d0 a0  78 8c 18 d0   P o�,P ތ'P X�xP
+>C:1750  8d 11 d0 a0  0e 8c 28 d0  a0 0f 8c 29  d0 a0 04 8c   .qP n�(P o�)P d�
+>C:1760  2a d0 a0 66  8c 26 d0 a0  5e 8c 25 d0  a0 74 8c 27   *P F�&P ^�%P T�'
+>C:1770  d0 a0 68 8c  18 d0 a4 3a  8c 11 d0 a0  0e 8c 28 d0   P H�xP�:�qP n�(P
+>C:1780  a0 0f 8c 29  d0 a0 04 8c  2a d0 a0 06  8c 2b d0 a0    o�)P d�*P f�+P 
+>C:1790  0f 8c 2c d0  a0 09 8c 2d  d0 a0 e8 8c  18 d0 a0 3c   o�,P i�-P ��xP <
+>C:17a0  8c 11 d0 a0  0e 8c 28 d0  a0 0f 8c 29  d0 a0 04 8c   �qP n�(P o�)P d�
+>C:17b0  2a d0 a0 06  8c 2b d0 a0  0f 8c 2c d0  a0 0e 8c 2d   *P f�+P o�,P n�-
+>C:17c0  d0 a0 d8 8c  18 d0 a0 09  8e 11 d0 8c  28 d0 a0 0f   P X�xP i�qP�(P o
+>C:17d0  8c 29 d0 a0  04 8c 2a d0  a0 06 8c 2b  d0 a0 0f 8c   �)P d�*P f�+P o�
+>C:17e0  2c d0 a0 00  8c 2d d0 a0  38 8c 18 d0  8d 11 d0 a0   ,P @�-P 8�xP.qP 
+>C:17f0  0a 8c 28 d0  a0 0f 8c 29  d0 a0 09 8c  2a d0 a0 06   j�(P o�)P i�*P f
+>C:1800  8c 2b d0 a0  04 8c 2c d0  a0 00 8c 2d  d0 a0 28 8c   �+P d�,P @�-P (�
+>C:1810  18 d0 a4 3a  8c 11 d0 a0  0e 8c 28 d0  a0 0f 8c 29   xP�:�qP n�(P o�)
+>C:1820  d0 a0 09 8c  2a d0 a0 00  8c 2b d0 a0  0f 8c 2c d0   P i�*P @�+P o�,P
+>C:1830  a0 59 8c 25  d0 a0 18 8c  18 d0 a0 3c  8c 11 d0 a0    y�%P x�xP <�qP 
+>C:1840  09 8c 28 d0  a0 0f 8c 29  d0 a0 00 8c  2a d0 a0 54   i�(P o�)P @�*P t
+>C:1850  8c 25 d0 a0  09 8c 2c d0  a0 79 8c 27  d0 a0 08 8c   �%P i�,P Y�'P h�
+>C:1860  18 d0 a0 0e  8e 11 d0 8c  28 d0 a0 0f  8c 29 d0 a0   xP n�qP�(P o�)P 
+>C:1870  09 8c 2a d0  a0 00 8c 2b  d0 a0 06 8c  2c d0 a0 00   i�*P @�+P f�,P @
+>C:1880  8c 2d d0 a0  78 8c 18 d0  8d 11 d0 a0  0e 8c 28 d0   �-P X�xP.qP n�(P
+>C:1890  a0 0f 8c 29  d0 a0 09 8c  2a d0 a0 59  8c 25 d0 a0    o�)P i�*P y�%P 
+>C:18a0  0f 8c 2c d0  a0 74 8c 27  d0 a0 68 8c  18 d0 a4 3a   o�,P T�'P H�xP�:
+>C:18b0  8c 11 d0 a0  06 8c 28 d0  a0 0f 8c 29  d0 a0 09 8c   �qP f�(P o�)P i�
+>C:18c0  2a d0 a0 00  8c 2b d0 a0  09 8c 2c d0  a0 5e 8c 25   *P @�+P i�,P ^�%
+>C:18d0  d0 a0 e8 8c  18 d0 a0 3c  8c 11 d0 a0  06 8c 28 d0   P ��xP <�qP f�(P
+>C:18e0  a0 0f 8c 29  d0 a0 09 8c  2a d0 a0 00  8c 2b d0 a0    o�)P i�*P @�+P 
+>C:18f0  04 8c 2c d0  a0 79 8c 27  d0 a0 d8 8c  18 d0 a0 09   d�,P Y�'P X�xP i
+>C:1900  8e 11 d0 8c  28 d0 a0 0f  8c 29 d0 a0  0f 8c 2a d0   �qP�(P o�)P o�*P
+>C:1910  a0 00 8c 2b  d0 a0 04 8c  2c d0 a0 00  8c 2d d0 a0    @�+P d�,P @�-P 
+>C:1920  38 8c 18 d0  8d 11 d0 a0  09 8c 28 d0  a0 0f 8c 29   8�xP.qP i�(P o�)
+>C:1930  d0 a0 04 8c  2a d0 a0 64  8c 26 d0 a0  59 8c 25 d0   P d�*P D�&P y�%P
+>C:1940  a0 76 8c 27  d0 a0 28 8c  18 d0 a4 3a  8c 11 d0 a0    V�'P (�xP�:�qP 
+>C:1950  09 8c 28 d0  a0 0f 8c 29  d0 a0 09 8c  2a d0 a0 00   i�(P o�)P i�*P @
+>C:1960  8c 2b d0 a0  66 8c 26 d0  a0 74 8c 27  d0 a0 18 8c   �+P F�&P T�'P x�
+>C:1970  18 d0 a0 3c  8c 11 d0 a0  06 8c 28 d0  a0 0f 8c 29   xP <�qP f�(P o�)
+>C:1980  d0 a0 00 8c  2a d0 a0 00  8c 2b d0 a0  04 8c 2c d0   P @�*P @�+P d�,P
+>C:1990  a0 d4 8c 0d  d0 a0 08 8c  18 d0 a0 0e  8e 11 d0 8c    T�mP h�xP n�qP�
+>C:19a0  28 d0 a0 09  8c 29 d0 a0  09 8c 2a d0  a0 00 8c 2b   (P i�)P i�*P @�+
+>C:19b0  d0 a0 09 8c  2c d0 a0 00  8c 2d d0 a0  03 8c 00 dd   P i�,P @�-P c�@�
+>C:19c0  8d 11 d0 a0  0e 8c 28 d0  a0 04 8c 29  d0 a0 09 8c   .qP n�(P d�)P i�
+>C:19d0  2a d0 a0 00  8c 2b d0 a0  d4 8c 0b d0  a0 0f 8c 2d   *P @�+P T�kP o�-
+>C:19e0  d0 a0 98 8c  18 d0 a4 3a  8c 11 d0 a0  0e 8c 28 d0   P .�xP�:�qP n�(P
+>C:19f0  a0 04 8c 29  d0 a0 54 8c  25 d0 a0 04  8c 2b d0 a0    d�)P t�%P d�+P 
+(C:$1a00) 
+=== 8200-82ff DISASM ===
+.C:1700  18          CLC
+.C:1701  D0 A0       BNE $16A3
+.C:1703  3C 8C 11    NOOP $118C,X
+.C:1706  D0 A0       BNE $16A8
+.C:1708  06 8C       ASL $8C
+.C:170a  28          PLP
+.C:170b  D0 A0       BNE $16AD
+.C:170d  0F 8C 29    SLO $298C
+.C:1710  D0 A0       BNE $16B2
+.C:1712  04 8C       NOOP $8C
+.C:1714  2A          ROL A
+.C:1715  D0 A0       BNE $16B7
+.C:1717  09 8C       ORA #$8C
+.C:1719  2B D0       ANC #$D0
+.C:171b  A0 54       LDY #$54
+.C:171d  8C 25 D0    STY $D025
+.C:1720  A0 00       LDY #$00
+.C:1722  8C 2D D0    STY $D02D
+.C:1725  A0 08       LDY #$08
+.C:1727  8C 18 D0    STY $D018
+.C:172a  A0 0E       LDY #$0E
+.C:172c  8E 11 D0    STX $D011
+.C:172f  8C 28 D0    STY $D028
+.C:1732  A0 0F       LDY #$0F
+.C:1734  8C 29 D0    STY $D029
+.C:1737  A0 04       LDY #$04
+.C:1739  8C 2A D0    STY $D02A
+.C:173c  A0 06       LDY #$06
+.C:173e  8C 2B D0    STY $D02B
+.C:1741  A0 0F       LDY #$0F
+.C:1743  8C 2C D0    STY $D02C
+.C:1746  A0 7E       LDY #$7E
+.C:1748  8C 27 D0    STY $D027
+.C:174b  A0 78       LDY #$78
+.C:174d  8C 18 D0    STY $D018
+.C:1750  8D 11 D0    STA $D011
+.C:1753  A0 0E       LDY #$0E
+.C:1755  8C 28 D0    STY $D028
+.C:1758  A0 0F       LDY #$0F
+.C:175a  8C 29 D0    STY $D029
+.C:175d  A0 04       LDY #$04
+.C:175f  8C 2A D0    STY $D02A
+.C:1762  A0 66       LDY #$66
+.C:1764  8C 26 D0    STY $D026
+.C:1767  A0 5E       LDY #$5E
+.C:1769  8C 25 D0    STY $D025
+.C:176c  A0 74       LDY #$74
+.C:176e  8C 27 D0    STY $D027
+.C:1771  A0 68       LDY #$68
+.C:1773  8C 18 D0    STY $D018
+.C:1776  A4 3A       LDY $3A
+.C:1778  8C 11 D0    STY $D011
+.C:177b  A0 0E       LDY #$0E
+.C:177d  8C 28 D0    STY $D028
+.C:1780  A0 0F       LDY #$0F
+.C:1782  8C 29 D0    STY $D029
+.C:1785  A0 04       LDY #$04
+.C:1787  8C 2A D0    STY $D02A
+.C:178a  A0 06       LDY #$06
+.C:178c  8C 2B D0    STY $D02B
+.C:178f  A0 0F       LDY #$0F
+.C:1791  8C 2C D0    STY $D02C
+.C:1794  A0 09       LDY #$09
+.C:1796  8C 2D D0    STY $D02D
+.C:1799  A0 E8       LDY #$E8
+.C:179b  8C 18 D0    STY $D018
+.C:179e  A0 3C       LDY #$3C
+.C:17a0  8C 11 D0    STY $D011
+.C:17a3  A0 0E       LDY #$0E
+.C:17a5  8C 28 D0    STY $D028
+.C:17a8  A0 0F       LDY #$0F
+.C:17aa  8C 29 D0    STY $D029
+.C:17ad  A0 04       LDY #$04
+.C:17af  8C 2A D0    STY $D02A
+.C:17b2  A0 06       LDY #$06
+.C:17b4  8C 2B D0    STY $D02B
+.C:17b7  A0 0F       LDY #$0F
+.C:17b9  8C 2C D0    STY $D02C
+.C:17bc  A0 0E       LDY #$0E
+.C:17be  8C 2D D0    STY $D02D
+.C:17c1  A0 D8       LDY #$D8
+.C:17c3  8C 18 D0    STY $D018
+.C:17c6  A0 09       LDY #$09
+.C:17c8  8E 11 D0    STX $D011
+.C:17cb  8C 28 D0    STY $D028
+.C:17ce  A0 0F       LDY #$0F
+.C:17d0  8C 29 D0    STY $D029
+.C:17d3  A0 04       LDY #$04
+.C:17d5  8C 2A D0    STY $D02A
+.C:17d8  A0 06       LDY #$06
+.C:17da  8C 2B D0    STY $D02B
+.C:17dd  A0 0F       LDY #$0F
+.C:17df  8C 2C D0    STY $D02C
+.C:17e2  A0 00       LDY #$00
+.C:17e4  8C 2D D0    STY $D02D
+.C:17e7  A0 38       LDY #$38
+.C:17e9  8C 18 D0    STY $D018
+.C:17ec  8D 11 D0    STA $D011
+.C:17ef  A0 0A       LDY #$0A
+.C:17f1  8C 28 D0    STY $D028
+.C:17f4  A0 0F       LDY #$0F
+.C:17f6  8C 29 D0    STY $D029
+.C:17f9  A0 09       LDY #$09
+.C:17fb  8C 2A D0    STY $D02A
+.C:17fe  A0 06       LDY #$06
+.C:1800  8C 2B D0    STY $D02B
+.C:1803  A0 04       LDY #$04
+.C:1805  8C 2C D0    STY $D02C
+.C:1808  A0 00       LDY #$00
+.C:180a  8C 2D D0    STY $D02D
+.C:180d  A0 28       LDY #$28
+.C:180f  8C 18 D0    STY $D018
+.C:1812  A4 3A       LDY $3A
+.C:1814  8C 11 D0    STY $D011
+.C:1817  A0 0E       LDY #$0E
+.C:1819  8C 28 D0    STY $D028
+.C:181c  A0 0F       LDY #$0F
+.C:181e  8C 29 D0    STY $D029
+.C:1821  A0 09       LDY #$09
+.C:1823  8C 2A D0    STY $D02A
+.C:1826  A0 00       LDY #$00
+.C:1828  8C 2B D0    STY $D02B
+.C:182b  A0 0F       LDY #$0F
+.C:182d  8C 2C D0    STY $D02C
+.C:1830  A0 59       LDY #$59
+.C:1832  8C 25 D0    STY $D025
+.C:1835  A0 18       LDY #$18
+.C:1837  8C 18 D0    STY $D018
+.C:183a  A0 3C       LDY #$3C
+.C:183c  8C 11 D0    STY $D011
+.C:183f  A0 09       LDY #$09
+.C:1841  8C 28 D0    STY $D028
+.C:1844  A0 0F       LDY #$0F
+.C:1846  8C 29 D0    STY $D029
+.C:1849  A0 00       LDY #$00
+.C:184b  8C 2A D0    STY $D02A
+.C:184e  A0 54       LDY #$54
+.C:1850  8C 25 D0    STY $D025
+.C:1853  A0 09       LDY #$09
+.C:1855  8C 2C D0    STY $D02C
+.C:1858  A0 79       LDY #$79
+.C:185a  8C 27 D0    STY $D027
+.C:185d  A0 08       LDY #$08
+.C:185f  8C 18 D0    STY $D018
+.C:1862  A0 0E       LDY #$0E
+.C:1864  8E 11 D0    STX $D011
+.C:1867  8C 28 D0    STY $D028
+.C:186a  A0 0F       LDY #$0F
+.C:186c  8C 29 D0    STY $D029
+.C:186f  A0 09       LDY #$09
+.C:1871  8C 2A D0    STY $D02A
+.C:1874  A0 00       LDY #$00
+.C:1876  8C 2B D0    STY $D02B
+.C:1879  A0 06       LDY #$06
+.C:187b  8C 2C D0    STY $D02C
+.C:187e  A0 00       LDY #$00
+.C:1880  8C 2D D0    STY $D02D
+.C:1883  A0 78       LDY #$78
+.C:1885  8C 18 D0    STY $D018
+.C:1888  8D 11 D0    STA $D011
+.C:188b  A0 0E       LDY #$0E
+.C:188d  8C 28 D0    STY $D028
+.C:1890  A0 0F       LDY #$0F
+.C:1892  8C 29 D0    STY $D029
+.C:1895  A0 09       LDY #$09
+.C:1897  8C 2A D0    STY $D02A
+.C:189a  A0 59       LDY #$59
+.C:189c  8C 25 D0    STY $D025
+.C:189f  A0 0F       LDY #$0F
+.C:18a1  8C 2C D0    STY $D02C
+.C:18a4  A0 74       LDY #$74
+.C:18a6  8C 27 D0    STY $D027
+.C:18a9  A0 68       LDY #$68
+.C:18ab  8C 18 D0    STY $D018
+.C:18ae  A4 3A       LDY $3A
+.C:18b0  8C 11 D0    STY $D011
+.C:18b3  A0 06       LDY #$06
+.C:18b5  8C 28 D0    STY $D028
+.C:18b8  A0 0F       LDY #$0F
+.C:18ba  8C 29 D0    STY $D029
+.C:18bd  A0 09       LDY #$09
+.C:18bf  8C 2A D0    STY $D02A
+.C:18c2  A0 00       LDY #$00
+.C:18c4  8C 2B D0    STY $D02B
+.C:18c7  A0 09       LDY #$09
+.C:18c9  8C 2C D0    STY $D02C
+.C:18cc  A0 5E       LDY #$5E
+.C:18ce  8C 25 D0    STY $D025
+.C:18d1  A0 E8       LDY #$E8
+.C:18d3  8C 18 D0    STY $D018
+.C:18d6  A0 3C       LDY #$3C
+.C:18d8  8C 11 D0    STY $D011
+.C:18db  A0 06       LDY #$06
+.C:18dd  8C 28 D0    STY $D028
+.C:18e0  A0 0F       LDY #$0F
+.C:18e2  8C 29 D0    STY $D029
+.C:18e5  A0 09       LDY #$09
+.C:18e7  8C 2A D0    STY $D02A
+.C:18ea  A0 00       LDY #$00
+.C:18ec  8C 2B D0    STY $D02B
+.C:18ef  A0 04       LDY #$04
+.C:18f1  8C 2C D0    STY $D02C
+.C:18f4  A0 79       LDY #$79
+.C:18f6  8C 27 D0    STY $D027
+.C:18f9  A0 D8       LDY #$D8
+.C:18fb  8C 18 D0    STY $D018
+.C:18fe  A0 09       LDY #$09
+.C:1900  8E 11 D0    STX $D011
+.C:1903  8C 28 D0    STY $D028
+.C:1906  A0 0F       LDY #$0F
+.C:1908  8C 29 D0    STY $D029
+.C:190b  A0 0F       LDY #$0F
+.C:190d  8C 2A D0    STY $D02A
+.C:1910  A0 00       LDY #$00
+.C:1912  8C 2B D0    STY $D02B
+.C:1915  A0 04       LDY #$04
+.C:1917  8C 2C D0    STY $D02C
+.C:191a  A0 00       LDY #$00
+.C:191c  8C 2D D0    STY $D02D
+.C:191f  A0 38       LDY #$38
+.C:1921  8C 18 D0    STY $D018
+.C:1924  8D 11 D0    STA $D011
+.C:1927  A0 09       LDY #$09
+.C:1929  8C 28 D0    STY $D028
+.C:192c  A0 0F       LDY #$0F
+.C:192e  8C 29 D0    STY $D029
+.C:1931  A0 04       LDY #$04
+.C:1933  8C 2A D0    STY $D02A
+.C:1936  A0 64       LDY #$64
+.C:1938  8C 26 D0    STY $D026
+.C:193b  A0 59       LDY #$59
+.C:193d  8C 25 D0    STY $D025
+.C:1940  A0 76       LDY #$76
+.C:1942  8C 27 D0    STY $D027
+.C:1945  A0 28       LDY #$28
+.C:1947  8C 18 D0    STY $D018
+.C:194a  A4 3A       LDY $3A
+.C:194c  8C 11 D0    STY $D011
+.C:194f  A0 09       LDY #$09
+.C:1951  8C 28 D0    STY $D028
+.C:1954  A0 0F       LDY #$0F
+.C:1956  8C 29 D0    STY $D029
+.C:1959  A0 09       LDY #$09
+.C:195b  8C 2A D0    STY $D02A
+.C:195e  A0 00       LDY #$00
+.C:1960  8C 2B D0    STY $D02B
+.C:1963  A0 66       LDY #$66
+.C:1965  8C 26 D0    STY $D026
+.C:1968  A0 74       LDY #$74
+.C:196a  8C 27 D0    STY $D027
+.C:196d  A0 18       LDY #$18
+.C:196f  8C 18 D0    STY $D018
+.C:1972  A0 3C       LDY #$3C
+.C:1974  8C 11 D0    STY $D011
+.C:1977  A0 06       LDY #$06
+.C:1979  8C 28 D0    STY $D028
+.C:197c  A0 0F       LDY #$0F
+.C:197e  8C 29 D0    STY $D029
+.C:1981  A0 00       LDY #$00
+.C:1983  8C 2A D0    STY $D02A
+.C:1986  A0 00       LDY #$00
+.C:1988  8C 2B D0    STY $D02B
+.C:198b  A0 04       LDY #$04
+.C:198d  8C 2C D0    STY $D02C
+.C:1990  A0 D4       LDY #$D4
+.C:1992  8C 0D D0    STY $D00D
+.C:1995  A0 08       LDY #$08
+.C:1997  8C 18 D0    STY $D018
+.C:199a  A0 0E       LDY #$0E
+.C:199c  8E 11 D0    STX $D011
+.C:199f  8C 28 D0    STY $D028
+.C:19a2  A0 09       LDY #$09
+.C:19a4  8C 29 D0    STY $D029
+.C:19a7  A0 09       LDY #$09
+.C:19a9  8C 2A D0    STY $D02A
+.C:19ac  A0 00       LDY #$00
+.C:19ae  8C 2B D0    STY $D02B
+.C:19b1  A0 09       LDY #$09
+.C:19b3  8C 2C D0    STY $D02C
+.C:19b6  A0 00       LDY #$00
+.C:19b8  8C 2D D0    STY $D02D
+.C:19bb  A0 03       LDY #$03
+.C:19bd  8C 00 DD    STY $DD00
+.C:19c0  8D 11 D0    STA $D011
+.C:19c3  A0 0E       LDY #$0E
+.C:19c5  8C 28 D0    STY $D028
+.C:19c8  A0 04       LDY #$04
+.C:19ca  8C 29 D0    STY $D029
+.C:19cd  A0 09       LDY #$09
+.C:19cf  8C 2A D0    STY $D02A
+.C:19d2  A0 00       LDY #$00
+.C:19d4  8C 2B D0    STY $D02B
+.C:19d7  A0 D4       LDY #$D4
+.C:19d9  8C 0B D0    STY $D00B
+.C:19dc  A0 0F       LDY #$0F
+.C:19de  8C 2D D0    STY $D02D
+.C:19e1  A0 98       LDY #$98
+.C:19e3  8C 18 D0    STY $D018
+.C:19e6  A4 3A       LDY $3A
+.C:19e8  8C 11 D0    STY $D011
+.C:19eb  A0 0E       LDY #$0E
+.C:19ed  8C 28 D0    STY $D028
+.C:19f0  A0 04       LDY #$04
+.C:19f2  8C 29 D0    STY $D029
+.C:19f5  A0 54       LDY #$54
+.C:19f7  8C 25 D0    STY $D025
+.C:19fa  A0 04       LDY #$04
+.C:19fc  8C 2B D0    STY $D02B
+.C:19ff  A0 79       LDY #$79
+(C:$1a01) 
+=== 8e00-8eff BYTES ===
+>C:8200  20 39 8e a0  04 84 49 a9  00 a0 04 20  9e 8e a9 14    9� d�i�@ d ���t
+>C:8210  85 49 a9 06  a0 01 20 9e  8e e6 49 a9  04 a0 01 20   �i�f a ���i�d a 
+>C:8220  9e 8e 60 00  00 00 00 00  00 00 00 00  00 00 00 00   ���@@@@@@@@@@@@@
+>C:8230  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:8240  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:8250  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:8260  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:8270  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:8280  f0 9f f0 64  64 e4 49 e4  f4 f4 f4 f4  f4 94 94 96   ���DD�i���������
+>C:8290  60 60 60 96  96 6f 6b 6b  e6 9f 6f 60  60 96 60 90   �����OKK��O����.
+>C:82a0  90 f0 b0 f0  f0 f0 f0 f0  00 00 00 00  00 00 00 00   .�������@@@@@@@@
+>C:82b0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:82c0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:82d0  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00   @@@@@@@@@@@@@@@@
+>C:82e0  8d 11 d0 ad  00 dd 09 01  a2 10 a0 f8  cc 12 d0 d0   .qP�@�ia�p �LrPP
+>C:82f0  fb 8e 11 d0  8d 00 dd 18  4c 00 8e 00  00 00 00 00   ��qP.@�xl@�@@@@@
+(C:$8300) 
+=== 8e00-8eff DISASM ===
+.C:8200  20 39 8E    JSR $8E39
+.C:8203  A0 04       LDY #$04
+.C:8205  84 49       STY $49
+.C:8207  A9 00       LDA #$00
+.C:8209  A0 04       LDY #$04
+.C:820b  20 9E 8E    JSR $8E9E
+.C:820e  A9 14       LDA #$14
+.C:8210  85 49       STA $49
+.C:8212  A9 06       LDA #$06
+.C:8214  A0 01       LDY #$01
+.C:8216  20 9E 8E    JSR $8E9E
+.C:8219  E6 49       INC $49
+.C:821b  A9 04       LDA #$04
+.C:821d  A0 01       LDY #$01
+.C:821f  20 9E 8E    JSR $8E9E
+.C:8222  60          RTS
+.C:8223  00          BRK
+.C:8224  00          BRK
+.C:8225  00          BRK
+.C:8226  00          BRK
+.C:8227  00          BRK
+.C:8228  00          BRK
+.C:8229  00          BRK
+.C:822a  00          BRK
+.C:822b  00          BRK
+.C:822c  00          BRK
+.C:822d  00          BRK
+.C:822e  00          BRK
+.C:822f  00          BRK
+.C:8230  00          BRK
+.C:8231  00          BRK
+.C:8232  00          BRK
+.C:8233  00          BRK
+.C:8234  00          BRK
+.C:8235  00          BRK
+.C:8236  00          BRK
+.C:8237  00          BRK
+.C:8238  00          BRK
+.C:8239  00          BRK
+.C:823a  00          BRK
+.C:823b  00          BRK
+.C:823c  00          BRK
+.C:823d  00          BRK
+.C:823e  00          BRK
+.C:823f  00          BRK
+.C:8240  00          BRK
+.C:8241  00          BRK
+.C:8242  00          BRK
+.C:8243  00          BRK
+.C:8244  00          BRK
+.C:8245  00          BRK
+.C:8246  00          BRK
+.C:8247  00          BRK
+.C:8248  00          BRK
+.C:8249  00          BRK
+.C:824a  00          BRK
+.C:824b  00          BRK
+.C:824c  00          BRK
+.C:824d  00          BRK
+.C:824e  00          BRK
+.C:824f  00          BRK
+.C:8250  00          BRK
+.C:8251  00          BRK
+.C:8252  00          BRK
+.C:8253  00          BRK
+.C:8254  00          BRK
+.C:8255  00          BRK
+.C:8256  00          BRK
+.C:8257  00          BRK
+.C:8258  00          BRK
+.C:8259  00          BRK
+.C:825a  00          BRK
+.C:825b  00          BRK
+.C:825c  00          BRK
+.C:825d  00          BRK
+.C:825e  00          BRK
+.C:825f  00          BRK
+.C:8260  00          BRK
+.C:8261  00          BRK
+.C:8262  00          BRK
+.C:8263  00          BRK
+.C:8264  00          BRK
+.C:8265  00          BRK
+.C:8266  00          BRK
+.C:8267  00          BRK
+.C:8268  00          BRK
+.C:8269  00          BRK
+.C:826a  00          BRK
+.C:826b  00          BRK
+.C:826c  00          BRK
+.C:826d  00          BRK
+.C:826e  00          BRK
+.C:826f  00          BRK
+.C:8270  00          BRK
+.C:8271  00          BRK
+.C:8272  00          BRK
+.C:8273  00          BRK
+.C:8274  00          BRK
+.C:8275  00          BRK
+.C:8276  00          BRK
+.C:8277  00          BRK
+.C:8278  00          BRK
+.C:8279  00          BRK
+.C:827a  00          BRK
+.C:827b  00          BRK
+.C:827c  00          BRK
+.C:827d  00          BRK
+.C:827e  00          BRK
+.C:827f  00          BRK
+.C:8280  F0 9F       BEQ $8221
+.C:8282  F0 64       BEQ $82E8
+.C:8284  64 E4       NOOP $E4
+.C:8286  49 E4       EOR #$E4
+.C:8288  F4 F4       NOOP $F4,X
+.C:828a  F4 F4       NOOP $F4,X
+.C:828c  F4 94       NOOP $94,X
+.C:828e  94 96       STY $96,X
+.C:8290  60          RTS
+.C:8291  60          RTS
+.C:8292  60          RTS
+.C:8293  96 96       STX $96,Y
+.C:8295  6F 6B 6B    RRA $6B6B
+.C:8298  E6 9F       INC $9F
+.C:829a  6F 60 60    RRA $6060
+.C:829d  96 60       STX $60,Y
+.C:829f  90 90       BCC $8231
+.C:82a1  F0 B0       BEQ $8253
+.C:82a3  F0 F0       BEQ $8295
+.C:82a5  F0 F0       BEQ $8297
+.C:82a7  F0 00       BEQ $82A9
+.C:82a9  00          BRK
+.C:82aa  00          BRK
+.C:82ab  00          BRK
+.C:82ac  00          BRK
+.C:82ad  00          BRK
+.C:82ae  00          BRK
+.C:82af  00          BRK
+.C:82b0  00          BRK
+.C:82b1  00          BRK
+.C:82b2  00          BRK
+.C:82b3  00          BRK
+.C:82b4  00          BRK
+.C:82b5  00          BRK
+.C:82b6  00          BRK
+.C:82b7  00          BRK
+.C:82b8  00          BRK
+.C:82b9  00          BRK
+.C:82ba  00          BRK
+.C:82bb  00          BRK
+.C:82bc  00          BRK
+.C:82bd  00          BRK
+.C:82be  00          BRK
+.C:82bf  00          BRK
+.C:82c0  00          BRK
+.C:82c1  00          BRK
+.C:82c2  00          BRK
+.C:82c3  00          BRK
+.C:82c4  00          BRK
+.C:82c5  00          BRK
+.C:82c6  00          BRK
+.C:82c7  00          BRK
+.C:82c8  00          BRK
+.C:82c9  00          BRK
+.C:82ca  00          BRK
+.C:82cb  00          BRK
+.C:82cc  00          BRK
+.C:82cd  00          BRK
+.C:82ce  00          BRK
+.C:82cf  00          BRK
+.C:82d0  00          BRK
+.C:82d1  00          BRK
+.C:82d2  00          BRK
+.C:82d3  00          BRK
+.C:82d4  00          BRK
+.C:82d5  00          BRK
+.C:82d6  00          BRK
+.C:82d7  00          BRK
+.C:82d8  00          BRK
+.C:82d9  00          BRK
+.C:82da  00          BRK
+.C:82db  00          BRK
+.C:82dc  00          BRK
+.C:82dd  00          BRK
+.C:82de  00          BRK
+.C:82df  00          BRK
+.C:82e0  8D 11 D0    STA $D011
+.C:82e3  AD 00 DD    LDA $DD00
+.C:82e6  09 01       ORA #$01
+.C:82e8  A2 10       LDX #$10
+.C:82ea  A0 F8       LDY #$F8
+.C:82ec  CC 12 D0    CPY $D012
+.C:82ef  D0 FB       BNE $82EC
+.C:82f1  8E 11 D0    STX $D011
+.C:82f4  8D 00 DD    STA $DD00
+.C:82f7  18          CLC
+.C:82f8  4C 00 8E    JMP $8E00
+.C:82fb  00          BRK
+.C:82fc  00          BRK
+.C:82fd  00          BRK
+.C:82fe  00          BRK
+.C:82ff  00          BRK
+(C:$8300) 
+=== 0044-0048 BYTES ===
+>C:8e00  a9 00 8d 17  d0 4c 31 8e  5a c9 c7 d0  0c e0 82 d0   �@.wPl1�zIGPl �P
+>C:8e10  08 a9 ae a2  ff a0 ff d0  0d a4 5b 38  e9 19 b0 06   h���� �Pm�[8�y�f
+>C:8e20  ca e0 ff d0  01 88 85 59  86 5a 84 5b  a9 fd 8d 01   J �Pa.�y�z�[��.a
+>C:8e30  df a5 45 f0  03 4c 00 81  40 a9 06 8d  20 d0 8d 21   ߥe�cl@.@�f. P.!
+>C:8e40  d0 a9 15 8d  18 d0 a9 97  8d 00 dd a0  00 a9 07 99   P�u.xP��.@� @�g.
+>C:8e50  00 d8 99 00  d9 99 00 da  99 00 db a9  20 99 00 04   @X.@Y.@Z.@۩ .@d
+>C:8e60  99 00 05 c8  d0 e7 60 84  4c a9 04 85  4b a9 00 85   .@eHP���l�d�k�@�
+>C:8e70  4a e0 00 f0  10 18 a5 4a  69 28 85 4a  a5 4b 69 00   j @�px�jI(�j�kI@
+>C:8e80  85 4b ca d0  f1 60 8e 91  8e 8c 92 8e  a2 00 a4 4c   �kJP���������@�l
+>C:8e90  bd 40 84 f0  06 91 4a c8  e8 d0 f5 84  4c 60 48 a6   �@��f�jH�P��l�h�
+>C:8ea0  49 20 67 8e  68 a8 b9 8a  84 aa a0 84  20 86 8e 60   i G�H����� � ���
+>C:8eb0  a4 4c aa 4a  4a 4a 4a 09  30 91 4a c8  8a 29 0f 09   �l�jjjji0�jH�)oi
+>C:8ec0  30 91 4a c8  84 4c 60 a0  08 84 49 a9  02 a0 04 20   0�jH�l� h�i�b d 
+>C:8ed0  9e 8e a5 40  20 b0 8e a9  03 a0 14 20  9e 8e a5 47   ���@ ���c t ���g
+>C:8ee0  20 b0 8e a0  0a 84 49 a0  04 20 92 84  a5 47 d0 07    �� j�i d ���gPg
+>C:8ef0  a9 05 a0 14  20 9e 8e 60  a0 06 84 49  a9 01 a0 04   �e t ��� f�i�a d
+(C:$8f00) .C:8e00  A9 00       LDA #$00
+
+=== 0044-0048 DISASM ===
+.C:8e02  8D 17 D0    STA $D017
+.C:8e05  4C 31 8E    JMP $8E31
+.C:8e08  5A          NOOP
+.C:8e09  C9 C7       CMP #$C7
+.C:8e0b  D0 0C       BNE $8E19
+.C:8e0d  E0 82       CPX #$82
+.C:8e0f  D0 08       BNE $8E19
+.C:8e11  A9 AE       LDA #$AE
+.C:8e13  A2 FF       LDX #$FF
+.C:8e15  A0 FF       LDY #$FF
+.C:8e17  D0 0D       BNE $8E26
+.C:8e19  A4 5B       LDY $5B
+.C:8e1b  38          SEC
+.C:8e1c  E9 19       SBC #$19
+.C:8e1e  B0 06       BCS $8E26
+.C:8e20  CA          DEX
+.C:8e21  E0 FF       CPX #$FF
+.C:8e23  D0 01       BNE $8E26
+.C:8e25  88          DEY
+.C:8e26  85 59       STA $59
+.C:8e28  86 5A       STX $5A
+.C:8e2a  84 5B       STY $5B
+.C:8e2c  A9 FD       LDA #$FD
+.C:8e2e  8D 01 DF    STA $DF01
+.C:8e31  A5 45       LDA $45
+.C:8e33  F0 03       BEQ $8E38
+.C:8e35  4C 00 81    JMP $8100
+.C:8e38  40          RTI
+.C:8e39  A9 06       LDA #$06
+.C:8e3b  8D 20 D0    STA $D020
+.C:8e3e  8D 21 D0    STA $D021
+.C:8e41  A9 15       LDA #$15
+.C:8e43  8D 18 D0    STA $D018
+.C:8e46  A9 97       LDA #$97
+.C:8e48  8D 00 DD    STA $DD00
+.C:8e4b  A0 00       LDY #$00
+.C:8e4d  A9 07       LDA #$07
+.C:8e4f  99 00 D8    STA $D800,Y
+.C:8e52  99 00 D9    STA $D900,Y
+.C:8e55  99 00 DA    STA $DA00,Y
+.C:8e58  99 00 DB    STA $DB00,Y
+.C:8e5b  A9 20       LDA #$20
+.C:8e5d  99 00 04    STA $0400,Y
+.C:8e60  99 00 05    STA $0500,Y
+.C:8e63  C8          INY
+.C:8e64  D0 E7       BNE $8E4D
+.C:8e66  60          RTS
+.C:8e67  84 4C       STY $4C
+.C:8e69  A9 04       LDA #$04
+.C:8e6b  85 4B       STA $4B
+.C:8e6d  A9 00       LDA #$00
+.C:8e6f  85 4A       STA $4A
+.C:8e71  E0 00       CPX #$00
+.C:8e73  F0 10       BEQ $8E85
+.C:8e75  18          CLC
+.C:8e76  A5 4A       LDA $4A
+.C:8e78  69 28       ADC #$28
+.C:8e7a  85 4A       STA $4A
+.C:8e7c  A5 4B       LDA $4B
+.C:8e7e  69 00       ADC #$00
+.C:8e80  85 4B       STA $4B
+.C:8e82  CA          DEX
+.C:8e83  D0 F1       BNE $8E76
+.C:8e85  60          RTS
+.C:8e86  8E 91 8E    STX $8E91
+.C:8e89  8C 92 8E    STY $8E92
+.C:8e8c  A2 00       LDX #$00
+.C:8e8e  A4 4C       LDY $4C
+.C:8e90  BD 40 84    LDA $8440,X
+.C:8e93  F0 06       BEQ $8E9B
+.C:8e95  91 4A       STA ($4A),Y
+.C:8e97  C8          INY
+.C:8e98  E8          INX
+.C:8e99  D0 F5       BNE $8E90
+.C:8e9b  84 4C       STY $4C
+.C:8e9d  60          RTS
+.C:8e9e  48          PHA
+.C:8e9f  A6 49       LDX $49
+.C:8ea1  20 67 8E    JSR $8E67
+.C:8ea4  68          PLA
+.C:8ea5  A8          TAY
+.C:8ea6  B9 8A 84    LDA $848A,Y
+.C:8ea9  AA          TAX
+.C:8eaa  A0 84       LDY #$84
+.C:8eac  20 86 8E    JSR $8E86
+.C:8eaf  60          RTS
+.C:8eb0  A4 4C       LDY $4C
+.C:8eb2  AA          TAX
+.C:8eb3  4A          LSR A
+.C:8eb4  4A          LSR A
+.C:8eb5  4A          LSR A
+.C:8eb6  4A          LSR A
+.C:8eb7  09 30       ORA #$30
+.C:8eb9  91 4A       STA ($4A),Y
+.C:8ebb  C8          INY
+.C:8ebc  8A          TXA
+.C:8ebd  29 0F       AND #$0F
+.C:8ebf  09 30       ORA #$30
+.C:8ec1  91 4A       STA ($4A),Y
+.C:8ec3  C8          INY
+.C:8ec4  84 4C       STY $4C
+.C:8ec6  60          RTS
+.C:8ec7  A0 08       LDY #$08
+.C:8ec9  84 49       STY $49
+.C:8ecb  A9 02       LDA #$02
+.C:8ecd  A0 04       LDY #$04
+.C:8ecf  20 9E 8E    JSR $8E9E
+.C:8ed2  A5 40       LDA $40
+.C:8ed4  20 B0 8E    JSR $8EB0
+.C:8ed7  A9 03       LDA #$03
+.C:8ed9  A0 14       LDY #$14
+.C:8edb  20 9E 8E    JSR $8E9E
+.C:8ede  A5 47       LDA $47
+.C:8ee0  20 B0 8E    JSR $8EB0
+.C:8ee3  A0 0A       LDY #$0A
+.C:8ee5  84 49       STY $49
+.C:8ee7  A0 04       LDY #$04
+.C:8ee9  20 92 84    JSR $8492
+.C:8eec  A5 47       LDA $47
+.C:8eee  D0 07       BNE $8EF7
+.C:8ef0  A9 05       LDA #$05
+.C:8ef2  A0 14       LDY #$14
+.C:8ef4  20 9E 8E    JSR $8E9E
+.C:8ef7  60          RTS
+.C:8ef8  A0 06       LDY #$06
+.C:8efa  84 49       STY $49
+.C:8efc  A9 01       LDA #$01
+.C:8efe  A0 04       LDY #$04
+(C:$8f00) 
+=== 0045-0046 BYTES ===
+>C:0044  00 ff 00 00  00                                      @�@@@
+(C:$0049) 
+=== 0045-0046 DISASM ===
+.C:0044  00          BRK
+.C:0045  FF 00 00    ISB $0000,X
+.C:0048  00          BRK
+(C:$0049) >C:0045  ff 00       

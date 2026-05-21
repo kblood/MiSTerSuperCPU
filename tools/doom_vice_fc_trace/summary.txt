@@ -1,0 +1,13 @@
+VICE $00FC writer trace (90.0s real-time, NO warp)
+============================================================
+
+Total events: 0
+
+Writer PBR:PC frequency:
+
+Last 10 A values: []
+
+First 30 events:
+
+=== HW Probe B baseline ===
+CY=23389 WP=$2C:8605 V=E8 E8 F6 0E G=$00:077D

@@ -114,6 +114,23 @@ When working on a debugging task (build → deploy → test → iterate loops), 
 - **Only stop when an explicit exit condition is met:** the user says stop, the stated goal is achieved, or you have concrete evidence no local probe can make progress (e.g., need upstream docs, physical hardware access, or a decision only the user can make).
 - **Session handoff doc pattern.** Full state lives in `docs/session_handoff.md` (overwritten each session). Update that file when stopping; do not restate its contents in chat.
 
+## Shared MiSTer cooperation
+The MiSTer at 192.168.50.130 is shared with another Claude agent working on
+CD32/Minimig from `C:\LLM\MiSTer\CD32\`. **Before any disruptive action**
+(load_core, deploy, killall, send keys), check ownership:
+```python
+# via paramiko: cat /tmp/CORENAME and /tmp/mister_session.lock
+```
+- `CORENAME=C64` → mine, free to proceed
+- `CORENAME=Minimig` → other agent loaded; back off to off-device work
+- empty / no file → no core loaded yet, OK to proceed
+- A non-empty `/tmp/mister_session.lock` older than 30 min is OK to ignore
+- For long disruptive sessions, write a lockfile:
+  `echo "agent=c64 task='...' since=$(date -Iseconds)" > /tmp/mister_session.lock`
+
+Full protocol: `docs/agent-cooperation.md`. Read it before any cross-slice
+operation (replacing `/media/fat/MiSTer`, killing daemon, etc.).
+
 ## Code Conventions
 - VHDL signals: lowercase with underscores (e.g., cpu_data_out)
 - VHDL entities: PascalCase (e.g., T65, VIC_II)
@@ -127,6 +144,22 @@ When working on a debugging task (build → deploy → test → iterate loops), 
 - Run Lorenz CPU test suite (all tests must pass for 6510 mode)
 - For 65C816: verify emulation mode boots normally, then test native mode
 - Check VIC-II timing is not affected (demo compatibility)
+
+## Debugging Methodology
+Before starting a probe-walk series on a "memory corruption" or
+"wrong-value" bug, classify the bug class. Probe-walking the CPU
+writer works for (a) CPU-wrote-wrong and (b) DMA-wrote-wrong, but is
+useless for (c) bus-mux-returned-wrong-source and (d) bit-rot — the
+chain extends forever because the actual bug sits between the CPU
+and memory. **Cheapest disambiguator:** peek a grid of 8+ nearby
+addresses (template: `tools/build_code_peek_diff3.py`). If multiple
+addresses fail at the same offset range across banks, it's class (c)
+— stop probing CPU state and read `fpga64_buslogic.vhd` + the cpuDi
+mux in `fpga64_sid_iec.vhd`. **Also run VICE (xscpu64) as a
+differential oracle early** — if VICE is clean and HW isn't, the bug
+is in FPGA infrastructure, not CPU semantics. The music_num=-9 wedge
+(commit `b2d44d1`) cost ~80 builds by skipping these checks. Full
+case study + decision tree: `docs/debug_methodology.md`.
 
 ## Verilator / Desktop Simulation Build Policy
 - SuperCPU-fork harness (`sim/verilator_c64/`) was **SHELVED 2026-04-18** and removed from `master`. Preserved on branch `shelved/verilator-superfork` (tip `56756b6`) — check out or cherry-pick, do not rebuild from scratch. See `docs/verilator_desktop_harness_plan.md` for why and for revival criteria. Do NOT recreate it on impulse; it only comes back if a bug survives >1 week of hardware + GHDL-bench debugging.
