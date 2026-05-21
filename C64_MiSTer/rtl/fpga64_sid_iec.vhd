@@ -806,11 +806,15 @@ signal cpuDo_816    : unsigned(7 downto 0);
 signal cpuWe_816    : std_logic;
 -- Raw P65C816 outputs, fed into the async bridge. The bridge produces
 -- the cpu*_816 signals consumed by the rest of the arbiter.
-signal cpu816_addr_raw : unsigned(15 downto 0);
-signal cpu816_do_raw   : unsigned(7 downto 0);
-signal cpu816_we_raw   : std_logic;
-signal cpu816_di_to_cpu  : unsigned(7 downto 0);
-signal cpu816_rdy_to_cpu : std_logic;
+signal cpu816_addr_raw    : unsigned(15 downto 0);
+signal cpu816_addr_hi_raw : unsigned(7 downto 0);
+signal cpu816_do_raw      : unsigned(7 downto 0);
+signal cpu816_we_raw      : std_logic;
+signal cpu816_vpa_raw     : std_logic;
+signal cpu816_vda_raw     : std_logic;
+signal cpu816_di_to_cpu   : unsigned(7 downto 0);
+signal cpu816_rdy_to_cpu  : std_logic;
+signal cpu816_dbg_is_slow : std_logic;
 signal cpuIO_816    : unsigned(7 downto 0);
 signal nmi_ack_816  : std_logic;
 signal addr_hi_816  : unsigned(7 downto 0);
@@ -2638,10 +2642,10 @@ port map (
 	diIO => cpuIO_816(7) & cpuIO_816(6) & cpuIO_816(5) & cass_sense & cpuIO_816(3) & "111",
 	doIO => cpuIO_816,
 
-	addr_hi        => addr_hi_816,
+	addr_hi        => cpu816_addr_hi_raw,
 	emulation_mode => emu_mode_816_i,
-	vpa            => vpa_816,
-	vda            => vda_816,
+	vpa            => cpu816_vpa_raw,
+	vda            => cpu816_vda_raw,
 
 	dbg_pc    => dbg_pc_816_i,
 	dbg_sp    => dbg_sp_816_i,
@@ -2657,21 +2661,29 @@ port map (
 
 scpu_async_bridge_inst: entity work.scpu_async_bridge
 port map (
-	clk_cpu      => clk_cpu,
-	clk_sys      => clk32,
-	reset        => reset,
+	clk_cpu        => clk_cpu,
+	clk_sys        => clk32,
+	reset          => reset,
 
-	cpu_addr_in  => cpu816_addr_raw,
-	cpu_do_in    => cpu816_do_raw,
-	cpu_we_in    => cpu816_we_raw,
-	cpu_di_out   => cpu816_di_to_cpu,
-	cpu_rdy_out  => cpu816_rdy_to_cpu,
+	cpu_addr_in    => cpu816_addr_raw,
+	cpu_addr_hi_in => cpu816_addr_hi_raw,
+	cpu_do_in      => cpu816_do_raw,
+	cpu_we_in      => cpu816_we_raw,
+	cpu_vpa_in     => cpu816_vpa_raw,
+	cpu_vda_in     => cpu816_vda_raw,
+	cpu_di_out     => cpu816_di_to_cpu,
+	cpu_rdy_out    => cpu816_rdy_to_cpu,
 
-	bus_addr_out => cpuAddr_816,
-	bus_do_out   => cpuDo_816,
-	bus_we_out   => cpuWe_816,
-	bus_di_in    => cpuDi,
-	bus_rdy_in   => baLoc
+	bus_addr_out    => cpuAddr_816,
+	bus_addr_hi_out => addr_hi_816,
+	bus_do_out      => cpuDo_816,
+	bus_we_out      => cpuWe_816,
+	bus_vpa_out     => vpa_816,
+	bus_vda_out     => vda_816,
+	bus_di_in       => cpuDi,
+	bus_rdy_in      => baLoc,
+
+	dbg_is_slow    => cpu816_dbg_is_slow
 );
 
 -- CPU-output mux: select active CPU's outputs.
