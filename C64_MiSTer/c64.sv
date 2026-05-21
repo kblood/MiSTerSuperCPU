@@ -1790,6 +1790,7 @@ assign dbg_pool.frame_count = '0;
 fpga64_sid_iec fpga64
 (
 	.clk32(clk_sys),
+	.clk_cpu(clk_cpu),
 	.reset_n(reset_n),
 	.pause(freeze),
 	.pause_out(c64_pause),

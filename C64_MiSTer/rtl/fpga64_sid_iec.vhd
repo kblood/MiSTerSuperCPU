@@ -43,6 +43,7 @@ use IEEE.numeric_std.all;
 entity fpga64_sid_iec is
 port(
 	clk32       : in  std_logic;
+	clk_cpu     : in  std_logic := '0';
 	reset_n     : in  std_logic;
 	bios        : in  std_logic_vector(1 downto 0);
 	
@@ -2614,7 +2615,7 @@ port map (
 
 cpu_65c816_inst: entity work.cpu_65c816
 port map (
-	clk => clk32,
+	clk => clk_cpu,
 	reset => reset,
 	enable => enableCpu_816,
 	nmi_n => irq_cia2 and nmi_n,
