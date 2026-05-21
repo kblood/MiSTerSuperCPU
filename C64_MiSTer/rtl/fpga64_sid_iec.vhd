@@ -804,6 +804,13 @@ signal nmi_ack_6510 : std_logic;
 signal cpuAddr_816  : unsigned(15 downto 0);
 signal cpuDo_816    : unsigned(7 downto 0);
 signal cpuWe_816    : std_logic;
+-- Raw P65C816 outputs, fed into the async bridge. The bridge produces
+-- the cpu*_816 signals consumed by the rest of the arbiter.
+signal cpu816_addr_raw : unsigned(15 downto 0);
+signal cpu816_do_raw   : unsigned(7 downto 0);
+signal cpu816_we_raw   : std_logic;
+signal cpu816_di_to_cpu  : unsigned(7 downto 0);
+signal cpu816_rdy_to_cpu : std_logic;
 signal cpuIO_816    : unsigned(7 downto 0);
 signal nmi_ack_816  : std_logic;
 signal addr_hi_816  : unsigned(7 downto 0);
@@ -2621,12 +2628,12 @@ port map (
 	nmi_n => irq_cia2 and nmi_n,
 	nmi_ack => nmi_ack_816,
 	irq_n => irq_cia1 and irq_vic and irq_n and irq_ext_n,
-	rdy => baLoc,
+	rdy => cpu816_rdy_to_cpu,
 
-	di => cpuDi,
-	addr => cpuAddr_816,
-	do => cpuDo_816,
-	we => cpuWe_816,
+	di => cpu816_di_to_cpu,
+	addr => cpu816_addr_raw,
+	do => cpu816_do_raw,
+	we => cpu816_we_raw,
 
 	diIO => cpuIO_816(7) & cpuIO_816(6) & cpuIO_816(5) & cass_sense & cpuIO_816(3) & "111",
 	doIO => cpuIO_816,
@@ -2646,6 +2653,25 @@ port map (
 	dbg_y     => dbg_y_816_i,
 	dbg_d     => open,
 	dbg_state => open
+);
+
+scpu_async_bridge_inst: entity work.scpu_async_bridge
+port map (
+	clk_cpu      => clk_cpu,
+	clk_sys      => clk32,
+	reset        => reset,
+
+	cpu_addr_in  => cpu816_addr_raw,
+	cpu_do_in    => cpu816_do_raw,
+	cpu_we_in    => cpu816_we_raw,
+	cpu_di_out   => cpu816_di_to_cpu,
+	cpu_rdy_out  => cpu816_rdy_to_cpu,
+
+	bus_addr_out => cpuAddr_816,
+	bus_do_out   => cpuDo_816,
+	bus_we_out   => cpuWe_816,
+	bus_di_in    => cpuDi,
+	bus_rdy_in   => baLoc
 );
 
 -- CPU-output mux: select active CPU's outputs.

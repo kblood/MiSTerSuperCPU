@@ -275,6 +275,7 @@ set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to BTN_*
 source files.qip
 set_global_assignment -name QIP_FILE rtl/65C816/65C816.qip
 set_global_assignment -name VHDL_FILE rtl/cpu_65c816.vhd
+set_global_assignment -name VHDL_FILE rtl/scpu_async_bridge.vhd
 set_global_assignment -name QIP_FILE rtl/sid/sid.qip
 set_global_assignment -name QIP_FILE rtl/opl3/opl3.qip
 set_global_assignment -name QIP_FILE rtl/iec_drive/iec_drive.qip
