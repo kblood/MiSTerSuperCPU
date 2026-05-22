@@ -1,0 +1,327 @@
+//
+// sdram_pm.v - page-mode SDRAM controller (Build C, HIT early-exit)
+//
+// Build B (baseline-equivalent + ready+data_valid outputs) is the current
+// production controller. Build C re-adds page-mode HIT/CONFLICT/REFRESH
+// paths from the prior draft (commit 72751d2) AND short-circuits the cycle
+// counter on HIT so the arbiter sees `ready` rise 4 clk64 after the ce
+// edge instead of 8. This is the actual speedup primitive the rest of the
+// scaffolding (Step 6 busy counter, alt-slot revival) is waiting for.
+//
+// Three paths share the same 3-bit q counter (0..7):
+//
+//   COLD (bank closed at dispatch -- same shape as baseline sdram.v):
+//     ce-edge   : ACTIVE registered, latch params, row_open/row_valid update
+//     q=2       : READ/WRITE registered (AP=0 so the row stays open)
+//     q=5       : dout_r sampled, data_valid <= 1
+//     q=7       : q wraps to 0, ready <= 1 next clk
+//     Total cycle: 8 clk64
+//
+//   HIT (bank open & row matches):
+//     ce-edge   : READ/WRITE registered DIRECTLY (skip ACTIVE)
+//     q=3       : dout_r sampled, data_valid <= 1, q forced to 0 (early-exit)
+//     q=0 next  : ready <= 1
+//     Total cycle: 4 clk64
+//
+//   CONFLICT (bank open, different row):
+//     ce-edge   : single-bank PRECHARGE, row_valid[ba] cleared
+//     q=2       : ACTIVE with new row, row_open/row_valid updated
+//     q=4       : READ/WRITE registered
+//     q=7       : dout_r sampled, data_valid <= 1
+//     Total cycle: 8 clk64
+//
+// Refresh:
+//   If any row valid : PRECHARGE_ALL on refresh edge, AUTO_REFRESH at q=2,
+//                      row_valid cleared on refresh edge.
+//   Else            : AUTO_REFRESH directly on refresh edge.
+//
+// data_valid:
+//   Level signal that goes high at the sample edge for the chosen path and
+//   clears at the next ce-edge. Single-flop sync on the consumer is OK
+//   because the signal stays high for at least 1 clk64 between sample and
+//   the next ce.
+//
+// Backward-compat with baseline ports; module name `sdram_pm` (preserved
+// from Build B) lets it coexist with vanilla sdram.v.
+//
+// Based on Till Harbaum's sdram.v (GPLv3).
+
+module sdram_pm (
+
+	// interface to the MT48LC16M16 chip
+	output reg [12:0]	sd_addr,
+	inout  reg [15:0]	sd_data,
+	output reg [ 1:0]	sd_ba,
+	output 				sd_cs,
+	output 				sd_we,
+	output 				sd_ras,
+	output 				sd_cas,
+	output 				sd_clk,
+	output 		[1:0]	sd_dqm,
+
+	input 		 		init,
+	input 		 		clk,
+
+	input      [24:0] addr,
+	input      [ 7:0] din,
+	output     [ 7:0]	dout,
+	output     [ 7:0]	dout_hi,
+	output     [ 7:0]	dout_lo,
+	output     [ 7:0]	dout_reu,
+
+	input 		 		refresh,
+	input 		 		ce,
+	input 		 		we,
+	output 				ready,
+	output reg          data_valid
+);
+
+localparam RASCAS_DELAY   = 3'd2;
+localparam BURST_LENGTH   = 3'b000;
+localparam ACCESS_TYPE    = 1'b0;
+localparam CAS_LATENCY    = 3'd2;
+localparam OP_MODE        = 2'b00;
+localparam NO_WRITE_BURST = 1'b1;
+
+localparam MODE = { 3'b000, NO_WRITE_BURST, OP_MODE, CAS_LATENCY, ACCESS_TYPE, BURST_LENGTH};
+
+// ---------------------------------------------------------------------
+// Cycle state machine
+// ---------------------------------------------------------------------
+localparam STATE_CMD_START = 3'd0;
+localparam STATE_CMD_CONT  = STATE_CMD_START  + RASCAS_DELAY;       // 2
+localparam STATE_READ      = STATE_CMD_CONT + CAS_LATENCY + 1'd1;   // 5
+localparam STATE_LAST      = 3'd7;
+
+reg [2:0] q /* synthesis noprune */;
+reg last_ce, last_refresh;
+
+// Path selector (declared early so the HIT early-exit at the bottom of the
+// q always block can reference it).
+localparam P_COLD     = 2'd0;
+localparam P_HIT      = 2'd1;
+localparam P_CONFLICT = 2'd2;
+localparam P_RFSH_PCH = 2'd3;
+reg [1:0] path;
+
+always @(posedge clk) begin
+	last_ce <= ce;
+	last_refresh <= refresh;
+	if(ce && !last_ce) q <= 3'd1;
+	if(q || reset) q <= q + 3'd1;
+	// HIT early-exit: after the q=3 sample edge, force q back to 0 so the
+	// controller is `ready` one clk64 later instead of waiting for the full
+	// 8-cycle wrap. Must be the LAST assignment so it overrides the
+	// increment above (Verilog non-blocking last-write wins inside the
+	// same always block).
+	if (path == P_HIT && q == 3'd3) q <= 3'd0;
+end
+
+assign ready = (q == 3'd0) && !reset;
+
+initial data_valid = 1'b0;
+
+// Per-bank open-row tracking
+reg [12:0] row_open [0:3];
+reg [3:0]  row_valid;
+
+// Latched params (so q=2/q=4 commands have stable values)
+reg [8:0]  caddr_l;
+reg [7:0]  wrdata_l;
+reg        wr_l;
+reg [12:0] row_l;
+reg [1:0]  ba_l;
+
+// Combinational hit/conflict detect off the addr inputs
+wire [1:0]  req_bank = addr[22:21];
+wire [12:0] req_row  = addr[20:8];
+wire        bank_valid_now = row_valid[req_bank];
+wire        row_match      = bank_valid_now && (row_open[req_bank] == req_row);
+wire        is_hit         = bank_valid_now &&  row_match;
+wire        is_conflict    = bank_valid_now && !row_match;
+
+// ---------------------------------------------------------------------
+// Startup/reset (unchanged from baseline)
+// ---------------------------------------------------------------------
+initial reset = 5'h1f;
+reg [4:0] reset;
+always @(posedge clk) begin
+	if(init) reset <= 5'h1f;
+	else if((q == STATE_LAST) && (reset != 0)) reset <= reset - 5'd1;
+end
+
+// ---------------------------------------------------------------------
+// Command encoding
+// ---------------------------------------------------------------------
+localparam CMD_NOP             = 3'b111;
+localparam CMD_ACTIVE          = 3'b011;
+localparam CMD_READ            = 3'b101;
+localparam CMD_WRITE           = 3'b100;
+localparam CMD_BURST_TERMINATE = 3'b110;
+localparam CMD_PRECHARGE       = 3'b010;
+localparam CMD_AUTO_REFRESH    = 3'b001;
+localparam CMD_LOAD_MODE       = 3'b000;
+
+reg [2:0] sd_cmd;
+
+assign sd_cs  = 0;
+assign sd_ras = sd_cmd[2];
+assign sd_cas = sd_cmd[1];
+assign sd_we  = sd_cmd[0];
+assign sd_dqm = sd_addr[12:11];
+
+reg bt;
+reg [15:0] dout_r;
+
+assign dout    = bt ? dout_r[15:8] : dout_r[7:0];
+assign dout_hi = dout_r[15:8];
+assign dout_lo = dout_r[7:0];
+
+reg [7:0] dout_reu_r;
+assign dout_reu = dout_reu_r;
+
+// ---------------------------------------------------------------------
+// Main FSM
+// ---------------------------------------------------------------------
+always @(posedge clk) begin
+	sd_cmd  <= CMD_NOP;
+	sd_data <= 16'bZ;
+
+	// Sample data based on which path is in flight; raise data_valid level.
+	if (q == STATE_READ && path == P_COLD) begin
+		dout_r <= sd_data;
+		if (bt && !wr_l) dout_reu_r <= sd_data[15:8];
+		data_valid <= 1'b1;
+	end
+	if (q == 3'd3 && path == P_HIT) begin
+		dout_r <= sd_data;
+		if (bt && !wr_l) dout_reu_r <= sd_data[15:8];
+		data_valid <= 1'b1;
+	end
+	if (q == 3'd7 && path == P_CONFLICT) begin
+		dout_r <= sd_data;
+		if (bt && !wr_l) dout_reu_r <= sd_data[15:8];
+		data_valid <= 1'b1;
+	end
+
+	if (reset) begin
+		// Power-on reset sequence (identical to baseline)
+		sd_ba <= 0;
+		row_valid <= 4'b0000;
+		data_valid <= 1'b0;
+		if (q == STATE_CMD_START) begin
+			if (reset == 13) begin
+				sd_cmd <= CMD_PRECHARGE;
+				sd_addr <= 13'b0010000000000;
+			end
+			if (reset == 2) begin
+				sd_cmd <= CMD_LOAD_MODE;
+				sd_addr <= MODE;
+			end
+		end
+	end
+	else begin
+		// -----------------------------------------------------------------
+		// REFRESH PRIORITY (unchanged from prior Build C draft)
+		// -----------------------------------------------------------------
+		if (refresh && !last_refresh) begin
+			if (|row_valid) begin
+				sd_cmd  <= CMD_PRECHARGE;
+				sd_addr <= 13'b0010000000000;  // A10=1, all banks
+				row_valid <= 4'b0000;
+				path <= P_RFSH_PCH;
+			end else begin
+				sd_cmd <= CMD_AUTO_REFRESH;
+			end
+		end
+
+		if (path == P_RFSH_PCH && q == STATE_CMD_CONT) begin
+			sd_cmd <= CMD_AUTO_REFRESH;
+		end
+
+		// -----------------------------------------------------------------
+		// CE edge: dispatch into COLD / HIT / CONFLICT
+		// -----------------------------------------------------------------
+		if (ce && !last_ce) begin
+			caddr_l  <= {addr[23], addr[7:0]};
+			wrdata_l <= din;
+			wr_l     <= we;
+			bt       <= addr[24];
+			ba_l     <= req_bank;
+			row_l    <= req_row;
+			sd_ba    <= req_bank;
+			// New cycle in flight - data_valid drops until the path's sample edge.
+			data_valid <= 1'b0;
+
+			if (is_hit) begin
+				// HIT: skip ACTIVE - issue READ/WRITE this cycle.
+				path <= P_HIT;
+				if (we) sd_data <= {din, din};
+				sd_cmd  <= we ? CMD_WRITE : CMD_READ;
+				sd_addr <= {~addr[24] & we, addr[24] & we, 2'b00, addr[23], addr[7:0]};
+			end
+			else if (is_conflict) begin
+				// CONFLICT: PRECHARGE this bank - ACTIVE at q=2, READ at q=4.
+				path <= P_CONFLICT;
+				sd_cmd  <= CMD_PRECHARGE;
+				sd_addr <= 13'b0000000000000;  // A10=0, single bank
+				row_valid[req_bank] <= 1'b0;
+			end
+			else begin
+				// COLD: standard ACTIVE - READ at q=2 (baseline timing).
+				path <= P_COLD;
+				sd_cmd  <= CMD_ACTIVE;
+				sd_addr <= req_row;
+				row_open[req_bank]  <= req_row;
+				row_valid[req_bank] <= 1'b1;
+			end
+		end
+
+		// COLD path: READ/WRITE at q=2.
+		if (path == P_COLD && q == STATE_CMD_CONT) begin
+			if (wr_l) sd_data <= {wrdata_l, wrdata_l};
+			sd_cmd  <= wr_l ? CMD_WRITE : CMD_READ;
+			sd_addr <= {~bt & wr_l, bt & wr_l, 2'b00, caddr_l};
+		end
+
+		// CONFLICT path: ACTIVE at q=2, READ at q=4.
+		if (path == P_CONFLICT && q == STATE_CMD_CONT) begin
+			sd_cmd  <= CMD_ACTIVE;
+			sd_addr <= row_l;
+			row_open[ba_l]  <= row_l;
+			row_valid[ba_l] <= 1'b1;
+		end
+		if (path == P_CONFLICT && q == 3'd4) begin
+			if (wr_l) sd_data <= {wrdata_l, wrdata_l};
+			sd_cmd  <= wr_l ? CMD_WRITE : CMD_READ;
+			sd_addr <= {~bt & wr_l, bt & wr_l, 2'b00, caddr_l};
+		end
+	end
+end
+
+altddio_out
+#(
+	.extend_oe_disable("OFF"),
+	.intended_device_family("Cyclone V"),
+	.invert_output("OFF"),
+	.lpm_hint("UNUSED"),
+	.lpm_type("altddio_out"),
+	.oe_reg("UNREGISTERED"),
+	.power_up_high("OFF"),
+	.width(1)
+)
+sdramclk_ddr
+(
+	.datain_h(1'b0),
+	.datain_l(1'b1),
+	.outclock(clk),
+	.dataout(sd_clk),
+	.aclr(1'b0),
+	.aset(1'b0),
+	.oe(1'b1),
+	.outclocken(1'b1),
+	.sclr(1'b0),
+	.sset(1'b0)
+);
+
+endmodule

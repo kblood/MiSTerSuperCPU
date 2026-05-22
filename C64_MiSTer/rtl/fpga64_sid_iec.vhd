@@ -744,6 +744,19 @@ attribute preserve of sdram_ready_sync : signal is true;
 signal sdram_data_valid_sync : std_logic := '1';
 attribute preserve of sdram_data_valid_sync : signal is true;
 
+-- Step 6 (Milestone A, 2026-05-22): edge-detect prev for sdram_ready_sync.
+-- Used to early-clear sdram_busy_cnt when the SDRAM controller reports
+-- ready BEFORE the static decrement would expire. On Build B (4-clk32
+-- cycle, 2-FF sync = ~2 clk32 latency) the synced edge arrives at
+-- clk32 5-6 — after the static counter has already cleared at clk32 4 —
+-- so this is a no-op for the current SDRAM controller. Becomes active
+-- under Build C's 3-clk64 HIT path where the synced edge arrives at
+-- clk32 ~3, opening the alt-slot window at CPU2.
+-- Init HIGH to match sdram_ready_sync init; prevents a spurious power-on
+-- edge clear when the counter hasn't been loaded yet.
+signal sdram_ready_sync_prev : std_logic := '1';
+attribute preserve of sdram_ready_sync_prev : signal is true;
+
 -- Option C Mitigation A — SCPU SuperRAM alt-slot fast-path (Step 2, 2026-05-20).
 -- scpu_fast_path is '1' when the SCPU CPU core is executing in a SuperRAM
 -- bank (≠ $00) and the current access does not hit I/O ($D000-$DFFF) and
@@ -2782,10 +2795,21 @@ begin
 		-- later) sees counter ≠ 0 with Build B → blocked. Counter
 		-- decrement length will be tightened in Step 5 once Build C's
 		-- 3-clk64 HIT path is back.
+		-- Step 6 (Milestone A, 2026-05-22): augment the static decrement
+		-- with an early-clear on the rising edge of the 2-FF synced
+		-- sdram_ready. Static decrement remains the safety floor (cycle-
+		-- accurate for Build B 4-clk32 cycles, prevents permanent wedge
+		-- if ready_sync is stuck). On Build C HIT the synced edge arrives
+		-- earlier than the static expiry and unblocks alt-slot at CPU2.
+		sdram_ready_sync_prev <= sdram_ready_sync(1);
 		if cpu_cyc = '1' and cs_ram = '1' then
 			sdram_busy_cnt <= "011";
 		elsif sdram_busy_cnt /= "000" then
-			sdram_busy_cnt <= sdram_busy_cnt - 1;
+			if sdram_ready_sync(1) = '1' and sdram_ready_sync_prev = '0' then
+				sdram_busy_cnt <= "000";
+			else
+				sdram_busy_cnt <= sdram_busy_cnt - 1;
+			end if;
 		end if;
 
 		-- Step 5 trial: latch alt-slot fire decision one clk32 ahead of
