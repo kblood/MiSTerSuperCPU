@@ -2632,7 +2632,12 @@ port map (
 	nmi_n => irq_cia2 and nmi_n,
 	nmi_ack => nmi_ack_816,
 	irq_n => irq_cia1 and irq_vic and irq_n and irq_ext_n,
-	rdy => cpu816_rdy_to_cpu,
+	-- F.diag fix (2026-05-22): rdy is the AND of baLoc (VIC badline stall,
+	-- load-bearing per Phase 8 comment above) and the bridge's MCP stall.
+	-- Pre-bridge code wired this directly to baLoc; bridging through the
+	-- bridge alone (with cpu_rdy_out <= '1' at BRIDGE_ACTIVE='0') broke
+	-- the badline stall and caused $AB-on-every-read memory corruption.
+	rdy => baLoc and cpu816_rdy_to_cpu,
 
 	di => cpu816_di_to_cpu,
 	addr => cpu816_addr_raw,
