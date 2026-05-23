@@ -2700,12 +2700,16 @@ port map (
 -- preserving baseline behavior bit-for-bit.
 scpu_async_bridge_inst: entity work.scpu_async_bridge
 generic map (
+	-- F.3' enable attempted 2026-05-24 (RBF bcde5e56); wedged on CPU
+	-- enable CDC, not on the bridge. Reverted to passthrough until
+	-- the cpu_65c816 enable signal is also redesigned. See c64.sv:329
+	-- and memory/project_f3_enable_cpu_enable_cdc_2026_05_24.md.
 	BRIDGE_ACTIVE          => '0',
 	CACHE_ACTIVE           => '0',
-	-- F.3' safety gate (2026-05-23): keep '1' until F.3' arbiter
-	-- prefetch lands. EFF_BRIDGE_ACTIVE = BRIDGE_ACTIVE AND NOT
-	-- SAME_CLOCK_PASSTHROUGH, so this preserves passthrough behavior
-	-- even if BRIDGE_ACTIVE is later flipped to '1' without intent.
+	-- F.3' safety gate kept ON until the enable-CDC fix lands.
+	-- EFF_BRIDGE_ACTIVE = BRIDGE_ACTIVE AND NOT SAME_CLOCK_PASSTHROUGH
+	-- = '0' AND NOT '1' = '0', so the bridge's MCP FSM is generated
+	-- but masked.
 	SAME_CLOCK_PASSTHROUGH => '1'
 )
 port map (

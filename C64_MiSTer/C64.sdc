@@ -79,6 +79,15 @@ set_false_path -from [get_registers {*scpu_async_bridge_inst|cpu_req_toggle_reg}
                -to   [get_registers {*scpu_async_bridge_inst|req_sync1_reg}]
 set_false_path -from [get_registers {*scpu_async_bridge_inst|bus_ack_toggle_reg}] \
                -to   [get_registers {*scpu_async_bridge_inst|ack_sync1_reg}]
+# F.3' (2026-05-24): arbiter prefetch strobe sync chain. Source is
+# combinational cpu_cyc in clk_sys; destination is strobe_sync1_reg
+# in clk_cpu. The 3-FF chain (strobe_sync1/2/3_reg) handles
+# metastability per doc 24 §3.2, so setup/hold across this crossing
+# is irrelevant — TimeQuest only needs the MTBF report from the
+# SYNCHRONIZER_IDENTIFICATION attribute. False-pathing the
+# destination catches every source path regardless of which clk_sys
+# register feeds cpu_cyc (sysCycle, cs_ram, turbo_m, sdram_busy).
+set_false_path -to [get_registers {*scpu_async_bridge_inst|strobe_sync1_reg}]
 # Payload bus from latched request regs to clk_sys-domain consumers:
 # the payload is held stable for the entire round-trip (payload-stable-
 # hold, doc 24 §3.3). Setup/hold on these paths is irrelevant; ack-toggle

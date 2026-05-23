@@ -1,20 +1,32 @@
-# Session handoff — 2026-05-24 end-of-session (REVISED 5)
+# Session handoff — 2026-05-24 end-of-session (REVISED 6)
 
-## TL;DR — Milestone B at F.0/F.1'/F.2/F.3' implementation done; F.3' enable pending
+## TL;DR — F.3' implementation landed; F.3' enable wedged on CPU enable CDC
 
-This session implemented F.3': a two-stage source FSM
-(CPU_IDLE → CPU_REQ_PENDING → CPU_WAIT_ACK) that latches payload on
-vpa/vda and defers the cross-domain toggle to a synced strobe edge.
-Bench passes 6/6 (RATIO × PASSTHROUGH). Sanity build at
-SAME_CLOCK_PASSTHROUGH=1 (default) synthesises clean and KERNAL boots
-on hardware — RBF md5 `c61bfa77` (changed from prior `453a3380` by
-the 3 added preserved sync FFs only). The FSM's outputs are still
-gated to passthrough; F.3' enable (flip clk_cpu and the safety gate)
-is the next concrete step.
+This session implemented F.3' (two-stage source FSM, commit `03bf677`)
+and then attempted F.3' enable (clk_cpu=clk64 + BRIDGE_ACTIVE='1' +
+SAME_CLOCK_PASSTHROUGH='0' + SDC false-path). The bridge synthesis
+closed timing cleanly (+0.383 ns setup) but KERNAL wedged with PC=
+$00:0000 + SP=$0100 + CY=0000 all **stable**.
 
-Previous session (2026-05-23) closed Milestone A (Step 5 + Step 7b
-alt-fires both dead on Build B) and pushed Milestone B through
-F.0/F.1'/F.2/F.3'-sketch.
+**Root cause** (analysis in
+`memory/project_f3_enable_cpu_enable_cdc_2026_05_24.md`): the
+`cpu_65c816` instance at `fpga64_sid_iec.vhd:2649` is clocked by
+`clk_cpu` but its `enable` pin is `enableCpu_816` — a 1-clk_sys-wide
+pulse. At clk_cpu=clk64 the pulse spans 2 clk_cpu edges, so the CPU
+advances 2 internal states per slot → instruction sequencing
+desynchronizes before the reset vector even completes. The bridge's
+MCP CDC is correct and necessary; what's still missing is **enable
+CDC**. None of the original Phase F plan / revised plan / F.3'
+sketch caught this.
+
+Rolled back HEAD: `c64.sv` clk_cpu=clk_sys, bridge in passthrough.
+SDC false-path for `strobe_sync1_reg` kept (harmless in passthrough).
+Bridge FSM + bench upgrades preserved at commit `03bf677` — fully
+re-usable once enable CDC is solved. Sanity RBF md5 `c61bfa77` is
+restored to `/media/fat/_Test/C64.rbf`.
+
+Previous session (2026-05-23) closed Milestone A and pushed Milestone B
+through F.0/F.1'/F.2/F.3'-sketch.
 
 ## Milestone A — closed at ceiling
 
@@ -31,7 +43,7 @@ F.0/F.1'/F.2/F.3'-sketch.
 4. Both alt-fire blocks commented out in source; restore on Build C
    revival in Milestone B integration.
 
-## Milestone B — F.3' checkpoint
+## Milestone B — F.3' implementation done, enable wedged
 
 Branch: `milestone-b-cdc-rewrite` (off `milestone-a-build-c-revival`).
 Commits this session (2026-05-24):
@@ -39,6 +51,8 @@ Commits this session (2026-05-24):
 | commit  | what                                                     |
 |---------|----------------------------------------------------------|
 | 03bf677 | bridge(F.3'): two-stage source FSM with synced strobe   |
+| 6bf90dd | docs(handoff): F.3' two-stage FSM landed                 |
+| (next)  | bridge(F.3' enable rollback): document CPU enable CDC gap |
 
 Commits last session (2026-05-23):
 
@@ -88,51 +102,57 @@ Commits last session (2026-05-23):
       FSM picked (option c) per
       `docs/async_bridge_f3_prefetch_sketch.md §1'`. Bench passes
       6/6 configs; KERNAL boots clean on sanity build.
-- [ ] **F.3' clk_cpu retarget + enable** — flip
-      `c64.sv:329 wire clk_cpu = clk_sys` to `wire clk_cpu = clk64`,
-      and in `fpga64_sid_iec.vhd:2703-2709` flip
-      `BRIDGE_ACTIVE => '0'` to `'1'` and
-      `SAME_CLOCK_PASSTHROUGH => '1'` to `'0'`. Add SDC additions
-      (see below).
-- [ ] **F.3' SDC** — add false-path for the new strobe sync chain:
-      `set_false_path -from {*scpu_async_bridge_inst|strobe_sync1_reg}`
-      is not the right shape (source is combinational `cpu_cyc`).
-      Either register `cpu_cyc` in clk_sys first (`cpu_cyc_r`) and
-      false-path the registered source, or add
-      `set_max_delay -from <clk_sys clock> -to {*scpu_async_bridge_inst|strobe_sync1_reg}`
-      sized to ~1 clk_sys. Existing F.3 false-paths at
-      `C64_MiSTer/C64.sdc:78-103` cover the toggle and payload
-      paths already.
+- [x] **F.3' enable attempted, wedged on CPU enable CDC**
+      (RBF bcde5e56). Rolled back. Full analysis in
+      `memory/project_f3_enable_cpu_enable_cdc_2026_05_24.md`.
+- [ ] **CPU enable CDC fix** — pick from three options listed in the
+      memory entry:
+      (a) Tie `cpu_65c816 enable='1'` constant at clk_cpu=clk64.
+          Bridge `cpu_rdy_out` is the only forward-progress gate.
+      (b) Pulse-stretch `enableCpu_816` to 1 clk_cpu via posedge
+          detect inside the bridge.
+      (c) Derive enable from bridge ack arrival (re-use ack toggle).
+- [ ] **F.3' clk_cpu retarget + enable (retry)** — after CPU enable
+      CDC fix lands, re-flip `c64.sv:329` to `clk64`,
+      `fpga64_sid_iec.vhd:2703-2709` BRIDGE_ACTIVE='1' +
+      SAME_CLOCK_PASSTHROUGH='0'. Build, deploy, KERNAL boot test.
 - [ ] F.4: Doom/Wolf3D/Lorenz regression at clk_cpu=64MHz.
 - [ ] F.5: optional cache re-enable.
 
 ## Suggested next-session entry point
 
-1. **Decide whether to land a strobe registration in `cpu_cyc_r` or
-   add an SDC max-delay constraint.** Cleaner option: in
-   `fpga64_sid_iec.vhd` register `cpu_cyc` into `cpu_cyc_r` on
-   clk_sys and wire that as `bus_request_strobe_in`. Costs 1
-   clk_sys of advance (now 1 clk_sys instead of 2), still 2
-   clk_cpu = 1 clk_sys of margin at RATIO=2 — tight but workable.
-   Alternative: keep combinational and add a max-delay SDC.
-2. **Flip the three settings** (c64.sv clk_cpu, bridge BRIDGE_ACTIVE,
-   bridge SAME_CLOCK_PASSTHROUGH). Add SDC additions.
-3. **Build, deploy, KERNAL boot test.** If wedges (similar to
-   Phase E.1), capture UART, compare to wedge signatures in
-   `memory/project_phaseE1_64mhz_wedge.md`.
-4. **If KERNAL clean: Doom + Wolf3D + Lorenz regression.**
+1. **Pick a CPU enable CDC option.** Read
+   `memory/project_f3_enable_cpu_enable_cdc_2026_05_24.md` for the
+   three options + tradeoffs. Default recommendation: **(a) tie
+   enable='1' constant** — simplest, lets the bridge's rdy be the
+   sole gate. Risk: the 65C816 IP may have internal assumptions
+   about enable cadence; verify in sim before committing to silicon.
+2. **Sim the chosen fix.** Extend `sim/scpu_async_bridge_tb` or
+   write a small wrapper that exercises a P65C816 instance with
+   the proposed enable wiring at clk_cpu=clk64.
+3. **Apply the fix + re-enable F.3'.** Same edits as today's
+   attempt: c64.sv clk_cpu=clk64, fpga64 BRIDGE_ACTIVE='1' +
+   SAME_CLOCK_PASSTHROUGH='0'. Plus the enable fix.
+4. **Build, deploy, KERNAL boot test.** If KERNAL clean, regression
+   suite. If wedged, compare to **stable**-CPU signatures (this
+   session's wedge) vs **bouncing**-CPU signatures (Phase E.1 wedges
+   at `memory/project_phaseE1_64mhz_wedge.md`).
 
 ## State on disk
 
-- Branch: `milestone-b-cdc-rewrite` HEAD `03bf677`
-- RBF on MiSTer: `/media/fat/_Test/C64.rbf` md5 `c61bfa77`
+- Branch: `milestone-b-cdc-rewrite` HEAD `6bf90dd` (+ pending rollback commit)
+- RBF on MiSTer: `/media/fat/_Test/C64.rbf` md5 `c61bfa77` (sanity build)
+- Wedged build preserved: `C64_MiSTer/builds/C64_milestone-b-cdc-rewrite_6bf90dd72f_20260523T222551Z_bcde5e56-dirty.rbf`
 - Bench artifacts: `sim/scpu_async_bridge_tb/work/`
 - Sanity boot screenshot: `tools/test_cart/out/_f3_sanity_boot.png`
+- F.3' wedge screenshot: `tools/test_cart/out/_f3_enable_boot.png`
+- F.3' rollback boot screenshot: `tools/test_cart/out/_f3_rollback_boot.png`
 - Prior F.1' boot screenshot: `tools/test_cart/out/_bridge_restore_boot.png`
 
 ## Memory entries
 
-- `project_f3_two_stage_protocol_2026_05_24.md` (NEW)
+- `project_f3_enable_cpu_enable_cdc_2026_05_24.md` (NEW)
+- `project_f3_two_stage_protocol_2026_05_24.md`
 - `project_step7b_alt_fire_r2_confirmed_2026_05_23.md`
 - `project_lda_al_sta_hazard_2026_05_23.md` (resolved)
 - `project_superram_bench_metric_2026_05_23.md`

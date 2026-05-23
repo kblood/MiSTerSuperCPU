@@ -316,15 +316,25 @@ pll pll
 	.locked(pll_locked)
 );
 
-// CPU clock domain. Aliased back to clk_sys (32 MHz) after Phase E.1
-// (2026-05-21) experiments at clk_cpu=clk64 (64 MHz) wedged across THREE
-// configurations: BRIDGE_ACTIVE='0' passthrough, BRIDGE_ACTIVE='1' with
-// bus_rdy=baLoc level signal, BRIDGE_ACTIVE='1' with bus_rdy wired to
-// the arbiter's enableCpu_816 pulse. All three left the CPU parked near
-// the reset vector with SP bouncing and VIC dark. The handoff protocol
-// needs a deeper redesign before 64 MHz can be activated — likely a
-// proper clk_cpu-domain CPU-enable derived from arbiter slot availability,
-// instead of the current CPU-always-running + RDY-stall pattern.
+// CPU clock domain. F.3' enable attempt (2026-05-24, RBF md5
+// bcde5e56) wedged with PC=$00:0000 / SP=$0100 / CY=0000 all stable.
+// Root cause: the cpu_65c816 instance has clk=clk_cpu but
+// enable=enableCpu_816 (a 1-clk_sys-wide pulse from the arbiter).
+// At clk_cpu=clk64 the enable pulse spans 2 clk_cpu edges, so the
+// CPU advances 2 internal states per "slot" — breaks instruction
+// sequencing before the reset vector ever completes. The bridge's
+// MCP CDC correctly handles data; what's still missing is enable
+// CDC. Three fixes available for the next attempt:
+//   (a) Tie cpu_65c816 enable='1' constant when at clk_cpu=clk64
+//       and rely on bridge cpu_rdy_out to gate forward progress.
+//   (b) Pulse-stretch enableCpu_816 to exactly 1 clk_cpu in clk_cpu
+//       domain via a posedge-detect FSM in the bridge.
+//   (c) Derive a fresh CPU enable from the bridge's ack arrival
+//       (effectively (b) re-using the existing ack toggle).
+// See memory/project_f3_enable_cpu_enable_cdc_2026_05_24.md for full
+// analysis. Keeping clk_cpu=clk_sys for now; the bridge stays in
+// passthrough (BRIDGE_ACTIVE='0', SAME_CLOCK_PASSTHROUGH='1' in
+// fpga64_sid_iec.vhd:2703-2709).
 wire clk_cpu = clk_sys;
 
 wire [63:0] reconfig_to_pll;
