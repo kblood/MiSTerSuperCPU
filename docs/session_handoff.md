@@ -156,7 +156,10 @@ milestones are the durable framing.
    when revived.
 
 ## State on disk
-- Branch: `async-cpu-bridge` (HEAD = `09cbe7b`).
+- Branch: `milestone-a-build-c-revival` (HEAD = `af315c8`). The
+  `async-cpu-bridge` line in earlier handoffs was a misread; this
+  branch carries the CRT-wrapper + STA-al probe + Step 7b alt-fire
+  work past commit `4173954`.
 - Working tree: rebuild artefacts + screenshots gitignored; only
   `c64.sv`, `C64.qpf`, `build_c64.ps1`, `tools/doom_v342_test.py`,
   `.gitignore`, and `docs/session_handoff.md` show as `M`.
