@@ -49,6 +49,7 @@ class Asm:
     def ldy_imm(self, v): self.b(0xA0, v)
     def txs(self): self.b(0x9A)
     def sta_abs(self, a): self.b(0x8D, a & 0xFF, (a >> 8) & 0xFF)
+    def lda_abs(self, a): self.b(0xAD, a & 0xFF, (a >> 8) & 0xFF)
     def sta_zp(self, a): self.b(0x85, a)
     def lda_zp(self, a): self.b(0xA5, a)
     def nop(self): self.b(0xEA)
@@ -171,6 +172,38 @@ def build_native_lda_superram_only():
     return bytes([PRG_LOAD & 0xFF, (PRG_LOAD >> 8) & 0xFF]) + bytes(a.buf)
 
 
+def build_native_lda_tight_loop():
+    """Native mode tight LDA al $200080 loop, 256 iterations, then halt.
+
+    First step toward a SuperRAM throughput bench. If the inner loop
+    runs stably (no screen corruption, markers C visible), the
+    foundation is sound for a proper bench. NMI is explicitly masked
+    via CIA2 ICR write.
+    """
+    a = Asm(PRG_LOAD)
+    base(a)
+    marker(a, 0, 'A', 0x01)
+    # Mask all IRQ/NMI sources
+    a.lda_imm(0x7F); a.sta_abs(0xDC0D)   # CIA1 ICR mask all
+    a.lda_abs(0xDC0D)                     # ack
+    a.lda_imm(0x7F); a.sta_abs(0xDD0D)   # CIA2 ICR mask all (NMI)
+    a.lda_abs(0xDD0D)                     # ack
+    a.lda_imm(0x00); a.sta_abs(0xD01A)   # VIC IRQ disable
+    marker(a, 4, 'B', 0x05)
+    # Native mode + 8-bit + DBR=$00
+    a.clc(); a.xce(); a.sep(0x30)
+    a.b(0x4B, 0xAB)                       # PHK; PLB
+    # Tight LDA al loop, 256 iterations
+    a.ldx_imm(0x00)
+    loop = a.pc
+    a.lda_al(0x200080)
+    a.b(0xE8)                             # INX
+    a.b(0xD0, (loop - (a.pc + 2)) & 0xFF) # BNE loop
+    marker(a, 8, 'C', 0x0A)
+    halt(a)
+    return bytes([PRG_LOAD & 0xFF, (PRG_LOAD >> 8) & 0xFF]) + bytes(a.buf)
+
+
 def build_native_roundtrip_phkplb():
     """Round-trip but with PHK/PLB to explicitly set DBR=PBR=$00 before
     any abs writes. Tests whether the round-trip corruption is a DBR
@@ -273,6 +306,12 @@ def main():
     with open(path, 'wb') as f:
         f.write(prg)
     print(f"  native_roundtrip_phkplb: {len(prg)} bytes -> {path}")
+
+    prg = build_native_lda_tight_loop()
+    path = os.path.join(OUT_DIR, 'probe_native_lda_tight_loop.prg')
+    with open(path, 'wb') as f:
+        f.write(prg)
+    print(f"  native_lda_tight_loop: {len(prg)} bytes -> {path}")
 
 
 if __name__ == '__main__':
