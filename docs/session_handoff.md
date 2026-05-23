@@ -1,65 +1,95 @@
-# Session handoff — 2026-05-23 (CRT auto-boot wrapper + long-opcode unblocking)
+# Session handoff — 2026-05-23 end-of-session
 
 ## TL;DR
-1. **CRT auto-boot wrapper landed** (`tools/test_cart/prg_to_crt.py` +
-   `load_crt.py`, commit 4173954). Wraps any standard PRG as 8K CBM80
-   cart, deploys via MGL + `load_core`. Eliminates mtype `SYS 2061`
-   dependency for one-shot benches. Verified end-to-end with
-   `min_loader.crt` rendering "MIN LOADER OK".
-2. **Long-mode opcodes ARE NOT broken** (commit d693ca3). Earlier
-   "every variant crashes" finding was wrong. All 7 single-op variants
-   (emu/native, $00xxxx ZP / $00xxxx RAM / $200080 SuperRAM,
-   STA al / LDA al) execute correctly from cart-boot. Memory entry
-   `project_sta_al_lda_al_crash.md` updated to supersede.
-3. **Step 7b alt_fire_r2 RTL** (commit 09655d8, RBF md5 `108dd072`)
-   stays deployed. Bank-0 4 MHz cap confirmed pre/post. SuperRAM
-   throughput **now bench-able** thanks to the CRT path + working
-   long-mode ops.
-4. **One remaining bug class**: native-mode `STA al $200080` +
-   marker writes + `LDA al $200080` + `STA $040C` (round-trip with
-   readback into screen) causes chaotic vertical-stripe screen
-   corruption. PHK/PLB to set DBR does NOT fix it (changes the
-   corruption pattern). Root cause TBD; NOT a blocker for Step 7b
-   bench design (just structure the bench as "write sweep then
-   separate read sweep" rather than interleaved).
-5. **RESOLVED: the "PA wedge"** was in `prg_to_crt.py`'s bootstrap,
-   not in any bench (commit `b869136`). The bootstrap's `abs,X` +
-   self-modifying-`INC` copy loop targeted addresses in cart ROM
-   (`INC $802A` / `INC $802D`), which are read-only — so for any PRG
-   > 256 bytes the second page silently never got copied and CPU
-   fetches from $0900+ wedged. Fixed by switching to ZP-indirect
-   addressing. 4-variant HW bisect (commit `b869136`) pinned it.
-   CRT auto-boot now handles arbitrary PRG sizes up to ~7.9KB.
-6. **NEW open issue post-fix**: `superram_bench.crt` loader runs
-   through all 4 draws and reaches the JML $208000, but the bank-$20
-   payload's COUNT/PASS update never reaches screen — placeholder
-   dashes persist at t=30s. Either JML wedges silently or the SCPU
-   writeback cache holds bank-$20 → bank-$00 screen writes. Probe:
-   `gen_superram_alive_probe.py` (commit `548dc75`) confirms even a
-   single fixed string write from bank-$20 PB via long STA doesn't
-   appear. Next probe: have the LOADER read back `$20:$8000+offset`
-   via `LDA al $208000+i` after the copy to confirm bank-$20 storage
-   actually happened.
 
-## What changed in this session
-- `tools/test_cart/prg_to_crt.py` — new. Bootstrap inits
-  `$01=$37`, `$D011=$1B`, `$D018=$14` (cart-boot bypasses KERNAL VIC
-  init), copies payload from cart ROM $8100 to load_addr via
-  self-mod page-loop, JMPs to `load_addr + entry_offset` (default
-  12 = skip BASIC SYS stub).
-- `tools/test_cart/load_crt.py` — new. SCP + MGL `<file
-  type="f" index="1">` + `load_core`. `mbc load_rom` does NOT work
-  for .crt — no `C64.CRT` alias.
-- `tools/test_cart/gen_cart_smoke.py` — new. 18-byte raw-cart sanity
-  test that runs straight from $8009 without any copy bootstrap. Use
-  this first when CRT auto-boot isn't taking effect.
-- `tools/test_cart/gen_stalong_probe.py` — new. 9 PRG variants for
-  bisecting long-mode opcode behaviour. All single-op variants pass.
-- `.claude/skills/mtype/SKILL.md` — extended with `prg_to_crt.py`
-  section. Documents "wrap as CRT to skip mtype" as the preferred
-  path for one-shot benches.
+1. **Bootstrap "PA wedge" RESOLVED** (commit `b869136`). The wedge
+   that blocked every multi-page CRT bench wasn't in any bench — it
+   was `tools/test_cart/prg_to_crt.py`'s copy loop self-modifying
+   `INC $802A` / `INC $802D`, which are in cart ROM (read-only).
+   `INC` silently failed, so for any PRG > 256 bytes the 2nd+ pages
+   never reached RAM. CPU fetches from $0900+ wedged at the moment
+   PC crossed the page boundary. Replaced with ZP-indirect addressing
+   (`$FB/$FC` src, `$FD/$FE` dst). 4-variant HW bisect
+   (`gen_draw_bisect.py`) pinned it: V1/V2 (1 page) clean; V3/V4
+   (2 pages) wedge at PC=$0900. Verified `pass_draw_only.crt` now
+   renders all 4 draws and `superram_bench.crt` reaches JML $208000.
+2. **CRT auto-boot wrapper is now production-grade** for arbitrary
+   PRG sizes up to ~7.9KB. Bootstrap also now masks CIA2 NMI
+   (commit `4174d7c`) to eliminate stray-NMI wedges from prior session
+   CIA2 timer state — universal hygiene, costs 8 bytes.
+3. **Long-mode opcodes ARE NOT broken** (commit `d693ca3`). All 7
+   single-op variants (emu/native, $00xxxx ZP / $00xxxx RAM /
+   $200080 SuperRAM, STA al / LDA al) execute correctly from
+   cart-boot. Re-verified this session: `probe_emu_sta_superram`
+   still renders `AAABBBB CCC` (md5 `ecee8914` saved as proof).
+4. **Step 7b alt_fire_r2 RTL stays deployed** (commit `09655d8`,
+   RBF md5 `108dd072` at `/media/fat/_Test/C64.rbf`). Bank-0 4 MHz
+   cap confirmed pre/post. Validation against SuperRAM workload
+   blocked by item 5.
+5. **NEW BLOCKER for Step 7b validation**: probe-shape-dependent
+   wedge. `superram_bench.crt` loader now runs all 4 draws + cache
+   flush + JML $208000, but bank-$20 payload's COUNT/PASS updates
+   never reach screen. Bisect candidate `copyback_probe.crt` —
+   simpler structure with single STA al $200080 — wedges identically
+   after the header draw. Yet `probe_emu_sta_superram` with the
+   SAME `STA al $200080` instruction renders cleanly on the same
+   RBF. So the wedge is sensitive to surrounding probe structure,
+   not to the instruction itself. Four differential candidates
+   listed below; next session should bisect them.
+6. **Native-mode round-trip corruption** (`STA al $200080` +
+   marker writes + `LDA al $200080` + `STA $040C`) still TBD.
+   PHK/PLB doesn't fix; NMI mask alone doesn't fix. Lower priority
+   than item 5 because the EMU-mode bench design sidesteps it.
 
-## Step 7b status (unchanged from prior session)
+## What changed this session
+
+### Tooling
+- `tools/test_cart/prg_to_crt.py` — CIA2 NMI mask added; bootstrap
+  rewritten to use ZP-indirect addressing (commits `4174d7c`,
+  `b869136`). The wrapper now produces working CRTs for any payload
+  size up to ~7.9KB. Boot sequence: SEI / CLD / TXS / CIA2 ICR mask
+  $7F / ack / `$01=$37` / `$D011=$1B` / `$D018=$14` / init ZP src
+  $FB/$FC=$8100, dst $FD/$FE=load_page / LDY=0, LDX=pages / inner
+  `LDA ($FB),Y; STA ($FD),Y; INY; BNE` / `INC $FC; INC $FE; DEX;
+  BNE` / `JMP entry`. Bootstrap is 64 bytes.
+- `tools/test_cart/load_crt.py` (pre-existing) + new helpers
+  `deploy_superram_bench.py`, `deploy_pass_draw.py`,
+  `deploy_copyback.py`, `deploy_alive_probe.py`, `shot.py`. File-based
+  paramiko deploy avoids transient `socket.gaierror` issues that hit
+  `python -c` inline invocations under this sandbox.
+
+### Bisect / probe scripts
+- `tools/test_cart/gen_pass_draw_only.py` — minimal 4-draw + halt.
+  Reproduced the wedge before the fix; renders cleanly after.
+- `tools/test_cart/gen_draw_bisect.py` + `run_bisect.py` — V1-V4
+  variants varying loader size + char content. Proved the wedge was
+  position-dependent (PC crossing $0900), not character-dependent.
+  Screenshots: `tools/test_cart/out/draw_v{1,2,3,4}_*_shot.png`.
+- `tools/test_cart/gen_superram_alive_probe.py` — bank-$20 PB writes
+  fixed "ALIVE BANK20" via long STA. Does NOT render — bank-$20
+  payload's bank-$00 screen writes don't appear.
+- `tools/test_cart/gen_copyback_probe.py` — STA al $200080 + cache
+  flush + LDA al + display. Wedges after header even with 1 byte.
+  Differential against `probe_emu_sta_superram` (which works) is the
+  starting point for next session.
+
+### Commits this session (HEAD = `3ae8868`, branch
+`milestone-a-build-c-revival`)
+- `3ae8868` test_cart: copyback probe — wedges even at single STA al
+- `548dc75` test_cart: bank-$20 alive probe — payload writes invisible
+- `b869136` fix(prg_to_crt): bootstrap copy uses ZP-indirect (THE FIX)
+- `9905a29` docs: session_handoff TL;DR — PA wedge RESOLVED
+- `4174d7c` test_cart: CRT bootstrap masks CIA2 NMI + helpers
+- `4503648` docs: session_handoff superram_bench wedges mid-draw
+- `94ea20a` docs: correct branch name in session_handoff
+- `af315c8` docs: realign session_handoff with path_to_20mhz_plan
+- `09cbe7b` test_cart: native LDA al tight-loop probe
+- `602abb4` docs/session_handoff: CRT wrapper landed
+- `d693ca3` STA al/LDA al cart-boot probe + corrected findings
+- `4173954` CRT auto-boot wrapper tooling
+
+## Where Step 7b stands
+
 - RTL alt_fire_r2 term in `fpga64_sid_iec.vhd` gated on
   `scpu_fast_path AND cs_ram AND sdram_busy_cnt <= 1` for CPU2/6/A/E
   slots. Bank-0 unaffected.
@@ -67,138 +97,138 @@
   `/media/fat/_Test/C64.rbf`.
 - Bank-0 bench (`cpu_bound_bench.prg`): off=$0451, smart4x=$044B,
   full4x=$115A → 4.02× scaling. **Empirically capped at 4 MHz.**
-- SuperRAM bench: NOT YET RUN. The next sensible step is a bench
-  that writes 1KB sweep into bank-$20 SuperRAM via STA al loop,
-  then times a separate read-back sweep via LDA al loop, displayed
-  via screen counters. Wrap as CRT to avoid SYS-launch issues.
+- SuperRAM bench: **STILL NOT VALIDATED**. The path is unblocked
+  end-to-end EXCEPT for the bank-$20-payload screen-update wedge
+  (TL;DR item 5).
 
-## Path to 10x — current state and concrete next steps
+## Path to 10x — canonical roadmap
 
-Current ceiling = 4 MHz (bank 0 confirmed). Target = 20 MHz (5×) or
-interim 10 MHz (2.5×). Three paths, in increasing effort order:
+`docs/path_to_20mhz_plan.md` is the durable framing:
 
-### (A) Validate Step 7b SuperRAM gain first (~1 hour)
-Build cpu_bound_bench analogue that runs entirely from bank-$20
-via STA al pre-fill + LDA al timed loop. Wrap as CRT, run, compare
-COUNT vs bank-0 baseline. Expected gain = +25% (4 MHz → 5 MHz on
-SuperRAM accesses only). Validates the Step 7b RTL on real
-SuperRAM workload before deciding whether to commit it or revert.
+- **Milestone A** (~8 MHz): Build C page-mode revival + Step 6
+  plumbing. **DEFERRED** per `project_milestone_a_buildC_bisect_2026_05_23.md`
+  (V1-V5 bisect; V5 best-attempt still bus-floats). Next attempt
+  should LATCH `is_hit/is_conflict` one cycle before dispatch.
+- **Milestone B** (~12-16 MHz): `clk_cpu=64 MHz` + F.3' arbiter
+  prefetch. Subsumes the older Phase F MCP plan
+  (`docs/async_bridge_mcp_handshake_plan.md`).
+- **Milestone C** (~20 MHz+): arbiter decouple, demand-driven CPU
+  dispatch.
 
-### (B) Phase F MCP rewrite (multi-day)
-`docs/async_bridge_mcp_handshake_plan.md` (commit e1147a6). Goal:
-clk_cpu=64 MHz with proper toggle-FF request/ack handshake.
-Theoretical ceiling 8 MHz. F.0 confirmation already done (Appendix
-A added 2026-05-21). F.1 is the bridge entity rewrite at clk_cpu=
-clk_sys with MCP toggle handshake.
+The earlier "option C = EXT slot reclaim" idea conflicts with
+canonical Milestone C; dropped.
 
-### (C) EXT slot reclaim (~1-2 days)
-Per CLAUDE.md the sysCycleDef has EXT(8) + DMA(4) + VIC(4) +
-CPU(16) = 32 slots. Reclaiming all 8 EXT slots for CPU → 16+8 = 24
-CPU slots → +50% beyond current 4 MHz = 6 MHz. Simple RTL change.
+## Outstanding bugs
 
-## Outstanding long-mode round-trip corruption
+### 1. Bank-$20 payload screen updates invisible (NEW — top priority)
+After CRT bootstrap fix, the loader of `superram_bench.crt` runs
+cleanly through all 4 draws + cache flush + copy loop + cache flush +
+JML $208000. Bank-$20 payload either:
+- wedges silently at JML / PHK / PLB / Timer A init, OR
+- runs the timing loop but its bank-$20 → bank-$00 screen writes
+  are held in the SCPU writeback cache.
 
-The bench that DID corrupt the screen:
-```asm
-SEI; CLD; TXS  (in base)
-clear screen + color RAM
-A marker (white)
-CLC; XCE; SEP #$30      ; native mode, 8-bit A/X/Y
-LDA #$5A
-STA al $200080          ; write to SuperRAM
-B marker (green)        ; 4 STA $0404..$0407, 4 STA $D804..$D807
-LDA #$00
-LDA al $200080          ; read back from SuperRAM
-STA $040C               ; write readback as char to screen pos 12
-LDA #$07; STA $D80C     ; color readback yellow
-D marker (orange) at pos 13
-halt
-```
+Probe `copyback_probe.crt` (single STA al $200080 + readback) wedges
+after the header draw. `probe_emu_sta_superram` with the SAME
+`STA al $200080` works. So wedge is shape-dependent, not
+instruction-dependent.
 
-Adding `PHK; PLB` after XCE to set DBR=$00 did NOT fix it (different
-corruption pattern though — pattern changed from green/violet stripes
-to "BVD" chars repeating).
+**Differentials to bisect next session** (in order of
+cheap-first):
+1. `probe_emu_sta_superram` does NOT write to `$D020`/`$D021`;
+   `copyback_probe` does. Remove those writes from copyback as the
+   first test.
+2. Working probe uses `marker()` macro that interleaves char + color
+   writes per cell. Copyback bulk-fills color RAM before draws.
+3. Working probe uses `base()` macro raw `a.b(0x9D, ...)` for
+   screen-clear loops; copyback uses `sta_absx()` helper. Should be
+   byte-identical but worth ruling out.
+4. Working probe uses `a.sta_al()` helper; copyback uses raw
+   `a.b(0x8F, ...)`. Byte-identical at output but different code
+   path in the assembler.
 
-Hypotheses (in priority order):
-1. **NMI fires from CIA2 stale state** — cart-boot doesn't init CIA2
-   ICR/timers. If any prior session left CIA2 Timer A latched with
-   ICR enabling NMI, the NMI vector at $FFEA (KERNAL JMP $0318)
-   jumps to uninitialized $0318 → garbage. But CIA2 ICR resets to
-   $00 on hardware reset, so this needs verification.
-2. **Bus-mux race on supercpu_bank** during the LDA al following
-   the STA al — the bank byte change from $20 (during STA write
-   cycle) back to $00 (during subsequent fetch) may have a 1-cycle
-   window where supercpu_bank lingers and corrupts a fetch.
-3. **DBR not actually $00** when STA $040C executes despite PHK/PLB
-   — but the changed corruption pattern suggests PHK/PLB IS doing
-   something.
+Approach: clone `gen_stalong_probe.py`'s `build_emu_sta_superram`
+verbatim, then INCREMENTALLY add copyback features (cache flush
+first, then LDA al readback, then hex display). First addition that
+wedges identifies the trigger.
 
-Next probes (if pursuing this bug):
-- Mask NMI explicitly: write $7F to $DD0D (CIA2 ICR) at start of
-  bench. If corruption stops, NMI hypothesis confirmed.
-- Use a non-screen target for the readback (e.g., a ZP byte) and
-  display its value via a separate screen-write sequence done with
-  REGULAR STA abs (not following long-mode). Bisects whether the
-  corruption is from the STA $040C following LDA al, or from the
-  LDA al itself returning corrupt data.
-- Try writing/reading from $20:$0500 instead of $20:$0080 (non-ZP
-  target). Rules out a SuperRAM-side ZP shadow path.
+Probe artifacts on disk:
+- `tools/test_cart/out/superram_probe_emu_sta_superram_t8s.png`
+  (md5 `ecee8914`) — WORKING reference.
+- `tools/test_cart/out/copyback_probe_t8s.png` (md5 `f8871d8e`) —
+  WEDGED probe.
+- `tools/test_cart/out/superram_alive_probe_t10s.png` (md5
+  `1e2f08b4`) — bank-$20 payload silent-wedge reference.
+
+### 2. Native-mode round-trip corruption (existing — lower priority)
+`STA al $200080` + marker writes + `LDA al $200080` + `STA $040C`
+in native mode causes chaotic screen corruption. PHK/PLB doesn't fix;
+NMI mask alone doesn't fix. The EMU-mode bench design sidesteps it
+(no CLC/XCE), so this is a deferred curiosity not a blocker.
+
+## State on disk
+
+- Branch: `milestone-a-build-c-revival` (HEAD = `3ae8868`).
+- BRIDGE_ACTIVE='0' / CACHE_ACTIVE='0' at
+  `C64_MiSTer/rtl/fpga64_sid_iec.vhd:2703`. The "Step 7b deployed"
+  win lives in the arbiter alt_fire_r2 logic, NOT in the bridge.
+- Working tree has a large set of pre-existing `M` files
+  (`tools/lorenz_run/scpu/*.png`, `c64.sv`, `C64.qpf`,
+  `build_c64.ps1`, `tools/doom_v342_test.py`) that aren't from this
+  session — they were already modified at session start. None of
+  this session's changes are uncommitted; check `git status` after
+  reboot to confirm.
+- Untracked (gitignored) artifacts in `tools/test_cart/out/`:
+  freshly built `*.prg` / `*.crt` for `pass_draw_only`,
+  `draw_v{1,2,3,4}`, `superram_bench`, `superram_alive_probe`,
+  `copyback_probe`, plus screenshots from each.
 
 ## Suggested order of business next session
 
-Aligned with `docs/path_to_20mhz_plan.md` (canonical roadmap).
-Drop earlier ad-hoc "option C = EXT slot reclaim" idea — it conflicts
-with the canonical Milestone C (arbiter decouple). The plan's three
-milestones are the durable framing.
-
-1. **Validate Step 7b alt_fire_r2 effect using existing
-   `tools/test_cart/gen_superram_bench.py`** (commit `0e8ae0a`). The
-   bench stays in EMULATION mode end-to-end (no CLC; XCE; SEP), so it
-   sidesteps the native-mode round-trip corruption. Counter+code live
-   in bank $20 (DBR=$20 via PHK/PLB), Timer A polled directly (no
-   IRQ chain). Build → wrap as CRT (`prg_to_crt.py --entry-offset 12`,
-   the bench has a `10 SYS 2061` BASIC stub) → deploy via `load_crt.py`
-   → screenshot at t≈5s when COUNT stabilizes. Need TWO RBFs:
-   (a) HEAD = Step 7b ON (current `/media/fat/_Test/C64.rbf`, md5
-   `108dd072`); (b) Step 7b reverted = baseline. Ratio COUNT_a/COUNT_b
-   is the empirical Step 7b gain on SuperRAM workload. Expected ≈ +25%.
-2. **If Step 7b validates**, move to Milestone B per the canonical
-   plan: `clk_cpu=64 MHz` + F.3' arbiter prefetch (3-4 wk core work).
-   Pre-reqs prepped: bridge MCP source + GHDL two-domain bench on
+1. **Bisect the bank-$20 wedge** using the differential list above.
+   Each iteration is one PRG edit + one CRT wrap + one deploy + one
+   screenshot (~30 seconds wall). First wedging step pinpoints the
+   trigger.
+2. **Once Step 7b validates**, capture COUNT_a / COUNT_b ratio with
+   Step 7b ON vs OFF (need a second RBF build with alt_fire_r2
+   gated to '0' — ~30 min Quartus). If ratio ≥ +20%, commit Step 7b
+   to `master`. If <+10%, revert.
+3. **Move to Milestone B** per `docs/path_to_20mhz_plan.md`. F.0
+   prep already done. F.1 = bridge rewrite at clk_cpu=clk_sys with
+   MCP toggle handshake. Bridge MCP source backed up at
    `tools/scpu_async_bridge_F1_backup.vhd`.
-3. **Milestone A Build C revival** stays deferred per the 5-step
-   bisect (memory `project_milestone_a_buildC_bisect_2026_05_23.md`).
-   V5 best-attempt still bus-floats; next attempt should LATCH
-   is_hit/is_conflict one cycle before dispatch (NOT addr-latch — V8
-   already showed addr-latch wedges harder). Layer onto Milestone B
-   when revived.
 
-## State on disk
-- Branch: `milestone-a-build-c-revival` (HEAD = `af315c8`). The
-  `async-cpu-bridge` line in earlier handoffs was a misread; this
-  branch carries the CRT-wrapper + STA-al probe + Step 7b alt-fire
-  work past commit `4173954`.
-- Working tree: rebuild artefacts + screenshots gitignored; only
-  `c64.sv`, `C64.qpf`, `build_c64.ps1`, `tools/doom_v342_test.py`,
-  `.gitignore`, and `docs/session_handoff.md` show as `M`.
-- Recent commits this session (in order):
-  - `09cbe7b` native LDA al tight-loop probe + diagnostic note
-  - `602abb4` session_handoff CRT wrapper landed
-  - `d693ca3` STA al/LDA al cart-boot probe + corrected findings
-  - `4173954` CRT auto-boot wrapper tooling
-- Pre-session (carry-over): `09655d8` Step 7b alt-fire SuperRAM-only,
-  `83d7716` Milestone A scaffolding Step 6, `80dc8d7` bridge baLoc
-  stall path restore.
-- BRIDGE_ACTIVE='0' / CACHE_ACTIVE='0' confirmed at
-  `C64_MiSTer/rtl/fpga64_sid_iec.vhd:2703`. The "Step 7b deployed"
-  win lives in the arbiter alt_fire_r2 logic, NOT in the bridge.
+## Pointers
 
-## Pointer to existing plans
 - `docs/path_to_20mhz_plan.md` — CANONICAL Milestones A/B/C with
   risk registers and exit criteria. Read this first.
-- `docs/async_bridge_mcp_handshake_plan.md` — Phase F.0–F.5
-  (subsumed by Milestone B in the path_to_20mhz plan, but the F.3'
-  prefetch detail still lives here).
+- `docs/async_bridge_mcp_handshake_plan.md` — Phase F.0-F.5 detail
+  (subsumed by Milestone B; F.3' prefetch still lives here).
 - `docs/supercpu_feature_status.md` — feature-completion checklist.
 - `.claude/skills/mtype/SKILL.md` — keyboard injection + CRT
   auto-boot reference.
+- Memory entries (load via `MEMORY.md`):
+  - `project_superram_bench_wedge_2026_05_23.md` — bootstrap fix +
+    bank-$20 wedge state
+  - `project_sta_al_lda_al_crash.md` — long-mode opcode validation
+  - `project_milestone_a_buildC_bisect_2026_05_23.md` — Build C
+    revival attempts
+  - `project_phaseF1c_BRIDGE_ACTIVE_1_wedge.md` — bridge revival
+    history
+
+## How to resume on a fresh shell
+
+```powershell
+cd C:\LLM\C64\MiSTerSuperCPU
+git status                       # confirm branch + clean state
+git log --oneline -15            # see session commits
+# Pick up bank-$20 wedge bisect:
+code tools/test_cart/gen_copyback_probe.py    # start from this
+code tools/test_cart/gen_stalong_probe.py     # working reference
+# Iterate: edit probe → python gen_X.py → python prg_to_crt.py out/X.prg
+# → python deploy_X.py → Read out/X_t8s.png to verify
+```
+
+MiSTer IP `192.168.50.130`, root/1. Current RBF md5 `108dd072` at
+`/media/fat/_Test/C64.rbf`. Don't touch `/media/fat/_Computer/` —
+vanilla rbfs only.
