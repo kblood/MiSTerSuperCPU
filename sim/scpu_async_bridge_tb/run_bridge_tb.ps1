@@ -1,7 +1,11 @@
 #requires -Version 5.1
 # Stand-alone GHDL bench for scpu_async_bridge.
 [CmdletBinding()]
-param([string]$StopTime = "5us")
+param(
+    [string]$StopTime = "15us",
+    [int]$Ratio = 2,                           # clk_cpu : clk_sys (1, 2, 3 supported)
+    [ValidateSet('1','0')][string]$Passthrough = '1'  # '1' = current diag, '0' = F.1 MCP FSM
+)
 
 $ErrorActionPreference = 'Stop'
 $ghdl = "C:\Users\Caldor\AppData\Local\Microsoft\WinGet\Packages\ghdl.ghdl.ucrt64.mcode_Microsoft.Winget.Source_8wekyb3d8bbwe\bin\ghdl.exe"
@@ -31,8 +35,10 @@ try {
     & $ghdl -e @ghdlFlags bridge_tb
     if ($LASTEXITCODE -ne 0) { throw "elab failed" }
 
+    $genericArgs = @("-gRATIO=$Ratio", "-gPASSTHROUGH_MODE='$Passthrough'")
     $logPath = Join-Path $workDir 'bridge_tb.log'
-    & $ghdl -r @ghdlFlags bridge_tb --stop-time=$StopTime 2>&1 | Tee-Object -FilePath $logPath
+    Write-Host "Run: RATIO=$Ratio PASSTHROUGH_MODE=$Passthrough StopTime=$StopTime"
+    & $ghdl -r @ghdlFlags bridge_tb @genericArgs --stop-time=$StopTime 2>&1 | Tee-Object -FilePath $logPath
     Write-Host ""
     Write-Host "log: $logPath"
 }

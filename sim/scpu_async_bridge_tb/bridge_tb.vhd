@@ -35,13 +35,34 @@ use STD.textio.all;
 use IEEE.std_logic_textio.all;
 
 entity bridge_tb is
+	generic (
+		-- F.2 upgrade (2026-05-23): parametric clk_cpu : clk_sys ratio.
+		-- RATIO=1 → matched 32 MHz (regression net for F.1' diag bridge).
+		-- RATIO=2 → 64:32 MHz (target for F.3' MCP bridge).
+		-- RATIO=3 → 96:32 MHz future stretch goal.
+		-- Pass via GHDL `-gRATIO=N` at elaboration.
+		RATIO : positive := 2;
+
+		-- PASSTHROUGH_MODE='1' validates the bridge's combinational
+		-- passthrough path (current 67-line diag bridge). The CPU's
+		-- cpu_rdy_out is expected to stay '1' throughout and cpu_di
+		-- tracks bus_di in real time. This is the regression net
+		-- against today's HEAD.
+		--
+		-- PASSTHROUGH_MODE='0' validates the F.1 MCP FSM at
+		-- tools/scpu_async_bridge_F1_backup.vhd; cpu_rdy drops on
+		-- request, rises on ack round-trip. Re-engages when F.3'
+		-- bridge rewrite lands.
+		PASSTHROUGH_MODE : std_logic := '1'
+	);
 end entity;
 
 architecture sim of bridge_tb is
 
-	-- Two independent clock domains
+	-- Two independent clock domains. CLK_CPU_PERIOD derives from RATIO
+	-- so a single bench file can validate the bridge at any clk ratio.
 	constant CLK_SYS_PERIOD : time := 31.25 ns;   -- 32 MHz arbiter / bus
-	constant CLK_CPU_PERIOD : time := 15.625 ns;  -- 64 MHz CPU
+	constant CLK_CPU_PERIOD : time := CLK_SYS_PERIOD / RATIO;
 
 	signal clk_cpu : std_logic := '0';
 	signal clk_sys : std_logic := '0';
@@ -255,10 +276,16 @@ begin
 		variable expected : unsigned(7 downto 0);
 		variable wait_n   : integer;
 
-		-- Issue a single CPU access and wait for cpu_rdy_out to
-		-- come back high. Uses signal-level waits to avoid the classic
-		-- VHDL race where `wait until rising_edge(clk)` resumes before
-		-- other clock-sensitive processes' new assignments take effect.
+		-- Issue a single CPU access and validate the response.
+		--
+		-- PASSTHROUGH_MODE='1' (current diag bridge): the bridge is
+		-- combinational; cpu_rdy is permanently '1'. The validation
+		-- step is "wait for arbiter ack pulse on bus side, then sample
+		-- cpu_di and check vs expected_data."
+		--
+		-- PASSTHROUGH_MODE='0' (future F.3' MCP bridge): wait for rdy
+		-- to drop (request accepted by source-side FSM) and rise again
+		-- (ack-toggle round-tripped), then sample cpu_di.
 		procedure cpu_access(
 			bank      : in unsigned(7 downto 0);
 			addr      : in unsigned(15 downto 0);
@@ -274,23 +301,38 @@ begin
 			cpu_vpa     <= '0';
 			cpu_vda     <= '1';
 
-			-- Wait for bridge to drop rdy (request accepted)
-			wait until cpu_rdy = '0' for max_wait;
-			assert cpu_rdy = '0'
-				report "cpu_access: bridge never dropped cpu_rdy"
-				severity error;
+			if PASSTHROUGH_MODE = '1' then
+				-- Passthrough: wait for arbiter ack pulse. cpu_di will
+				-- track bus_di combinationally; the ack pulse marks the
+				-- moment bus_di holds the valid response.
+				wait until bus_ack_pulse = '1' for max_wait;
+				assert bus_ack_pulse = '1'
+					report "cpu_access (passthrough): arbiter ack never fired"
+					severity failure;
+				-- Sample cpu_di mid-ack-pulse (held by arbiter's bus_di
+				-- assignment until next request edge).
+			else
+				-- MCP FSM: wait for bridge to drop rdy (request accepted)
+				wait until cpu_rdy = '0' for max_wait;
+				assert cpu_rdy = '0'
+					report "cpu_access (MCP): bridge never dropped cpu_rdy"
+					severity failure;
 
-			-- Wait for bridge to raise rdy (ack round-tripped)
-			wait until cpu_rdy = '1' for max_wait;
-			assert cpu_rdy = '1'
-				report "cpu_access: ack-toggle never returned"
-				severity error;
+				-- Wait for bridge to raise rdy (ack round-tripped)
+				wait until cpu_rdy = '1' for max_wait;
+				assert cpu_rdy = '1'
+					report "cpu_access (MCP): ack-toggle never returned"
+					severity failure;
+			end if;
 
-			-- De-assert request after completion. Hold one more clk_cpu
-			-- so the bridge's idle path sees vda='0' before the next call.
+			-- De-assert request after completion. Hold vda='0' for at
+			-- least one full clk_sys period so the model arbiter's edge
+			-- detector reliably sees the de-assert before the next call
+			-- raises vda again. (At RATIO=2 one clk_cpu < one clk_sys,
+			-- so the original "wait one clk_cpu" was unsafe.)
 			cpu_vda <= '0';
 			cpu_we  <= '0';
-			wait until rising_edge(clk_cpu);
+			wait for CLK_SYS_PERIOD + CLK_CPU_PERIOD;
 		end procedure;
 
 	begin
