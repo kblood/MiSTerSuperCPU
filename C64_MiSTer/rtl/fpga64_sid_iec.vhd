@@ -2700,8 +2700,13 @@ port map (
 -- preserving baseline behavior bit-for-bit.
 scpu_async_bridge_inst: entity work.scpu_async_bridge
 generic map (
-	BRIDGE_ACTIVE => '0',
-	CACHE_ACTIVE  => '0'
+	BRIDGE_ACTIVE          => '0',
+	CACHE_ACTIVE           => '0',
+	-- F.3' safety gate (2026-05-23): keep '1' until F.3' arbiter
+	-- prefetch lands. EFF_BRIDGE_ACTIVE = BRIDGE_ACTIVE AND NOT
+	-- SAME_CLOCK_PASSTHROUGH, so this preserves passthrough behavior
+	-- even if BRIDGE_ACTIVE is later flipped to '1' without intent.
+	SAME_CLOCK_PASSTHROUGH => '1'
 )
 port map (
 	clk_cpu        => clk_cpu,
@@ -2725,6 +2730,11 @@ port map (
 	bus_vda_out      => vda_816,
 	bus_di_in        => cpuDi,
 	bus_ack_pulse_in => enableCpu_816,
+	-- F.3' arbiter prefetch strobe — combinational cpu_cyc fires
+	-- 2 clk_sys ahead of enableCpu_816 (= 4 clk_cpu at 2:1 ratio).
+	-- Wired now so the port exists, but unused until F.3' enables
+	-- the MCP path (BRIDGE_ACTIVE='1' + SAME_CLOCK_PASSTHROUGH='0').
+	bus_request_strobe_in => cpu_cyc,
 
 	dbg_is_slow      => cpu816_dbg_is_slow
 );

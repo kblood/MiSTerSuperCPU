@@ -174,7 +174,14 @@ begin
 
 	-- DUT
 	dut : entity work.scpu_async_bridge
-		generic map (BRIDGE_ACTIVE => '1', CACHE_ACTIVE => '0')
+		generic map (
+			BRIDGE_ACTIVE          => '1',
+			CACHE_ACTIVE           => '0',
+			-- Mirror PASSTHROUGH_MODE: when bench is in MCP mode,
+			-- defeat the bridge's safety gate so EFF_BRIDGE_ACTIVE
+			-- becomes '1' and the MCP FSM drives outputs.
+			SAME_CLOCK_PASSTHROUGH => PASSTHROUGH_MODE
+		)
 		port map (
 			clk_cpu        => clk_cpu,
 			clk_sys        => clk_sys,
