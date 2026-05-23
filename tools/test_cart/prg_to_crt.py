@@ -29,70 +29,76 @@ import sys
 def assemble_bootstrap(load_addr, pages, entry):
     """Return bytes for the 6502 bootstrap routine.
 
+    Uses ZP-indirect ($FB/$FC src, $FD/$FE dst) addressing because the
+    earlier abs,X + self-modifying-INC scheme is broken under cart-boot:
+    INC of $80xx is a write to cart ROM (read-only) and silently fails,
+    so for pages>=2 only the first page got copied and the rest of RAM
+    held garbage -> CPU fetch from $0900+ wedged. Verified via 4-variant
+    HW bisect 2026-05-23 (draw_v1..v4). Reproducer: tools/test_cart/
+    gen_draw_bisect.py.
+
     Layout (starting at $8009):
-      78          SEI
-      D8          CLD
-      A2 FF       LDX #$FF
-      9A          TXS
-      A2 00       LDX #$00
-      A0 NN       LDY #pages
+      78           SEI
+      D8           CLD
+      A2 FF        LDX #$FF
+      9A           TXS
+      A9 7F 8D 0D DD  LDA #$7F; STA $DD0D    ; CIA2 NMI mask
+      AD 0D DD     LDA $DD0D                  ; ack
+      A9 37 85 01  LDA #$37; STA $01          ; BASIC+KERNAL+I/O
+      A9 1B 8D 11 D0  LDA #$1B; STA $D011
+      A9 14 8D 18 D0  LDA #$14; STA $D018
+      A9 00 85 FB  LDA #$00; STA $FB          ; src lo
+      A9 81 85 FC  LDA #$81; STA $FC          ; src hi (cart $8100)
+      A9 00 85 FD  LDA #$00; STA $FD          ; dst lo
+      A9 PL 85 FE  LDA #<load_page>; STA $FE  ; dst hi
+      A0 00        LDY #$00
+      A2 PG        LDX #pages
     loop:
-      BD 00 81    LDA $8100,X            ; src page high byte self-modified
-      9D 00 PL    STA load_page,X        ; dst page high byte self-modified
-      E8          INX
-      D0 F8       BNE loop               ; finish 256-byte page
-      EE LL HH    INC src_hi             ; bump src high byte
-      EE LL HH    INC dst_hi             ; bump dst high byte
-      88          DEY
-      D0 EE       BNE loop               ; more pages?
-      4C LL HH    JMP entry
+      B1 FB        LDA ($FB),Y                ; ZP-indirect read
+      91 FD        STA ($FD),Y                ; ZP-indirect write
+      C8           INY
+      D0 F9        BNE loop                   ; finish 256-byte page
+      E6 FC        INC $FC                    ; bump src hi (RAM, works!)
+      E6 FE        INC $FE                    ; bump dst hi
+      CA           DEX
+      D0 F1        BNE loop
+      4C LL HH     JMP entry
     """
     boot = bytearray()
     boot += bytes([0x78, 0xD8, 0xA2, 0xFF, 0x9A])      # SEI; CLD; LDX #$FF; TXS
-    # Cart auto-boot doesn't reset CIA2. If a prior session left CIA2 ICR
-    # enabled with a timer running, an NMI will fire mid-bench, jump via
-    # KERNAL $FFFA -> $0318 (uninitialised RAM) -> garbage -> wedge. SEI
-    # masks IRQ only, never NMI. Mask CIA2 ICR ($DD0D bit7=0, bits6-0=$7F
-    # clears all sources) and ack any pending. Costs 7 bytes; universal.
-    boot += bytes([0xA9, 0x7F, 0x8D, 0x0D, 0xDD])      # LDA #$7F; STA $DD0D (mask all CIA2 IRQ/NMI)
+    boot += bytes([0xA9, 0x7F, 0x8D, 0x0D, 0xDD])      # LDA #$7F; STA $DD0D (mask CIA2 NMI)
     boot += bytes([0xAD, 0x0D, 0xDD])                  # LDA $DD0D (ack pending)
-    # Cart auto-boot skips KERNAL VIC init. Apply the minimum so any wrapped
-    # bench that assumes RUN-from-BASIC can render. $D011=$1B (DEN=1, normal
-    # mode), $D016=$C8 (CSEL=1, no multicolor), $D018=$14 (screen $0400,
-    # chars $1000), $DD00=$97 lower 2 bits=11 (VIC bank 0). $0001=$37
-    # (BASIC+KERNAL+I/O visible).
-    boot += bytes([0xA9, 0x37, 0x85, 0x01])            # LDA #$37; STA $01 (BASIC+KERNAL+I/O visible)
+    boot += bytes([0xA9, 0x37, 0x85, 0x01])            # LDA #$37; STA $01
     boot += bytes([0xA9, 0x1B, 0x8D, 0x11, 0xD0])      # LDA #$1B; STA $D011 (DEN=1)
-    boot += bytes([0xA9, 0x14, 0x8D, 0x18, 0xD0])      # LDA #$14; STA $D018 (screen $0400 / chars $1000)
-    boot += bytes([0xA2, 0x00, 0xA0, pages & 0xFF])    # LDX #$00; LDY #pages
+    boot += bytes([0xA9, 0x14, 0x8D, 0x18, 0xD0])      # LDA #$14; STA $D018
+
+    # ZP pointers: $FB/$FC src, $FD/$FE dst.
+    boot += bytes([0xA9, 0x00, 0x85, 0xFB])            # LDA #$00; STA $FB
+    boot += bytes([0xA9, 0x81, 0x85, 0xFC])            # LDA #$81; STA $FC
+    boot += bytes([0xA9, 0x00, 0x85, 0xFD])            # LDA #$00; STA $FD
+    boot += bytes([0xA9, (load_addr >> 8) & 0xFF, 0x85, 0xFE])  # LDA #ph; STA $FE
+    boot += bytes([0xA0, 0x00])                        # LDY #$00
+    boot += bytes([0xA2, pages & 0xFF])                # LDX #pages
 
     loop_off = len(boot)
-    src_page_lo = 0x00       # always 0 (page-aligned src)
-    src_page_hi = 0x81       # payload starts at $8100
-    dst_page_lo = 0x00       # always 0 (we align dst to page)
-    dst_page_hi = (load_addr >> 8) & 0xFF
-
-    boot += bytes([0xBD, src_page_lo, src_page_hi])  # LDA $8100,X
-    boot += bytes([0x9D, dst_page_lo, dst_page_hi])  # STA load_page,X
-    boot += bytes([0xE8])                            # INX
+    boot += bytes([0xB1, 0xFB])                        # LDA ($FB),Y
+    boot += bytes([0x91, 0xFD])                        # STA ($FD),Y
+    boot += bytes([0xC8])                              # INY
     inner_bne_at = len(boot)
     inner_disp = loop_off - (inner_bne_at + 2)
     if not -128 <= inner_disp < 0:
         raise RuntimeError(f"inner branch disp out of range: {inner_disp}")
-    boot += bytes([0xD0, inner_disp & 0xFF])         # BNE loop
+    boot += bytes([0xD0, inner_disp & 0xFF])           # BNE loop
 
-    base = 0x8009  # absolute address of boot start
-    src_hi_abs = base + loop_off + 2
-    dst_hi_abs = base + loop_off + 5
-    boot += bytes([0xEE, src_hi_abs & 0xFF, (src_hi_abs >> 8) & 0xFF])
-    boot += bytes([0xEE, dst_hi_abs & 0xFF, (dst_hi_abs >> 8) & 0xFF])
-    boot += bytes([0x88])                            # DEY
+    boot += bytes([0xE6, 0xFC])                        # INC $FC (src hi)
+    boot += bytes([0xE6, 0xFE])                        # INC $FE (dst hi)
+    boot += bytes([0xCA])                              # DEX
 
     bne_at = len(boot)
     disp = loop_off - (bne_at + 2)
     if not -128 <= disp < 0:
         raise RuntimeError(f"loop branch disp out of range: {disp}")
-    boot += bytes([0xD0, disp & 0xFF])
+    boot += bytes([0xD0, disp & 0xFF])                 # BNE loop
 
     boot += bytes([0x4C, entry & 0xFF, (entry >> 8) & 0xFF])
     return boot
