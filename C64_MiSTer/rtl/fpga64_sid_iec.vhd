@@ -2845,15 +2845,21 @@ begin
 		-- 4-MHz cadence. SuperRAM accesses (Doom/Wolf3D recompiler code,
 		-- long-mode bench) get the extra fire = 5 MHz cap for those
 		-- workloads.
-		if (sysCycle = CYCLE_CPU2 or sysCycle = CYCLE_CPU6
-		    or sysCycle = CYCLE_CPUA or sysCycle = CYCLE_CPUE)
-		   and scpu_fast_path = '1'
-		   and cs_ram = '1'
-		   and sdram_busy_cnt <= "001" then
-			alt_fire_r2 <= '1';
-		else
+		-- HARD-GATED OFF 2026-05-23 to test whether alt_fire_r2 is the
+		-- cause of the bank-$20 payload wedge in superram_bench / b20
+		-- border probes. If border turns red on this OFF build, RTL
+		-- fix is to gate alt_fire_r2 on sdram_ready_sync rising edge
+		-- or extra busy_cnt tick. Re-enable by restoring the original
+		-- condition below.
+		--if (sysCycle = CYCLE_CPU2 or sysCycle = CYCLE_CPU6
+		--    or sysCycle = CYCLE_CPUA or sysCycle = CYCLE_CPUE)
+		--   and scpu_fast_path = '1'
+		--   and cs_ram = '1'
+		--   and sdram_busy_cnt <= "001" then
+		--	alt_fire_r2 <= '1';
+		--else
 			alt_fire_r2 <= '0';
-		end if;
+		--end if;
 
 		cpu_cyc_s <= cpu_cyc_s(0) & cpu_cyc;
 		enableCpu <= cpu_cyc_s(1);
