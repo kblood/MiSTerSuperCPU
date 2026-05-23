@@ -41,15 +41,23 @@ Per `docs/path_to_20mhz_plan.md` and
 
 Suggested Milestone B starting tasks (cold-start checklist):
 
-- [ ] Re-read `docs/async_bridge_phase_f_revised.md` (revised plan
+- [x] Re-read `docs/async_bridge_phase_f_revised.md` (revised plan
       after the F.1 four-rung wedge ladder)
-- [ ] Re-read `docs/async_bridge_mcp_handshake_plan.md` for F.0/F.1
+- [x] Re-read `docs/async_bridge_mcp_handshake_plan.md` for F.0/F.1
       detail (still authoritative for those phases)
-- [ ] Spawn F.0 note: 2-3 paragraphs in plan tail confirming
-      `enableCpu_816` is the capture strobe + decide on the
-      "CPU write payload" question
-- [ ] Branch off `milestone-a-build-c-revival` HEAD into
-      `milestone-b-cdc-rewrite`; do NOT merge to master yet
+- [x] Spawn F.0 note: see Appendix A (2026-05-21) and Appendix B
+      (2026-05-23 freshness check) in the plan doc. Line numbers
+      drifted; claims still hold. Decision point #1 resolved.
+- [x] Branch off `milestone-a-build-c-revival` HEAD into
+      `milestone-b-cdc-rewrite`
+- [x] Restore F.1 MCP FSM as `tools/scpu_async_bridge_F1_backup.vhd`
+      (out-of-tree, 363 lines from commit 7f9dced)
+- [ ] **NEXT:** F.3' arbiter prefetch design sketch per
+      `docs/async_bridge_phase_f_revised.md §F.3'`. Read
+      `fpga64_sid_iec.vhd:2864` (cpu_cyc_s / enableCpu shift
+      register) and identify where `cpu_prefetch_window` at
+      `cpu_cyc_s(0)` should fan out to the bridge's
+      `bus_request_strobe_in` port.
 
 ## State on disk (REVISED 3)
 

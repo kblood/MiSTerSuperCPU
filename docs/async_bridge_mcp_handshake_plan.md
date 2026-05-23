@@ -388,3 +388,37 @@ My F.1 sink-side process captures `bus_di_in` on the same clk32 rising edge wher
 On a CPU write the bridge's sink-side captures `bus_di_in` into `bus_di_reg` regardless of `we`, then toggles ack. The capture is meaningless on writes (the arbiter consumes `bus_do_out`, not `bus_di_in`, for the write path) but the captured byte is dontcare because the CPU side ignores `cpu_di_out` when `we='1'`. This matches the default in the decision-point table; no FSM branching on `we` needed.
 
 **F.0 → F.1 transition:** all three claims passed; the F.1 bridge as written captures at the correct moment; no FSM changes required from the original plan.
+
+---
+
+# Appendix B — F.0/F.1' status check (2026-05-23)
+
+Re-validated against current HEAD after milestone-a-build-c-revival
+landed. Line numbers in Appendix A have drifted by ~25 lines (Step 6
+busy counter + Step 5/7b alt-fire blocks added since 2026-05-21) but
+the claims still hold:
+
+- **cpuDi mux** moved from line 1650 → 1672 (single `cpuDi <=` driver
+  per `Grep cpuDi\s*<=`; still purely combinational).
+- **enableCpu_816** driver moved from line 2604 → 2626.
+- **cpu_cyc_s shift / enableCpu register** moved from lines 2800-2801
+  → 2864-2865.
+- **Bridge instantiation** moved from line 2670 → 2701; port rename
+  `bus_rdy_in → bus_ack_pulse_in` already wired to `enableCpu_816`
+  (line 2727). The plan's first-day task #4 is complete.
+
+**F.1' state:** the active bridge at
+`C64_MiSTer/rtl/scpu_async_bridge.vhd` is the post-80dc8d7
+diagnostic-passthrough (67 lines, no FSM). The F.1 MCP FSM source
+(363 lines) is preserved as `tools/scpu_async_bridge_F1_backup.vhd`
+(restored from commit 7f9dced; out-of-tree for synthesis). The
+revised F.1' goal ("preserve the port-shape and MCP source so that
+F.3' can engage it") is satisfied without re-introducing the F.1c-f
+wedge classes.
+
+**Next concrete step is F.3' (arbiter prefetch redesign).** Bridge
+restoration to active is gated on F.3' design landing first. Do NOT
+flip BRIDGE_ACTIVE to '1' at matched clocks (the F.1c-f wedge
+ladder proved that fails); do NOT restore the F.1 MCP FSM in
+isolation. The next session should start with the F.3' design
+sketch per `docs/async_bridge_phase_f_revised.md §F.3'`.
