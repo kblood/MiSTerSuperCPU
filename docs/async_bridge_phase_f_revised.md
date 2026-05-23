@@ -30,10 +30,23 @@ Still needed for any future MCP work. No revision required from the original pla
 **The fix is arbiter-side, not bridge-side:** add a request-issue advance, so the bridge starts its MCP round-trip 2-3 clk_cpu cycles *before* the planned `enableCpu_816` edge.
 
 **Concrete work:**
-1. In `fpga64_sid_iec.vhd:2740-2826`, derive a new signal `cpu_prefetch_window` that fires at `cpu_cyc_s(0)` (one clk_sys earlier than the current `enableCpu` registered at `cpu_cyc_s(1)`). Expose it on the bridge port as `bus_request_strobe_in`.
-2. Bridge source-side FSM uses `bus_request_strobe_in` (not `vpa or vda`) to flip `cpu_req_toggle_reg`. Payload registers (addr/do/we/vpa/vda) latch on the same edge — which is the source-side latch-before-toggle pattern from doc 24 §3.3 (also matches anti-pattern #60's "hold from before the load-toggle until after the return-toggle settles" rule).
+1. In `fpga64_sid_iec.vhd:2740-2826`, expose `cpu_cyc` on the bridge port as `bus_request_strobe_in` (combinational, fires 2 clk_sys before `enableCpu`). **Done 2026-05-23 (commit `da1a684`)**, port wired but unused until §2 below lands.
+2. Bridge source-side FSM uses a **two-stage protocol** (revised
+   2026-05-24 from the original "strobe replaces vpa/vda"
+   proposal — see `docs/async_bridge_f3_prefetch_sketch.md §1'`
+   for full rationale):
+   - **Stage 1 (CPU_IDLE → CPU_REQ_PENDING):** on `vpa|vda`,
+     latch the payload (addr/addr_hi/do/we/vpa/vda) and drop
+     `cpu_rdy_reg` so the CPU is stalled on the next edge.
+   - **Stage 2 (CPU_REQ_PENDING → CPU_WAIT_ACK):** on synced
+     `strobe_edge`, flip `cpu_req_toggle_reg` to dispatch the
+     captured request to the sink-side.
+   This preserves the P65C816's expected rdy-on-next-edge
+   semantics, avoids ghost toggles when the CPU has no request,
+   and still gives the sink-side ~2 clk_sys of advance notice
+   before `bus_ack_pulse_in` fires. **Done 2026-05-24.**
 3. Sink-side fires the ack-toggle on `enableCpu_816` as before. By that edge, the source-issued payload has had ~2 clk_cpu cycles to settle through the sink's 2FF, and the destination's `bus_di_capture_reg` has captured the combinational `bus_di_in` value. Source's `bus_di_capture_reg` then reloads from sink within 2-3 more clk_cpu cycles — which is fine because the CPU does not advance again until the next `enableCpu_816`.
-4. SDC: add `set_max_delay`/`set_min_delay` constraints across the toggle signals per doc 24 §6, plus the clock-groups from the original Phase F.3 plan.
+4. SDC: add `set_max_delay`/`set_min_delay` constraints across the toggle signals per doc 24 §6, plus the clock-groups from the original Phase F.3 plan. *Open work — needs `clk_cpu = clk64` to be meaningful.*
 
 **Risk:** the prefetch window means the arbiter speculatively issues a CPU bus access one slot earlier than the CPU actually advances. If the slot's address changes between request and accept (e.g. DMA preempts mid-request), the access must be cancelled. Mitigation: add a `bus_request_cancel` line driven by `dma_active` or VIC bus-take; the bridge drops the pending toggle and re-issues on the next clean window. This is the FSM-level equivalent of `cpu_request_pending` in the existing MCP source.
 

@@ -145,17 +145,98 @@ engages.
    for instance), how should the in-flight toggle be reconciled?
    Default proposal: the sink-side waits for `bus_ack_pulse_in`
    regardless; the toggle just takes longer to resolve.
+   **Settled 2026-05-24 by §1' below — two-stage protocol means
+   we never toggle without a real CPU request, so over-issue
+   simply cannot happen.**
 
 2. **Bench upgrade scope (F.2).** Two-domain GHDL bench is a hard
    requirement before F.3' lands. Should the bench bring up
    `clk_cpu=clk_sys*2` or do we go straight to `clk_cpu=64MHz`
-   constants?
+   constants? **Settled F.2 (commit ac7caf1): parametric RATIO
+   generic, validated 1/2/3 × PASSTHROUGH 0/1.**
 
 3. **Build C revival timing.** Step 5/7b alt-fires plus F.3'
    prefetch compose multiplicatively: alt-fires double the slot
    density, F.3' doubles the per-slot throughput. Order of
    landing: F.3' first (Milestone B), Build C after (Milestone B
    integration)?
+
+## 1'. Source-side trigger protocol — decision (2026-05-24)
+
+The three candidates listed in the session handoff:
+
+- **(a) Strobe replaces vpa/vda.** Source FSM ignores vpa/vda
+  for triggering; toggle fires every synced strobe edge. Payload
+  (including vpa/vda) is latched at the same edge.
+  *Cost:* ghost toggles when CPU has no request — burns arbiter
+  slots and an MCP round-trip per strobe regardless. *Risk:*
+  on writes, the sink would drive bus_we_out without a real
+  request, potentially mutating arbiter state.
+
+- **(b) Strobe is an additional gate.** Source fires only when
+  `(vpa|vda) AND synced_strobe_edge` aligns on the same clk_cpu.
+  *Cost:* if vpa/vda asserts immediately after strobe arrives,
+  the CPU waits a full STROBE_PERIOD (~4 clk_sys = 8 clk_cpu at
+  RATIO=2) for the next strobe. *Risk:* low.
+
+- **(c) Two-stage protocol.** vpa/vda latches payload immediately
+  and drops cpu_rdy (CPU stalled within 1 clk_cpu). Strobe edge
+  is the second-stage trigger that flips the cross-domain toggle.
+  *Cost:* one extra FSM state. *Risk:* same as (b) — worst-case
+  one STROBE_PERIOD wait between request and dispatch.
+
+**Decision: option (c).** Reasons:
+
+1. The CPU's `rdy` semantics expect a 1-cycle response: assert
+   `vpa/vda`, see `rdy=0` on the next edge, then wait for `rdy=1`
+   plus valid `cpu_di`. Options (a) and (b) leave `rdy='1'` until
+   the strobe fires, so the CPU continues to execute (or attempt
+   to) for several clk_cpu cycles before being stalled. Option
+   (c) drops `rdy` on the first cycle after `vpa/vda` rises,
+   exactly matching the P65C816 protocol.
+2. Option (a) toggles even with `vpa=0, vda=0` — a sink-side
+   `bus_we_out` would assert as part of the latched payload. The
+   arbiter would see a write request when the CPU intended none.
+   Option (c) never issues a toggle without a real request.
+3. The extra FSM state is one bit of register; the synthesizer
+   collapses the equivalent of `(rdy_drop AND wait_strobe)` into
+   a clean two-stage flow with no extra LUT depth.
+
+**Reference plan §F.3' point 2 (`docs/async_bridge_phase_f_revised.md`)
+originally proposed option (a) but the analysis above supersedes
+it.** The revised plan note has been updated.
+
+## 3.1 Back-to-back accesses + rdy semantics
+
+After `CPU_WAIT_ACK` captures the ack, the FSM transitions to
+`CPU_IDLE` and `cpu_rdy_reg` goes high — both at the same clk_cpu
+edge. The CPU latches `cpu_di_out` (= captured `bus_di_reg`) on
+the *following* edge. If the CPU immediately re-asserts `vpa/vda`
+(common in tight loops), the next clk_cpu observes `vpa/vda=1` in
+`CPU_IDLE` and transitions to `CPU_REQ_PENDING` with new payload
+latched. Worst-case dead time between accesses: 1 clk_cpu for the
+IDLE pass-through. Best-case strobe alignment: 0 clk_cpu wait if
+strobe fires the same edge IDLE→REQ_PENDING completes; worst-case
+strobe wait: STROBE_PERIOD - 1 clk_sys.
+
+## 3.2 Bench validation summary (2026-05-24)
+
+`sim/scpu_async_bridge_tb/run_bridge_tb.ps1` runs cleanly across
+all 6 (RATIO ∈ {1,2,3}) × (PASSTHROUGH_MODE ∈ {0,1}) combinations.
+
+| RATIO | PASSTHROUGH | scenarios | failures |
+|-------|-------------|-----------|----------|
+| 1 | 0 | 5/5 | 0 |
+| 1 | 1 | 5/5 | 0 |
+| 2 | 0 | 5/5 | 0 |
+| 2 | 1 | 5/5 | 0 |
+| 3 | 0 | 5/5 | 0 |
+| 3 | 1 | 5/5 | 0 |
+
+RATIO=2 PASSTHROUGH=0 is the F.3' deploy target; round-trip
+observed at ~258 ns / ~8.3 clk_sys for scenario E (1-cycle ack)
+— consistent with §1 latency budget plus the additional 1-stage
+of REQ_PENDING and worst-case strobe wait.
 
 ## 6. Files for the F.3' implementation
 

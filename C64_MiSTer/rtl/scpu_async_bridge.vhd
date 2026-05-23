@@ -111,9 +111,22 @@ architecture rtl of scpu_async_bridge is
 	------------------------------------------------------------------
 	-- Source domain (clk_cpu) signals
 	------------------------------------------------------------------
-	-- The CPU-side FSM. CPU_IDLE = accepting new access; CPU_WAIT_ACK =
-	-- request in flight, waiting for synced ack to round-trip back.
-	type cpu_fsm_t is (CPU_IDLE, CPU_WAIT_ACK);
+	-- Two-stage source FSM (F.3' implementation, 2026-05-24):
+	--   CPU_IDLE        — accepting new access; vpa/vda triggers payload latch
+	--   CPU_REQ_PENDING — payload captured, cpu_rdy=0, awaiting arbiter strobe
+	--                     before issuing the cross-domain toggle
+	--   CPU_WAIT_ACK    — toggle in flight, awaiting synced ack round-trip
+	--
+	-- Rationale (docs/async_bridge_f3_prefetch_sketch.md §1'):
+	--   • Latch on vpa/vda so the CPU is stalled within 1 clk_cpu of its
+	--     request — matches the rdy semantics the P65C816 expects.
+	--   • Defer the actual toggle until synced strobe_edge so the sink-side
+	--     sees the toggle right before bus_ack_pulse_in fires. Eliminates
+	--     ghost toggles that would otherwise burn arbiter slots while the
+	--     CPU has nothing to ask for.
+	--   • Resolves the "strobe replaces vpa/vda vs additional gate vs
+	--     two-stage" open question per docs/session_handoff.md.
+	type cpu_fsm_t is (CPU_IDLE, CPU_REQ_PENDING, CPU_WAIT_ACK);
 	signal cpu_fsm : cpu_fsm_t := CPU_IDLE;
 
 	-- Latched request payload — held stable from req-toggle until ack
@@ -131,6 +144,15 @@ architecture rtl of scpu_async_bridge is
 	-- 2-FF sync chain for the sink-side ack toggle into clk_cpu domain.
 	signal ack_sync1_reg       : std_logic := '0';
 	signal ack_sync2_reg       : std_logic := '0';
+
+	-- 3-FF sync chain for the arbiter prefetch strobe into clk_cpu domain.
+	-- The 3rd register lets us derive a clean one-cycle edge pulse
+	-- (sync2 high AND sync3 low) — matches the sink-side req edge-detect
+	-- pattern (req_sync2 / req_sync3) below.
+	signal strobe_sync1_reg    : std_logic := '0';
+	signal strobe_sync2_reg    : std_logic := '0';
+	signal strobe_sync3_reg    : std_logic := '0';
+	signal strobe_edge         : std_logic;
 
 	-- Captured read data — only reloaded when ack is observed.
 	signal bus_di_capture_reg  : unsigned(7 downto 0) := (others => '0');
@@ -166,10 +188,12 @@ architecture rtl of scpu_async_bridge is
 	attribute preserve         : boolean;
 	attribute altera_attribute : string;
 
-	attribute preserve of req_sync1_reg : signal is true;
-	attribute preserve of req_sync2_reg : signal is true;
-	attribute preserve of ack_sync1_reg : signal is true;
-	attribute preserve of ack_sync2_reg : signal is true;
+	attribute preserve of req_sync1_reg    : signal is true;
+	attribute preserve of req_sync2_reg    : signal is true;
+	attribute preserve of ack_sync1_reg    : signal is true;
+	attribute preserve of ack_sync2_reg    : signal is true;
+	attribute preserve of strobe_sync1_reg : signal is true;
+	attribute preserve of strobe_sync2_reg : signal is true;
 
 	attribute altera_attribute of req_sync1_reg : signal is
 		"-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
@@ -178,6 +202,10 @@ architecture rtl of scpu_async_bridge is
 	attribute altera_attribute of ack_sync1_reg : signal is
 		"-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
 	attribute altera_attribute of ack_sync2_reg : signal is
+		"-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
+	attribute altera_attribute of strobe_sync1_reg : signal is
+		"-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
+	attribute altera_attribute of strobe_sync2_reg : signal is
 		"-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
 
 	------------------------------------------------------------------
@@ -241,6 +269,22 @@ begin
 		end if;
 	end process;
 
+	-- F.3' (2026-05-24): arbiter prefetch strobe sync chain.
+	-- bus_request_strobe_in is a clk_sys pulse (combinational on sysCycle)
+	-- that fires 2 clk_sys before bus_ack_pulse_in. We sync it into clk_cpu
+	-- and edge-detect so the source FSM can dispatch its toggle right
+	-- before the sink will fire ack. Three FFs: 2 for metastability,
+	-- 1 for clean edge derivation.
+	strobe_sync : process(clk_cpu) begin
+		if rising_edge(clk_cpu) then
+			strobe_sync1_reg <= bus_request_strobe_in;
+			strobe_sync2_reg <= strobe_sync1_reg;
+			strobe_sync3_reg <= strobe_sync2_reg;
+		end if;
+	end process;
+
+	strobe_edge <= strobe_sync2_reg and (not strobe_sync3_reg);
+
 	cpu_side : process(clk_cpu) begin
 		if rising_edge(clk_cpu) then
 			if reset = '1' then
@@ -259,19 +303,28 @@ begin
 					when CPU_IDLE =>
 						cpu_rdy_reg <= '1';
 						if cpu_vpa_in = '1' or cpu_vda_in = '1' then
-							-- Latch payload BEFORE toggling req. The payload
-							-- crosses clk_cpu→clk_sys unsynchronized; the
-							-- payload-stable-hold rule guarantees it doesn't
-							-- change again until ack returns.
+							-- Stage 1: latch payload immediately, stall the
+							-- CPU. The payload crosses clk_cpu→clk_sys
+							-- unsynchronized; the payload-stable-hold rule
+							-- guarantees it doesn't change again until ack
+							-- returns (anti-pattern entry 60).
 							cpu_req_addr_reg    <= cpu_addr_in;
 							cpu_req_addr_hi_reg <= cpu_addr_hi_in;
 							cpu_req_do_reg      <= cpu_do_in;
 							cpu_req_we_reg      <= cpu_we_in;
 							cpu_req_vpa_reg     <= cpu_vpa_in;
 							cpu_req_vda_reg     <= cpu_vda_in;
-							cpu_req_toggle_reg  <= not cpu_req_toggle_reg;
 							cpu_rdy_reg         <= '0';
-							cpu_fsm             <= CPU_WAIT_ACK;
+							cpu_fsm             <= CPU_REQ_PENDING;
+						end if;
+					when CPU_REQ_PENDING =>
+						-- Stage 2: hold the captured payload until the
+						-- arbiter signals "I have a CPU slot in 2 clk_sys."
+						-- Toggle req at that edge so the sink-side sees it
+						-- right before bus_ack_pulse_in fires.
+						if strobe_edge = '1' then
+							cpu_req_toggle_reg <= not cpu_req_toggle_reg;
+							cpu_fsm            <= CPU_WAIT_ACK;
 						end if;
 					when CPU_WAIT_ACK =>
 						-- Ack observed when synced toggle catches up to req.

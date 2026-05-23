@@ -49,11 +49,19 @@ entity bridge_tb is
 		-- tracks bus_di in real time. This is the regression net
 		-- against today's HEAD.
 		--
-		-- PASSTHROUGH_MODE='0' validates the F.1 MCP FSM at
-		-- tools/scpu_async_bridge_F1_backup.vhd; cpu_rdy drops on
-		-- request, rises on ack round-trip. Re-engages when F.3'
-		-- bridge rewrite lands.
-		PASSTHROUGH_MODE : std_logic := '1'
+		-- PASSTHROUGH_MODE='0' validates the F.3' two-stage MCP FSM
+		-- (latch on vpa/vda, toggle on synced strobe edge). cpu_rdy
+		-- drops on request, rises on ack round-trip. The bench's
+		-- model arbiter must drive bus_request_strobe periodically or
+		-- the bridge sits in CPU_REQ_PENDING forever.
+		PASSTHROUGH_MODE : std_logic := '1';
+
+		-- F.3' (2026-05-24): clk_sys cycles between strobe pulses. Models
+		-- the C64 arbiter's CYCLE_CPU0/4/8/C cadence (cpu_cyc fires on
+		-- every 4th sysCycle when turbo is fully on). The strobe is
+		-- otherwise unused — the model arbiter still schedules ack from
+		-- bus_vpa/vda assertion, so PASSTHROUGH_MODE='1' is unaffected.
+		STROBE_PERIOD : positive := 4
 	);
 end entity;
 
@@ -81,8 +89,10 @@ architecture sim of bridge_tb is
 	signal cpu_rdy     : std_logic;
 
 	-- Bus-side ack (model arbiter drives these)
-	signal bus_di        : unsigned(7 downto 0) := (others => '0');
-	signal bus_ack_pulse : std_logic := '0';
+	signal bus_di            : unsigned(7 downto 0) := (others => '0');
+	signal bus_ack_pulse     : std_logic := '0';
+	-- F.3' prefetch strobe (model arbiter drives this)
+	signal bus_request_strobe : std_logic := '0';
 
 	-- Bridge outputs to the bus (we only observe these)
 	signal bus_addr    : unsigned(15 downto 0);
@@ -204,6 +214,7 @@ begin
 			bus_vda_out      => bus_vda,
 			bus_di_in        => bus_di,
 			bus_ack_pulse_in => bus_ack_pulse,
+			bus_request_strobe_in => bus_request_strobe,
 
 			dbg_is_slow      => dbg_is_slow
 		);
@@ -228,29 +239,49 @@ begin
 		end if;
 	end process;
 
-	-- Model arbiter: watches bus_vpa/vda rising edge, waits
-	-- `stall_cycles` clk_sys ticks, then drives bus_di to the
-	-- expected_data value and pulses bus_ack_pulse_in high for
-	-- exactly one clk_sys cycle. Default ack='0' otherwise.
+	-- Model arbiter: emits two clk_sys signals
+	--   1. bus_request_strobe — single-cycle pulse every STROBE_PERIOD
+	--      clk_sys. Models C64 arbiter's cpu_cyc firing on CYCLE_CPU0/4/8/C.
+	--      The bridge's F.3' source FSM uses this to decide when to
+	--      dispatch its cross-domain toggle.
+	--   2. bus_ack_pulse — single-cycle pulse fired stall_cycles after
+	--      bus_vpa/vda rises (i.e., after the bridge issues its request
+	--      from CPU_WAIT_ACK). Models enableCpu_816.
+	--
+	-- The two are intentionally decoupled in the bench: a strobe can fire
+	-- with no pending request (wasted slot — the bridge ignores it from
+	-- CPU_IDLE) and a request can be in flight without strobes (it'll
+	-- pick up the next one). Matches HW behavior.
 	model_arb : process(clk_sys)
 		variable prev_vreq    : std_logic := '0';
 		variable wait_cnt     : integer   := 0;
 		variable pending      : std_logic := '0';
 		variable v_req_now    : std_logic := '0';
+		variable strobe_ctr   : integer   := 0;
 	begin
 		if rising_edge(clk_sys) then
-			-- Default: drive ack low each cycle unless we fire it below
-			bus_ack_pulse <= '0';
+			-- Default: drive ack + strobe low each cycle unless fired below
+			bus_ack_pulse      <= '0';
+			bus_request_strobe <= '0';
 
 			-- Edge-detect the bus request (vpa or vda asserted)
 			v_req_now := bus_vpa or bus_vda;
 
 			if reset = '1' then
-				prev_vreq := '0';
-				wait_cnt  := 0;
-				pending   := '0';
-				bus_di    <= (others => '0');
+				prev_vreq   := '0';
+				wait_cnt    := 0;
+				pending     := '0';
+				strobe_ctr  := 0;
+				bus_di      <= (others => '0');
 			else
+				-- Strobe cadence: pulse once every STROBE_PERIOD clk_sys
+				if strobe_ctr = STROBE_PERIOD - 1 then
+					bus_request_strobe <= '1';
+					strobe_ctr := 0;
+				else
+					strobe_ctr := strobe_ctr + 1;
+				end if;
+
 				if pending = '0' and v_req_now = '1' and prev_vreq = '0' then
 					-- New request: schedule the ack
 					pending  := '1';
