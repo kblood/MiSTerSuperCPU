@@ -2828,15 +2828,22 @@ begin
 		-- the alt slot itself (at CPU1/5/9/D). cpu_cyc then sees alt-slot
 		-- via a clean register output rather than a combinational LUT
 		-- cluster, avoiding the Step 2 wedge.
-		if (sysCycle = CYCLE_CPU1 or sysCycle = CYCLE_CPU5
-		    or sysCycle = CYCLE_CPU9 or sysCycle = CYCLE_CPUD)
-		   and scpu_fast_path = '1'
-		   and cs_ram = '1'
-		   and sdram_busy = '0' then
-			alt_fire_r <= '1';
-		else
+		-- HARD-GATED OFF 2026-05-23 after controlled-variable measurement
+		-- (RBF a993d7b7 alt_fire_r ON vs RBF 453a3380 both OFF) showed
+		-- bench COUNT-per-PASS bit-identical at ~2575 iter/window:
+		-- Step 5 alt_fire_r contributes 0% on Build B because the
+		-- SDRAM cycle (~4 clk32) is too long for any alt-slot fire to
+		-- be safe. Restore + retry on Build C's ~3-clk32 page-mode SDRAM.
+		-- See project_alt_fire_r_dead_on_buildB_2026_05_23.md in memory.
+		--if (sysCycle = CYCLE_CPU1 or sysCycle = CYCLE_CPU5
+		--    or sysCycle = CYCLE_CPU9 or sysCycle = CYCLE_CPUD)
+		--   and scpu_fast_path = '1'
+		--   and cs_ram = '1'
+		--   and sdram_busy = '0' then
+		--	alt_fire_r <= '1';
+		--else
 			alt_fire_r <= '0';
-		end if;
+		--end if;
 
 		-- Step 7b (2026-05-23): SuperRAM-only alt-fire at CPU3/7/B/F.
 		-- Sample at CPU2/6/A/E with predicate sdram_busy_cnt <= 1
