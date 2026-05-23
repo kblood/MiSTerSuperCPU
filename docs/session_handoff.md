@@ -127,32 +127,57 @@ Next probes (if pursuing this bug):
   target). Rules out a SuperRAM-side ZP shadow path.
 
 ## Suggested order of business next session
-1. **Build SuperRAM cpu_bound_bench analogue** (option A above) and
-   measure Step 7b vs OSD-turbo-off baseline. Decide whether to
-   commit Step 7b on the master branch or revert.
-2. If Step 7b shows the expected ~+25% gain, move to **option C**
-   (EXT slot reclaim) for an immediate +50% on top of that. Combined
-   path to ~7.5 MHz with mostly mechanical RTL.
-3. Phase F MCP is still the canonical multi-day path to 8 MHz.
-   Tackle after A+C exhaust the easy gains.
+
+Aligned with `docs/path_to_20mhz_plan.md` (canonical roadmap).
+Drop earlier ad-hoc "option C = EXT slot reclaim" idea — it conflicts
+with the canonical Milestone C (arbiter decouple). The plan's three
+milestones are the durable framing.
+
+1. **Validate Step 7b alt_fire_r2 effect using existing
+   `tools/test_cart/gen_superram_bench.py`** (commit `0e8ae0a`). The
+   bench stays in EMULATION mode end-to-end (no CLC; XCE; SEP), so it
+   sidesteps the native-mode round-trip corruption. Counter+code live
+   in bank $20 (DBR=$20 via PHK/PLB), Timer A polled directly (no
+   IRQ chain). Build → wrap as CRT (`prg_to_crt.py --entry-offset 12`,
+   the bench has a `10 SYS 2061` BASIC stub) → deploy via `load_crt.py`
+   → screenshot at t≈5s when COUNT stabilizes. Need TWO RBFs:
+   (a) HEAD = Step 7b ON (current `/media/fat/_Test/C64.rbf`, md5
+   `108dd072`); (b) Step 7b reverted = baseline. Ratio COUNT_a/COUNT_b
+   is the empirical Step 7b gain on SuperRAM workload. Expected ≈ +25%.
+2. **If Step 7b validates**, move to Milestone B per the canonical
+   plan: `clk_cpu=64 MHz` + F.3' arbiter prefetch (3-4 wk core work).
+   Pre-reqs prepped: bridge MCP source + GHDL two-domain bench on
+   `tools/scpu_async_bridge_F1_backup.vhd`.
+3. **Milestone A Build C revival** stays deferred per the 5-step
+   bisect (memory `project_milestone_a_buildC_bisect_2026_05_23.md`).
+   V5 best-attempt still bus-floats; next attempt should LATCH
+   is_hit/is_conflict one cycle before dispatch (NOT addr-latch — V8
+   already showed addr-latch wedges harder). Layer onto Milestone B
+   when revived.
 
 ## State on disk
-- Branch: `milestone-a-build-c-revival` (NOT `async-cpu-bridge` —
-  current branch differs from session-start git status; check
-  `git branch --show-current`).
-- Working tree changes: rebuild artefacts in `tools/test_cart/out/`
-  (gitignored), screenshots ditto.
-- Recent commits this session:
+- Branch: `async-cpu-bridge` (HEAD = `09cbe7b`).
+- Working tree: rebuild artefacts + screenshots gitignored; only
+  `c64.sv`, `C64.qpf`, `build_c64.ps1`, `tools/doom_v342_test.py`,
+  `.gitignore`, and `docs/session_handoff.md` show as `M`.
+- Recent commits this session (in order):
+  - `09cbe7b` native LDA al tight-loop probe + diagnostic note
+  - `602abb4` session_handoff CRT wrapper landed
   - `d693ca3` STA al/LDA al cart-boot probe + corrected findings
   - `4173954` CRT auto-boot wrapper tooling
-  - `0e8ae0a` bench bisect harness + SuperRAM bench generator
-    (carry-over from prior session)
-  - `09655d8` Step 7b alt_fire_r2 + mister_debug.py wrapper fix
-    (carry-over)
+- Pre-session (carry-over): `09655d8` Step 7b alt-fire SuperRAM-only,
+  `83d7716` Milestone A scaffolding Step 6, `80dc8d7` bridge baLoc
+  stall path restore.
+- BRIDGE_ACTIVE='0' / CACHE_ACTIVE='0' confirmed at
+  `C64_MiSTer/rtl/fpga64_sid_iec.vhd:2703`. The "Step 7b deployed"
+  win lives in the arbiter alt_fire_r2 logic, NOT in the bridge.
 
 ## Pointer to existing plans
-- `docs/async_bridge_mcp_handshake_plan.md` — Phase F.0–F.5 (F.0
-  Appendix A added; F.1 next when revived).
+- `docs/path_to_20mhz_plan.md` — CANONICAL Milestones A/B/C with
+  risk registers and exit criteria. Read this first.
+- `docs/async_bridge_mcp_handshake_plan.md` — Phase F.0–F.5
+  (subsumed by Milestone B in the path_to_20mhz plan, but the F.3'
+  prefetch detail still lives here).
 - `docs/supercpu_feature_status.md` — feature-completion checklist.
 - `.claude/skills/mtype/SKILL.md` — keyboard injection + CRT
   auto-boot reference.
