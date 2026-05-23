@@ -60,9 +60,21 @@ Suggested Milestone B starting tasks (cold-start checklist):
       `baLoc` gating, port-shape with new
       `bus_request_strobe_in` + `SAME_CLOCK_PASSTHROUGH` generic.
       Three open questions for the user at §5.
-- [ ] **NEXT:** answer open questions §5 in the F.3' sketch, then
-      start F.2 bench upgrade (two-domain GHDL) and bridge rewrite
-      per §6 of the sketch.
+- [x] User answered §5 questions: (q1) sink waits, no rollback;
+      (q2) parametric RATIO; (q3) F.3' first, Build C after.
+- [x] F.2 bench upgrade landed (commit `ac7caf1`):
+      `sim/scpu_async_bridge_tb/bridge_tb.vhd` now takes RATIO and
+      PASSTHROUGH_MODE generics. Validated all four configs:
+      RATIO={1,2,3} PASSTHROUGH=1 pass, RATIO=2 PASSTHROUGH=0
+      hard-fails on scenario E (correctly catches missing MCP FSM).
+      run_bridge_tb.ps1 takes -Ratio and -Passthrough params.
+- [ ] **NEXT:** restore the F.1 MCP FSM bridge from
+      `tools/scpu_async_bridge_F1_backup.vhd` as the active
+      `C64_MiSTer/rtl/scpu_async_bridge.vhd`. Add
+      `SAME_CLOCK_PASSTHROUGH` generic defaulting to '1' so HEAD
+      baseline is preserved; add `bus_request_strobe_in` port and
+      wire to `cpu_cyc` per `docs/async_bridge_f3_prefetch_sketch.md`.
+      Then validate against bench scenarios with PASSTHROUGH=0.
 
 ## State on disk (REVISED 3)
 
