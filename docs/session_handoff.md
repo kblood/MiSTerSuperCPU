@@ -1,12 +1,18 @@
-# Session handoff — 2026-05-23 end-of-session (FINAL)
+# Session handoff — 2026-05-23 end-of-session (FINAL — REVISED 2)
 
-## TL;DR — two bugs found and characterized
+## TL;DR — single root cause: Step 7b's alt_fire_r2
 
-1. **LDA al → STA pipeline hazard PINPOINTED** (commit `2407264`).
-   `LDA al $200080` immediately followed by any memory store wedges
-   the CPU on the very first LDA al from fresh cart-boot. **1 NOP
-   (or any 2-cycle imm op like LDA #imm, AND #imm) between fixes
-   it.** Always-on, reproducible.
+**One bug, two symptoms.** Both the "LDA al → STA pipeline hazard"
+and the "bank-$20 payload wedge" trace to Step 7b's `alt_fire_r2`.
+Re-running every probe on the alt_fire_r2-OFF build (RBF md5
+`a993d7b7`, bit-identical to pre-Step-7b baseline at `83d7716`)
+shows ALL previously-wedging variants pass.
+
+1. **~~LDA al → STA pipeline hazard~~ COLLAPSED into alt_fire_r2**
+   (commit `2407264` is now historical, not a workaround). drill3_c
+   (LDA al + 0 NOPs + STA $02) renders all markers + ♦ readback on
+   the OFF build. **NOP padding is NOT needed.** Bisect ladder
+   retained as regression net.
 
 2. **Bank-$20 wedge ROOT-CAUSED: Step 7b's `alt_fire_r2`** (commit
    `c254063` hard-gates it OFF). With alt_fire_r2 disabled, every
@@ -21,35 +27,35 @@
 
 3. **Step 7b is CURRENTLY BROKEN.** Its `alt_fire_r2` (fires CPU
    access at CPU3/7/B/F with predicate `sdram_busy_cnt <= 1` at
-   CPU2/6/A/E) causes bank-$20 wedge. Decision needed: REVERT the
-   commit, or DESIGN a proper gate (task #5).
+   CPU2/6/A/E) causes the wedge. The hazard mechanism: at CPU3, a
+   new SDRAM transaction starts while the prior transaction's data
+   has not yet propagated through `sdram_data → cartridge → ramDin
+   → cpuDi`, causing either bus collision in the SDRAM controller
+   or stale-byte latching by the CPU. Decision needed: REVERT
+   the commit, or DESIGN a proper gate (task #5).
 
 4. **Other earlier wins still valid**:
    - prg_to_crt ZP-indirect bootstrap (`b869136`)
    - Long-mode single ops via CRT-boot (`d693ca3`)
    - CRT wrapper toolchain (`4174d7c`, `4173954`)
 
-## Hazard #1: LDA al → STA pipeline drain
+## Hazard #1: ~~LDA al → STA pipeline drain~~ (was actually alt_fire_r2)
 
-### Pattern that wedges
-```
-LDA al $200080      ; SuperRAM long load (bank ≥ $20)
-STA $02             ; or any sta_zp / sta_abs / sta_al / JMP / LDA al
-```
+Re-ran the full drill3 ladder on the alt_fire_r2-OFF build:
+- `drill3_c` (LDA al + 0 NOPs + STA $02): renders all markers
+  AAAA BBBB CCCC DDDD EEEE FFFF + ♦ readback at col 24 + GGGG
+- `drill3_a` (LDA al + JMP self): F marker + ♦ readback + halt
+- `drill3_i` (LDA al + STA al): all markers + GGGG
+- `drill3_k` (LDA al + LDA al): all markers + GGGG
 
-### Pattern that works (1 NOP)
-```
-LDA al $200080
-NOP                 ; or LDA #imm, AND #imm, LDX/Y #imm — any 2-cycle pad
-STA $02
-```
+**NOP padding is no longer needed.** The "1 NOP fixes" rule was an
+unintended consequence of how the NOP changed the alt_fire_r2 timing
+relative to the next memory op. With alt_fire_r2 fully off, the
+hazard simply doesn't exist.
 
-Existing bench code with `AND #imm` or `LDA #imm` after `LDA al
-CIA1_ICR` is **already safe** (implicit pad). Hazard only triggers
-when CPU code lacks any pad before the next memory op.
-
-Verified by `tools/test_cart/copyback_fixed_nopped.crt` rendering
-the full round-trip (`♦5A` + hex "5A" + GGGG markers).
+The bisect ladder (`gen_copyback_drill[2,3].py`, `gen_copyback_fresh.py`)
+is retained as a regression net for future alt_fire_r2 reintroduction
+attempts.
 
 ## Hazard #2: Step 7b alt_fire_r2 / bank-$20
 
