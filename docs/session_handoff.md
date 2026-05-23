@@ -109,10 +109,15 @@ Mechanism (hypothesis):
 
 ## Suggested order of business next session
 
-1. **Decide on Step 7b fate.** REVERT cleanly (`git revert 09655d8`,
-   `9.5 ALMs back, no Doom/Wolf3D regression risk since alt_fire_r
-   stays`) OR pursue option (C) fix (~1-2 days RTL + Quartus
-   iteration).
+0. **Step 7b decision LOCKED IN: deferred to Build C.** Build B's
+   SDRAM cycle is ~4 clk32 (cnt=3 reset + 1 propagation), but
+   alt_fire_r2's CPU3 fire is only 3 clk32 after main CPU0 fire —
+   fundamentally too early. Strict cnt=0 predicate at CPU2 never
+   fires (cnt=1 from main slot 2 clk32 prior). Step 7b needs Build
+   C's faster ~3-clk32 page-mode SDRAM to fit. Restore + retry
+   once Build C revival lands (deferred per `project_milestone_a_
+   buildC_bisect_2026_05_23`). Active codebase stays with
+   alt_fire_r2 commented-out.
 2. **Apply NOP convention** to `gen_stalong_probe.py`'s multi-op
    probes that previously "corrupted screen" — they almost certainly
    wedge for the same reason as hazard #1.
