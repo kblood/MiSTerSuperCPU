@@ -22,6 +22,15 @@
    corruption pattern). Root cause TBD; NOT a blocker for Step 7b
    bench design (just structure the bench as "write sweep then
    separate read sweep" rather than interleaved).
+5. **NEW: `gen_superram_bench.py` (EMU-mode) ALSO wedges** when
+   wrapped as CRT and deployed (commit `4174d7c`). Reproducibly hangs
+   mid-draw of "PASS  $----" header — only "PA" renders, char 3 of
+   the third draw call (STA $04AA) never lands. CIA2 NMI mask in
+   bootstrap did NOT fix it (NMI was not the cause). Pure bank-0 6510
+   STA-abs path so long-mode opcodes are NOT implicated. Means
+   option A (validate Step 7b via this bench) is **still blocked**;
+   needs UART instrumentation to bisect the wedge location.
+   Screenshots: `tools/test_cart/out/superram_bench_t{10s,30s}.png`.
 
 ## What changed in this session
 - `tools/test_cart/prg_to_crt.py` — new. Bootstrap inits
