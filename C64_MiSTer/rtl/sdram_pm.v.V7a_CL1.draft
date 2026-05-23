@@ -52,7 +52,10 @@ module sdram_pm (
 localparam RASCAS_DELAY   = 3'd2;   // tRCD>=20ns -> 2 cycles@64MHz
 localparam BURST_LENGTH   = 3'b000; // 000=none, 001=2, 010=4, 011=8
 localparam ACCESS_TYPE    = 1'b0;   // 0=sequential, 1=interleaved
-localparam CAS_LATENCY    = 3'd2;   // 2/3 allowed
+// V7a (2026-05-23): CAS_LATENCY 2 -> 1. MT48LC16M16A2 supports CL=1 at
+// our 64 MHz clock (tAC ~5.5ns << 15.6ns period). Saves one clk64 per
+// access. Combined with V6 cycle-shorten, brings cycle 6 -> 5 clk64.
+localparam CAS_LATENCY    = 3'd1;   // V7a: was 3'd2
 localparam OP_MODE        = 2'b00;  // only 00 (standard operation) allowed
 localparam NO_WRITE_BURST = 1'b1;   // 0= write burst enabled, 1=only single access write
 
@@ -76,12 +79,10 @@ always @(posedge clk) begin
 	// start a new cycle in rising edge of ce
 	if(ce && !last_ce) q <= 3'd1;
 	if(q || reset) q <= q + 3'd1;
-	// V6 (2026-05-23): cycle-shorten early-exit. After sample at q=5
-	// (STATE_READ), force q back to 0 next clock. Skips q=6/q=7 padding,
-	// trims cycle from 8 → 6 clk64 = 25% throughput gain over Build B.
-	// Same shape as Build B otherwise (no page-mode logic, no row tracking).
+	// V7a (2026-05-23): cycle-shorten + CL=1 -> sample at q=4 (was q=5),
+	// exit at q=4. Cycle 6 -> 5 clk64. Combined with V6's early-exit shape.
 	// Must be the LAST q assignment to win the NBA race vs the increment.
-	if (q == 3'd5 && !reset) q <= 3'd0;
+	if (q == 3'd4 && !reset) q <= 3'd0;
 end
 
 // Backpressure for future bus arbitration.
