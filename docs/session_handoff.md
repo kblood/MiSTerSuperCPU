@@ -52,12 +52,17 @@ Suggested Milestone B starting tasks (cold-start checklist):
       `milestone-b-cdc-rewrite`
 - [x] Restore F.1 MCP FSM as `tools/scpu_async_bridge_F1_backup.vhd`
       (out-of-tree, 363 lines from commit 7f9dced)
-- [ ] **NEXT:** F.3' arbiter prefetch design sketch per
-      `docs/async_bridge_phase_f_revised.md §F.3'`. Read
-      `fpga64_sid_iec.vhd:2864` (cpu_cyc_s / enableCpu shift
-      register) and identify where `cpu_prefetch_window` at
-      `cpu_cyc_s(0)` should fan out to the bridge's
-      `bus_request_strobe_in` port.
+- [x] F.3' arbiter prefetch design sketch landed at
+      `docs/async_bridge_f3_prefetch_sketch.md` (2026-05-23):
+      latency budget at 2:1 clock ratio, `cpu_cyc` (combinational,
+      2 clk_sys ahead of `enableCpu`) chosen as strobe source over
+      `cpu_cyc_s(0)`, cancel path via existing `dma_active` /
+      `baLoc` gating, port-shape with new
+      `bus_request_strobe_in` + `SAME_CLOCK_PASSTHROUGH` generic.
+      Three open questions for the user at §5.
+- [ ] **NEXT:** answer open questions §5 in the F.3' sketch, then
+      start F.2 bench upgrade (two-domain GHDL) and bridge rewrite
+      per §6 of the sketch.
 
 ## State on disk (REVISED 3)
 
