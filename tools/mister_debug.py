@@ -457,9 +457,32 @@ def cmd_keys(args):
             mtype_args = ' '.join(mtype_tokens)
             print(f"Sending keys: {raw[:80]}...")
         else:
-            # Shell-quote the whole thing if it contains special chars
-            escaped = raw.replace("'", "'\\''")
-            mtype_args = f"'{escaped}'"
+            # Mixed-mode tokenizer: each whitespace token is either an
+            # mtype special key (enter, f12, etc.), a wait:N directive,
+            # or a text run. Special/wait tokens emit one mtype argv each;
+            # contiguous text runs are merged into one quoted argv so the
+            # user can still type a multi-word phrase without losing spaces.
+            mtype_tokens = []
+            text_run = []
+
+            def flush_text():
+                if not text_run:
+                    return
+                phrase = ' '.join(text_run)
+                escaped = phrase.replace("'", "'\\''")
+                mtype_tokens.append(f"'{escaped}'")
+                text_run.clear()
+
+            for tok in tokens:
+                low = tok.lower()
+                if low in MTYPE_KEYS or low.startswith('wait:'):
+                    flush_text()
+                    mtype_tokens.append(low)
+                else:
+                    text_run.append(tok)
+            flush_text()
+
+            mtype_args = ' '.join(mtype_tokens) if mtype_tokens else f"'{raw}'"
             print(f"Sending keys: {raw[:80]}...")
 
     if _send_keys_mtype(mtype_args):

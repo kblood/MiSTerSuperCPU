@@ -1,135 +1,114 @@
-# Session handoff — 2026-05-23 (V8 page-mode addr-latch attempt + V6 reconfirm + 10x roadmap)
+# Session handoff — 2026-05-23 (Step 7b alt-fire SuperRAM-only + long-opcode wall)
 
 ## TL;DR
-Two flavors built/tested this session on top of `83d7716` (Milestone A
-scaffolding):
+1. **Step 7b alt_fire_r2 RTL added** (uncommitted as of writing this doc;
+   commit comes with this file). Adds a CPU3/7/B/F alt-fire term ORed
+   into `cpu_cyc`, gated on `scpu_fast_path AND cs_ram AND
+   sdram_busy_cnt <= 1`. Bank-0 accesses keep the original 4-MHz cadence
+   (boot path intact). SuperRAM accesses theoretically get 5 MHz.
+2. **Step 7b RBF built & deployed** — `output_files/C64.rbf`, md5
+   `108dd072`. Earlier confirmed: bank-0 ZP bench scales identically to
+   pre-7b ($1166 ≈ $115A on full4x), so no bank-0 regression.
+3. **SuperRAM-resident bench attempted but BLOCKED**: `STA al` and
+   `LDA al` (long-mode opcodes $8F/$AF) crash → BASIC cold-start on
+   both Step 7b AND v356 RBFs. Tested every variant (emu mode, native
+   mode, with PHK/PLB, bank $00, bank $20, addresses $80/$500/etc).
+   Existing `gen_sta_long_test.py` was aspirational — also crashes.
+4. **Tooling fixes**: `tools/mister_debug.py` keys wrapper now properly
+   tokenizes mixed text+key input (was typing the word "enter"
+   literally). New `.claude/skills/mtype/SKILL.md` documents the mtype
+   API and the wrapper gotcha.
 
-1. **V6 reconfirm** — Build B + V6 cycle-shorten (`if (q == 3'd5 && !reset)
-   q <= 3'd0;`). md5 `a993d7b7`. **Boots clean** — KERNAL READY, PC
-   $E5CD keyboard wait loop, VW=AC=1 (VIC ack chain healthy). Bench
-   shows $0001DC same as Build B (bench is I/O-bound on $D012/$DC0D so
-   V6's 25% SDRAM throughput improvement is invisible).
-2. **V8 = V5 + addr-latch** — preserved at
-   `rtl/sdram_pm.v.V8_addrlatch_FAILED.draft`. md5 `022076ba`.
-   **Wedges WORSE than V5**: PC stuck at $00:$0002 with 16 BRK pushes
-   per UART frame ($30 SP drop), M ring shows continuous vector
-   fetches at $FFFF/$FFB4/$FF34 — CPU is bricked at boot, never gets
-   past reset vector. Earlier than V5's $0109+ wedge.
+## Where speed actually stands
+- **Bank-0 CPU-bound**: 4 MHz cap empirically confirmed via
+  `gen_cpu_bound_bench.prg` (CIA1 Timer A one-shot + ZP INC loop):
+  off=$0451, smart4x=$044B, full4x=$115A → 4.02× scaling. Smart-mode
+  doesn't help because `$D07A/$D07B` are stubbed.
+- **SuperRAM throughput**: UNMEASURED. Step 7b's theoretical +25%
+  benefit (4 MHz → 5 MHz) can only be validated by code that runs
+  from bank $20, which our bench generator can't produce because long
+  opcodes crash. Workaround: use Doom/Wolf3D frame rate as a proxy
+  (Wolf3D pre/post-7b regression test = the actual validation).
 
-## Why V8 made things worse
-The "top suspect" identified at the end of the V5 bisect was that
-`is_hit`/`is_conflict` read `row_valid[req_bank]` combinationally on
-*live* `addr`, which might be in transition around the ce-edge.
+## The STA al / LDA al crash discovery
 
-The V8 fix introduced `reg [24:0] addr_l_r; always @(posedge clk)
-addr_l_r <= addr;` and routed every bank/row reference and ce-edge
-dispatch through `addr_l_r`. **But `addr_l_r` is captured 1 clk64
-BEFORE the ce-rising edge dispatch fires** (NBA semantics: at the
-dispatch posedge, the combinational reads of `addr_l_r` see the
-pre-edge value, which is the value captured 1 clk64 ago). With the
-arbiter's likely timing — clk32 posedge drives both addr and ce — the
-first clk64 posedge where `ce && !last_ce` fires reads `addr_l_r` that
-hasn't yet captured the new addr. **Result: dispatch sees the
-PREVIOUS access's bank/row.** At reset, addr_l_r=0 → row=0 → ACTIVE at
-row 0, then COLD READ → physical address 0, not $FFFC. CPU gets
-garbage as the reset vector → infinite BRK loop.
+Tested addresses, modes, RBFs:
+| Variant                          | Outcome              |
+| -------------------------------- | -------------------- |
+| `LDA al $000080` emu (Step 7b)   | crashes              |
+| `STA al $000080` emu (Step 7b)   | crashes              |
+| `STA al $000500` emu (v356)      | crashes              |
+| `STA al $200080` after XCE+SEP   | crashes              |
+| `STA al $000080` after PHK/PLB   | crashes              |
+| `CLC; XCE; SEC; XCE` (no long)   | works — labels OK    |
+| `CLC; XCE; SEP #$30` (no long)   | works — labels OK    |
+| `STA $D078` (regular abs)        | works — but flushes cache → loader crash if used while resident code is cached |
 
-**Conclusion**: the addr-latch is wrong direction. The CORRECT fix
-requires either (a) using live `addr` at ce-edge dispatch but
-guaranteeing addr stability via the arbiter (= Build C original,
-which wedged with the V5 signature for some OTHER reason), or (b)
-delaying dispatch by 1 clk64 to let addr_l_r catch up. Neither is
-trivially achievable from the current ce-edge structure.
+Microcode IS defined (`rtl/65C816/MCode.vhd:1309` for $8F STA LONG
+emits 5 cycles AAL/AAH/AB then REGL→[AB:AA]). So the CPU dispatches
+the instruction. The crash mechanism must be in:
+- cpu_di mux not returning expected data on long-mode reads
+- The SDRAM/cart_ce arbiter wedging when AB ≠ DBR
+- The long-mode write path not reaching the I/O page when AB=$00
 
-## Path to 10x — architectural analysis
+The bug has been silently present since at least v356. Doom and
+Wolf3D never use long-mode loads/stores at runtime — they use REU
+DMA to populate SuperRAM, then `JML $20:$xxxx` to execute, with
+`PHK; PLB` to align DBR. That's why we never noticed.
 
-Current state: **4 MHz** when OSD turbo is on (4 fires per 32 clk32
-sysCycleDef at CPU0/4/8/C). Bench reports 1x ($0001DC at all OSD
-settings) because the speedtest itself is I/O-bound on $D012/$DC0D —
-the 4x is real but invisible to that probe.
+## Roadmap for 10x
 
-**Why 4 MHz is the hard cap today**:
-- Arbiter fires CPU0/4/8/C (spaced 4 clk32 apart)
-- V6 SDRAM cycle = 6 clk64 = 3 clk32 busy
-- `sdram_busy_cnt` is set to 3 at any cpu_cyc fire that drives an
-  SDRAM transaction (= bank-$00 RAM AND SuperRAM via cart_ce)
-- alt_fire_r latch at CPU1 sees sdram_busy=1 → never latches → alt-slot
-  is dormant on V6/Build B
-- Comment at `fpga64_sid_iec.vhd:786-789` confirms: "On Build B
-  (counter=3, 4-clk32 SDRAM cycle) sdram_busy=1 at CPU1 so alt_fire_r
-  latches 0 → no alt fire → bit-identical behaviour to Step 2 /
-  bisect-1. On Build C HIT (counter=1) alt_fire_r latches 1 → CPU2
-  fires next clk32 → 8 MHz cadence."
+Current ceiling = 4 MHz. Target = 20 MHz (5x more) or interim 10 MHz
+(2.5x more). Step 7b's +1 MHz (if it works) doesn't move the needle.
 
-**Three viable paths to 10x — all major work**:
-1. **Build C HIT path** (`docs/path_to_20mhz_plan.md` Milestone A
-   continuation). Page-mode HIT = 5 clk64 = 2.5 clk32 busy. Counter
-   becomes 1. alt_fire_r latches 1 at CPU1 → alt-slot at CPU2 fires →
-   8 MHz cap. **Blocker**: V5/V8 wedge mechanism still unsolved.
-   Bench needs bypass of the I/O floor to even verify the throughput
-   gain.
-2. **Phase F MCP** (`docs/async_bridge_mcp_handshake_plan.md`,
-   commit `e1147a6`). Boost clk_cpu to 64 MHz (2x current 32 MHz).
-   With a correct CDC handshake the CPU can issue ~2x as many bus
-   accesses per sysCycleDef. **Blocker**: F.1c-f all wedged at
-   PC:000000 (see memory `project_phaseF1c_BRIDGE_ACTIVE_1_wedge.md`).
-   Needs SAME_CLOCK generic OR pre-emptive capture redesign.
-3. **Arbiter rewrite** for sub-cycle scheduling. With V6 SDRAM (3
-   clk32 busy), max throughput = 32/3 = 10.67 fires per sysCycleDef.
-   Need a brand-new scheduler that fires every 3 clk32 regardless of
-   the current CYCLE_CPUx alignment. Step 2 alt-slot attempt
-   (CPU2/6/A/E) wedged Doom with both OUTER and INNER busy gates;
-   Step 6 registered-fire fix is in place but dormant. Untested
-   above the alt-slot: full scheduler rewrite.
+Real paths:
+- **Phase F MCP redesign** (committed plan: `docs/async_bridge_mcp_handshake_plan.md`).
+  Goal: clk_cpu=64 MHz with proper toggle-FF request/ack handshake.
+  Theoretical 2× cap → 8 MHz. Multi-day rewrite. F.1c-f variants in
+  memory all wedged via same-clock design flaw; needs F.1 rewrite at
+  32 MHz to baseline-match first.
+- **Reclaim EXT slots** for CPU. Memory says "EXT(8) + DMA(4) +
+  VIC(4) + CPU(16) = 32 total per 1MHz period". Reclaiming all EXT
+  slots → 16+8 = 24 CPU slots → +50% beyond current 4 MHz = 6 MHz.
+- **Investigate STA al / LDA al crash** first — would unlock a real
+  SuperRAM bench (currently we'd be measuring Step 7b blind via
+  Wolf3D-frame proxies).
 
-**Math summary**:
-| SDRAM cycle (clk32) | Max fires/sysCycleDef | Max CPU MHz | Status        |
-|---------------------|------------------------|-------------|---------------|
-| 4 (Build B)         | 4 (existing)           | 4           | working       |
-| 3 (V6)              | 4 (existing) / 8 alt   | 4 / 8       | V6 boots, alt dormant |
-| 3 (V6) + new arb    | 10                     | 10          | requires arb rewrite |
-| 2.5 (Build C HIT)   | 8 alt-slot enabled     | 8           | Build C wedges |
-| 2.5 + Phase F 64MHz | ~13                    | 13          | Phase F wedges |
+## Pre-emption: the long-opcode bug is the next chokepoint
+Without working long-mode opcodes, any "SuperRAM workload" bench we
+write has to embed itself via REU DMA. That's possible but high
+overhead per iteration. Investigating the cpu_di mux + SDRAM long-path
+routing is probably 1-2 days of GHDL bench work + UART probes.
 
-## Tree state (uncommitted)
-- Branch: `async-cpu-bridge` (HEAD `83d7716`)
-- `C64_MiSTer/rtl/sdram_pm.v` — V6 active (Build B + cycle-shorten)
-- `C64_MiSTer/rtl/sdram_pm.v.V6_cycle6.draft` — V6 reference
-- `C64_MiSTer/rtl/sdram_pm.v.V7a_CL1.draft` — failed CL=1 attempt
-  (MT48LC16M16A2-7E doesn't support CL=1)
-- `C64_MiSTer/rtl/sdram_pm.v.V8_addrlatch_FAILED.draft` — V5 + addr-latch
-  (this session's experiment; wedges at PC $0002)
-- `C64_MiSTer/rtl/sdram_pm.v.buildC.draft` / `.buildC_V5.draft` — prior
-  Build C variants
+Suggested order of business next session:
+1. Decide: pursue (A) STA al fix first, then SuperRAM bench, or (B)
+   Phase F MCP, or (C) ship Step 7b as-is and move to Wolf3D-proxy
+   measurement.
+2. If (A): GHDL bench targeting `STA al $00xxxx` in the existing
+   `sim/p65c816_tb/` — reproduce or rule out CPU-side; if clean,
+   reproduce in `sim/c64_reduced_harness/`.
+3. If (B): start with F.0 prep + F.1 bridge rewrite at clk_sys (no
+   PLL change yet).
+4. If (C): commit Step 7b, baseline Wolf3D/Doom frame counts pre/post
+   via UART F: counter, capture screenshots at fixed wall-times.
 
-## MiSTer state
-- Active core: V6 RBF on `/media/fat/_Test/C64.rbf` (md5 `a993d7b7`),
-  boots clean to KERNAL READY.
-- Daemon: healthy (UART responsive, /tmp/CORENAME free).
+## State on disk now
+- Working tree changes:
+  - `C64_MiSTer/rtl/fpga64_sid_iec.vhd` — Step 7b (will be committed
+    with this session)
+  - `tools/mister_debug.py` — keys wrapper tokenizer fix
+  - `tools/test_cart/gen_superram_bench.py` — bench generator (does
+    not run due to long-opcode crash; preserved as reference)
+  - `tools/test_cart/gen_test_steps.py` — bisect harness used to find
+    the long-opcode crash
+  - `.claude/skills/mtype/SKILL.md` — new skill
+- MiSTer state: Step 7b RBF (md5 `108dd072`) deployed and loaded
+  (current as of session end).
+- `output_files/C64.rbf` and `builds/...108dd072-dirty.rbf` both hold
+  Step 7b.
 
-## Next-session entry points (in priority order)
-1. **Build a CPU-bound bench** that bypasses $D012/$DC0D so the 4x →
-   10x progression is actually measurable. Pattern: CIA1 Timer A
-   one-shot with IRQ-driven termination + tight ZP-only inner loop.
-   ~half-day work; unblocks every subsequent throughput experiment.
-2. **Revisit Build C wedge** with a different hypothesis: NOT addr
-   stability (V8 confirms addr-latch is wrong direction). Candidates:
-   (a) refresh-storm under load (V4's `refresh_pending` stays high
-   if every idle gets a new ce-edge), (b) row_open/row_valid update
-   race vs ce-edge dispatch (NBA semantics: row_open write at COLD
-   may not be visible to is_hit check 1 clk64 later), (c) GHDL bench
-   testbench coverage gap — bench has succeeded for every variant
-   that then wedged on HW.
-3. **Phase F MCP redesign** per `docs/async_bridge_mcp_handshake_plan.md`
-   updated entry "F.1c-f BRIDGE_ACTIVE wedge" (memory
-   `project_phaseF1c_BRIDGE_ACTIVE_1_wedge.md`). Required for Path 2.
-
-## Reference
-- Memory `project_milestone_a_buildC_bisect_2026_05_23.md` — prior V1-V5
-  bisect table.
-- Memory `project_milestone_a_buildC_wedge_2026_05_22.md` — early Build C
-  attempts.
-- Memory `project_phaseF_mcp_handshake_plan.md` — Phase F plan summary.
-- Memory `project_phaseF1c_BRIDGE_ACTIVE_1_wedge.md` — F.1c-f wedge.
-- `docs/path_to_20mhz_plan.md` — three-milestone plan with risk registers.
-- `docs/async_bridge_mcp_handshake_plan.md` — Phase F MCP detail.
+## Pointer to existing plans
+- `docs/async_bridge_mcp_handshake_plan.md` — Phase F.0–F.5 (still
+  the canonical multi-day path to 8 MHz).
+- `docs/supercpu_feature_status.md` — feature-completion checklist.
+- `.claude/skills/mtype/SKILL.md` — keyboard injection reference.

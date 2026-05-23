@@ -788,6 +788,15 @@ signal sdram_busy     : std_logic;
 -- identical behaviour to Step 2 / bisect-1. On Build C HIT (counter=1)
 -- alt_fire_r latches 1 → CPU2 fires next clk32 → 8 MHz cadence.
 signal alt_fire_r : std_logic := '0';
+
+-- Step 7b (2026-05-23): Conservative variant — alt-fire at CPU3/7/B/F
+-- gated on scpu_fast_path (SuperRAM bank ≠ $00 only). Previous Step 7
+-- (bank-0 safe) wedged KERNAL cold-init at $00:E357 from boot. This
+-- variant keeps bank-0 accesses on original cadence (boot path intact)
+-- while letting SuperRAM accesses (Doom, Wolf3D, long-mode bench) get
+-- the extra fire. Trade-off: bench's bank-0 ZP loop won't show
+-- speedup, but SuperRAM workloads should observe ~5 MHz vs 4.
+signal alt_fire_r2     : std_logic := '0';
 signal cpuWe        : std_logic;
 signal cpuWe_pre    : std_logic;
 signal cpuAddr      : unsigned(15 downto 0);
@@ -2755,6 +2764,9 @@ scpu_fast_path <= '1' when supercpu_en = '1'
                        and cs_io = '0'
                        and dma_active = '0' else '0';
 
+-- Step 7b (2026-05-23): no extra combinational helper needed —
+-- alt_fire_r2 reuses scpu_fast_path directly (already SuperRAM-only).
+
 -- Step 2 (2026-05-20): busy-counter backpressure infrastructure.
 -- Main-slot terms gated on sdram_busy='0'. With Build B's 8-clk64 SDRAM
 -- cycle, the counter is 0 at every CPU0/4/8/C boundary, so this gate is
@@ -2772,7 +2784,7 @@ cpu_cyc <= '1' when (sdram_busy = '0' and (
 				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' ) or
 				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1'))
-			)) or alt_fire_r = '1' else '0';
+			)) or alt_fire_r = '1' or alt_fire_r2 = '1' else '0';
 				
 process(clk32)
 begin
@@ -2824,6 +2836,23 @@ begin
 			alt_fire_r <= '1';
 		else
 			alt_fire_r <= '0';
+		end if;
+
+		-- Step 7b (2026-05-23): SuperRAM-only alt-fire at CPU3/7/B/F.
+		-- Sample at CPU2/6/A/E with predicate sdram_busy_cnt <= 1
+		-- (= going to be free next clk32). Gated on scpu_fast_path so
+		-- bank-0 accesses (KERNAL ROM, BASIC, ZP) stay on the original
+		-- 4-MHz cadence. SuperRAM accesses (Doom/Wolf3D recompiler code,
+		-- long-mode bench) get the extra fire = 5 MHz cap for those
+		-- workloads.
+		if (sysCycle = CYCLE_CPU2 or sysCycle = CYCLE_CPU6
+		    or sysCycle = CYCLE_CPUA or sysCycle = CYCLE_CPUE)
+		   and scpu_fast_path = '1'
+		   and cs_ram = '1'
+		   and sdram_busy_cnt <= "001" then
+			alt_fire_r2 <= '1';
+		else
+			alt_fire_r2 <= '0';
 		end if;
 
 		cpu_cyc_s <= cpu_cyc_s(0) & cpu_cyc;
