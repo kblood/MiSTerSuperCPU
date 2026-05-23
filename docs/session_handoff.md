@@ -1,159 +1,138 @@
-# Session handoff — 2026-05-23 end-of-session (REVISED)
+# Session handoff — 2026-05-23 end-of-session (FINAL)
 
-## TL;DR — bank-$20 wedge root cause found
+## TL;DR — two bugs found and characterized
 
-1. **Bisect bank-$20 wedge — ROOT CAUSE PINNED** (commit `2407264`).
-   `LDA al $200080` (or any long load from bank ≥ $20) immediately
-   followed by any memory store (`STA zp/abs/al`, `JMP self`, even a
-   back-to-back `LDA al`) wedges the CPU. **A single 2-cycle pad
-   (`NOP`, `LDA #imm`, `AND #imm`, `LDY #imm`) between the long load
-   and the next op restores correctness.** Always-on: triggers on the
-   very first LDA al from a totally fresh cart-boot, with no prior
-   SuperRAM state required. This is a real HW pipeline hazard,
-   reproducible in 1 PRG + 1 CRT wrap.
+1. **LDA al → STA pipeline hazard PINPOINTED** (commit `2407264`).
+   `LDA al $200080` immediately followed by any memory store wedges
+   the CPU on the very first LDA al from fresh cart-boot. **1 NOP
+   (or any 2-cycle imm op like LDA #imm, AND #imm) between fixes
+   it.** Always-on, reproducible.
 
-2. **Verified workaround**: `tools/test_cart/copyback_fixed_nopped.crt`
-   renders `♦5A` at row 0 col 24-27 (raw $5A screen-code + hex "5A")
-   plus all GGGG markers. SuperRAM round-trip is functional with NOP
-   padding.
+2. **Bank-$20 wedge ROOT-CAUSED: Step 7b's `alt_fire_r2`** (commit
+   `c254063` hard-gates it OFF). With alt_fire_r2 disabled, every
+   bank-$20 payload test now works:
+   - `gen_b20_border.crt`: border turns RED ($02).
+   - `gen_alive_nopped.crt`: "ALIVE BANK20" renders at row 6.
+   - `gen_superram_bench.crt`: COUNT/PASS counters update live;
+     **PASS advanced $028F → $0958 in 10s ≈ 174 passes/sec**.
+   The OFF-gated RBF (md5 `a993d7b7`) is **bit-identical** to the
+   pre-Step-7b baseline at `83d7716`, validating the controlled-
+   variable bisect.
 
-3. **Earlier bootstrap fix STILL VALID** (commit `b869136`). The
-   prg_to_crt ZP-indirect bootstrap is unrelated to this hazard. CRT
-   auto-boot stays production-grade for ≤ 7.9KB PRGs.
+3. **Step 7b is CURRENTLY BROKEN.** Its `alt_fire_r2` (fires CPU
+   access at CPU3/7/B/F with predicate `sdram_busy_cnt <= 1` at
+   CPU2/6/A/E) causes bank-$20 wedge. Decision needed: REVERT the
+   commit, or DESIGN a proper gate (task #5).
 
-4. **Long-mode single ops STILL VALID** (commit `d693ca3`). `STA al`,
-   `LDA al` single ops execute correctly. The bench wedge wasn't about
-   the instructions themselves — it was about ordering.
+4. **Other earlier wins still valid**:
+   - prg_to_crt ZP-indirect bootstrap (`b869136`)
+   - Long-mode single ops via CRT-boot (`d693ca3`)
+   - CRT wrapper toolchain (`4174d7c`, `4173954`)
 
-5. **Step 7b alt_fire_r2 RTL stays deployed** (commit `09655d8`,
-   RBF md5 `108dd072`). Validation against SuperRAM workload now
-   blocked only by point 6.
+## Hazard #1: LDA al → STA pipeline drain
 
-6. **NEXT BLOCKER: bank-$20 wedge is a SEPARATE bug from the LDA-al
-   hazard.** Verified via:
-   - `gen_alive_nopped.py` — bank-$20 payload writes "ALIVE BANK20"
-     to bank-$00 screen via STA al with NOPs before AND after every
-     memory op. **String does NOT appear.**
-   - `gen_b20_border.py` — minimal bank-$20 payload doing only
-     `LDA #$02 ; STA al $00:D020 ; JMP self` (turn border red).
-     **Border stays blue** (loader's pre-JML value).
+### Pattern that wedges
+```
+LDA al $200080      ; SuperRAM long load (bank ≥ $20)
+STA $02             ; or any sta_zp / sta_abs / sta_al / JMP / LDA al
+```
 
-   Loader pre-JML side effects (screen header, blue border, cache
-   flush) all land. JML appears to execute. But the bank-$20 payload
-   produces NO observable bank-$00 side effect, even when wrapped in
-   paranoid NOP padding. Either JML doesn't set PB=$20 correctly, or
-   instruction fetch from bank-$20 wedges, or long stores from PB=$20
-   to bank-$00 are silently dropped.
-
-   **Prime suspect: Step 7b's `alt_fire_r2` at
-   fpga64_sid_iec.vhd:2841-2856.** Fires CPU access at CPU3/7/B/F if
-   `scpu_fast_path AND cs_ram AND sdram_busy_cnt <= 1` at CPU2/6/A/E.
-   Likely lets a follow-up bus cycle fire before SuperRAM-side state
-   for the prior op settles — especially for instruction fetch from
-   bank-$20 right after a JML.
-
-## What changed this session
-
-### Toolchain
-- `gen_copyback_bisect.py` — 7-variant ladder v0..v6 progressively
-  adding copyback features to known-good `build_emu_sta_superram`
-  baseline. Pinpoints the wedge to v4's hex display block.
-- `gen_copyback_drill.py` — 6-variant drill inside v4's hex block.
-  Pinpoints to (LDA al + STA $02) = the minimum repro.
-- `gen_copyback_drill2.py` — 7-variant deeper drill. Shows (3rd LDA al
-  + STA $02) wedges but (STA $02 alone, no LDA al) renders. Also
-  (LDA #$5A + STA $02) renders → confirms SuperRAM read is the cause.
-- `gen_copyback_drill3.py` — NOP-pad sweep (0..6 NOPs) + JMP/STA al
-  variants. **1 NOP is sufficient.** Also confirms LDA-al-then-JMP-self
-  wedges; LDA-al-then-STA-al-bank20 wedges; LDA-imm-then-STA-zp works.
-- `gen_copyback_fresh.py` — confirms hazard from totally fresh state
-  with no prior SuperRAM ops. (1 LDA al + STA $02 from base() wedges.)
-- `gen_copyback_fixed.py` — full readback with NOP-after-LDA-al.
-  Renders `♦5A` + GGGG.
-- `run_copyback_bisect.py` — parametric multi-variant deploy + screenshot.
-  Set `$env:BISECT_MODULE='gen_X'` to run a specific generator's
-  variants. PowerShell required (Bash env-var syntax not supported).
-
-### Commits this session
-- `2407264` test_cart: bisect pins LDA-al → STA hazard (1 NOP fixes)
-- `0903443` docs: end-of-session handoff — full state rewrite (prior)
-- `3ae8868` test_cart: copyback probe — wedges even at single STA al
-- `b869136` fix(prg_to_crt): bootstrap copy uses ZP-indirect (THE FIX)
-
-## Hazard characterization (verified on RBF md5 108dd072)
-
-Pattern that **WORKS** (1 NOP / imm pad between long load and store):
+### Pattern that works (1 NOP)
 ```
 LDA al $200080
-NOP           ; or LDA #imm, AND #imm, LDX #imm, LDY #imm
-STA $02       ; or STA $0400, STA al $208001, JMP self, LDA al
+NOP                 ; or LDA #imm, AND #imm, LDX/Y #imm — any 2-cycle pad
+STA $02
 ```
 
-Pattern that **WEDGES** (no pad):
-```
-LDA al $200080
-STA $02       ; CPU freezes here, no marker after this appears
-```
+Existing bench code with `AND #imm` or `LDA #imm` after `LDA al
+CIA1_ICR` is **already safe** (implicit pad). Hazard only triggers
+when CPU code lacks any pad before the next memory op.
 
-Bench code with `AND #imm` after `LDA al CIA1_ICR` is **already safe**
-(implicit pad). New code must explicitly insert NOPs.
+Verified by `tools/test_cart/copyback_fixed_nopped.crt` rendering
+the full round-trip (`♦5A` + hex "5A" + GGGG markers).
 
-## Where Step 7b stands
+## Hazard #2: Step 7b alt_fire_r2 / bank-$20
 
-- RTL alt_fire_r2 term in `fpga64_sid_iec.vhd` gated on
-  `scpu_fast_path AND cs_ram AND sdram_busy_cnt <= 1` for CPU2/6/A/E
-  slots. **Almost certainly the source of the hazard** — likely allows
-  a follow-up bus cycle (CPU3/7/B/F slot?) to fire while a SuperRAM
-  read is still in its 3-stage pipeline (`superram_enable_delay`).
-- RBF: `output_files/C64.rbf` md5 `108dd072`. Deployed at
-  `/media/fat/_Test/C64.rbf`.
-- Bank-0 bench (`cpu_bound_bench.prg`): off=$0451, smart4x=$044B,
-  full4x=$115A → 4.02× scaling. **Empirically capped at 4 MHz.**
-- SuperRAM bench: re-validation pending. Either (a) apply NOP fix
-  in payload's LDA-abs-after-DBR=$20 paths, OR (b) fix RTL.
+### Pattern that wedges
+Step 7b's alt_fire_r2 in `fpga64_sid_iec.vhd:2848-2856` fires CPU
+access at CPU3/7/B/F when `scpu_fast_path AND cs_ram AND
+sdram_busy_cnt <= 1` is true at CPU2/6/A/E. Symptom: JML to
+bank-$20:$8000 succeeds but bank-$20 payload produces no
+observable bank-$00 side effects.
+
+Mechanism (hypothesis):
+- Main CPU access fires at CPU0, sdram_busy_cnt resets to 3.
+- Cnt decrements 3→2→1 by CPU2.
+- alt_fire_r2 latches at CPU2 (cnt=1 → predicate true).
+- CPU3 cpu_cyc='1' from alt_fire_r2 — new SDRAM transaction.
+- Old transaction is still in flight (cnt=1 means 1 clk32 of
+  decrement left, but SDRAM data hasn't propagated to ramDin →
+  cpuDi yet).
+- Either SDRAM controller mishandles back-to-back triggers, OR
+  CPU latches stale cpuDi byte for the prior LDA's read result.
+
+### Fix options (task #5)
+- **A) Revert Step 7b commit `09655d8`.** Simplest. Loses the
+  intended SuperRAM 5 MHz boost.
+- **B) Strict predicate `sdram_busy_cnt = 0`.** Probably never
+  fires after a main slot (cnt=1 at CPU2 from main slot CPU0 fire).
+- **C) Gate on `sdram_ready_sync(1)='1' since last cpu_cyc`.**
+  Requires an extra "fresh data available" latch. Most likely to
+  preserve the perf intent without the hazard.
+- **D) Move alt_fire_r2 to CPU4/8/C/0** = same as main slot —
+  degenerate.
+
+## State on disk
+
+- Branch: `milestone-a-build-c-revival`
+  - HEAD: `c254063` (alt_fire_r2 OFF gate)
+  - RBF deployed: `/media/fat/_Test/C64.rbf` md5 `a993d7b7`
+- `C64_MiSTer/rtl/fpga64_sid_iec.vhd:2854-2862` has the alt_fire_r2
+  block commented out. **DO NOT COMMIT TO MASTER in this state** —
+  this build is for analysis only. Either revert Step 7b cleanly
+  or implement a proper fix before any master merge.
+- Memory entries:
+  - `project_lda_al_sta_hazard_2026_05_23.md` (hazard #1)
+  - `project_superram_bench_wedge_2026_05_23.md` (prior — now
+    largely superseded by the alt_fire_r2 finding)
+- Test artifacts in `tools/test_cart/out/` (gitignored):
+  - `copyback_fixed_nopped*` (hazard #1 workaround proof)
+  - `b20_border_probe*` (alt_fire_r2 confirmation)
+  - `superram_alive_probe_nopped*` (alive proof)
+  - `superram_bench_step7b_off*` (bench live counters)
 
 ## Suggested order of business next session
 
-1. **Build a Step-7b-OFF RBF** by either commenting out `alt_fire_r2`
-   in `cpu_cyc` (fpga64_sid_iec.vhd:2787) or hard-coding alt_fire_r2
-   to '0' in the process at line 2841. ~30 min Quartus. Re-run
-   `gen_b20_border.py` against the OFF build — if border turns red,
-   alt_fire_r2 IS the hazard, and the RTL fix is to add an extra
-   busy_cnt tick (or wait for `sdram_ready_sync` rising edge) before
-   asserting it.
-2. **If alt_fire_r2 isn't it**, investigate JML PB-set behavior in
-   `rtl/P65C816/` (search for JML opcode $5C handling) and the
-   instruction-fetch-from-bank-$20 path through `scpu_sdram_addr`
-   mux and `superram_enable_delay`.
-3. **Once bank-$20 wedge resolved**, capture Step 7b ratio with
-   alt_fire_r2 ON vs OFF. If ratio ≥ +20%, commit Step 7b to
-   `master`. If <+10%, revert.
-4. **Apply the NOP convention to `gen_stalong_probe.py`**'s
-   multi-op SuperRAM probes that previously "corrupted" — they
-   probably wedge for the same reason as task 1's hazard.
-5. **Move to Milestone B** per `docs/path_to_20mhz_plan.md`.
+1. **Decide on Step 7b fate.** REVERT cleanly (`git revert 09655d8`,
+   `9.5 ALMs back, no Doom/Wolf3D regression risk since alt_fire_r
+   stays`) OR pursue option (C) fix (~1-2 days RTL + Quartus
+   iteration).
+2. **Apply NOP convention** to `gen_stalong_probe.py`'s multi-op
+   probes that previously "corrupted screen" — they almost certainly
+   wedge for the same reason as hazard #1.
+3. **Measure baseline-vs-alt_fire_r ratio**: capture
+   `superram_bench` PASS/sec with current OFF build (alt_fire_r ON,
+   alt_fire_r2 OFF) vs a build with **both** alt-fires off. If
+   ratio ~1.0, alt_fire_r never actually fires (Step 5 may also
+   be dead). If ratio >1.0, alt_fire_r is contributing.
+4. **Move to Milestone B** per `docs/path_to_20mhz_plan.md` once
+   Step 7b decision is locked in.
+
+## Commits this session
+
+- `2407264` test_cart: bisect pins LDA-al → STA hazard (1 NOP fixes)
+- `8fbe7cf` test_cart: bank-$20 wedge is NOT the LDA-al hazard
+- `44d9de9` docs: session_handoff — LDA-al → STA hazard pinpointed
+- `ed8b72a` docs: handoff — bank-$20 wedge → alt_fire_r2-OFF RBF
+- `c254063` fpga64_sid_iec: hard-gate alt_fire_r2 OFF (proves cause)
 
 ## Pointers
 
 - `docs/path_to_20mhz_plan.md` — CANONICAL Milestones A/B/C.
-- `tools/test_cart/copyback_fixed_nopped.crt` — verified workaround
-  reference. md5 of screenshot: `24f73907`.
-- Memory entries:
-  - `project_lda_al_sta_hazard_2026_05_23.md` (NEW — root cause)
-  - `project_superram_bench_wedge_2026_05_23.md` (prior — now superseded)
-  - `project_sta_al_lda_al_crash.md` (long-mode opcode validation)
+- `C64_MiSTer/rtl/fpga64_sid_iec.vhd:2841-2862` — alt_fire_r2 block.
+- `tools/test_cart/gen_b20_border.py` — minimal alt_fire_r2 probe.
+- `tools/test_cart/superram_bench_step7b_off.png` — first bench
+  with live data.
 
-## How to resume on a fresh shell
-
-```powershell
-cd C:\LLM\C64\MiSTerSuperCPU
-git log --oneline -5            # confirm commit 2407264 visible
-# Resume on the bench fix:
-code tools/test_cart/gen_superram_bench.py     # add NOPs after LDA al / LDA abs (DBR=$20)
-# Or jump to RTL investigation:
-code C64_MiSTer/rtl/fpga64_sid_iec.vhd         # search for alt_fire_r2
-```
-
-MiSTer IP `192.168.50.130`, root/1. Current RBF md5 `108dd072` at
-`/media/fat/_Test/C64.rbf`. Don't touch `/media/fat/_Computer/` —
-vanilla rbfs only.
+MiSTer IP `192.168.50.130`, root/1. RBF md5 `a993d7b7` at
+`/media/fat/_Test/C64.rbf`. Don't touch `/media/fat/_Computer/`.
