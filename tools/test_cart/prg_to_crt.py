@@ -49,6 +49,13 @@ def assemble_bootstrap(load_addr, pages, entry):
     """
     boot = bytearray()
     boot += bytes([0x78, 0xD8, 0xA2, 0xFF, 0x9A])      # SEI; CLD; LDX #$FF; TXS
+    # Cart auto-boot doesn't reset CIA2. If a prior session left CIA2 ICR
+    # enabled with a timer running, an NMI will fire mid-bench, jump via
+    # KERNAL $FFFA -> $0318 (uninitialised RAM) -> garbage -> wedge. SEI
+    # masks IRQ only, never NMI. Mask CIA2 ICR ($DD0D bit7=0, bits6-0=$7F
+    # clears all sources) and ack any pending. Costs 7 bytes; universal.
+    boot += bytes([0xA9, 0x7F, 0x8D, 0x0D, 0xDD])      # LDA #$7F; STA $DD0D (mask all CIA2 IRQ/NMI)
+    boot += bytes([0xAD, 0x0D, 0xDD])                  # LDA $DD0D (ack pending)
     # Cart auto-boot skips KERNAL VIC init. Apply the minimum so any wrapped
     # bench that assumes RUN-from-BASIC can render. $D011=$1B (DEN=1, normal
     # mode), $D016=$C8 (CSEL=1, no multicolor), $D018=$14 (screen $0400,
