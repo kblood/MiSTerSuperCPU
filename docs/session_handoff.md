@@ -29,13 +29,28 @@
    RBF md5 `108dd072`). Validation against SuperRAM workload now
    blocked only by point 6.
 
-6. **NEXT BLOCKER**: re-validate `superram_bench.crt` with the NOP
-   workaround applied to the bank-$20 payload. Existing payload LDA
-   al's at CIA1_ICR have `AND #imm` after them (implicit pad → safe),
-   so the wedge probably isn't there. But `call_disp`'s `STA [$FB],Y`
-   path and the `LDA abs B20_TMP` reads in `display_byte` need
-   inspection — DBR=$20 makes those effectively long loads, and they
-   may be the hazard site.
+6. **NEXT BLOCKER: bank-$20 wedge is a SEPARATE bug from the LDA-al
+   hazard.** Verified via:
+   - `gen_alive_nopped.py` — bank-$20 payload writes "ALIVE BANK20"
+     to bank-$00 screen via STA al with NOPs before AND after every
+     memory op. **String does NOT appear.**
+   - `gen_b20_border.py` — minimal bank-$20 payload doing only
+     `LDA #$02 ; STA al $00:D020 ; JMP self` (turn border red).
+     **Border stays blue** (loader's pre-JML value).
+
+   Loader pre-JML side effects (screen header, blue border, cache
+   flush) all land. JML appears to execute. But the bank-$20 payload
+   produces NO observable bank-$00 side effect, even when wrapped in
+   paranoid NOP padding. Either JML doesn't set PB=$20 correctly, or
+   instruction fetch from bank-$20 wedges, or long stores from PB=$20
+   to bank-$00 are silently dropped.
+
+   **Prime suspect: Step 7b's `alt_fire_r2` at
+   fpga64_sid_iec.vhd:2841-2856.** Fires CPU access at CPU3/7/B/F if
+   `scpu_fast_path AND cs_ram AND sdram_busy_cnt <= 1` at CPU2/6/A/E.
+   Likely lets a follow-up bus cycle fire before SuperRAM-side state
+   for the prior op settles — especially for instruction fetch from
+   bank-$20 right after a JML.
 
 ## What changed this session
 
@@ -99,20 +114,23 @@ Bench code with `AND #imm` after `LDA al CIA1_ICR` is **already safe**
 
 ## Suggested order of business next session
 
-1. **Apply NOP workaround to `superram_bench` payload**, esp. the
-   `call_disp` chain in `gen_superram_bench.py`. Verify COUNT/PASS
-   update on-screen.
-2. **Capture Step 7b ratio** with alt_fire_r2 ON vs OFF (need a
-   second RBF with alt_fire_r2 gated to '0' — ~30 min Quartus). If
-   ratio ≥ +20%, commit Step 7b to `master`. If <+10%, revert.
-3. **OR investigate RTL fix**: gate `alt_fire_r2` with one extra
-   `sdram_busy_cnt` tick after a SuperRAM read (so the follow-up CPU
-   slot waits for the read to finish propagating). This would make
-   the bench correct without NOP padding and would not regress
-   alt-fire's win on pure write streams.
+1. **Build a Step-7b-OFF RBF** by either commenting out `alt_fire_r2`
+   in `cpu_cyc` (fpga64_sid_iec.vhd:2787) or hard-coding alt_fire_r2
+   to '0' in the process at line 2841. ~30 min Quartus. Re-run
+   `gen_b20_border.py` against the OFF build — if border turns red,
+   alt_fire_r2 IS the hazard, and the RTL fix is to add an extra
+   busy_cnt tick (or wait for `sdram_ready_sync` rising edge) before
+   asserting it.
+2. **If alt_fire_r2 isn't it**, investigate JML PB-set behavior in
+   `rtl/P65C816/` (search for JML opcode $5C handling) and the
+   instruction-fetch-from-bank-$20 path through `scpu_sdram_addr`
+   mux and `superram_enable_delay`.
+3. **Once bank-$20 wedge resolved**, capture Step 7b ratio with
+   alt_fire_r2 ON vs OFF. If ratio ≥ +20%, commit Step 7b to
+   `master`. If <+10%, revert.
 4. **Apply the NOP convention to `gen_stalong_probe.py`**'s
    multi-op SuperRAM probes that previously "corrupted" — they
-   probably wedge for the same reason.
+   probably wedge for the same reason as task 1's hazard.
 5. **Move to Milestone B** per `docs/path_to_20mhz_plan.md`.
 
 ## Pointers
