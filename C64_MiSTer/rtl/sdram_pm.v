@@ -69,6 +69,10 @@ localparam STATE_LAST      = 3'd7;   // last state in cycle
 
 reg [2:0] q /* synthesis noprune */;
 reg last_ce, last_refresh;
+// Forward declaration of `reset` so SystemVerilog-strict simulators (Questa
+// with -sv) accept the q-block. Quartus and Verilator accept either ordering;
+// kept the initial value below at its original location.
+reg [4:0] reset;
 always @(posedge clk) begin
 	last_ce <= ce;
 	last_refresh <= refresh;
@@ -101,7 +105,6 @@ initial data_valid = 1'b0;
 // into normal operation. Initialize the ram in the last 16 reset cycles (cycles 15-0)
 initial reset = 5'h1f;
 
-reg [4:0] reset;
 always @(posedge clk) begin
 	if(init)	reset <= 5'h1f;
 	else if((q == STATE_LAST) && (reset != 0)) reset <= reset - 5'd1;
@@ -143,7 +146,9 @@ assign dout_lo = dout_r[7:0];   // always low byte, no bt dependency
 reg [7:0] dout_reu_r;
 assign dout_reu = dout_reu_r;
 
-always @(posedge clk) begin
+// Named-block alias so the bench-side compilers (Questa without -sv) accept
+// the declarations on lines below. Quartus/Verilator accept either form.
+always @(posedge clk) begin : main_clk_block
 	reg [8:0] caddr;
 	reg [7:0] wrdata;
 	reg       wr;
