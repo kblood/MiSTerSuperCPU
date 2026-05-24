@@ -331,11 +331,17 @@ pll pll
 //       domain via a posedge-detect FSM in the bridge.
 //   (c) Derive a fresh CPU enable from the bridge's ack arrival
 //       (effectively (b) re-using the existing ack toggle).
-// See memory/project_f3_enable_cpu_enable_cdc_2026_05_24.md for full
-// analysis. Keeping clk_cpu=clk_sys for now; the bridge stays in
-// passthrough (BRIDGE_ACTIVE='0', SAME_CLOCK_PASSTHROUGH='1' in
-// fpga64_sid_iec.vhd:2703-2709).
-wire clk_cpu = clk_sys;
+// F.3' enable retry (2026-05-24, Path B): root cause was NOT a CPU
+// enable CDC sync issue, it was clk_cpu>clk_sys MCP path skew --
+// cpu_enable fired 1 clk_cpu BEFORE cpu_rdy went high, so P65C816's
+// internal EN=RDY AND CE never asserted. Fixed by deriving cpu_enable
+// inside the bridge on the SAME clk_cpu edge as cpu_rdy release.
+// Validated at RATIO=1/2/3 in sim/scpu_async_bridge_tb/cpu_in_bridge_tb.vhd
+// with real P65C816. fpga64_sid_iec.vhd:2649 now drives CPU enable from
+// bridge.cpu_enable_out; bridge generics: BRIDGE_ACTIVE='1' +
+// SAME_CLOCK_PASSTHROUGH='0' (EFF_BRIDGE_ACTIVE='1').
+// See memory/project_f3_mcp_data_path_broken_on_hw_2026_05_24.md.
+wire clk_cpu = clk64;
 
 wire [63:0] reconfig_to_pll;
 wire [63:0] reconfig_from_pll;

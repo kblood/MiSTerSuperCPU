@@ -836,6 +836,7 @@ signal cpu816_vpa_raw     : std_logic;
 signal cpu816_vda_raw     : std_logic;
 signal cpu816_di_to_cpu   : unsigned(7 downto 0);
 signal cpu816_rdy_to_cpu  : std_logic;
+signal cpu816_enable_to_cpu : std_logic;
 signal cpu816_dbg_is_slow : std_logic;
 signal cpuIO_816    : unsigned(7 downto 0);
 signal nmi_ack_816  : std_logic;
@@ -2650,7 +2651,15 @@ cpu_65c816_inst: entity work.cpu_65c816
 port map (
 	clk => clk_cpu,
 	reset => reset,
-	enable => enableCpu_816,
+	-- F.3' enable CDC fix (2026-05-24): drive enable from the bridge's
+	-- cpu_enable_out. In passthrough mode (EFF_BRIDGE_ACTIVE='0') the
+	-- bridge passes enableCpu_816 through unchanged → bit-identical to
+	-- baseline. In MCP mode (EFF_BRIDGE_ACTIVE='1') the bridge fires
+	-- cpu_enable on the same clk_cpu edge it releases cpu_rdy, so the
+	-- CPU sees EN=RDY AND CE true simultaneously (project_f3_mcp_
+	-- data_path_broken_on_hw_2026_05_24.md root cause). Verified at
+	-- RATIO=1/2/3 in sim/scpu_async_bridge_tb/cpu_in_bridge_tb.vhd.
+	enable => cpu816_enable_to_cpu,
 	nmi_n => irq_cia2 and nmi_n,
 	nmi_ack => nmi_ack_816,
 	irq_n => irq_cia1 and irq_vic and irq_n and irq_ext_n,
@@ -2700,17 +2709,14 @@ port map (
 -- preserving baseline behavior bit-for-bit.
 scpu_async_bridge_inst: entity work.scpu_async_bridge
 generic map (
-	-- F.3' enable attempted 2026-05-24 (RBF bcde5e56); wedged on CPU
-	-- enable CDC, not on the bridge. Reverted to passthrough until
-	-- the cpu_65c816 enable signal is also redesigned. See c64.sv:329
-	-- and memory/project_f3_enable_cpu_enable_cdc_2026_05_24.md.
-	BRIDGE_ACTIVE          => '0',
+	-- F.3' enable retry 2026-05-24: bridge's cpu_enable_out now aligned
+	-- with cpu_rdy_out release on the same clk_cpu edge, so EN=RDY AND CE
+	-- both true simultaneously. Validated at RATIO=1/2/3 in sim with real
+	-- P65C816 (sim/scpu_async_bridge_tb/cpu_in_bridge_tb.vhd). EFF_BRIDGE_
+	-- ACTIVE = '1' AND NOT '0' = '1' → MCP path drives all CPU-side outputs.
+	BRIDGE_ACTIVE          => '1',
 	CACHE_ACTIVE           => '0',
-	-- F.3' safety gate kept ON until the enable-CDC fix lands.
-	-- EFF_BRIDGE_ACTIVE = BRIDGE_ACTIVE AND NOT SAME_CLOCK_PASSTHROUGH
-	-- = '0' AND NOT '1' = '0', so the bridge's MCP FSM is generated
-	-- but masked.
-	SAME_CLOCK_PASSTHROUGH => '1'
+	SAME_CLOCK_PASSTHROUGH => '0'
 )
 port map (
 	clk_cpu        => clk_cpu,
@@ -2725,6 +2731,7 @@ port map (
 	cpu_vda_in     => cpu816_vda_raw,
 	cpu_di_out     => cpu816_di_to_cpu,
 	cpu_rdy_out    => cpu816_rdy_to_cpu,
+	cpu_enable_out => cpu816_enable_to_cpu,
 
 	bus_addr_out     => cpuAddr_816,
 	bus_addr_hi_out  => addr_hi_816,

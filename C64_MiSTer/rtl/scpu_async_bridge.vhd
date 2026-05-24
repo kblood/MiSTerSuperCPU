@@ -70,6 +70,15 @@ port (
 	cpu_di_out     : out unsigned(7 downto 0);
 	cpu_rdy_out    : out std_logic;
 
+	-- F.3' enable CDC (2026-05-24): 1-clk_cpu pulse, asserted on the SAME
+	-- clk_cpu edge that releases cpu_rdy_out from CPU_WAIT_ACK->CPU_IDLE.
+	-- This guarantees cpu_enable_out and cpu_rdy_out are both '1' in the
+	-- same clk_cpu cycle, so P65C816's internal EN=RDY AND CE actually
+	-- fires. Without this, sync chain skew at clk_cpu>clk_sys puts enable
+	-- and rdy in adjacent (non-overlapping) clk_cpu cycles -> wedge.
+	-- Verified in sim/scpu_async_bridge_tb/cpu_in_bridge_tb.vhd (2026-05-24).
+	cpu_enable_out : out std_logic;
+
 	-- Bus side (legacy arbiter, clk_sys domain)
 	bus_addr_out     : out unsigned(15 downto 0);
 	bus_addr_hi_out  : out unsigned(7 downto 0);
@@ -159,6 +168,10 @@ architecture rtl of scpu_async_bridge is
 
 	-- Stall signal driven to the CPU.
 	signal cpu_rdy_reg         : std_logic := '1';
+
+	-- F.3' enable CDC (2026-05-24): pulses '1' for exactly one clk_cpu when
+	-- WAIT_ACK -> IDLE transitions (same edge that releases cpu_rdy_reg).
+	signal cpu_enable_reg      : std_logic := '0';
 
 	------------------------------------------------------------------
 	-- Sink domain (clk_sys) signals
@@ -291,6 +304,7 @@ begin
 				cpu_fsm             <= CPU_IDLE;
 				cpu_req_toggle_reg  <= '0';
 				cpu_rdy_reg         <= '1';
+				cpu_enable_reg      <= '0';
 				cpu_req_addr_reg    <= (others => '0');
 				cpu_req_addr_hi_reg <= (others => '0');
 				cpu_req_do_reg      <= (others => '0');
@@ -299,6 +313,7 @@ begin
 				cpu_req_vda_reg     <= '0';
 				bus_di_capture_reg  <= (others => '0');
 			else
+				cpu_enable_reg <= '0';  -- default deassert each clk_cpu
 				case cpu_fsm is
 					when CPU_IDLE =>
 						cpu_rdy_reg <= '1';
@@ -336,6 +351,10 @@ begin
 							-- bus_di_in into bus_di_reg on that cycle).
 							bus_di_capture_reg <= bus_di_reg;
 							cpu_rdy_reg        <= '1';
+							-- Fire cpu_enable_out for exactly this clk_cpu
+							-- cycle. rdy goes '1' on the same edge, so the
+							-- CPU sees EN=RDY AND CE both true simultaneously.
+							cpu_enable_reg     <= '1';
 							cpu_fsm            <= CPU_IDLE;
 						end if;
 				end case;
@@ -437,5 +456,11 @@ begin
 	              bus_di_capture_reg when EFF_BRIDGE_ACTIVE = '1' else
 	              bus_di_in;
 	cpu_rdy_out <= cpu_rdy_reg when EFF_BRIDGE_ACTIVE = '1' else '1';
+
+	-- F.3' enable CDC: when MCP path active, drive CPU enable from the
+	-- bridge's WAIT_ACK->IDLE transition (aligned with rdy release). When
+	-- inactive (passthrough), pass through the legacy enableCpu_816 supplied
+	-- via bus_ack_pulse_in -- preserves baseline behavior bit-for-bit.
+	cpu_enable_out <= cpu_enable_reg when EFF_BRIDGE_ACTIVE = '1' else bus_ack_pulse_in;
 
 end architecture;

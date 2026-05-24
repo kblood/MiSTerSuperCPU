@@ -205,6 +205,7 @@ begin
 			cpu_vda_in     => cpu_vda,
 			cpu_di_out     => cpu_di,
 			cpu_rdy_out    => cpu_rdy,
+			cpu_enable_out => open,
 
 			bus_addr_out     => bus_addr,
 			bus_addr_hi_out  => bus_addr_hi,
