@@ -317,6 +317,12 @@ begin
 				case cpu_fsm is
 					when CPU_IDLE =>
 						cpu_rdy_reg <= '1';
+						-- F.3' Path B v2 (2026-05-24): sustain cpu_enable while
+						-- IDLE so multi-cycle P65C816 ops (16-bit reads, BCD,
+						-- native-mode interrupts) have enough EN=1 cycles to
+						-- complete. The CPU self-stalls via cpu_rdy=0 when the
+						-- next request fires below (IDLE→PENDING transition).
+						cpu_enable_reg <= '1';
 						if cpu_vpa_in = '1' or cpu_vda_in = '1' then
 							-- Stage 1: latch payload immediately, stall the
 							-- CPU. The payload crosses clk_cpu→clk_sys
@@ -330,6 +336,7 @@ begin
 							cpu_req_vpa_reg     <= cpu_vpa_in;
 							cpu_req_vda_reg     <= cpu_vda_in;
 							cpu_rdy_reg         <= '0';
+							cpu_enable_reg      <= '0';  -- override sustain when stalling
 							cpu_fsm             <= CPU_REQ_PENDING;
 						end if;
 					when CPU_REQ_PENDING =>
