@@ -78,12 +78,29 @@ Two parts in `C64_MiSTer/rtl/scpu_async_bridge.vhd`:
 
 ## What's NOT YET tested on v6
 
-- ⏳ Keyboard input actually reaches BASIC (CIA1 race suspicion remains)
-- ⏳ Lorenz 6510 regression (must still pass on v6)
+- ⏳ Lorenz 6510 regression (running in background, task `bqd2kf3x5`, 30-min cap)
 - ⏳ Doom / Wolf3D playback (real apps using REU + SuperRAM)
-- ⏳ SuperCPU benchmarks (the actual 20MHz goal)
 - ⏳ Demo / cycle-accurate timing (VIC raster effects)
 - ⏳ Cache re-enable (CACHE_ACTIVE was held inert through F.1-F.3)
+
+## Confirmed on v6 (post-boot)
+
+- ✓ **Keyboard input** — `PRINT "V6 KB TEST"` typed via mtype, parsed and rendered. CIA1 race concern resolved. (`tools/v6_kb_test/01_after_print.png`)
+- ✓ **POKE 1000 to screen** — `FOR I=0 TO 999:POKE 1024+I,1:NEXT` fills entire screen cleanly. No dropped writes through BASIC path. (`tools/v6_kb_test/06_poke_clean.png`)
+- 🟡 **SuperCPU speed benchmark — partial** — `scpu_speed_bench.prg` runs cleanly to completion. ALL FOUR phases ($D07A / $D07B / $D072 / $D073) return identical `$00064F` count = **~2.93x stock 1MHz, NOT 20MHz**. SCPU speed-control registers are non-functional in F.3'. Bridge MCP handshake (~16 clk_cpu per access) is the bottleneck. (`tools/v6_kb_test/08_prg_bench.png`)
+- 🔴 **scpu_speedtest.crt (Ultimax) wedges** — Labels render with some chars missing, count values never appear, PC stuck in cart-ROM tight loop. Ultimax cart-ROM fetch path has issues separate from main RAM bridge. (`tools/v6_kb_test/02_scpu_speedtest.png`)
+
+## F.3' status — bridge works, 20MHz does NOT
+
+The async bridge at clk_cpu=64MHz is **structurally correct** (boots,
+runs apps, no data corruption). But the effective CPU rate is bandwidth-
+limited by the MCP handshake to ~3MHz. Reaching 20MHz requires:
+1. **F.4 cache re-enable** — held inert through F.1-F.3 to keep
+   bisects simple; can now be revisited with the bridge proven sound.
+2. **F.3' arbiter prefetch** — sketch already in `docs/path_to_20mhz_plan.md`
+   and the F.3' prefetch doc.
+3. **(Maybe) wire SCPU $D07A/$D07B back to bridge enable gate** so
+   user requests for forced-1MHz are honored (currently ignored).
 
 ## Files touched
 
