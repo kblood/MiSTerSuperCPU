@@ -1,6 +1,146 @@
-# Session handoff — 2026-05-24 end-of-session (REVISED 7)
+# Session handoff — 2026-05-24 end-of-session (REVISED 8)
 
-## TL;DR — F.3' MCP data path is broken on hardware in every config tested
+## TL;DR — Path B root-caused the wedge in sim; HW deploy partial-success (PC advances from $0000 → $48BB)
+
+After REVISED 7's six-build dead end, Path B (real P65C816 in bench)
+ran. Result: bench reproduced the silicon wedge in 30 seconds and
+root-caused it as a 1-cycle sync skew between cpu_enable (synced from
+bus_ack_pulse) and cpu_rdy (synced from bus_ack_toggle via ack_sync
+chain). At clk_cpu>clk_sys, enable fires one clk_cpu BEFORE rdy goes
+high, so P65C816's internal `EN = RDY AND CE` never asserts.
+
+Sim-validated fix (commit `c1c8d5c`): added `cpu_enable_out` port to
+the bridge that fires on the SAME clk_cpu edge that releases
+cpu_rdy_reg (WAIT_ACK → IDLE). All 3 RATIOs (1, 2, 3) + 4 PT modes
+pass in sim.
+
+HW deploy (RBF md5 `c4499192`, clk_cpu=clk64, BRIDGE_ACTIVE='1',
+SAME_CLOCK_PASSTHROUGH='0'): one 3-second UART window captured before
+cd32 agent took the device. Symptom changed dramatically:
+
+| Symptom        | Pre-Path-B (6 wedges)   | Post-Path-B (this build)     |
+|----------------|-------------------------|------------------------------|
+| PC             | $0000 stable            | $48BB stable                 |
+| SP             | $0100 stable            | Cycling $012A-$01FE          |
+| Frame counter  | Stuck/barely moving     | Advancing 2/sample @60Hz     |
+| Mode           | Emulation (post-reset)  | Native 8-bit (CLC;XCE done)  |
+
+CPU IS running (~150 stack ops per 33ms sample), but PC sticky at
+$48BB suggests either tight loop, sticky debug reg, or multi-cycle-op
+starvation. Distinct from prior wedges — fix is working in the
+direction of progress, just not all the way.
+
+Full analysis at
+`memory/project_f3_pathB_partial_2026_05_24.md`.
+
+## Path B sim infrastructure (durable artifact)
+
+- `sim/scpu_async_bridge_tb/cpu_in_bridge_tb.vhd` — real `cpu_65c816`
+  + `scpu_async_bridge` + mock arbiter with 3-byte ROM. Detects
+  silicon-style wedge in 30 seconds.
+- `sim/scpu_async_bridge_tb/run_cpu_in_bridge_tb.ps1` — compiles full
+  P65C816 IP tree + bench, runs with RATIO/STOP_TIME generics.
+- Reusable for every future bridge variant. Always run before any
+  silicon iteration touching the bridge.
+
+## Next-session entry — pick one before another build
+
+1. **Cheapest probe: sustain cpu_enable while cpu_fsm=IDLE.** One-line
+   bridge change. Re-run bench to validate it doesn't regress.
+   Tests hypothesis #3 (multi-cycle ops need sustained enable).
+2. **Capture sustained UART** (30s+) once cd32 is done. Confirm
+   PC is genuinely sticky vs sample artifact. Compare against pre-
+   Path-B sanity baseline (RBF `036110c5`, KERNAL READY clean).
+3. **Extend cpu_in_bridge_tb** with real KERNAL ROM dump at
+   $E000-$FFFF + IRQ vectors. Current bench uses NOPs everywhere —
+   doesn't catch boot-sequence semantics. May reproduce the $48BB
+   stall in sim.
+4. **SignalTap the bridge** with Path B fix engaged. Capture
+   cpu_fsm + cpu_enable_reg + cpu_rdy_reg + cpu_req_toggle_reg over
+   first 1000 clk_sys after reset.
+
+Default recommendation: **option (3) followed by option (1)**.
+Extend the bench so it catches future bugs autonomously; then test
+the cheap fix.
+
+## State on disk (end of session)
+
+- Branch: `milestone-b-cdc-rewrite` HEAD `c1c8d5c`
+  (was `1cd6261` before Path B work).
+- RBF deployed to MiSTer: `c4499192` (Path B fix active). cd32 agent
+  has overwritten with CannonFodder; redeploy required next session.
+- Pre-Path-B sanity RBF: `036110c5` (commit `67451ff` = F.1' checkpoint
+  with passthrough). Use this if Path B build needs to be reverted.
+- Bisect stash from earlier today: `git stash@{0}` named
+  `F.3-prime-enable-bisect-deadend-2026-05-24` (preserved).
+
+## Three paths forward (UNCHANGED from REVISED 7, status updated)
+
+### Path A — SignalTap the bridge
+Still applicable. Now better-targeted: capture state during $48BB
+stall, not $0000 wedge. ~30 min per capture.
+
+### Path B — Real P65C816 in bench
+**LANDED.** Bench infrastructure exists, fix sim-validated, HW
+deploy showed progress. Continue iterating from here.
+
+### Path C — Abandon the bridge
+Lower priority now that Path B made progress. Keep as fallback if
+$48BB stall is not resolvable.
+
+## What NOT to do (lessons from this session)
+
+1. Don't iterate the enable scheme in isolation — sync-chain skew was
+   the bug, fixed properly only by deriving enable INSIDE the bridge
+   from the same FSM edge as rdy.
+2. Don't run bench scenarios alone before silicon — the model-CPU
+   bench passed 5/5 even when EFF_BRIDGE_ACTIVE=1 was utterly broken.
+   The cpu_in_bridge_tb.vhd is the new floor for credible validation.
+3. Don't deploy when cd32 agent has the lock. The MiSTer is shared.
+
+## Milestone status
+
+- Milestone A: **closed at ceiling** (unchanged).
+- Milestone B:
+  - [x] F.0/F.1'/F.2/F.3' design + impl + sanity.
+  - [x] F.3' enable attempts: 1 wedge → 6-build bisect → Path B fix.
+  - [-] **NEXT: resolve $48BB residual stall on HW.** Options (1)/(3)
+        above.
+  - [ ] F.4: Doom/Wolf3D/Lorenz regression (blocked).
+  - [ ] F.5: optional cache re-enable.
+- Milestone C: dormant.
+
+## Commits this session
+
+| commit  | what                                                     |
+|---------|----------------------------------------------------------|
+| 67451ff | bridge(F.3' enable rollback): document CPU enable CDC gap |
+| 1cd6261 | docs(handoff): F.3' enable 6-build bisect — MCP path broken |
+| c1c8d5c | bridge(F.3' Path B): cpu_enable_out aligned with rdy release |
+
+## Memory entries (new + updated)
+
+- `project_f3_pathB_partial_2026_05_24.md` (NEW — partial-success state)
+- `project_f3_mcp_data_path_broken_on_hw_2026_05_24.md` (LARGELY SUPERSEDED — fix found)
+- `project_f3_enable_cpu_enable_cdc_2026_05_24.md` (SUPERSEDED — wrong hypothesis)
+- `project_f3_two_stage_protocol_2026_05_24.md`
+
+## Pointers
+
+- `docs/path_to_20mhz_plan.md` — Milestones A/B/C overview.
+- `docs/async_bridge_phase_f_revised.md` — revised Phase F plan.
+- `C64_MiSTer/rtl/scpu_async_bridge.vhd:67-75` — new cpu_enable_out port.
+- `C64_MiSTer/rtl/fpga64_sid_iec.vhd:2649-2663` — wired enable from bridge.
+- `sim/scpu_async_bridge_tb/cpu_in_bridge_tb.vhd` — Path B bench (KEEP).
+
+MiSTer IP `192.168.50.130`, root/1. cd32 agent has the device as of
+03:26:50. Confirm `/tmp/CORENAME` and lock before any deploy.
+
+----
+
+# OLD CONTENT (REVISED 7) ARCHIVED BELOW for reference
+
+
 
 Continued from F.3' enable (yesterday's wedge analysis) by attempting
 3 enable-CDC fix options across both clk_cpu choices. **All 6 builds
