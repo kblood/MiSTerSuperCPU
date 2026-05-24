@@ -410,15 +410,18 @@ begin
 			write(l, string'("VERDICT: WEDGE REPRODUCED IN SIM --bridge HDL bug; PC=$0000 forever"));
 			writeline(output, l);
 			assert false report "wedge reproduced in sim" severity failure;
-		elsif dbg_pc = x"0210" then
-			write(l, string'("VERDICT: PASS --RMW loop terminated; reached $0210 halt sentinel. Bridge RMW works."));
+		-- $0210 = 4C 10 02 (JMP $0210). PC cycles through $0210/$0211/$0212
+		-- during halt; any of those means we reached the sentinel.
+		elsif (max_pc_observed = x"0210" or max_pc_observed = x"0211" or max_pc_observed = x"0212")
+		      and zp_ram(16#D6#) = x"05" then
+			write(l, string'("VERDICT: PASS --RMW loop terminated; reached $0210 halt sentinel with D6=$05. Bridge RMW works."));
 			writeline(output, l);
 		elsif max_pc_observed >= x"0208" and d6_increment_count = 0 then
 			write(l, string'("VERDICT: FAIL --INC $D6 never wrote (d6_increment_count=0). Bridge drops RMW writes."));
 			writeline(output, l);
 			assert false report "bridge drops RMW writes" severity failure;
 		elsif max_pc_observed >= x"0208" then
-			write(l, string'("VERDICT: PARTIAL --writes happened but loop didn't terminate. Stuck at PC = $"));
+			write(l, string'("VERDICT: PARTIAL --writes happened but loop didn't terminate cleanly. Stuck at PC = $"));
 			hwrite(l, std_logic_vector(dbg_pc));
 			writeline(output, l);
 		else
