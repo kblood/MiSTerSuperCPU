@@ -135,15 +135,14 @@ architecture rtl of scpu_async_bridge is
 	--     CPU has nothing to ask for.
 	--   • Resolves the "strobe replaces vpa/vda vs additional gate vs
 	--     two-stage" open question per docs/session_handoff.md.
-	-- v3 fix (2026-05-24): added CPU_POST_ACK_SETTLE between WAIT_ACK and
-	-- IDLE. WHY: bridge process at clk_cpu T samples cpu_addr_in/vpa/vda
-	-- as they were BEFORE edge T. CPU advances state AT edge T (when
-	-- en=1, rdy=1 set by bridge), so its NEW outputs propagate AFTER
-	-- edge T. Without a settle cycle, bridge in IDLE at T+1 would
-	-- re-capture the CPU's BEFORE-advance addr (the just-completed
-	-- request) instead of the NEW request. CPU_POST_ACK_SETTLE waits
-	-- one clk_cpu for CPU to advance and present its new addr.
-	type cpu_fsm_t is (CPU_IDLE, CPU_REQ_PENDING, CPU_WAIT_ACK, CPU_POST_ACK_SETTLE);
+	-- v6 (2026-05-24): 4-state FSM with explicit CPU_LATCH state. CPU_LATCH
+	-- is the single clk_cpu when fresh di is presented and the CPU advances.
+	-- WAIT_ACK match → LATCH (not IDLE) so the combinational gate (which
+	-- keys on cpu_fsm=IDLE) stays inactive while CPU latches. Then
+	-- LATCH → IDLE, where the gate forces en/rdy=0 if CPU has a NEW bus
+	-- request asserted; internal cycles (vpa=0, vda=0) pass through the
+	-- gate and advance freely via the registered en_reg=1, rdy_reg=1.
+	type cpu_fsm_t is (CPU_IDLE, CPU_REQ_PENDING, CPU_WAIT_ACK, CPU_LATCH);
 	signal cpu_fsm : cpu_fsm_t := CPU_IDLE;
 
 	-- Latched request payload — held stable from req-toggle until ack
@@ -370,18 +369,16 @@ begin
 							-- cycle. rdy goes '1' on the same edge, so the
 							-- CPU sees EN=RDY AND CE both true simultaneously.
 							cpu_enable_reg     <= '1';
-							-- v3 fix: settle one clk_cpu before IDLE so CPU
-							-- has time to advance and present its new addr
-							-- before we re-capture.
-							cpu_fsm            <= CPU_POST_ACK_SETTLE;
+							cpu_fsm            <= CPU_LATCH;
 						end if;
-					when CPU_POST_ACK_SETTLE =>
-						-- One-cycle pause. CPU advanced at last edge; its
-						-- new addr/vpa/vda are now propagated. Drop enable
-						-- back to default (0) and move to IDLE — IDLE will
-						-- re-assert enable=1 and capture the new request.
+					when CPU_LATCH =>
+						-- One clk_cpu where rdy=1, en=1, fsm=LATCH so the
+						-- combinational gate (keyed on fsm=IDLE) stays
+						-- inactive and the CPU latches the fresh di. Then
+						-- back to IDLE with regs still 1; the gate handles
+						-- stalling on any new vpa/vda the CPU now asserts.
 						cpu_rdy_reg    <= '1';
-						cpu_enable_reg <= '0';  -- CPU's already advanced; no need for sustain here
+						cpu_enable_reg <= '1';
 						cpu_fsm        <= CPU_IDLE;
 				end case;
 			end if;
@@ -481,12 +478,30 @@ begin
 	cpu_di_out <= cache_dout         when CACHE_ACTIVE  = '1' and cache_hit = '1' and cache_valid_dout = '1' else
 	              bus_di_capture_reg when EFF_BRIDGE_ACTIVE = '1' else
 	              bus_di_in;
-	cpu_rdy_out <= cpu_rdy_reg when EFF_BRIDGE_ACTIVE = '1' else '1';
+	-- v5 (2026-05-24): combinational stall gate. When EFF_BRIDGE_ACTIVE='1'
+	-- and bridge is in CPU_IDLE state, force rdy=0 AND en=0 the moment CPU
+	-- asserts vpa or vda. This prevents the CPU from latching stale
+	-- bus_di_capture_reg when transitioning from the previous request's
+	-- WAIT_ACK match into the next request's bus cycle. Without this gate,
+	-- the registered cpu_rdy_reg / cpu_enable_reg are still '1' at the edge
+	-- the CPU advances and presents new vpa/vda — CPU samples rdy=1 en=1
+	-- and latches whatever stale value cpu_di_out is currently showing.
+	-- During internal cycles (vpa=0 vda=0), the gate is transparent so the
+	-- CPU advances multi-cycle ops freely (this was v2's sustain-en intent).
+	cpu_rdy_out <= '0' when EFF_BRIDGE_ACTIVE = '1'
+	                   and cpu_fsm = CPU_IDLE
+	                   and (cpu_vpa_in = '1' or cpu_vda_in = '1')
+	              else cpu_rdy_reg when EFF_BRIDGE_ACTIVE = '1'
+	              else '1';
 
 	-- F.3' enable CDC: when MCP path active, drive CPU enable from the
 	-- bridge's WAIT_ACK->IDLE transition (aligned with rdy release). When
 	-- inactive (passthrough), pass through the legacy enableCpu_816 supplied
 	-- via bus_ack_pulse_in -- preserves baseline behavior bit-for-bit.
-	cpu_enable_out <= cpu_enable_reg when EFF_BRIDGE_ACTIVE = '1' else bus_ack_pulse_in;
+	cpu_enable_out <= '0' when EFF_BRIDGE_ACTIVE = '1'
+	                      and cpu_fsm = CPU_IDLE
+	                      and (cpu_vpa_in = '1' or cpu_vda_in = '1')
+	                 else cpu_enable_reg when EFF_BRIDGE_ACTIVE = '1'
+	                 else bus_ack_pulse_in;
 
 end architecture;

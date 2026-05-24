@@ -313,7 +313,7 @@ begin
 		variable l : line;
 	begin
 		wait for 200 ns;  -- skip reset
-		while now < 8000 ns loop
+		while now < 20000 ns loop
 			wait for 31 ns;  -- coarser to fit in log
 			write(l, string'("@"));
 			write(l, now);
@@ -339,6 +339,10 @@ begin
 			write(l, bus_request_strobe);
 			write(l, string'(" ack="));
 			write(l, bus_ack_pulse);
+			write(l, string'(" we="));
+			write(l, cpu_we);
+			write(l, string'(" do=$"));
+			hwrite(l, std_logic_vector(cpu_do));
 			write(l, string'(" di=$"));
 			hwrite(l, std_logic_vector(cpu_di));
 			writeline(output, l);
