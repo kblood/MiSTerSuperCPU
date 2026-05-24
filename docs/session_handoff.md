@@ -59,33 +59,58 @@ useful as a *user-visible* speed-control register that maps to real
 SCPU semantics, so the cpu_cyc gating in fpga64_sid_iec stays in.
 But the throttle is no longer load-bearing for correctness.
 
-### Verify next session
-1. **Lorenz regression** — does v8 passthrough still pass the t65 and
-   scpu Lorenz suites? Expected yes (passthrough is bit-equivalent to
-   pre-bridge baseline for arbiter wiring), but worth a 32-min run.
-   Compare against `tools/lorenz_run/scpu_2026-05-19_v356_baseline/`.
+### Verify next session — ALL COMPLETE (2026-05-24)
+1. **Lorenz regression** — ✅ PASSED. scpu mode 32-min run to
+   `eoriy - ok` (1922s), matches/exceeds v356 baseline.
+   Artifacts in `tools/lorenz_run/scpu/`.
 
-2. **Doom / Wolf3D** — both ran on v356 baseline; verify they still
-   run on v8. Tests in `tools/doom_v356_PLAY.py` and equivalents.
+2. **Doom / Wolf3D** — ✅ PASSED. Doom shows init banner
+   (`tools/test_doom_smoke/t120s.png`). Wolf3D shows title +
+   sound config menu (`tools/wolf3d_full/shot_240s.png`).
 
-3. **scpu_speed_bench / $D0B8 read decode** — the bench's $D0B8 read
-   returns FF (open bus) since v6. Separate pre-existing bug at
-   `fpga64_sid_iec.vhd:1680`. Not blocking but worth fixing for
-   bench credibility.
+3. **scpu_speed_bench / $D0B8 read decode** — ✅ WORKING (decode
+   was never broken — earlier "FF" claim was v7-MCP-timing
+   artifact). v8 bench shows 1MHZ=$01DC vs TURBO=$0650
+   (~3.4× ratio honored), $D0B8 STATUS=$00 (correct end-of-phase
+   value with both speed_1mhz and sys_1mhz cleared by $D07B/$D073
+   writes). Bench-via-MGL runner at `tools/run_scpu_speed_bench_mgl.py`,
+   evidence at `tools/scpu_speed_bench_mgl/t30s.png`.
 
 ### MCP path revival (only when needed for clk_cpu=64MHz)
 The bridge is preserved intact. Setting `SAME_CLOCK_PASSTHROUGH=>'0'`
-re-arms MCP. Before doing so, fix the vpa/vda hold:
-- **Candidate fix**: in `scpu_async_bridge.vhd`, drop
-  `bus_request_pending_reg` the cycle after `bus_ack_pulse_in`,
-  not after `bus_ack_toggle_reg` flips. Or gate `bus_vpa_out`/
-  `bus_vda_out` with a single-cycle pulse rather than the held
-  pending flag.
-- **Alternative**: route CIA1/CIA2 reads through a "direct" passthrough
-  path that bypasses MCP, since they're 1MHz-clocked anyway.
-- Test: load v6 RBF (commit 30b7dde) with the proposed fix, repeat
-  the v8 LOAD"$",8 / LOAD"*",8,1 test suite. Must pass before MCP
-  goes back into active configuration.
+re-arms MCP. The earlier "vpa/vda stretching cs_cia2" hypothesis
+is **WRONG**: `cs_cia2Loc` at `fpga64_buslogic.vhd:473` decodes
+purely from `cpuAddr(11..8)`, not vpa/vda. Likewise the C64
+fork's only consumer of `bus_vpa_out / bus_vda_out` is
+`opcode_fetch_pulse` (`fpga64_sid_iec.vhd:4412`) and it's
+already gated by `enableCpu_816`.
+
+The actual MCP-vs-passthrough delta lives in:
+- `cpu_di_out`: capture timing (bus_di_capture_reg vs bus_di_in
+  combinational).
+- `cpu_enable_out`: pulses on CPU_LATCH cycle vs every
+  bus_ack_pulse_in.
+- `cpuAddr` hold: in MCP path, addr is latched payload held for
+  full round-trip; in passthrough, addr is whatever the P65C816
+  presents that cycle. At clk_cpu=clk_sys the P65C816 also holds
+  addr between enable pulses, so the hold *length* should be
+  similar — but the *phase* alignment of addr changes vs
+  enableCpu_816 differs, which is what likely confuses CIA2's
+  internal phi2 sampling.
+
+Recommended next-session probe path (before any RTL edit):
+1. Build with BRIDGE_ACTIVE=1 + SAME_CLOCK_PASSTHROUGH=0 (re-arm MCP).
+2. SignalTap or UART-instrument `cpuAddr / enableCpu_816 / cs_cia2`
+   during a LOAD attempt — capture the actual edge timing relative
+   to CIA2's phi2.
+3. Differentially compare against the v8 passthrough capture at
+   the same wait point.
+4. Only then propose a fix targeting whichever phase mismatch
+   shows up.
+
+Test gate: load the v6 RBF (commit 30b7dde) with whatever fix the
+trace recommends, repeat the v8 LOAD"$",8 / LOAD"*",8,1 test
+suite. Must pass before MCP goes back into active configuration.
 
 ### Path to 20MHz target (unchanged)
 - F.3' arbiter prefetch (`docs/path_to_20mhz_plan.md`).
