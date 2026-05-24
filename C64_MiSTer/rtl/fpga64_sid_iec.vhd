@@ -1211,6 +1211,7 @@ signal supercpu_en_prev  : std_logic := '0';                            -- risin
 signal scpu_rom_vis      : std_logic := '1';                            -- '1' = SuperCPU ROM at $E000-$FFFF (Phase C uses)
 signal scpu_speed_1mhz   : std_logic := '0';                            -- $D07A=1, $D07B=0
 signal scpu_sys_1mhz     : std_logic := '0';                            -- $D072=1, $D073=0
+signal scpu_force_1mhz   : std_logic := '0';                            -- = scpu_speed_1mhz OR scpu_sys_1mhz; gates cpu_cyc turbo slots
 signal scpu_regs_enabled : std_logic := '1';                            -- $D07E enables, $D07F/$D07D disables
 signal scpu_hwenable     : std_logic := '0';                            -- ANY write to $D07E sets; $D07F/$D07D clears
 signal scpu_bootmap      : std_logic := '1';                            -- v343 retry: bootmap on at reset (kickstart needs it)
@@ -2806,12 +2807,22 @@ scpu_fast_path <= '1' when supercpu_en = '1'
 -- propagation when alt-slot inputs are folded into the same LUT. To be
 -- re-investigated together with Step 5 (Build C revival), where the
 -- alt-slot becomes actually useful (cycle=3 clk64, busy_cnt tighter).
+-- 2026-05-24: scpu_force_1mhz throttles cpu_cyc to a single CYCLE_CPUC slot
+-- per 1MHz period when software asserts $D072 (system 1MHz) or $D07A
+-- (SCPU 1MHz). Required so KERNAL IEC byte-receive ($EEAF) gets stock
+-- 1MHz CIA2 timing — without this, LOAD"*",8,1 wedges on the F.3' bridge
+-- (~3MHz effective). Bridge-side change deemed unnecessary: enableCpu_816 =
+-- cpu_cyc_s(1), so gating cpu_cyc here propagates through the bridge ack
+-- pulse naturally and makes the CPU advance at 1MHz with no MCP changes.
+scpu_force_1mhz <= scpu_speed_1mhz or scpu_sys_1mhz;
+
 cpu_cyc <= '1' when (sdram_busy = '0' and (
-				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' ) or
-				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' ) or
-				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' ) or
+				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
+				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
+				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
 				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1'))
-			)) or alt_fire_r = '1' or alt_fire_r2 = '1' else '0';
+			)) or (alt_fire_r = '1' and scpu_force_1mhz = '0')
+			   or (alt_fire_r2 = '1' and scpu_force_1mhz = '0') else '0';
 				
 process(clk32)
 begin

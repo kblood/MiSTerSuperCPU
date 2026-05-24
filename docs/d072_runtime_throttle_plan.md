@@ -16,7 +16,33 @@ SuperCPU avoids this by engaging `$D072` before disk operations — our
 bridge ignores `$D072`, so IEC LOAD is broken and **Lorenz regression
 cannot run on v6**. Hard merge blocker.
 
-## Proposed fix
+## Implementation (chosen 2026-05-24)
+
+**Not bridge-side, arbiter-side.** Throttle `cpu_cyc` (`fpga64_sid_iec.vhd:2809`)
+so only `CYCLE_CPUC` fires when `scpu_speed_1mhz='1'` or `scpu_sys_1mhz='1'`.
+Because `enableCpu_816 <= cpu_cyc_s(1)` (= cpu_cyc delayed 2 clk32 cycles),
+this propagates through the bridge's MCP ack pulse naturally — the bridge
+itself stays untouched, no port additions, no extra sync FFs, no bench
+rewrite required.
+
+```vhdl
+scpu_force_1mhz <= scpu_speed_1mhz or scpu_sys_1mhz;
+
+cpu_cyc <= '1' when (sdram_busy = '0' and (
+        (sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
+        (sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
+        (sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
+        (sysCycle = CYCLE_CPUC and (io_enable = '1' or cs_ram = '1'))
+    )) or (alt_fire_r = '1' and scpu_force_1mhz = '0')
+       or (alt_fire_r2 = '1' and scpu_force_1mhz = '0') else '0';
+```
+
+CYCLE_CPUC fires once per 1MHz period → exactly stock 6510 cadence.
+Turbo slots (CPU0/4/8) and Build-B alt-fire are disabled when 1MHz is
+forced. Bridge will still observe one ack pulse per 1MHz period and let
+the CPU advance once per period → 1MHz effective.
+
+## Original (rejected) approach
 
 `scpu_async_bridge.vhd:501-505` already has two enable paths:
 
