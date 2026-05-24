@@ -106,7 +106,17 @@ architecture sim of cpu_in_bridge_tb is
 	signal pc_ever_left_zero : std_logic := '0';
 	signal max_pc_observed   : unsigned(15 downto 0) := (others => '0');
 
-	-- Helper: ROM model
+	-- v3 RMW test (2026-05-24): zero-page RAM ($00:$00..$FF) writable.
+	-- Required to test INC $D6 (the silicon wedge instruction). Without
+	-- this, writes are dropped → INC loop appears wedged regardless of
+	-- whether the bridge actually issues writes.
+	type zp_ram_t is array (0 to 255) of unsigned(7 downto 0);
+	signal zp_ram : zp_ram_t := (others => x"00");
+	signal d6_increment_count : unsigned(15 downto 0) := (others => '0');
+
+	-- Helper: ROM model (v3 RMW test 2026-05-24)
+	-- Sequence: init $D5=5, then loop INC $D6 / CMP $D5 / BCC $0208 / JMP halt
+	-- Mirrors the SCPU kickstart wedge pattern at $48B6 exactly.
 	function rom_byte(a_hi : unsigned(7 downto 0); a_lo : unsigned(15 downto 0)) return unsigned is
 	begin
 		if a_hi /= x"00" then
@@ -116,14 +126,35 @@ architecture sim of cpu_in_bridge_tb is
 			when 16#FFFC# => return x"00";  -- reset vec lo
 			when 16#FFFD# => return x"02";  -- reset vec hi
 			when 16#FFFE# => return x"00";  -- irq vec lo
-			when 16#FFFF# => return x"02";  -- irq vec hi (loops back to ROM)
-			when 16#0200# => return x"4C";  -- JMP abs
-			when 16#0201# => return x"03";  -- target lo (jump to $0203)
-			when 16#0202# => return x"02";  -- target hi
-			when 16#0203# => return x"EA";  -- NOP at jump target
-			when 16#0204# => return x"4C";  -- another JMP
+			when 16#FFFF# => return x"02";  -- irq vec hi
+			-- $0200: LDA #$05
+			when 16#0200# => return x"A9";
+			when 16#0201# => return x"05";
+			-- $0202: STA $D5     (initialize $D5=5)
+			when 16#0202# => return x"85";
+			when 16#0203# => return x"D5";
+			-- $0204: LDA #$00
+			when 16#0204# => return x"A9";
 			when 16#0205# => return x"00";
-			when 16#0206# => return x"02";  -- jump back to $0200
+			-- $0206: STA $D6     (initialize $D6=0)
+			when 16#0206# => return x"85";
+			when 16#0207# => return x"D6";
+			-- $0208: INC $D6     (RMW — the suspect instruction)
+			when 16#0208# => return x"E6";
+			when 16#0209# => return x"D6";
+			-- $020A: LDA $D6
+			when 16#020A# => return x"A5";
+			when 16#020B# => return x"D6";
+			-- $020C: CMP $D5
+			when 16#020C# => return x"C5";
+			when 16#020D# => return x"D5";
+			-- $020E: BCC $0208   (-$08 -> back to INC)
+			when 16#020E# => return x"90";
+			when 16#020F# => return x"F8";
+			-- $0210: JMP $0210   (halt sentinel — reaching here = PASS)
+			when 16#0210# => return x"4C";
+			when 16#0211# => return x"10";
+			when 16#0212# => return x"02";
 			when others   => return x"EA";
 		end case;
 	end function;
@@ -216,6 +247,7 @@ begin
 	-- bus_ack_pulse with the ROM lookup result on bus_di.
 	-- ------------------------------------------------------------------
 	mock_arb : process(clk_sys)
+		variable di_v : unsigned(7 downto 0);
 	begin
 		if rising_edge(clk_sys) then
 			if reset = '1' then
@@ -249,7 +281,22 @@ begin
 				if pending_valid = '1' then
 					if ack_delay = "00" then
 						bus_ack_pulse <= '1';
-						bus_di        <= rom_byte(pending_addr_hi, pending_addr);
+						-- v3 RMW: bank $00, addr <$100 → use zp_ram (writable)
+						if pending_addr_hi = x"00" and pending_addr(15 downto 8) = x"00" then
+							if pending_we = '1' then
+								zp_ram(to_integer(pending_addr(7 downto 0))) <= pending_do;
+								-- $D6 increment counter for verdict signaling
+								if pending_addr(7 downto 0) = x"D6" then
+									d6_increment_count <= d6_increment_count + 1;
+								end if;
+								di_v := pending_do;  -- return value for echo
+							else
+								di_v := zp_ram(to_integer(pending_addr(7 downto 0)));
+							end if;
+						else
+							di_v := rom_byte(pending_addr_hi, pending_addr);
+						end if;
+						bus_di        <= di_v;
 						pending_valid <= '0';
 					else
 						ack_delay <= ack_delay - 1;
@@ -266,8 +313,8 @@ begin
 		variable l : line;
 	begin
 		wait for 200 ns;  -- skip reset
-		while now < 2000 ns loop
-			wait for 25 ns;
+		while now < 8000 ns loop
+			wait for 31 ns;  -- coarser to fit in log
 			write(l, string'("@"));
 			write(l, now);
 			write(l, string'(" PC=$"));
@@ -276,8 +323,14 @@ begin
 			write(l, cpu_vpa);
 			write(l, string'(" vda="));
 			write(l, cpu_vda);
-			write(l, string'(" addr=$"));
+			write(l, string'(" addr="));
+			hwrite(l, std_logic_vector(cpu_addr_hi));
+			write(l, string'(":$"));
 			hwrite(l, std_logic_vector(cpu_addr));
+			write(l, string'(" busAddr="));
+			hwrite(l, std_logic_vector(bus_addr_hi));
+			write(l, string'(":$"));
+			hwrite(l, std_logic_vector(bus_addr));
 			write(l, string'(" rdy="));
 			write(l, cpu_rdy);
 			write(l, string'(" en="));
@@ -339,15 +392,34 @@ begin
 		write(l, std_logic'image(pc_ever_left_zero));
 		writeline(output, l);
 
+		write(l, string'("D6 increment count = "));
+		write(l, to_integer(d6_increment_count));
+		writeline(output, l);
+		write(l, string'("zp_ram($D6) = $"));
+		hwrite(l, std_logic_vector(zp_ram(16#D6#)));
+		writeline(output, l);
+		write(l, string'("zp_ram($D5) = $"));
+		hwrite(l, std_logic_vector(zp_ram(16#D5#)));
+		writeline(output, l);
+
 		if pc_ever_left_zero = '0' then
 			write(l, string'("VERDICT: WEDGE REPRODUCED IN SIM --bridge HDL bug; PC=$0000 forever"));
 			writeline(output, l);
 			assert false report "wedge reproduced in sim" severity failure;
-		elsif max_pc_observed >= x"0200" then
-			write(l, string'("VERDICT: PASS --CPU reached the reset-vector target. Bridge works in sim."));
+		elsif dbg_pc = x"0210" then
+			write(l, string'("VERDICT: PASS --RMW loop terminated; reached $0210 halt sentinel. Bridge RMW works."));
+			writeline(output, l);
+		elsif max_pc_observed >= x"0208" and d6_increment_count = 0 then
+			write(l, string'("VERDICT: FAIL --INC $D6 never wrote (d6_increment_count=0). Bridge drops RMW writes."));
+			writeline(output, l);
+			assert false report "bridge drops RMW writes" severity failure;
+		elsif max_pc_observed >= x"0208" then
+			write(l, string'("VERDICT: PARTIAL --writes happened but loop didn't terminate. Stuck at PC = $"));
+			hwrite(l, std_logic_vector(dbg_pc));
 			writeline(output, l);
 		else
-			write(l, string'("VERDICT: PARTIAL --CPU advanced but did not reach $0200. Investigate further."));
+			write(l, string'("VERDICT: PARTIAL --CPU advanced but didn't reach loop start. Stuck at PC = $"));
+			hwrite(l, std_logic_vector(dbg_pc));
 			writeline(output, l);
 		end if;
 

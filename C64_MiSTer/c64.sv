@@ -341,7 +341,12 @@ pll pll
 // bridge.cpu_enable_out; bridge generics: BRIDGE_ACTIVE='1' +
 // SAME_CLOCK_PASSTHROUGH='0' (EFF_BRIDGE_ACTIVE='1').
 // See memory/project_f3_mcp_data_path_broken_on_hw_2026_05_24.md.
-wire clk_cpu = clk64;
+// v3 isolation (2026-05-24): clk_cpu=clk_sys to isolate clk domain
+// crossing from Path B bridge code. If this boots clean to KERNAL READY,
+// the v2 wedge at $48B6 is caused specifically by the async CDC, not
+// Path B bridge code. Pair with SAME_CLOCK_PASSTHROUGH='1' in
+// fpga64_sid_iec.vhd to fully bypass MCP FSM at same-clock.
+wire clk_cpu = clk_sys;
 
 wire [63:0] reconfig_to_pll;
 wire [63:0] reconfig_from_pll;

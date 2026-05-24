@@ -135,7 +135,15 @@ architecture rtl of scpu_async_bridge is
 	--     CPU has nothing to ask for.
 	--   • Resolves the "strobe replaces vpa/vda vs additional gate vs
 	--     two-stage" open question per docs/session_handoff.md.
-	type cpu_fsm_t is (CPU_IDLE, CPU_REQ_PENDING, CPU_WAIT_ACK);
+	-- v3 fix (2026-05-24): added CPU_POST_ACK_SETTLE between WAIT_ACK and
+	-- IDLE. WHY: bridge process at clk_cpu T samples cpu_addr_in/vpa/vda
+	-- as they were BEFORE edge T. CPU advances state AT edge T (when
+	-- en=1, rdy=1 set by bridge), so its NEW outputs propagate AFTER
+	-- edge T. Without a settle cycle, bridge in IDLE at T+1 would
+	-- re-capture the CPU's BEFORE-advance addr (the just-completed
+	-- request) instead of the NEW request. CPU_POST_ACK_SETTLE waits
+	-- one clk_cpu for CPU to advance and present its new addr.
+	type cpu_fsm_t is (CPU_IDLE, CPU_REQ_PENDING, CPU_WAIT_ACK, CPU_POST_ACK_SETTLE);
 	signal cpu_fsm : cpu_fsm_t := CPU_IDLE;
 
 	-- Latched request payload — held stable from req-toggle until ack
@@ -362,8 +370,19 @@ begin
 							-- cycle. rdy goes '1' on the same edge, so the
 							-- CPU sees EN=RDY AND CE both true simultaneously.
 							cpu_enable_reg     <= '1';
-							cpu_fsm            <= CPU_IDLE;
+							-- v3 fix: settle one clk_cpu before IDLE so CPU
+							-- has time to advance and present its new addr
+							-- before we re-capture.
+							cpu_fsm            <= CPU_POST_ACK_SETTLE;
 						end if;
+					when CPU_POST_ACK_SETTLE =>
+						-- One-cycle pause. CPU advanced at last edge; its
+						-- new addr/vpa/vda are now propagated. Drop enable
+						-- back to default (0) and move to IDLE — IDLE will
+						-- re-assert enable=1 and capture the new request.
+						cpu_rdy_reg    <= '1';
+						cpu_enable_reg <= '0';  -- CPU's already advanced; no need for sustain here
+						cpu_fsm        <= CPU_IDLE;
 				end case;
 			end if;
 		end if;

@@ -2716,6 +2716,12 @@ generic map (
 	-- ACTIVE = '1' AND NOT '0' = '1' → MCP path drives all CPU-side outputs.
 	BRIDGE_ACTIVE          => '1',
 	CACHE_ACTIVE           => '0',
+	-- v3 isolation (2026-05-24): keep MCP path ACTIVE but pair with
+	-- c64.sv clk_cpu=clk_sys (no async crossing). EFF_BRIDGE_ACTIVE
+	-- evaluates to '1' AND NOT '0' = '1'. If this boots clean to KERNAL
+	-- READY, v2's $48B6 wedge is caused specifically by the async CDC
+	-- (clk_cpu>clk_sys). If it wedges identically, the Path B bridge
+	-- code itself has a bug.
 	SAME_CLOCK_PASSTHROUGH => '0'
 )
 port map (
