@@ -1,6 +1,40 @@
-# Session handoff — 2026-05-24 end-of-session (REVISED 8)
+# Session handoff — 2026-05-24 end-of-session (REVISED 9)
 
-## TL;DR — Path B root-caused the wedge in sim; HW deploy partial-success (PC advances from $0000 → $48BB)
+## TL;DR — Path B v2 reaches CMD SuperCPU kickstart MENU at clk_cpu=64MHz
+
+After REVISED 8's v1 partial-success (PC=$48BB, but unclear what
+$48BB was), v2 (sustain-enable variant, commit `4116673`, RBF
+`0af2d5b9`) was built, deployed when cd32 freed the device, and
+captured screen + UART. **The MENU is the CMD SuperCPU kickstart
+boot screen.** Yellow text shows "Press F1" / "Press C=" prompts.
+This is the **first F.3' build to produce video output of any kind**.
+
+The PC=$48BB sticky observation is now identified: it's the keyboard
+polling loop in the kickstart-installed handler RAM. mtype.py
+keystrokes (f1, enter, space, 50× spam) don't advance the loop.
+Most likely cause: CIA1 read race at 64MHz — CPU polls ~50 MHz
+effective via the bridge, but CIA1 updates at 1 MHz phi2, so the
+CPU reads stale "no key" data faster than CIA1 can latch the new
+matrix state from the MiSTer USB-HID → keyboard translation.
+
+Full state at `memory/project_f3_pathB_v2_kickstart_menu_2026_05_24.md`.
+
+## What's WORKING (cumulative this session)
+
+- ✓ CPU advances past reset (was wedged at $0000 in 6 prior builds)
+- ✓ Enters native 8-bit mode (CLC; XCE executed)
+- ✓ Bootmap kickstart runs in $F8 EPROM
+- ✓ Handlers installed at $00:$801A-$8054
+- ✓ Bootmap cleared, control transferred
+- ✓ CMD SuperCPU MENU renders on HDMI (yellow text screen)
+- ✓ Frame counter advancing at 60 Hz
+- ✓ SP cycling rapidly (CPU executing instructions continuously)
+
+## What's NOT working
+
+- ✗ Keyboard input not advancing past the kickstart menu
+- ✗ Therefore KERNAL READY prompt not reached
+- ✗ Therefore Lorenz / Doom / Wolf3D regression blocked
 
 After REVISED 7's six-build dead end, Path B (real P65C816 in bench)
 ran. Result: bench reproduced the silicon wedge in 30 seconds and
@@ -43,25 +77,31 @@ Full analysis at
 - Reusable for every future bridge variant. Always run before any
   silicon iteration touching the bridge.
 
-## Next-session entry — pick one before another build
+## Next-session entry — pick one (HDL change vs verification first)
 
-1. **Cheapest probe: sustain cpu_enable while cpu_fsm=IDLE.** One-line
-   bridge change. Re-run bench to validate it doesn't regress.
-   Tests hypothesis #3 (multi-cycle ops need sustained enable).
-2. **Capture sustained UART** (30s+) once cd32 is done. Confirm
-   PC is genuinely sticky vs sample artifact. Compare against pre-
-   Path-B sanity baseline (RBF `036110c5`, KERNAL READY clean).
-3. **Extend cpu_in_bridge_tb** with real KERNAL ROM dump at
-   $E000-$FFFF + IRQ vectors. Current bench uses NOPs everywhere —
-   doesn't catch boot-sequence semantics. May reproduce the $48BB
-   stall in sim.
-4. **SignalTap the bridge** with Path B fix engaged. Capture
-   cpu_fsm + cpu_enable_reg + cpu_rdy_reg + cpu_req_toggle_reg over
-   first 1000 clk_sys after reset.
+1. **VICE differential.** Run xscpu64 with the same SCPU EPROM
+   image. Does the kickstart MENU appear in VICE? If yes, it's
+   expected behavior — narrow next probe to keyboard path. If no,
+   the menu is a v2 timing artifact — debug clock-rate effects on
+   the kickstart's $D0B6 / $D072 register reads.
+2. **Sanity baseline comparison.** Re-deploy RBF `036110c5` (pre-
+   Path-B passthrough). Does it ALSO show the SCPU menu (timing out
+   quickly), or boot straight to KERNAL READY without a menu? If
+   straight to READY, the menu is v2-specific = clk_cpu change
+   altered kickstart's behavior.
+3. **Stretch CIA1 reads in the bridge.** If race is suspected, gate
+   bus_di_in capture for I/O range ($D000-$DFFF) with an extra
+   1-clk_sys hold so CIA1 has time to settle. Bench-test, then
+   build. Risk: I/O timing changes might break other things.
+4. **Extend cpu_in_bridge_tb** with KERNAL ROM dump + CIA1 model.
+   Lets you reproduce the menu + keyboard polling in sim. Higher
+   investment but unlocks autonomous iteration.
+5. **SignalTap the bridge** during keyboard polling. Capture bus_di
+   path + bus_addr decode for accesses to $DC01. ~30 min/build.
 
-Default recommendation: **option (3) followed by option (1)**.
-Extend the bench so it catches future bugs autonomously; then test
-the cheap fix.
+Default recommendation: **option (1) then (2)** — verify scope BEFORE
+any HDL change. The bench can't currently model CIA1 keyboard, so
+sim won't help until extended (option 4).
 
 ## State on disk (end of session)
 
