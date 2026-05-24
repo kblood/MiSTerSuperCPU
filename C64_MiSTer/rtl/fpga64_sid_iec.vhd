@@ -2717,13 +2717,26 @@ generic map (
 	-- ACTIVE = '1' AND NOT '0' = '1' → MCP path drives all CPU-side outputs.
 	BRIDGE_ACTIVE          => '1',
 	CACHE_ACTIVE           => '0',
-	-- v3 isolation (2026-05-24): keep MCP path ACTIVE but pair with
-	-- c64.sv clk_cpu=clk_sys (no async crossing). EFF_BRIDGE_ACTIVE
-	-- evaluates to '1' AND NOT '0' = '1'. If this boots clean to KERNAL
-	-- READY, v2's $48B6 wedge is caused specifically by the async CDC
-	-- (clk_cpu>clk_sys). If it wedges identically, the Path B bridge
-	-- code itself has a bug.
-	SAME_CLOCK_PASSTHROUGH => '0'
+	-- v8 IEC fix (2026-05-24, RBF b1aceea1): SAME_CLOCK_PASSTHROUGH='1'
+	-- disables the MCP path entirely (EFF_BRIDGE_ACTIVE = '1' AND NOT
+	-- '1' = '0' → pure passthrough). Confirmed by hardware test:
+	-- LOAD"$",8 → SEARCHING FOR $ → LOADING → READY (was wedge at
+	-- $EEAC under v7 MCP-active + throttle), and LOAD"*",8,1 also
+	-- completes successfully both at native turbo AND with $D072
+	-- throttle. The MCP path's vpa/vda hold-for-roundtrip was breaking
+	-- CIA2 reads in the IEC byte-receive loop (see project memory
+	-- project_v8_passthrough_iec_fix_2026_05_24.md).
+	--
+	-- MCP path provides ZERO speedup at clk_cpu=clk_sys (the bridge
+	-- only matters for cross-domain CDC at clk_cpu=64MHz). So flipping
+	-- to passthrough is the strict win until clk_cpu=64MHz revival.
+	-- The bridge code is preserved intact: setting SAME_CLOCK_PASSTHROUGH
+	-- back to '0' re-arms MCP — keep that for the future 64MHz path.
+	--
+	-- $D072/$D07A throttle stays effective in passthrough because it
+	-- gates cpu_cyc → enableCpu_816, which now drives cpu_enable_out
+	-- directly via bus_ack_pulse_in.
+	SAME_CLOCK_PASSTHROUGH => '1'
 )
 port map (
 	clk_cpu        => clk_cpu,
