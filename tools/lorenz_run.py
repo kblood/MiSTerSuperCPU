@@ -20,11 +20,17 @@ import os, sys, time, paramiko, hashlib
 
 HOST, USER, PASS = '192.168.50.130', 'root', '1'
 CFG = '/media/fat/config/C64.cfg'
-MGL = '/media/fat/_Test/lorenz_disk1.mgl'
+MGL = '/media/fat/_Test/lorenz_disk1.mgl'           # legacy: disk only (needs mtype)
+MGL_AUTO = '/tmp/lorenz_autoload.mgl'                # disk + autoload PRG (no keys)
 RBF = '/media/fat/_Test/C64.rbf'
 OUT_BASE = r'C:\LLM\C64\MiSTerSuperCPU\tools\lorenz_run'
 MTYPE_REMOTE = '/tmp/mtype.py'
 MTYPE_LOCAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mtype.py')
+AUTOLOAD_PRG_LOCAL = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    'test_cart', 'out', 'lorenz_autoload.prg')
+AUTOLOAD_PRG_REMOTE = '/media/fat/games/C64/lorenz_autoload.prg'
+DISK_PATH = '/media/fat/games/C64/lorenz_disk1.d64'
 
 POLL_S = 30  # screenshot cadence
 DEFAULT_MAX_MIN = 35  # cap per-mode runtime
@@ -144,25 +150,29 @@ def main():
     print('  core reloaded; settling 8s for KERNAL READY')
     time.sleep(8)
 
-    # Now mount the disk via MGL load_core (MGL replaces core+disk in one shot)
+    # Autoload path: MGL mounts the disk AND loads lorenz_autoload.prg which
+    # MiSTer auto-RUNs. The PRG is a tokenized BASIC line `LOAD"*",8,1` that
+    # immediately chains to the disk's first file. No keyboard input needed,
+    # so it sidesteps mtype timing issues at v8 turbo speed.
+    sftp = c.open_sftp()
+    sftp.put(AUTOLOAD_PRG_LOCAL, AUTOLOAD_PRG_REMOTE)
+    mgl = ('<mistergamedescription>\n'
+           '<rbf>_Test/C64</rbf>\n'
+           '<file delay="2" type="s" index="0" path="{}"/>\n'
+           '<file delay="8" type="f" index="1" path="{}"/>\n'
+           '</mistergamedescription>\n').format(DISK_PATH, AUTOLOAD_PRG_REMOTE)
+    with sftp.open(MGL_AUTO, 'w') as f:
+        f.write(mgl)
+    sftp.close()
+    print('  autoload PRG + MGL ready')
+
     pre_mt = core_mtime(c)
-    run(c, 'echo load_core {} > /dev/MiSTer_cmd'.format(MGL))
-    time.sleep(8)
-    print('  MGL loaded, settling 4s before key sequence')
+    run(c, 'echo load_core {} > /dev/MiSTer_cmd'.format(MGL_AUTO))
+    time.sleep(15)  # core reload + delay=2 disk mount + delay=8 PRG load
+    print('  autoload MGL loaded, settling 4s for BASIC to chain')
     time.sleep(4)
 
-    # mtype: type LOAD"*",8,1 ENTER, wait 6s for load, RUN ENTER.
-    # mtype is one-call-per-MiSTer-lifetime so chain it all in one invocation.
-    keys = '\'LOAD\' \'"*",8,1\' enter wait:6 \'RUN\' enter'
-    print('  sending key sequence: LOAD"*",8,1 + RUN')
-    out, err = run(c,
-                   'python3 {} {}'.format(MTYPE_REMOTE, keys),
-                   timeout=45)
-    if err.strip():
-        print('  mtype stderr: {}'.format(err.strip()[:200]))
-
-    # Initial screenshot to confirm input landed
-    time.sleep(8)
+    # Initial screenshot — Lorenz should already be running tests
     p0 = shot(c, out_dir, '00_after_run')
     print('  shot @ t=0:  {}  md5={}'.format(os.path.basename(p0) if p0 else 'NONE', img_md5(p0)))
 

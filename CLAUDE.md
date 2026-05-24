@@ -145,6 +145,26 @@ operation (replacing `/media/fat/MiSTer`, killing daemon, etc.).
 - For 65C816: verify emulation mode boots normally, then test native mode
 - Check VIC-II timing is not affected (demo compatibility)
 
+### Lorenz autoload (no keyboard needed)
+`tools/lorenz_run.py [t65|scpu] [--mins N]` runs the suite via an MGL
+that mounts the disk AND auto-RUNs a tiny BASIC PRG `LOAD"*",8,1`.
+Avoids the mtype-vs-CPU-speed race that bit us at v8 turbo (BASIC drains
+the keyboard buffer faster than mtype's 40 ms inter-key delay).
+- PRG generator: `tools/test_cart/gen_lorenz_autoload.py` — emits a
+  17-byte tokenized BASIC line at `$0801`.
+- MGL pattern (disk + PRG): `<file type="s" index="0">` + `<file type="f"
+  index="1">`. MiSTer's `start_strk` (c64.sv:1036) synthesizes the
+  RUN keystroke after `inj_meminit` finishes loading the PRG.
+- One-shot smoke test: `python tools/test_lorenz_autoload.py` — verifies
+  the disk mounts, PRG auto-runs, and tests start without any input.
+- Mode select: `lorenz_run.py` mutates `C64.cfg` byte 10 to 0x08 (t65)
+  or 0x0C (scpu) before MGL load.
+
+If you need a fully self-contained boot (no MiSTer PRG autostart hook),
+wrap the same payload as a CRT — see `tools/test_cart/prg_to_crt.py`.
+The CRT path needs an ML loader stub (not a raw BASIC PRG) because the
+cart bootstrap JMPs into the payload as 6502 code.
+
 ## Debugging Methodology
 Before starting a probe-walk series on a "memory corruption" or
 "wrong-value" bug, classify the bug class. Probe-walking the CPU
