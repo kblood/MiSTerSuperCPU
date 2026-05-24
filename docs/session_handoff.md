@@ -51,20 +51,56 @@ as a throttle indicator.
 - `docs/d072_runtime_throttle_plan.md` — design discussion (arbiter-side chosen over bridge port additions)
 - `tools/d072_throttle_test.py` — boot + POKE + LOAD smoke test
 
+## IEC differential evidence (added 2026-05-24 second loop)
+
+Differential test against vanilla MiSTer C64 (`/media/fat/_Computer/C64.rbf`,
+md5 `32a3ef42a78ed8b255bed895d09b833c`, mounted same MGL + same `lorenz_disk1.d64`):
+
+- **Vanilla**: `LOAD"*",8,1` shows `SEARCHING FOR *` → `LOADING` → `READY.`
+  in ~17 seconds. IEC and disk path fully functional.
+  (Screenshots `tools/d072_throttle_test/30-33_vanilla_*.png`)
+- **v7 + POKE 53362,0**: `LOAD"*",8,1` wedges at PC=`$EEAC` (LDA $DD00
+  in IEC byte-receive). `LOAD"$",8` (directory) also wedges at
+  `$EAC3` (IEC TALK phase) with `M: EB48 EA31 EB48 EA31`. CPU IS
+  cycling through IEC code, never completes the handshake.
+  (Screenshots `40-41_v7_dir_load_*.png`)
+
+The wedge is in the IEC HANDSHAKE itself, not file-fetch specifics —
+directory load uses a different protocol phase and also fails.
+**Regression introduced by the bridge work** (Phase C onward; master is
+the v356 baseline where IEC LOAD was confirmed working per
+`project_v356_lorenz_pass.md`).
+
+Likely candidates (not confirmed):
+1. clk_cpu=64MHz CDC affects CIA2 read/write timing
+2. MCP handshake produces shorter vpa/vda hold than vanilla's full bus cycle
+3. cs_cia2 strobe edge differs in MCP mode vs vanilla's CPU-direct
+
 ## Next-session entry points
 
-1. **Root-cause IEC LOAD wedge.** Either:
-   - **(a)** Inspect MiSTer's IEC subsystem from inside our build to see
-     what `$DD00` returns during the spin. If our bridge corrupts CIA2
-     reads under certain race conditions, that's a bridge bug; if the
-     IEC controller never asserts CLKIN, that's an IEC subsystem bug.
-   - **(b)** Compare against vanilla MiSTer C64 (commit known-good
-     `/media/fat/_Computer/C64.rbf` per CLAUDE.md), confirm LOAD works
-     there at 1MHz. If vanilla works and ours doesn't, the bridge or
-     SCPU path is breaking IEC even at matched clock rate.
-   - **(c)** Try `LOAD"$",8` (directory load — smaller IEC protocol).
-     If directory works but file fetch wedges, the wedge is in a
-     specific protocol phase.
+1. **Bisect the IEC regression** through the bridge phase commits:
+   - Pre-bridge baseline: master (or commit `db149d6` v356)
+   - Phase C (`f7ba6d7`): P65C816 moved to clk_cpu — first bridge
+   - Phase D1 (`5cc9fc7`): passthrough module
+   - Phase D2-D4 (`0bff0d9` through `5c72dbd`): CDC + cache scaffolding
+   - F.1' (`da1a684`): MCP FSM restored
+   - F.3' Path B v6 (`30b7dde`): MCP + LATCH gate
+   - v7 (`44559a8`): + $D072 throttle (current)
+   Each build ~30 min. Try LOAD"$",8 (faster signal than LOAD"*",8,1).
+   The commit where IEC first wedges names the structural culprit.
+
+2. **Surgical bridge tests** without bisect:
+   - Set SAME_CLOCK_PASSTHROUGH=1 (line 2726 in fpga64_sid_iec.vhd) →
+     EFF_BRIDGE_ACTIVE='0', pure passthrough. If IEC works here, MCP
+     is the problem. If wedges, clk_cpu=64MHz or P65C816-side is.
+   - Extend bus_vpa_out/vda_out by 1 clk_sys cycle after ack (held
+     longer than `bus_request_pending_reg` allows). If IEC fixes,
+     CIA needs longer strobe.
+
+3. **F.4 cache re-enable** still on roadmap (held inert in F.1-F.3).
+
+4. **F.3' arbiter prefetch** (per `docs/path_to_20mhz_plan.md`) — main
+   path to 20MHz target.
 
 2. **Verify bench-vs-BASIC discrepancy.** Write a controlled PRG that:
    - Writes `$D072` then increments a visible screen char in a tight
