@@ -709,7 +709,15 @@ port(
 	dbg_bridge_last_bus_di     : out std_logic_vector(7 downto 0);
 	dbg_bridge_req_count       : out std_logic_vector(15 downto 0);
 	dbg_bridge_ack_count       : out std_logic_vector(15 downto 0);
-	dbg_bridge_vec_fetch_count : out std_logic_vector(7 downto 0)
+	dbg_bridge_vec_fetch_count : out std_logic_vector(7 downto 0);
+
+	-- Milestone A Option (b) (2026-05-26): SuperRAM-only HIT gate for
+	-- sdram_pm.v. Surfaces the internal scpu_fast_path signal so the
+	-- controller's HIT path engages only on SuperRAM traffic (banks != $00,
+	-- not I/O, no DMA). c64.sv passes this through into sdram_pm's new
+	-- fast_path input. Drives '0' when 6510-only or during DMA, which keeps
+	-- the controller on its MISS-only path = bit-identical to Build B.
+	scpu_fast_path_o           : out std_logic
 );
 end fpga64_sid_iec;
 
@@ -2946,6 +2954,10 @@ nmi_ack     <= nmi_ack_816  when supercpu_en = '1' else nmi_ack_6510;
 supercpu_bank <= std_logic_vector(addr_hi_816)         when supercpu_en = '1' else x"00";
 emu_mode_816  <= emu_mode_816_i                        when supercpu_en = '1' else '1';
 cpu_has_bus   <= cpuHasBus;
+-- Milestone A Option (b) (2026-05-26): export the internal scpu_fast_path
+-- signal so c64.sv can wire it into sdram_pm.v's HIT gate. Driven from
+-- the existing internal definition further down (line ~2974).
+scpu_fast_path_o <= scpu_fast_path;
 
 cass_motor <= cpuIO(5);
 cass_write <= cpuIO(3);

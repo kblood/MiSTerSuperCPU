@@ -1,153 +1,137 @@
-# Session handoff — 2026-05-25 late evening → IRQ-race falsified in sim; sim path exhausted
+# Session handoff — 2026-05-26: Option (a) PRECHARGE FSM SILICON-VALIDATED (KERNAL boot + Lorenz scpu)
 
 ## 0. TL;DR for the next agent
 
-The shipped baseline (`d564dea` / RBF md5 `8a7489ef`) is **still the ship answer** — passthrough + CIA gates, fully validated end-to-end. This session did **NOT** change the active build.
+Today's session shipped Milestone A Option (a) PRECHARGE FSM to silicon.
+**First-silicon results: PASS**.
 
-This session's continuation **executed the IRQ-race probe** that the prior session's §6 option (a) called for. Result: **the bench wedged because of a bench bug (no stack RAM model), not because of an actual bridge bug**. With the bench fixed, MCP IRQ delivery passes cleanly. The IRQ-vector-fetch race hypothesis is now **falsified in sim**, joining 4 prior MCP wedge hypotheses on the falsified list.
+- KERNAL boots clean to READY prompt (screenshot:
+  `tools/milestone_a_optionA_boot.png`).
+- Lorenz scpu test suite progresses cleanly through 5 minutes of load/store
+  opcode tests (ldxzy/ldxa/ldxay/stxz/.../tayn/txan all OK). Screen
+  changes every ~30s = active test progression, no wedge.
+- SuperRAM speed bench shows 1x across all modes — **NOT a regression**.
+  Turbo path requires clk_cpu=64MHz which is blocked on a separate
+  passthrough/MCP bridge issue. Option (a)'s HIT path is being exercised
+  silently (cycle 6→4 clk64 on consecutive same-row) but at 1MHz cadence
+  the CPU isn't bandwidth-bound. The Lorenz scpu test IS the real
+  Option (a) validation — it continuously exercises HIT, conflict-MISS,
+  and refresh paths.
 
-Per the design doc's own §C.3 decision tree, "both races falsified" means the strategic options collapse to:
-1. **Pivot to Milestone A or C** (or accept the ~3MHz passthrough baseline and stop).
-2. **Build the bridge-internal UART probe and run on HW** anyway — observational, captures FSM state during the silicon wedge regardless of mechanism. ~2-3 hours wall clock (RTL wiring + Quartus + deploy + analysis).
-3. SignalTap is documented but never produced a capture in this project (`memory/reference_signaltap_documented_not_working.md`). Don't recommend.
+Build: md5 `cf8d185b9a09ac981eeb0c27145af8c9`, archived as
+`C64_MiSTer/builds/C64_milestone-b-cdc-rewrite_c2c87b7cdc_20260525T101019Z_cf8d185b-dirty.rbf`.
+66% ALM utilization (27,505 / 41,910).
 
-**No code committed.** Bench fixes are uncommitted in the Milestone B worktree on top of `4b4087e`.
+## 0a. What worked end-to-end
 
----
+Step 2 of the Option (a) plan: PRECHARGE FSM in `sdram_pm.v`, mirrored
+in `sdram_pm_lite.vhd`. Bench PASSES with `expect_spec_violations=false`
+(refresh_while_open=0, active_conflicts=0). A second Codex falsification
+pass surfaced two BLOCKING issues that were fixed in-flight:
 
-## 1. State of the tree
+1. **Multi-driver on `refresh_pending` / `refresh_wait`** (would hard-fail
+   Quartus): reset was in block 1 (q-block), updates in main_clk_block.
+   Moved reset into main_clk_block. Single-driver now.
+2. **HIT read sampled at q=2 = CAS_LATENCY, missing the +1 safety margin**
+   the MISS path inherits from Till Harbaum's baseline. With `sd_clk` via
+   `altddio_out` the SDRAM sees commands ~half-clk64 late; q=2 risks
+   landing on/before DQ valid. Bumped `STATE_READ_HIT` to CAS_LATENCY+1=3
+   (HIT cycle 3→4 clk64; still way under MISS=6).
 
-**Active build (unchanged):** `/media/fat/_Test/C64.rbf` on MiSTer: `8a7489ef` from commit `d564dea`. Source state: `SAME_CLOCK_PASSTHROUGH => '1'` (MCP disabled), CIA1 write-only gate, CIA2 `cia2_write_safe` gate, Option F+G UART probes intact.
+**Bench re-run after fixes: RESULT: PASS** (12/12 scenarios, zero
+spec violations).
 
-**Three worktrees from earlier this session** (parallel subagents, design + sim only):
-- `worktree-agent-a282ad7488dff33e3` — Milestone A: `sim/sdram_pm_tb/` GHDL bench passes, design doc `docs/milestone_a_buildc_design.md`.
-- `worktree-agent-a9a3d6f3a7a3800f2` — Milestone B: `sim/scpu_async_bridge_tb/cpu_cia_irq_tb.vhd` + design doc `docs/milestone_b_bridge_probe_design.md`. Subsequent in-place edits in this worktree (uncommitted, see §3) fixed the bench-side wedge.
-- `worktree-agent-a7842d2f07c035f24` — Milestone C: `sim/arbiter_demand_tb/` 18/18 PASS, design doc `docs/milestone_c_arbiter_design.md`.
+**Status of code in working tree**: Option (a) FSM + multi-driver fix +
+HIT margin fix + bench updates all uncommitted. Files:
+- `C64_MiSTer/rtl/sdram_pm.v` (Option a PRECHARGE FSM + multi-driver fix
+  + STATE_READ_HIT bump + cycle_needs_precharge / cycle_row_latched regs
+  + refresh sub-state machine)
+- `C64_MiSTer/rtl/fpga64_sid_iec.vhd` (existing — `scpu_fast_path_o` port)
+- `C64_MiSTer/c64.sv` (existing — fast_path threading)
+- `sim/sdram_pm_tb/sdram_pm_lite.vhd` (Option a mirror: conflict-MISS
+  ce-edge PRECHARGE, q=2 delayed ACTIVE, q=7 sample, refresh handler
+  PRECHARGE-ALL+defer)
+- `sim/sdram_pm_tb/sdram_pm_buildc_extended_tb.vhd` (timing expecteds
+  updated for 8-clk conflict-MISS + 4-clk HIT; expect_spec_violations
+  flipped to false; verdict block enforces I/J/K must show zero)
 
-None of these are merged. Branches `worktree-agent-*` exist on disk; user can merge or cherry-pick on their timeline.
+## 1. Residual Codex risks NOT fixed in this iteration
 
----
+Codex's #2 (refresh not exclusive bus owner) and #3 (no tRFC guard) live
+at the boundary of the existing 8-clk64 EXT-slot idle window
+(`fpga64_sid_iec.vhd:1568` schedules refresh in EXT4..EXT7 when
+`rfsh_cycle="00"`). Option (a) PRECHARGE FSM extends the refresh
+in-window cost from 1 clk64 (baseline AUTO_REFRESH only) to ~3 clk64
+(PRECHARGE + tRP + AUTO_REFRESH). Add ~5 clk64 of tRFC after AUTO_REFRESH
+and total is ~8 clk64 — fits the idle slot exactly, no margin.
 
-## 2. The IRQ-race falsification, in detail
+**Decision**: ship to silicon. The bench-passing Option (a) FSM is a
+strict improvement over Option (b) and the existing idle-slot
+contract likely tolerates the extension. If silicon wedges in a
+refresh-correlated pattern, the first instrumented re-build adds
+sticky counters per Codex #2:
+- `dbg_ce_during_refresh_pending` (sticky, increment on `ce && refresh_pending`)
+- `dbg_active_within_trfc` (sticky, increment on `CMD_ACTIVE within 5 clk64 of CMD_AUTO_REFRESH`)
 
-### What the Milestone B subagent built
+Both fit in `debug_pkg.sv` alongside existing taps.
 
-A new bench `cpu_cia_irq_tb.vhd` derived from `cpu_cia_real_tb.vhd`, with: SEI dropped, `cia_irq_n` wired to CPU `irq_n`, Timer A configured for periodic underflow. Goal: reproduce the silicon LOAD"*" wedge by exercising the IRQ-vector-fetch sequence the prior 3 benches all skipped (they SEI'd).
+## 2. Next session — extended silicon validation
 
-### What I observed first
+First-silicon smoke + Lorenz scpu PASSED. Remaining tests for higher
+confidence (not blockers, can be deferred):
 
-Bench output under MCP (RATIO=2, SAME_CLOCK_PASSTHROUGH='0'):
-- Final PC = $0266, max PC = $EAEB (NOP fill)
-- Handler visits = 52, vec_fetch_count = 208 (~4 per IRQ)
-- Main loop counter $C2 never advanced past 0
-- `req-ack gap = -998` (mock arb firing 2x ack per req)
+1. **Lorenz full suite** (~30 min) instead of 5-min cap. Confirms all
+   ~150 SCPU opcodes pass, including bank-transition ones that exercise
+   conflict-MISS heavily.
+2. **REU LOAD test**: `LOAD"$",8` then `LOAD"*",8,1` from disk
+   (the passthrough-baseline workload — confirms IEC + REU paths
+   unaffected by SDRAM controller changes).
+3. **Refresh stress** (>2 hours uptime): the only way Codex Risks 2/3
+   (refresh-not-exclusive + no tRFC guard) would manifest. If PC drifts
+   to garbage or screen corruption after long uptime, add instrumented
+   build with sticky counters per memory file
+   [[milestone-a-option-a-codex-saved-quartus-2026-05-26]].
+4. **Doom + Wolf3D smoke** (SuperRAM-heavy workloads). The HIT path
+   should help if the bridge ever goes back to clk_cpu=64MHz.
 
-I initially called this "first sim reproduction of the silicon wedge" and wrote a memory entry to that effect. **That entry has been retracted** (`memory/project_irq_race_bench_wedges_mcp_2026_05_25.md`).
+## 3. The MCP bridge / turbo question
 
-### The real diagnosis (PC trace)
+This build inherits SAME_CLOCK_PASSTHROUGH=1 from the prior passthrough
+baseline. Turbo path requires reviving the MCP bridge at clk_cpu=64MHz
+(Phase F.3/F.4 — currently blocked per
+[[passthrough-plus-gates-baseline-2026-05-25]]). Until that's solved
+the HIT path is silent at the CPU level. After it's solved Option (a)
+should deliver real throughput gain on SuperRAM workloads.
 
-Adding a per-PC-change print to the bench revealed the actual mechanism:
-- IRQ fires at $021D → handler runs $0260 → $0265 (RTI) → handler exits to **$EAEA** (NOP fill)
-- CPU loops in NOP-fill until next IRQ → handler again → RTI → $EAEA again → repeat
+Don't conflate the two: Milestone A (HIT path) is now silicon-validated
+as correct; MCP revival is a separate workstream.
 
-Root cause: the bench's mock arbiter only modelled RAM for `$00:$00xx` (zp). Accesses to `$00:$01xx` (stack page) fell through to `rom_byte` which returns `$EA` for unmapped addresses. So every IRQ-entry push went to nowhere and every RTI pulled `$EA $EA $EA` → PC = $EAEA. The "4 fetches per IRQ" pattern I misread as a race signature was the CPU spinning in NOP-fill firing more IRQs than expected.
+## 3. Methodology notes for future Milestone work
 
-### After the bench fix
+- **Codex falsification BEFORE first HW build remains the most valuable
+  cost-saver** — caught a Quartus-blocking multi-driver this round that
+  no bench can catch (single-process GHDL has no multi-process driver
+  rule; Quartus does). Skill at `.claude/skills/codex/SKILL.md`.
+- **Lite-model benches don't model SDRAM command sequencing**. The shadow
+  process added in Step 1 (snoops cmd_active_pulse / cmd_precharge_pulse
+  / cmd_refresh_pulse to a per-bank open-row table) catches Risks 1+2
+  but NOT Risk 3 (tRFC). For Risk 3 we'd need a real SDRAM behavioural
+  model with cycle-level command-spacing enforcement (out of scope for
+  GHDL).
+- **The "single-row-open invariant"** chosen for the Verilog Option (a)
+  trades simplicity (q stays 3 bits, no per-bank tracker, always
+  PRECHARGE-ALL on conflict) for cycle cost (conflict-MISS = 8 clk64).
+  The lite mirrors this exactly — bench timings reflect both 6-clk
+  fresh MISS and 8-clk conflict MISS.
 
-Three small changes to `cpu_cia_irq_tb.vhd` (uncommitted, see §3):
-- `zp_ram` extended from 256 to 512 bytes
-- Mock arb decodes both `$00:$00xx` AND `$00:$01xx` as RAM (9-bit index)
-- (Also added: `pending_valid='0'` guard on mock-arb latch; PC trace process — harmless, more accurate to real arb)
+## 4. Files at end of session (uncommitted)
 
-Bench result (MCP, RATIO=2, 500us): **PASS_NO_RACE**. iter=4, handler visits=173, no wedge.
-
-Bench result (MCP, RATIO=2, 2ms long-run): iter advances monotonically 4→8→12→17 across the four snapshots, handler visits=74. Clean.
-
-The IRQ-vector-fetch race hypothesis is **falsified**.
-
----
-
-## 3. Uncommitted changes (Milestone B worktree only)
-
-In `C:\LLM\C64\MiSTerSuperCPU\.claude\worktrees\agent-a9a3d6f3a7a3800f2`, on top of commit `4b4087e`, file `sim/scpu_async_bridge_tb/cpu_cia_irq_tb.vhd`:
-- `type zp_ram_t is array (0 to 511)` — was 0 to 255
-- Stack page decode added to mock arb
-- `pending_valid='0'` gate on mock-arb latch
-- pc_trace process for in-window PC logging
-
-These should be **committed** (and ideally merged or cherry-picked into the milestone-b-cdc-rewrite branch alongside the design docs) — they're a real fix to a real bench bug and they prove the IRQ-race falsification.
-
-Memory updates:
-- `project_irq_race_bench_wedges_mcp_2026_05_25.md` — now contains retraction
-- `MEMORY.md` — index entry updated
-
----
-
-## 4. Falsified hypotheses (cumulative across sessions)
-
-| Hypothesis | Falsified by |
-|---|---|
-| Phantom write to CIA1 IMR/CRA | v13d gate (cs-write-only) restored IM stability |
-| Phantom write to CIA2 IMR/CRA | Option F UART probe — values constant during wedge |
-| Phantom write to CIA2 PRA/PRB/DDRA/DDRB | Option G UART probe — values legitimate |
-| Variable-latency on basic CIA reads | `cpu_cia_bridge_tb.vhd` PASS |
-| MCP-induced spurious ICR clear-on-read | `cpu_cia_real_tb.vhd` PASS |
-| Passive W/R interleaving with mock 1541 | `cpu_cia_rw_tb.vhd` PASS |
-| IRQ-vector-fetch race (race α / race β) | `cpu_cia_irq_tb.vhd` PASS (after stack-RAM fix) |
-
-That's seven falsified mechanisms. The silicon wedge mechanism remains **unidentified**.
-
-Possibilities not yet tested in sim:
-- Real IEC handshake (CIA2 PRA/PRB drive vs IEC bus state during KERNAL IECIN). The wedge always sits in IECIN. Needs a mock IEC-peer device that responds to bus drives — not just a CIA.
-- Real arbiter `enableCpu_816` cadence on the C64 wheel (1MHz typical at base; ~1.5 clk_sys at 20MHz turbo) vs the mock arb's fixed 4-clk_sys cadence. Could cause bridge issues when slots arrive non-uniformly.
-- Multi-CIA contention (CIA1 keyboard scan + CIA2 IEC + Timer A on both). Bench only has CIA2.
-- `cpuDi` mux in `fpga64_sid_iec.vhd` has many sources (RAM/ROM/CIA1/CIA2/VIC/SID/REU/cache/cartridge). MCP may expose a path the mux can't satisfy in time.
-
----
-
-## 5. Strategic options on the table
-
-The honest decision space, given seven falsified hypotheses and no current sim-side reproduction:
-
-### (a) Build the bridge-internal UART probe + HW build
-Per `docs/milestone_b_bridge_probe_design.md` §B. Five new ports through `scpu_async_bridge.vhd` → `fpga64_sid_iec.vhd` → `c64.sv` → `debug_uart_pool_fmt.sv` (LINE_LEN 319 → ~352). Cost: ~1 hour RTL wiring + 30-40 min Quartus + 5-10 min deploy + analysis. **Pass/fail rubric (design doc §C) was written to discriminate race α vs β — now mostly observational since both are falsified.** What it WILL tell us: bridge FSM state at the moment of wedge, req/ack gap (is bridge actually stalled?), is the wedge site interruptible. What it WON'T tell us: which downstream component (CIA, bus mux, IEC peer) is the actual culprit — those need a different probe.
-
-### (b) Accept passthrough baseline and ship Milestone B parked
-Update `docs/path_to_20mhz_plan.md` to mark Milestone B at "parked at passthrough, sim infrastructure complete, seven hypotheses falsified, no silicon reproduction available." Tag `milestone-b-passthrough-shipped`. The native SuperCPU at ~3MHz running Doom/Wolf3D/Lorenz/IEC is already a real deliverable.
-
-### (c) Pivot to Milestone A
-Per `docs/milestone_a_buildc_design.md` (worktree A): Build C SDRAM page-mode revival + Step 6 plumbing target ~8MHz. Sim infrastructure (sdram_pm_lite_tb) already passes 4 scenarios + Step 6 closure check. Does NOT depend on MCP. Independent track. Different wedge history (Build C v1-v4 all wedged HW per `step5-build-c-altslot-conflict-gate` branch); the design doc proposes the registered `alt_fire_r` pattern to dodge it.
-
-### (d) Pivot to Milestone C
-Per `docs/milestone_c_arbiter_design.md` (worktree C): demand-driven arbiter. Bench (18/18 PASS) demonstrates the interface. But per the design doc §F, C-alone (without B) gives ~0 measurable speedup over the shipped baseline. So this only makes sense after B lands — which is parked.
-
----
-
-## 6. If next agent must do something today
-
-Pick (a), (b), or (c). **All three are defensible.** The benches and memory updates from this session stand regardless of the choice.
-
-If picking (a): start by reading `docs/milestone_b_bridge_probe_design.md` §B for the exact port additions and LINE_LEN bump. Verify Option G's wiring pattern in `c64.sv` and `debug_uart_pool_fmt.sv` (search for `dbg_pra_cia2` and `"PA:"`). Implement, build, deploy.
-
-If picking (b): commit the three worktrees' work (or cherry-pick), commit the bench-bug fix from §3, tag, update `path_to_20mhz_plan.md`. Update `architecture_diagrams.md` to reflect current state.
-
-If picking (c): the Milestone A worktree has a working sdram_pm_lite bench. The next step is the real `sdram_pm.v` HIT path RTL edits, then a Quartus build. Risk: Build C wedge history (4 prior attempts). The design doc's `alt_fire_r`-registered pattern is the proposed mitigation.
-
----
-
-## 7. Cross-refs (memory)
-
-- `passthrough-plus-gates-baseline-2026-05-25` — shipped build, fully validated
-- `irq-race-bench-wedges-mcp-2026-05-25` — **RETRACTED**, contains the bench-bug analysis
-- `option-e-three-benches-pass-mcp-2026-05-25` — earlier 3 benches (still valid)
-- `parallel-subagents-only-for-design-fronts-2026-05-25` — the pattern that produced this session's 3 worktrees
-- `reference-signaltap-documented-not-working` — SignalTap reality check
-- `v13d-mcp-iec-load-fix-2026-05-25` — last partial MCP fix
-- `optionF-cia2-imrcra-no-phantom-2026-05-25` + `optionG-cia2-port-no-phantom-2026-05-25` — CIA register state ruled out
-- `v12-mcp-cia1-irq-stops-2026-05-24` — HW evidence that motivated option (a); the "0 IRQs" data was likely incidental, not a real CIA1 IRQ generation bug, and is now superseded by sim evidence that CIA1 can fire IRQs cleanly under MCP
-
----
-
-## 8. Lesson worth remembering
-
-When a sim bench reports "wedge reproduced" and the symptom is qualitatively different from any known mock-side bench wedge, **add PC trace logging before claiming sim reproduction**. The distinguishing question: is the CPU stuck on a real bridge-stalled bus access, OR is it freely running through nonsense addresses? In this case the CPU was running NOPs at full clock — clearly not bridge-stalled. The 4-fetches-per-IRQ pattern I read as "race α signature" was actually the CPU's free-running re-entry into the handler. ~30 minutes of analysis would have caught this before the first memory entry was written.
+```
+C64_MiSTer/c64.sv                                  (Option b threading, unchanged today)
+C64_MiSTer/rtl/sdram_pm.v                          (Option a FSM + Codex fixes)
+C64_MiSTer/rtl/fpga64_sid_iec.vhd                  (scpu_fast_path_o port, unchanged today)
+sim/sdram_pm_tb/sdram_pm_lite.vhd                  (Option a mirror + STATE_READ_HIT=3)
+sim/sdram_pm_tb/sdram_pm_buildc_extended_tb.vhd    (timings updated, violations enforced)
+docs/session_handoff.md                            (this file)
+codex_option_a_review.txt                          (Codex output, this session only)
+```

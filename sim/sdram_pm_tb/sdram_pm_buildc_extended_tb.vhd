@@ -64,9 +64,45 @@ architecture sim of sdram_pm_buildc_extended_tb is
     signal we          : std_logic := '0';
     signal ce          : std_logic := '0';
     signal refresh     : std_logic := '0';
+    -- Option (b) gate (Milestone A, 2026-05-26): defaults to '1' so the
+    -- existing E/F/G/S6 scenarios continue to exercise the HIT path. New
+    -- Scenario H drives this to '0' to validate that bank-$00 accesses
+    -- bypass HIT and stay on the MISS-only path.
+    signal fast_path   : std_logic := '1';
     signal ready       : std_logic;
     signal data_valid  : std_logic;
     signal dbg_hit     : std_logic;
+
+    -- SDRAM-command observation (Step 1, 2026-05-26). Snooped from
+    -- sdram_pm_lite via 1-clk pulses + bank/row context. The bench
+    -- shadow process (below) maintains a per-bank open-row state and
+    -- asserts SDRAM-spec legality. Currently caches NEW spec violations
+    -- as fail_count increments — see scen_i_ok / scen_j_ok / scen_k_ok.
+    signal cmd_active_pulse    : std_logic;
+    signal cmd_active_bank     : unsigned(1 downto 0);
+    signal cmd_active_row      : unsigned(12 downto 0);
+    signal cmd_precharge_pulse : std_logic;
+    signal cmd_precharge_all   : std_logic;
+    signal cmd_precharge_bank  : unsigned(1 downto 0);
+    signal cmd_refresh_pulse   : std_logic;
+
+    -- Per-bank shadow of open-row state.
+    type row_array_t is array (0 to 3) of unsigned(12 downto 0);
+    signal bank_open : std_logic_vector(3 downto 0) := (others => '0');
+    signal bank_row  : row_array_t := (others => (others => '0'));
+
+    -- Spec-violation counters (incremented by the shadow process,
+    -- consumed by scenarios I/J/K).
+    signal spec_violation_count : integer := 0;
+    signal active_conflict_count : integer := 0;  -- Risk 2
+    signal refresh_while_open_count : integer := 0;  -- Risk 1
+
+    -- Per-scenario captured violation counts at start, so each
+    -- scenario can compare delta and decide pass/fail independently
+    -- without consuming earlier-scenario noise.
+    signal i_violations_at_start : integer := 0;
+    signal j_violations_at_start : integer := 0;
+    signal k_violations_at_start : integer := 0;
 
     -- Step 6 plumbing model (clk32 domain — mirrors fpga64_sid_iec.vhd
     -- changes made in this milestone).
@@ -111,6 +147,23 @@ architecture sim of sdram_pm_buildc_extended_tb is
     signal scen_e_ok         : std_logic := '0';
     signal scen_f_ok         : std_logic := '0';
     signal scen_g_ok         : std_logic := '0';
+    signal scen_h_ok         : std_logic := '0';
+    -- Spec-violation scenarios (post-Codex, 2026-05-26):
+    --   I: refresh-while-row-open (Codex Risk 1)
+    --   J: cross-class same-bank conflict (Codex Risk 2 across bank-$00/SuperRAM)
+    --   K: SuperRAM cross-row same-bank conflict (Codex Risk 2, intra-class)
+    -- All three are EXPECTED to FAIL under the current Option (b) lite
+    -- model — that's the proof the bench can now catch them. After
+    -- Option (a) FSM extension lands, they must flip to PASS.
+    signal scen_i_ok         : std_logic := '0';
+    signal scen_j_ok         : std_logic := '0';
+    signal scen_k_ok         : std_logic := '0';
+    -- After Option (a) FSM lands in sdram_pm.v + sdram_pm_lite.vhd
+    -- (2026-05-26), spec violations are no longer expected — flip false
+    -- to enforce the assertions. I/J/K must now report zero new
+    -- violations because the FSM PRECHARGEs before ACTIVE on conflict
+    -- and PRECHARGE-ALLs before AUTO_REFRESH when a row is tracked open.
+    signal expect_spec_violations : boolean := false;
     signal s6_a_ok           : std_logic := '0';
     signal s6_b_ok           : std_logic := '0';
     signal wrong_ok          : std_logic := '0';
@@ -131,15 +184,23 @@ begin
 
     dut : entity work.sdram_pm_lite
         port map (
-            clk          => clk64,
-            reset        => reset,
-            addr         => addr,
-            we           => we,
-            ce           => ce,
-            refresh      => refresh,
-            ready        => ready,
-            data_valid   => data_valid,
-            dbg_hit_path => dbg_hit
+            clk                 => clk64,
+            reset               => reset,
+            addr                => addr,
+            we                  => we,
+            ce                  => ce,
+            refresh             => refresh,
+            fast_path           => fast_path,
+            ready               => ready,
+            data_valid          => data_valid,
+            dbg_hit_path        => dbg_hit,
+            cmd_active_pulse    => cmd_active_pulse,
+            cmd_active_bank     => cmd_active_bank,
+            cmd_active_row      => cmd_active_row,
+            cmd_precharge_pulse => cmd_precharge_pulse,
+            cmd_precharge_all   => cmd_precharge_all,
+            cmd_precharge_bank  => cmd_precharge_bank,
+            cmd_refresh_pulse   => cmd_refresh_pulse
         );
 
     sdram_busy <= '1' when sdram_busy_cnt /= "000" else '0';
@@ -250,6 +311,60 @@ begin
         end if;
     end process;
 
+    --
+    -- SDRAM-spec shadow process (Step 1, 2026-05-26). Maintains a
+    -- per-bank open-row state from the lite model's command pulses and
+    -- raises spec-violation counters when:
+    --   - CMD_ACTIVE targets a bank that is already open with a
+    --     different row (Codex Risk 2).
+    --   - CMD_AUTO_REFRESH fires while any bank is open (Codex Risk 1).
+    -- Does NOT halt the bench — accumulates counts so scenarios I/J/K
+    -- can compare deltas and decide pass/fail. The bench currently
+    -- treats violations as "expected" (Option (b) reality); once
+    -- Option (a) lands, expect_spec_violations flips to false and the
+    -- assertions become hard fails.
+    --
+    sdram_shadow : process(clk64)
+        variable b : integer;
+    begin
+        if rising_edge(clk64) then
+            if reset = '1' then
+                bank_open <= (others => '0');
+                bank_row  <= (others => (others => '0'));
+                spec_violation_count <= 0;
+                active_conflict_count <= 0;
+                refresh_while_open_count <= 0;
+            else
+                -- CMD_ACTIVE: check for conflict, then mark bank open.
+                if cmd_active_pulse = '1' then
+                    b := to_integer(cmd_active_bank);
+                    if bank_open(b) = '1'
+                       and bank_row(b) /= cmd_active_row then
+                        active_conflict_count <= active_conflict_count + 1;
+                        spec_violation_count  <= spec_violation_count + 1;
+                    end if;
+                    bank_open(b) <= '1';
+                    bank_row(b)  <= cmd_active_row;
+                end if;
+                -- CMD_PRECHARGE: clear bank(s).
+                if cmd_precharge_pulse = '1' then
+                    if cmd_precharge_all = '1' then
+                        bank_open <= (others => '0');
+                    else
+                        bank_open(to_integer(cmd_precharge_bank)) <= '0';
+                    end if;
+                end if;
+                -- CMD_AUTO_REFRESH: any bank open is a spec violation.
+                if cmd_refresh_pulse = '1' then
+                    if bank_open /= "0000" then
+                        refresh_while_open_count <= refresh_while_open_count + 1;
+                        spec_violation_count     <= spec_violation_count + 1;
+                    end if;
+                end if;
+            end if;
+        end if;
+    end process;
+
     stim : process
         procedure log(s : string) is
             variable lo : line;
@@ -341,12 +456,15 @@ begin
         wait_clk64(4);
         -- bank=1 row=0x100 -> [22:21]=01, [20:8]=0x100
         --   25-bit value = 0010_0100000000_00000000 = 0x0210000
+        -- Conflict-MISS (Option (a) conservative: any MISS while
+        -- last_row_valid=1 PRECHARGEs-ALL first) → 8 clk64.
         issue("Scen E.2 cross-bank MISS",
-              to_unsigned(16#0210000#, 25), 6, 1, scen_e_ok);
+              to_unsigned(16#0210000#, 25), 8, 1, scen_e_ok);
         wait_clk64(4);
         -- bank=1 row=0x100 again — same as #2, should HIT.
+        -- HIT cycle = 4 clk64 with CAS_LATENCY+1 safety margin (2026-05-26).
         issue("Scen E.3 same-bank HIT",
-              to_unsigned(16#0210080#, 25), 3, 1, scen_e_ok);
+              to_unsigned(16#0210080#, 25), 4, 1, scen_e_ok);
 
         wait_clk64(6);
 
@@ -354,9 +472,9 @@ begin
         -- Scenario F: write-then-read same row stays on HIT path.
         --
         log("--- Scenario F (write/read same row) ---");
-        -- MISS prep on row 0x222.
+        -- MISS prep on row 0x222. Conflict-MISS (E.3 HIT left row open) → 8.
         issue("Scen F.1 MISS prep",
-              to_unsigned(16#0022200#, 25), 6, 1, scen_f_ok);
+              to_unsigned(16#0022200#, 25), 8, 1, scen_f_ok);
         wait_clk64(4);
         -- HIT write on same row.
         wait until rising_edge(clk64);
@@ -386,17 +504,210 @@ begin
         -- MISS prep + 3 consecutive HITs all in the same row.
         --
         log("--- Scenario G (3-deep HIT streak) ---");
+        -- Conflict-MISS (F.2 HIT left row open) → 8.
         issue("Scen G.1 MISS prep",
-              to_unsigned(16#0033300#, 25), 6, 1, scen_g_ok);
+              to_unsigned(16#0033300#, 25), 8, 1, scen_g_ok);
         wait_clk64(2);
         issue("Scen G.2 HIT 1",
-              to_unsigned(16#0033340#, 25), 3, 1, scen_g_ok);
+              to_unsigned(16#0033340#, 25), 4, 1, scen_g_ok);
         wait_clk64(2);
         issue("Scen G.3 HIT 2",
-              to_unsigned(16#0033380#, 25), 3, 1, scen_g_ok);
+              to_unsigned(16#0033380#, 25), 4, 1, scen_g_ok);
         wait_clk64(2);
         issue("Scen G.4 HIT 3",
-              to_unsigned(16#00333C0#, 25), 3, 1, scen_g_ok);
+              to_unsigned(16#00333C0#, 25), 4, 1, scen_g_ok);
+
+        wait_clk64(6);
+
+        --
+        -- Scenario H: Option (b) gate — bank-$00 (fast_path=0) stays on
+        -- MISS-only path, even when the cached row would otherwise match.
+        --   H.1: fast_path=1 MISS on bank=3 row=0x123 (opens, tracks row)
+        --   H.2: fast_path=1 HIT on same row to confirm tracking works
+        --   H.3: fast_path=0 access on same bank+row — gate must force
+        --        MISS path (6 clk64) AND invalidate last_row_valid
+        --   H.4: fast_path=1 access on same bank+row — must MISS (because
+        --        H.3 invalidated the tracking) instead of HIT, confirming
+        --        the gate properly tracks reality
+        --
+        log("--- Scenario H (Option (b) gate: fast_path=0 forces MISS) ---");
+        fast_path <= '1';
+        wait until rising_edge(clk64);
+        -- bank=3 row=0x123 -> [22:21]=11, [20:8]=0x123
+        --   25-bit = 0_0110_0010_0011_0000_0000_0000 (bt=0, col_top=0)
+        -- Conflict-MISS (G.4 HIT left row open) → 8.
+        issue("Scen H.1 prep MISS fast_path=1",
+              to_unsigned(16#0612300#, 25), 8, 1, scen_h_ok);
+        wait_clk64(2);
+        -- Same bank+row, different column. Must HIT.
+        issue("Scen H.2 HIT fast_path=1 (sanity)",
+              to_unsigned(16#0612340#, 25), 4, 1, scen_h_ok);
+        wait_clk64(2);
+        -- Now drop fast_path and access same bank+row again. The HIT gate
+        -- must reject it -> MISS-length cycle. Under Option (a) the open
+        -- row from H.2 forces conflict-MISS (PRECHARGE-ALL first) → 8 clk64.
+        fast_path <= '0';
+        wait until rising_edge(clk64);
+        issue("Scen H.3 fast_path=0 same row stays MISS",
+              to_unsigned(16#0612380#, 25), 8, 1, scen_h_ok);
+        wait_clk64(2);
+        -- Re-arm fast_path. last_row_valid was invalidated by H.3, so
+        -- this MUST be a MISS (6 clk64), not a HIT, even though the
+        -- bank+row look like they would match the prior open row.
+        fast_path <= '1';
+        wait until rising_edge(clk64);
+        issue("Scen H.4 fast_path=1 first re-access is MISS",
+              to_unsigned(16#06123C0#, 25), 6, 1, scen_h_ok);
+
+        wait_clk64(6);
+
+        --
+        -- Scenario I (Codex Risk 1 — AUTO_REFRESH while a bank is open).
+        --   I.1: fast_path=1 MISS opens a row.
+        --   I.2: pulse refresh. Lite emits CMD_AUTO_REFRESH; shadow
+        --        increments refresh_while_open_count because bank_open
+        --        is still set (Option (b) doesn't PRECHARGE first).
+        --   Expectation: with expect_spec_violations=true (= current
+        --   reality), the violation MUST be seen; with the flag false,
+        --   the violation MUST NOT happen (Option (a) is correct).
+        --
+        log("--- Scenario I (refresh-while-row-open, Codex Risk 1) ---");
+        i_violations_at_start <= refresh_while_open_count;
+        wait_clk64(1);
+        fast_path <= '1';
+        wait until rising_edge(clk64);
+        -- Conflict-MISS (H.4 left row open) → 8.
+        issue("Scen I.1 prep fast_path=1 MISS",
+              to_unsigned(16#0432100#, 25), 8, 1, scen_i_ok);
+        wait_clk64(2);
+        -- Pulse refresh for 2 clk64 to guarantee the lite's last_refresh
+        -- registered version sees a rising edge.
+        refresh <= '1';
+        wait until rising_edge(clk64);
+        wait until rising_edge(clk64);
+        refresh <= '0';
+        wait_clk64(4);
+        if expect_spec_violations then
+            if refresh_while_open_count > i_violations_at_start then
+                log("Scen I OK (EXPECTED VIOLATION, Option b): "
+                    & "refresh-while-open count delta="
+                    & integer'image(refresh_while_open_count - i_violations_at_start));
+                scen_i_ok <= '1';
+            else
+                log("FAIL Scen I: expected refresh-while-open violation under Option (b); got none");
+                fail_count <= fail_count + 1;
+                scen_i_ok <= '0';
+            end if;
+        else
+            if refresh_while_open_count = i_violations_at_start then
+                log("Scen I OK: AUTO_REFRESH issued only when banks closed (Option a)");
+                scen_i_ok <= '1';
+            else
+                log("FAIL Scen I (Option a regression): refresh fired with a bank open");
+                fail_count <= fail_count + 1;
+                scen_i_ok <= '0';
+            end if;
+        end if;
+
+        wait_clk64(6);
+
+        --
+        -- Scenario J (Codex Risk 2 — cross-class same-bank conflict).
+        --   J.1: fast_path=1 MISS to bank=1 row=0x321 (opens row X).
+        --   J.2: fast_path=0 MISS to bank=1 row=0x654 (different row).
+        --        Lite emits CMD_ACTIVE for row 0x654 while bank_open[1]
+        --        still reflects row 0x321 → shadow increments
+        --        active_conflict_count (Option (b) bug).
+        --
+        log("--- Scenario J (cross-class same-bank, Codex Risk 2) ---");
+        j_violations_at_start <= active_conflict_count;
+        wait_clk64(1);
+        -- bank=1 row=0x321 -> [22:21]=01, [20:8]=0x321
+        --   25-bit = 00_0011_0010_0001_00000000_00000000 = 0x0232100
+        fast_path <= '1';
+        wait until rising_edge(clk64);
+        issue("Scen J.1 fast_path=1 MISS opens bank=1 row=0x321",
+              to_unsigned(16#0232100#, 25), 6, 1, scen_j_ok);
+        wait_clk64(2);
+        -- bank=1 row=0x654 -> [22:21]=01, [20:8]=0x654
+        --   25-bit = 00_0011_0010_1010_10000000_00000000 = 0x0265400
+        fast_path <= '0';
+        wait until rising_edge(clk64);
+        -- Conflict-MISS by design (J.1 left row open in bank=1) → 8.
+        issue("Scen J.2 fast_path=0 MISS bank=1 row=0x654 (conflict)",
+              to_unsigned(16#0265400#, 25), 8, 1, scen_j_ok);
+        wait_clk64(2);
+        if expect_spec_violations then
+            if active_conflict_count > j_violations_at_start then
+                log("Scen J OK (EXPECTED VIOLATION, Option b): "
+                    & "same-bank ACTIVE-conflict count delta="
+                    & integer'image(active_conflict_count - j_violations_at_start));
+                scen_j_ok <= '1';
+            else
+                log("FAIL Scen J: expected same-bank conflict under Option (b); got none");
+                fail_count <= fail_count + 1;
+                scen_j_ok <= '0';
+            end if;
+        else
+            if active_conflict_count = j_violations_at_start then
+                log("Scen J OK: no same-bank conflict (Option a PRECHARGE'd first)");
+                scen_j_ok <= '1';
+            else
+                log("FAIL Scen J (Option a regression): cross-class same-bank conflict still fires");
+                fail_count <= fail_count + 1;
+                scen_j_ok <= '0';
+            end if;
+        end if;
+
+        wait_clk64(6);
+
+        --
+        -- Scenario K (Codex Risk 2, intra-class variant — SuperRAM
+        -- cross-row same-bank).
+        --   K.1: fast_path=1 MISS to bank=2 row=0x111 (opens row X).
+        --   K.2: fast_path=1 MISS to bank=2 row=0x222 (different row,
+        --        different SDRAM bank-row). Bank still open from K.1
+        --        because fast_path=1 doesn't auto-precharge → shadow
+        --        increments active_conflict_count.
+        --
+        log("--- Scenario K (SuperRAM cross-row same-bank, Codex Risk 2) ---");
+        k_violations_at_start <= active_conflict_count;
+        wait_clk64(1);
+        -- bank=2 row=0x111 -> [22:21]=10, [20:8]=0x111
+        --   25-bit = 00_0101_0001_0001_00000000_00000000 = 0x0411100
+        fast_path <= '1';
+        wait until rising_edge(clk64);
+        issue("Scen K.1 fast_path=1 MISS opens bank=2 row=0x111",
+              to_unsigned(16#0411100#, 25), 6, 1, scen_k_ok);
+        wait_clk64(2);
+        -- bank=2 row=0x222 -> [22:21]=10, [20:8]=0x222
+        --   25-bit = 00_0101_0010_0010_00000000_00000000 = 0x0422200
+        wait until rising_edge(clk64);
+        -- Conflict-MISS by design (K.1 left row open in bank=2) → 8.
+        issue("Scen K.2 fast_path=1 MISS bank=2 row=0x222 (conflict)",
+              to_unsigned(16#0422200#, 25), 8, 1, scen_k_ok);
+        wait_clk64(2);
+        if expect_spec_violations then
+            if active_conflict_count > k_violations_at_start then
+                log("Scen K OK (EXPECTED VIOLATION, Option b): "
+                    & "SuperRAM cross-row conflict count delta="
+                    & integer'image(active_conflict_count - k_violations_at_start));
+                scen_k_ok <= '1';
+            else
+                log("FAIL Scen K: expected SuperRAM cross-row conflict under Option (b); got none");
+                fail_count <= fail_count + 1;
+                scen_k_ok <= '0';
+            end if;
+        else
+            if active_conflict_count = k_violations_at_start then
+                log("Scen K OK: SuperRAM cross-row PRECHARGEd first (Option a)");
+                scen_k_ok <= '1';
+            else
+                log("FAIL Scen K (Option a regression): SuperRAM cross-row conflict still fires");
+                fail_count <= fail_count + 1;
+                scen_k_ok <= '0';
+            end if;
+        end if;
 
         wait_clk64(6);
 
@@ -404,9 +715,10 @@ begin
         -- Step 6 Scenario A: HIT preload "001" clears within 2 clk32.
         --
         log("--- Step 6 closure A: HIT preload ('001') ---");
-        -- Prep MISS on row 0x444 to seat the row.
+        -- Prep MISS on row 0x444 to seat the row. Conflict-MISS (K.2 left
+        -- bank=2 row=0x222 open) → 8 clk64.
         issue("S6-A prep MISS",
-              to_unsigned(16#0044400#, 25), 6, 1, s6_a_ok);
+              to_unsigned(16#0044400#, 25), 8, 1, s6_a_ok);
         wait_clk64(4);
 
         -- Tell the Step 6 model: predict HIT.
@@ -565,10 +877,20 @@ begin
         wait_clk64(8);
 
         log("=== Verdict ===");
+        log("SDRAM-spec totals: refresh_while_open="
+            & integer'image(refresh_while_open_count)
+            & " active_conflicts="
+            & integer'image(active_conflict_count)
+            & " (expect_spec_violations="
+            & boolean'image(expect_spec_violations) & ")");
         if fail_count = 0
            and scen_e_ok = '1'
            and scen_f_ok = '1'
            and scen_g_ok = '1'
+           and scen_h_ok = '1'
+           and scen_i_ok = '1'
+           and scen_j_ok = '1'
+           and scen_k_ok = '1'
            and s6_a_ok   = '1'
            and s6_b_ok   = '1'
            and wrong_ok  = '1'
@@ -579,6 +901,10 @@ begin
                 & " E=" & std_logic'image(scen_e_ok)
                 & " F=" & std_logic'image(scen_f_ok)
                 & " G=" & std_logic'image(scen_g_ok)
+                & " H=" & std_logic'image(scen_h_ok)
+                & " I=" & std_logic'image(scen_i_ok)
+                & " J=" & std_logic'image(scen_j_ok)
+                & " K=" & std_logic'image(scen_k_ok)
                 & " S6A=" & std_logic'image(s6_a_ok)
                 & " S6B=" & std_logic'image(s6_b_ok)
                 & " WRONG=" & std_logic'image(wrong_ok)

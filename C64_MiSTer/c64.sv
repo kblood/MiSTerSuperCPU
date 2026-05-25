@@ -1048,6 +1048,13 @@ wire sdram_ready;  // Layer 1 page-mode controller — ready output unused
 // Wired through to fpga64_sid_iec for the future RDY-handshake gate that
 // replaces the busy_counter + cpu_cyc_s fixed timing.
 wire sdram_data_valid;
+// Milestone A Option (b) (2026-05-26): SCPU SuperRAM HIT gate for sdram_pm.
+// Driven by fpga64_sid_iec's scpu_fast_path_o output. Force '0' when this
+// SDRAM access is driven by io_cycle (cart traffic / IO bus) or ext_cycle
+// (REU DMA) because those don't touch SuperRAM and should always take the
+// MISS path with auto-precharge (== Build B behaviour).
+wire scpu_fast_path;
+wire sdram_fast_path = scpu_fast_path & ~io_cycle & ~ext_cycle;
 sdram_pm sdram
 (
 	.sd_addr(SDRAM_A),
@@ -1076,7 +1083,8 @@ sdram_pm sdram
 	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : ext_cycle ? reu_ram_dout : cart_wrdata     ),
 	.dout( sdram_data ),
 	.ready( sdram_ready ),
-	.data_valid( sdram_data_valid )
+	.data_valid( sdram_data_valid ),
+	.fast_path( sdram_fast_path )
 );
 
 // Phase D SuperRAM address mux. Combinational so the SCPU CPU cycle's address
@@ -2291,7 +2299,9 @@ fpga64_sid_iec fpga64
 	.dbg_bridge_last_bus_di     (scpu_dbg_bridge_last_bus_di),
 	.dbg_bridge_req_count       (scpu_dbg_bridge_req_count),
 	.dbg_bridge_ack_count       (scpu_dbg_bridge_ack_count),
-	.dbg_bridge_vec_fetch_count (scpu_dbg_bridge_vec_fetch_count)
+	.dbg_bridge_vec_fetch_count (scpu_dbg_bridge_vec_fetch_count),
+	// Milestone A Option (b): SuperRAM-only HIT gate for sdram_pm.
+	.scpu_fast_path_o           (scpu_fast_path)
 );
 
 wire [7:0] mouse_x;
