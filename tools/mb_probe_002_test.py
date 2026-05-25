@@ -32,8 +32,9 @@ Rubric (replaces v1's untestable Race β check):
   - Race β confirmed if WD saturates (or stays high) AND FL bit 2
     (wait_seen) = 1 throughout wedge.
   - "Bridge stalled in WAIT_ACK" definitive if WD >> typical healthy
-    dwell. Healthy: WD ≤ ~10 clk_cpu (single arbiter slot turnaround).
-    Wedge: WD growing to $FFFF.
+    dwell. Silicon-measured healthy: WD 28-40 clk_cpu (one full
+    bridge-FSM round trip through arbiter slot). Wedge: WD growing
+    toward $FFFF.
   - "Bridge alive but source IRQ stopped" if WD low + FL=07 (all
     activity bits set) + IF/C1/DR frozen.
   - "Bridge dead" if FL=00 (no req/ack/wait events for a whole frame).
@@ -206,9 +207,15 @@ def analyze(samples, label):
         print("    --> WEDGE MODE: bridge dead (no FSM progress in most frames)")
     elif aliased:
         print("    --> RACE α CONFIRMED: PC byte-aliasing detected")
-    elif avg_wd < 10 and (rqs[-1] - rqs[0]) % 0x10000 > 100:
-        print("    --> Bridge healthy but external (CIA/IEC) wedge — bridge "
-              "is delivering bytes normally; check IRQ/IEC state")
+    elif max(wds) <= 50 and (rqs[-1] - rqs[0]) % 0x10000 > 100:
+        # Silicon-measured healthy floor is 28; ceiling for healthy
+        # one-outstanding handshake is ~40. Anything <= 50 is clearly
+        # not stuck in WAIT_ACK.
+        print(f"    --> Bridge HEALTHY but external (CIA/IEC) wedge "
+              f"(WD max={max(wds)}, avg={avg_wd:.1f}, "
+              f"req-delta={(rqs[-1]-rqs[0]) % 0x10000}). "
+              f"Bridge is delivering bytes normally; "
+              f"check CIA1 IRQ generation + IEC state.")
     else:
         print(f"    --> Classification inconclusive; WD avg={avg_wd:.1f}, "
               f"req-delta={(rqs[-1]-rqs[0]) % 0x10000}, "
