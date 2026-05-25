@@ -802,6 +802,31 @@ signal scpu_fast_path : std_logic;
 signal sdram_busy_cnt : unsigned(2 downto 0) := (others => '0');
 signal sdram_busy     : std_logic;
 
+-- Milestone A Build C (2026-05-25): HIT/MISS predictor for the busy-counter
+-- preload. Mirrors sdram_pm.v's internal row-tracking against the bus-side
+-- address visible here. When the prediction is HIT, the preload is "001"
+-- (short reservation; ready_sync rising edge closes the rest of the loop);
+-- otherwise "011" (Build B worst-case floor — bit-identical to the
+-- pre-Build-C behaviour). The mirror is INTENTIONALLY conservative: any
+-- false-MISS prediction just keeps the existing cadence, while a false-HIT
+-- prediction would risk firing the alt-slot before the controller is done.
+-- The predictor therefore only marks HIT when it has high confidence.
+--
+-- DESIGN NOTE: sdram_pm.v's HIT detection runs on the *final* 25-bit SDRAM
+-- address built in c64.sv (scpu_sdram_addr | cart_addr | reu_ram_addr
+-- depending on mux state). fpga64_sid_iec.vhd does not see that mux. For
+-- the SCPU long-mode path the predictor uses {addr_hi_816, systemAddr}
+-- which matches the dominant case (Doom/Wolf3D-style SuperRAM workloads).
+-- For the 6510 / bank-$00 path the predictor uses systemAddr alone (bank
+-- = 0 implicitly). Cartridge mem-req and REU DMA paths are predicted MISS
+-- (their addressing isn't tracked here). All these conservatism choices
+-- are safe — they never produce false HITs, just leave some HIT cycles
+-- on the table that the real sdram_pm.v will still service in 3 clk64.
+signal sdram_pred_bank      : unsigned(1 downto 0) := (others => '0');
+signal sdram_pred_row       : unsigned(12 downto 0) := (others => '0');
+signal sdram_pred_valid     : std_logic := '0';
+signal sdram_hit_pred       : std_logic;
+
 -- Step 5 trial (2026-05-20, side branch step5-altslot-registered):
 -- Registered alt-slot fire signal — recovery from the Step 2 alt-slot wedge.
 -- Latched at CPU1/5/9/D under busy='0' + scpu_fast_path + cs_ram, then ORed
@@ -2918,6 +2943,31 @@ scpu_fast_path <= '1' when supercpu_en = '1'
                        and cs_io = '0'
                        and dma_active = '0' else '0';
 
+-- Milestone A Build C HIT/MISS predictor (2026-05-25). Combinational
+-- comparison against the row register updated below in the clk32 process.
+-- Decoded address bits mirror sdram_pm.v's slicing:
+--   bank = sdram_addr_25[22:21]
+--   row  = sdram_addr_25[20:8]
+-- For the SCPU long-mode path the upstream 25-bit address is
+-- {1'b1, addr_hi_816, systemAddr} (matching scpu_sdram_addr in c64.sv when
+-- supercpu_enable && supercpu_bank != $00). For bank-$00 / 6510 / vanilla
+-- the upstream is {1'b0, 8'b0, systemAddr} (cart_addr collapses to
+-- systemAddr's 16-bit address with the cart-region prefix). The two cases
+-- have different bank/row layouts, so the predictor is INTENTIONALLY
+-- conservative: only mark HIT when (a) the predictor was last updated for
+-- the SAME path class AND (b) the bank+row bits actually match. Path-class
+-- transitions invalidate the row (handled in the clk32 process below).
+sdram_hit_pred <= '1' when sdram_pred_valid = '1'
+                       and ( (scpu_fast_path = '1'
+                              and sdram_pred_bank = addr_hi_816(6 downto 5)
+                              and sdram_pred_row  = addr_hi_816(4 downto 0)
+                                                  & systemAddr(15 downto 8))
+                          or (scpu_fast_path = '0'
+                              and sdram_pred_bank = "00"
+                              and sdram_pred_row(12 downto 8) = "00000"
+                              and sdram_pred_row(7 downto 0)  = systemAddr(15 downto 8))
+                           ) else '0';
+
 -- Step 7b (2026-05-23): no extra combinational helper needed —
 -- alt_fire_r2 reuses scpu_fast_path directly (already SuperRAM-only).
 
@@ -2978,14 +3028,52 @@ begin
 		-- if ready_sync is stuck). On Build C HIT the synced edge arrives
 		-- earlier than the static expiry and unblocks alt-slot at CPU2.
 		sdram_ready_sync_prev <= sdram_ready_sync(1);
+		-- Milestone A Build C (2026-05-25): HIT-aware preload. When the
+		-- local predictor says the upcoming SDRAM cycle hits an already-
+		-- open row, the cycle is ~3 clk64 instead of ~6; preload "001"
+		-- so the counter clears in ~1 clk32 and the alt-slot at CPU2 can
+		-- fire safely. ready_sync rising-edge early-clear (below) closes
+		-- the rest of the loop for MISS cases. See design doc §3.2 / §4.1.
+		--
+		-- Predictor row register is updated in the same block so the next
+		-- access can hit. Update applies to cs_ram accesses only — the
+		-- I/O and color paths don't go through sdram_pm and shouldn't
+		-- pollute the row state. Cs_ram covers both bank-$00 RAM and
+		-- SuperRAM (via scpu_long_access in fpga64_buslogic.vhd).
 		if cpu_cyc = '1' and cs_ram = '1' then
-			sdram_busy_cnt <= "011";
+			if sdram_hit_pred = '1' then
+				sdram_busy_cnt <= "001";   -- Build C HIT — short reservation
+			else
+				sdram_busy_cnt <= "011";   -- Build B MISS — worst-case floor
+			end if;
+			-- Update the predictor row to whatever this access hit, so
+			-- the next access can HIT against it. The slicing matches
+			-- the comb. predictor above so the next sample sees the row
+			-- it just opened.
+			if scpu_fast_path = '1' then
+				sdram_pred_bank <= addr_hi_816(6 downto 5);
+				sdram_pred_row  <= addr_hi_816(4 downto 0)
+				                 & systemAddr(15 downto 8);
+			else
+				sdram_pred_bank <= "00";
+				sdram_pred_row  <= "00000" & systemAddr(15 downto 8);
+			end if;
+			sdram_pred_valid <= '1';
 		elsif sdram_busy_cnt /= "000" then
 			if sdram_ready_sync(1) = '1' and sdram_ready_sync_prev = '0' then
 				sdram_busy_cnt <= "000";
 			else
 				sdram_busy_cnt <= sdram_busy_cnt - 1;
 			end if;
+		end if;
+		-- Refresh invalidates the open row inside sdram_pm.v; the
+		-- predictor must follow. `refresh` is generated on this same
+		-- module elsewhere; for now invalidate on every video VIC0 slot
+		-- to be safe (refresh-issuing windows live in those slots).
+		-- Coarse-grain but never produces false HITs — only drops some
+		-- HITs that would otherwise be safe.
+		if sysCycle = CYCLE_VIC0 then
+			sdram_pred_valid <= '0';
 		end if;
 
 		-- Step 5 trial: latch alt-slot fire decision one clk32 ahead of
