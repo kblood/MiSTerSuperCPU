@@ -1,0 +1,11 @@
+1. H1 is active; H2 is active as a decode mismatch, but it does **not** subsume H1 for the observed `$8174` freeze. `c64.sv:1112-1116` makes `$F6:0000` and `$02:0000` distinct. `fpga64_sid_iec.vhd:2262-2264` sends non-bank-0 reads to `ramDin` unless bootmap and bank `$F8+`.
+
+2. With bank `$F6` reads routed to SDRAM, `$8205` still returns normally. The bytes at `$8205-$8215` are `LDA [$02]; XBA; LDA $F60000; EOR #$FF; STA $F60000; XBA; EOR [$02]; RTS`. For the `$8174/$817B` calls, `[$02]` is `$F6:0800/$F6:1000`; the routine compares that same address before/after a write to `$F6:0000`, so Z=1 and execution reaches `$819D`, then the main alias loop at `$81A9`. The frozen J-ring is consistent with this, because there are no further JSR/JSLs in `$81A9-$81D5`.
+
+3. I would rank `(a)` highest for the smallest “make BASIC reach READY” change, but only with a dedicated `simm_bypass/kickstart_active` gate. `bootmap=1` is not enough because kickstart clears it at `$80F7/$80FA`. Also make `$D27D/$D27F` read back zero or writable; current `fpga64_sid_iec.vhd:1868-1875` hardcodes `$D27D=$02`, `$D27F=$F6`, ignoring the kickstart’s `STZ` at `$81EB-$81F0`.
+
+4. `(b)` would likely complete kickstart, but it is the riskiest because it globally undoes the banked SuperRAM fix that Doom depends on. `(c)` as written does **not** fix H1: returning the last `$F6` write on bank `$F6/$F7` reads does not affect the failing CMPs at `$81B3/$81C3/$81CB`, which read `[$02]` from bank `$02`.
+
+5. Fourth option: a narrow SIMM-detect alias mode. While `simm_detect_active=1`, mirror or remap `$F6/$F7:xxxx` writes so bank `$02/$03:xxxx` reads observe them, then disable before returning to KERNAL. That preserves normal bank incorporation for Doom and fixes the exact `$81A9` alias expectation.
+
+6. Third bug candidates: current `fpga64_buslogic.vhd:225-226` only asserts `scpu_rom_en` for bank `$F8`, not `$F6+`; docs are stale there. Also `$D0B2` currently returns `hwenable` at `fpga64_sid_iec.vhd:1831`, so after `$80F7` it can return `$80`, not the `$00` expected by `docs/SIMM_DETECT_ANALYSIS.md:73-76`. Current buslogic mostly ignores `scpu_rom_vis`, so that may be nonfatal now, but it is wrong and fragile.
