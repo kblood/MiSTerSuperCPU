@@ -116,18 +116,46 @@ LOAD, or the milestone-b probes themselves did. Use git bisect
 between `cf8d185b` (Milestone A Option (a) silicon-validated,
 LOAD"*" passed) and current `945e94b`.
 
-### 2.4 Strategic pivot: ship passthrough, defer MCP
+### 2.4 The MCP failure is documented + a known limitation
 
-[[milestone-a-extended-validation-complete-2026-05-26]] shows
-Milestone A Option (a) silicon survives 30-min Lorenz scpu +
-IEC LOAD + 18h uptime **in passthrough mode**. The MCP gain
-is purely speed (clk_cpu 32 → 64 MHz). Per CLAUDE.md,
-SuperCPU's value proposition is 20 MHz effective, which we
-already hit in passthrough since `clk_cpu=32` MHz with ~3x
-IPC vs vanilla 6510 already exceeds 20 MHz equivalent.
+Found in `fpga64_sid_iec.vhd` lines 3082-3088, written 2026-05-24:
 
-User-level decision: is MCP revival worth more debug cycles, or
-ship the working passthrough baseline?
+> scpu_force_1mhz throttles cpu_cyc to a single CYCLE_CPUC slot
+> per 1MHz period when software asserts $D072 (system 1MHz) or
+> $D07A (SCPU 1MHz). Required so KERNAL IEC byte-receive ($EEAF)
+> gets stock 1MHz CIA2 timing — without this, LOAD"*",8,1 wedges
+> on the F.3' bridge (~3MHz effective).
+
+So the wedge we just rediscovered is **the same wedge documented at
+build time** — when running under turbo MCP, KERNAL's IEC
+byte-receive loop is too fast for CIA2's expected 1MHz cadence,
+and bytes are lost. The fix already in the source requires the
+running software to assert $D072/$D07A first. Stock C64 KERNAL
+LOAD doesn't know about SuperCPU registers, so the throttle never
+activates, and LOAD wedges every time.
+
+Three possible permanent fixes:
+
+(a) **Auto-throttle on $DD00 access.** When the SCPU writes to
+    any CIA2 PRA register, hardware-force `scpu_force_1mhz='1'`
+    for N CPU cycles afterward. Self-arms on IEC, self-disarms
+    after timeout. Real CMD SuperCPU does this via firmware; we
+    can do it in RTL because we don't have the SCPU OS image.
+
+(b) **Wrap LOAD with a $D072 POKE.** The kickstart/launcher can
+    add `POKE $D072,0` before LOAD and restore after. Operator-
+    visible and requires user discipline.
+
+(c) **Ship passthrough as default; document MCP as experimental.**
+    [[milestone-a-extended-validation-complete-2026-05-26]] shows
+    Milestone A Option (a) silicon survives 30-min Lorenz +
+    IEC LOAD + 18h uptime **in passthrough**. Passthrough already
+    delivers SuperCPU's stated 20 MHz value (clk_cpu=32 MHz × 1x
+    IPC ≈ 20 MHz effective vs vanilla 6510 at 1 MHz). MCP is a
+    nice-to-have, not a must-have.
+
+(a) is the most software-transparent fix. (c) is the cheapest path
+to ship. User-level decision.
 
 ## 3. Confirmed orthogonalities (revised wording)
 
