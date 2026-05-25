@@ -1,149 +1,118 @@
-# Session handoff — 2026-05-26 (afternoon): mb-probe-002 falsifies bridge, points to CIA1 Timer A
+# Session handoff — 2026-05-26 (evening): mb-probe-003 confirms irq_n-stuck mechanism
 
-## 0. TL;DR for the next agent
+## 0. TL;DR
 
-Built `mb-probe-002` (RBF md5 `cd639f31`, 12:14, 64% ALMs = 27,004) on
-top of Option (a) silicon + MCP=0. Implements **Codex Design 3** for
-the milestone-B bridge probes (per yesterday's handoff §2.1):
+Built `mb-probe-003` (RBF md5 `ef01bea6`, 12:14, 0 errors). Added 3
+CIA1 internal taps to mos6526.v: `TA:####` (timer_a), `TL:####`
+({ta_hi,ta_lo}), `IC:##` (raw 5-bit icr). LINE_LEN 380→402.
 
-- RQ/AK now WRAP (mod 65536) + clk_cpu-domain SNAPSHOT on synced
-  vblank-rise (3-FF sync of `vSync_sig` clk_sys→clk_cpu). Fixes v1's
-  saturating-counter limitation AND a multi-bit CDC tearing bug Codex
-  flagged on the c64.sv side.
-- New field `WD:####` — max WAIT_ACK dwell per frame in clk_cpu cycles
-  (the *real* Race β detector — bridge is one-outstanding by structure,
-  so RQ-AK gap can't widen; what matters is "how long did the bridge
-  sit in WAIT_ACK").
-- New field `FL:##` — sticky activity flags
-  `{bit0=req_seen, bit1=ack_seen, bit2=wait_seen, bit7=dwell_sat}`.
-- New field `GM:##` — max RQ-AK gap per frame (sanity check).
-- LINE_LEN bumped 357 → 380.
+3 LOAD"*",8,1 runs, **1/3 wedged**. Adding probes shifted Quartus P&R
+enough to reduce reproducibility from 100% (v2) to ~33% (v3) —
+Heisenberg effect, expected risk. The one wedged run captured
+**definitive evidence for Codex hypothesis #1**:
 
-Codex review of the diff (before Quartus) caught 4 real bugs:
-  1. VF still drove from live multi-bit counter (added `dbg_vec_snap_reg`).
-  2. Snap-after-case could overwrite same-clk event assignments
-     (reordered snap *before* case so case wins via last-assignment-wins).
-  3. WAIT_ACK dwell off-by-one (now uses `wait_dwell_reg + 1` for
-     compare AND capture).
-  4. Missing `preserve` attributes on sticky-flag regs (added).
-All 4 fixed before build.
-
-**Result (3 LOAD"*",8,1 runs):**
-
-| Field | Range across 3 runs | Interpretation |
+| Field | Run 2 SECOND_HALF | Interpretation |
 |---|---|---|
-| WD (clk_cpu) | min=28, max=40 (3 unique values) | Bridge HEALTHY. Race β FALSIFIED. |
-| GM | 1 always | One-outstanding FSM intact. |
-| FL | 0x07 in 100% of frames | Bridge FSM making progress every frame. |
-| FS distribution | IDLE 67-100%, WAIT_ACK 0-33% | Normal bus utilization. |
-| RQ-AK gap | 0 or 1 always | Healthy handshake. |
+| TA (Timer A counter) | 391 unique values $001A..$4016 | **Timer A IS counting** |
+| TL (reload latch) | $4025 (1 unique value) | reload latch intact |
+| **IC bit 0** | **set in 432/438 frames** | **Timer A pending STUCK SET** |
+| IF/C1 | $06A1 → $06AE (only 13 incs) | irq_n falling edges frozen |
+| PC | 66 unique, last $EAC6 | KERNAL IRQ tail spin |
+| Bridge | WD 28-40, FL=0x07 | still healthy |
 
-**Race β definitively falsified with measurement, not just absence
-of evidence.** The bridge is healthy throughout the wedge.
+**Mechanism (Codex hypothesis #1, confirmed):**
+1. Timer A keeps overflowing every ~16ms (TA varies wildly).
+2. Each overflow sets `icr[0]` to 1 (mos6526.v line 248).
+3. CPU stops reading $DC0D (DR frozen in legacy probe).
+4. Without $DC0D read, `int_reset` never fires (line 550).
+5. `icr[0]` stays high.
+6. mos6526.v line 554: `irq_n <= irq_n ? ~|(imr & icr_adj) : irq_n`.
+   Once `irq_n` goes LOW, it can only go HIGH via int_reset. So
+   irq_n is stuck low forever.
+7. IF/C1 (falling-edge counters) freeze because there are no new
+   falling edges to count.
 
-**The wedge is downstream of the bridge.** Run 3's tail captured the
-tight wedge state:
-```
-PC:00EAB1 P:B4 SP:01F1 ... I:00EAAE B:00
-IF:054D C1:054D DR:54C0 IM:01 CR:01
-M2:00 T2:08 PA:D7 PB:00 DA:3F DB:00
-FS:0 RQ:* AK:* WD:001C FL:07 GM:01 VF:FF
-```
-- PC bouncing 3 distinct values in $EAB1-$EAC1 (KERNAL IRQ tail).
-- SP=$01F1 (top of stack — IRQs fully unwound).
-- IF/C1 frozen at $054D — CIA1 internal Timer A IRQ generation STOPPED.
-- DR frozen at $54C0 — no further $DC0D reads (correctly — no IRQs).
-- IM:01 CR:01 — Timer A *should* still be enabled+running.
-
-**Refined wedge hypothesis:** CIA1 Timer A stops firing IRQs after
-~1357 successful fires (IF=$054D), despite IM/CR showing it's still
-enabled. The "ICR-latch-stuck" hypothesis from yesterday is partially
-falsified — DR was actually incrementing in the pre-wedge phase
-(int_reset DID fire). The actual mystery is "what stops CIA1 Timer A
-from firing further IRQs after ~22s of normal operation."
+**The CIA is functioning correctly.** Yesterday's interpretation of
+"Timer A stops firing" was wrong — Timer A keeps firing; what stops
+is `irq_n` toggling, because the IRQ acknowledgement path (CPU read
+of $DC0D) breaks first.
 
 ## 1. State at end of session
 
-- **Source:** Uncommitted v2 bridge changes in working tree
-  (5 files, +370/-52 lines). See `git diff HEAD` for the full diff.
-  Notable: `SAME_CLOCK_PASSTHROUGH => '0'` at `fpga64_sid_iec.vhd:2921`
-  (engages MCP path for probe observability).
-- **MiSTer (`192.168.50.130`):** running `mb-probe-002` RBF
-  (md5 `cd639f31`). Stale CD32 CORENAME from 11 days ago was
-  overwritten; `/tmp/mister_session.lock` claimed for C64.
-- **Build archive:** `C64_MiSTer/builds/C64_milestone-b-cdc-rewrite_aafa4a4417_20260525T151755Z_cd639f31-dirty.rbf`.
-- **Test artifacts:** `tools/mb_probe_002_run{1_keep_2,2,3}/` —
-  3 LOAD"*",8,1 runs, each with screenshots + uart_capture.log.
-  Run 3 captures the deepest wedge state (PC unique=3).
-- **Memory:** `memory/project_mb_probe_002_bridge_falsified.md` with
-  the full analysis. MEMORY.md index updated.
+- **Source:** committed at `b6a0207` (mb-probe-003 RTL + test +
+  Codex insight). Working tree includes a regex fix in
+  `tools/mb_probe_003_test.py` (the `IF:\s+C1:` constraint was too
+  strict for the real UART line layout; changed to `IF:.*?C1:`).
+  Still uncommitted — pair it with this handoff commit.
+- **MiSTer (`192.168.50.130`):** running mb-probe-003 RBF
+  (md5 `ef01bea6`). Lockfile claimed for C64.
+- **Build archive:** `C64_MiSTer/builds/C64_milestone-b-cdc-rewrite_b6a02076e9_20260525T163655Z_ef01bea6-dirty.rbf`.
+- **Test artifacts:** `tools/mb_probe_003_run{1,2,3}/`. Run 2 is the
+  wedge capture; runs 1 and 3 are no-wedge controls.
+- **Memory:** `project_mb_probe_003_irq_n_stuck_confirmed.md` +
+  `irq_n_stuck_low_hypothesis.md` (Codex's prediction, now
+  retrospectively the "before-confirmation" record).
 
-## 2. Recommended next probe (mb-probe-003)
+## 2. Recommended next probe (mb-probe-004)
 
-### 2.1 CIA1 internal probes (1 build)
-Add taps inside `mos6526.v` for:
-  - Timer A current counter value (16-bit)
-  - ICR pending bits (raw byte before $DC0D read-mask)
-  - The internal `irq_pending` latch that drives `irq_n`
-  - Timer A reload-latch value (16-bit)
+The remaining unknown: **why does the CPU stop reading $DC0D?**
 
-Port additions to `mos6526.v`, plumb through fpga64_sid_iec.vhd →
-c64.sv → debug_pkg → uart_fmt. ~1 hour RTL + 1 build. UART fields
-would be `TA:#### TL:#### IP:## IR:#` — about 25 new bytes.
+The PC pattern ($EAB1..$EAC6) matches the KERNAL IRQ-handler tail.
+Real C64 KERNAL has a `CMP $D012 / BNE` raster-wait loop at the end
+of the IRQ handler that waits for a specific raster line before
+RTI'ing. If $D012 returns wrong values to SCPU through the bus mux
+during MCP, this loop never exits — CPU is stuck CMP-ing $D012
+forever, never reaching the rest of the IRQ tail (which is where
+$DC0D would be read).
 
-**What this disambiguates:**
-- If Timer A counter is FROZEN at $0000 → some write path is clobbering
-  it (look for phantom writes to $DC04/$DC05).
-- If Timer A reload-latch is FROZEN at $0000 → CRA reload bit issue.
-- If ICR pending bit 0 (Timer A IRQ) is STUCK SET despite int_reset →
-  bug in mos6526.v's ICR latch logic.
-- If both pending bits are clear AND Timer A is counting → IRQ
-  generation path itself is broken.
+### 2.1 Minimum useful taps for mb-probe-004:
+- Last `cpuDi` value observed when `cpuAddr[15:0] == $D012`
+  (8-bit) plus a 16-bit increment counter of $D012 reads.
+- VIC's current `rasterY[8:0]` value (already in design somewhere,
+  just needs to route to dbg_pool).
 
-### 2.2 Stack/return-PC capture (1 build, lower priority)
-Add a tap for the most recent RTI return PC pulled off the stack.
-This would confirm whether the IRQ tail is RTIing back to itself
-(stack corruption) or back to userspace (and immediately re-IRQing).
+That's about 25-30 UART bytes. LINE_LEN 402→~432.
 
-### 2.3 Pivot to Milestone C (strategic)
-Per [[mb-probe-001-mcp-races-falsified-2026-05-26]] and the design
-doc §C.3 fallback: if no probe can disambiguate further, the
-remaining option is to accept `SAME_CLOCK_PASSTHROUGH=1` as the ship
-baseline and pursue Milestone C (something other than 64MHz clk_cpu).
-This is a non-debug decision and should be made by the user, not the
-agent.
+### 2.2 Risk note
+mb-probe-003 reduced wedge reproducibility 100%→33%. mb-probe-004 may
+reduce it further. If a build comes back with 0/3 runs wedging,
+revert to mb-probe-003 and use the 1-in-3 captures as the truth set.
 
-## 3. Confirmed orthogonalities
+### 2.3 Alternative strategic pivots
 
-- **Bridge is NOT the wedge.** v2 probes WD/GM/FL all show healthy
-  bridge behavior throughout 3 LOAD"*",8,1 wedge runs. Specifically:
-  WD never exceeds 40 clk_cpu (saturating range [28, 40]), GM always
-  1, FL=0x07 every frame.
-- **Race β FALSIFIED with measurement.** Yesterday's untestable
-  claim is now testable AND falsified.
-- **Race α still FALSIFIED.** No PC byte-aliasing in any run.
-- **Option (a) PRECHARGE FSM still works.** Boot clean, IRQs flow
-  normally, bridge transactions complete fine until the wedge.
+- **Pivot to Milestone C**: accept `SAME_CLOCK_PASSTHROUGH=1` as
+  ship-baseline. Clk_cpu stays at 32MHz instead of 64MHz; turbo
+  speed regression but no LOAD wedge. User-level decision.
+- **Read the actual KERNAL disassembly** for $EAB1+ to confirm
+  the raster-wait-loop hypothesis BEFORE building. C64 KERNAL is
+  public, well-documented; should be 15 min of grepping.
+
+## 3. Confirmed orthogonalities (now an even longer list)
+
+The wedge is NOT caused by:
+- Bridge FSM, dwell, or handshake ([[mb-probe-002-bridge-falsified-2026-05-26]])
+- Bridge transaction count (43k+ delivered during wedge)
+- CIA1 Timer A counter (TA varies 391 unique values in wedge)
+- CIA1 Timer A reload latch (TL stable $4025 in wedge)
+- CIA1 ICR latch hardware (toggles correctly when CPU reads $DC0D)
+- CIA1 IRQ mask (IM:01 stable)
+- CIA2 IEC port phantom-writes (Option G falsified that earlier)
 
 ## 4. Methodology notes
 
-- **Codex review BEFORE Quartus saves builds.** This is the 3rd
-  documented case where `codex exec` caught a bug before a HW
-  iteration. ~2 min, 91k tokens, 4 real findings. See
-  [[reference-codex-skill]] for calling pattern.
-- **The 1-unit dwell-carry-forward dent fix went in AFTER build
-  kickoff** (commits show `dbg_wait_dwell_max_accum <= wait_dwell_reg + 1`
-  vs the built-in version's `<= wait_dwell_reg`). Practical impact:
-  WD might be 1 cycle lower than true max at frame boundaries. Benign
-  for wedge detection (we look at orders of magnitude). Rebuild only
-  if a future case needs single-cycle precision.
-- **Stochastic reproducibility.** LOAD"*",8,1 wedges in 1-2 of 3
-  trials with mb-probe-002. The wedge state is consistent when it
-  fires (same PC pattern, IF/C1/DR frozen at same value), but the
-  TIMING of when it locks up within the 30s window varies. Future
-  probes should plan for ~3 runs per RTL build.
-- **Don't trust pre-wedge observations.** I initially read "IF
-  incrementing 02CE→02D0→02D2" and concluded the ICR-stuck hypothesis
-  was wrong. That was the pre-wedge transition phase. The TAIL of
-  the capture (Run 3's end) showed IF frozen at $054D — same as
-  mb-probe-001. **Always look at the LAST 5-10 UART samples.**
+- **Codex hypothesis-rank → tap design → diff review → build** is
+  proving valuable. This round: Codex review caught nothing
+  blocking (clean diff), Codex brainstorm correctly predicted the
+  mechanism, classifier auto-confirmed on first wedged run.
+- **Stochastic reproduction is fine** when you have a good
+  classifier — 1 wedge in 3 with a classifier that auto-identifies
+  the mechanism is better than 3 wedges with no classifier.
+- **Parse regex needed `.*?` not `\s+` between PC/IF/C1/IM/CR**
+  because real UART line interleaves many other fields. Run 1
+  initially parsed 0 samples; fix applied + committed alongside.
+- **Don't trust pre-wedge halves.** Both runs 1 and 3 looked
+  "Timer A overflow not registering" in the classifier — that's
+  the *healthy* state when the CPU is actively reading $DC0D and
+  acking IRQs. Only the wedged half shows the smoking gun. Future
+  classifiers should weight on PC location + IF freeze before
+  declaring anything.

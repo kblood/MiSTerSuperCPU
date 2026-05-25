@@ -78,9 +78,9 @@ def parse_uart_fields(path):
     samples = []
     pat = re.compile(
         r"PC:([0-9A-Fa-f]+).*?"
-        r"IF:([0-9A-Fa-f]+)\s+"
+        r"IF:([0-9A-Fa-f]+).*?"
         r"C1:([0-9A-Fa-f]+).*?"
-        r"IM:([0-9A-Fa-f]+)\s+"
+        r"IM:([0-9A-Fa-f]+).*?"
         r"CR:([0-9A-Fa-f]+).*?"
         r"FS:([0-9A-Fa-f]+)\s+"
         r"DI:([0-9A-Fa-f]+)\s+"
