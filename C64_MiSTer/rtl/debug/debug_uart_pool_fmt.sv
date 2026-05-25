@@ -111,6 +111,22 @@ module debug_uart_pool_fmt
 	// compatible if needed, but the visible bytes show VR/RR now).
 	reg [15:0] lat_vic_d019_wr;
 	reg [15:0] lat_vic_resetraster;
+	// v9 MCP probe (2026-05-24): dc0d_rd_count (CIA1 ICR read counter)
+	// and d019_wr_count (VIC IRQ ack write counter). Differential v8 ↔
+	// MCP-active to test double-CIA-read hypothesis.
+	reg [15:0] lat_dc0d_rd;
+	reg [15:0] lat_d019_wr;
+	// v12 (2026-05-24): CIA1-only IRQ falling-edge count, emitted as " C1:####".
+	reg [15:0] lat_irq_cia1_fall;
+	// v12b (2026-05-24): CIA1 IMR/CRA snapshots, emitted as " IM:## CR:##".
+	reg [4:0]  lat_cia1_imr;
+	reg [7:0]  lat_cia1_cra;
+	reg [4:0]  lat_cia2_imr;
+	reg [7:0]  lat_cia2_cra;
+	reg [7:0]  lat_cia2_pra;
+	reg [7:0]  lat_cia2_prb;
+	reg [7:0]  lat_cia2_ddra;
+	reg [7:0]  lat_cia2_ddrb;
 	// v309 doom wedge: BRK vector lo/hi — repurposes the AC slot.
 	reg  [7:0] lat_brk_vec_lo;
 	reg  [7:0] lat_brk_vec_hi;
@@ -151,9 +167,17 @@ module debug_uart_pool_fmt
 	// next byte hasn't been issued yet. byte_idx indexes the line bytes
 	// 0..LINE_LEN-1; LINE_LEN signals "line done, idle until next vblank".
 	// -----------------------------------------------------------------
-	localparam LINE_LEN = 8'd245;
+	// v9 MCP probe (2026-05-24): +16 bytes for " DR:#### D9:####" appended
+	// after B3 — dc0d_rd_count and d019_wr_count for MCP-vs-passthrough
+	// differential. Newline now at byte 260.
+	// Option F (2026-05-25): +12 bytes for " M2:## T2:##" after CR (CIA2 imr/cra).
+	// Renamed from I2/C2 to M2/T2 to avoid colliding with legacy C2: field.
+	// Option G (2026-05-25): +24 bytes for " PA:## PB:## DA:## DB:##" — CIA2
+	// PRA/PRB/DDRA/DDRB to detect IEC-port phantom writes during LOAD"*" wedge.
+	// Newline now at byte 318.
+	localparam LINE_LEN = 9'd319;
 
-	reg [7:0] byte_idx;
+	reg [8:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
 
 	function [7:0] hex_nibble(input [3:0] n);
@@ -162,7 +186,7 @@ module debug_uart_pool_fmt
 	endfunction
 
 	// Combinational byte selector — emits the byte for `byte_idx`.
-	function [7:0] line_byte(input [7:0] i);
+	function [7:0] line_byte(input [8:0] i);
 		case (i)
 			// "F:"
 			8'd0:  line_byte = "F";
@@ -492,8 +516,109 @@ module debug_uart_pool_fmt
 			8'd242: line_byte = hex_nibble(lat_bm3_writes[7:4]);
 			8'd243: line_byte = hex_nibble(lat_bm3_writes[3:0]);
 
-			// newline (LINE_LEN-1 = 244)
-			8'd244: line_byte = 8'h0A;
+			// v9 MCP probe (2026-05-24): " DR:#### D9:####" appended.
+			// DR = pool.dc0d_rd_count (CIA1 ICR reads, side-effect-bearing)
+			// D9 = pool.d019_wr_count (CPU writes to $D019, ack chain)
+			// Differential v8↔MCP-active hypothesis: if MCP causes double
+			// reads of $DC0D, DR will be ~2× higher in MCP-active. If the
+			// CPU is stuck in IRQ and never reaches the ack write, D9 will
+			// be lower in MCP-active.
+			8'd244: line_byte = " ";
+			8'd245: line_byte = "D";
+			8'd246: line_byte = "R";
+			8'd247: line_byte = ":";
+			8'd248: line_byte = hex_nibble(lat_dc0d_rd[15:12]);
+			8'd249: line_byte = hex_nibble(lat_dc0d_rd[11:8]);
+			8'd250: line_byte = hex_nibble(lat_dc0d_rd[7:4]);
+			8'd251: line_byte = hex_nibble(lat_dc0d_rd[3:0]);
+			8'd252: line_byte = " ";
+			8'd253: line_byte = "D";
+			8'd254: line_byte = "9";
+			8'd255: line_byte = ":";
+			9'd256: line_byte = hex_nibble(lat_d019_wr[15:12]);
+			9'd257: line_byte = hex_nibble(lat_d019_wr[11:8]);
+			9'd258: line_byte = hex_nibble(lat_d019_wr[7:4]);
+			9'd259: line_byte = hex_nibble(lat_d019_wr[3:0]);
+
+			// v12 (2026-05-24): " C1:####" — CIA1-only IRQ falling edges.
+			// If C1 ≈ IF in both passthrough and MCP, the CIA1 IRQ output is
+			// firing normally and the wedge is downstream of the AND. If C1
+			// drops along with IF in MCP, MCP affects CIA1 IRQ generation.
+			9'd260: line_byte = " ";
+			9'd261: line_byte = "C";
+			9'd262: line_byte = "1";
+			9'd263: line_byte = ":";
+			9'd264: line_byte = hex_nibble(lat_irq_cia1_fall[15:12]);
+			9'd265: line_byte = hex_nibble(lat_irq_cia1_fall[11:8]);
+			9'd266: line_byte = hex_nibble(lat_irq_cia1_fall[7:4]);
+			9'd267: line_byte = hex_nibble(lat_irq_cia1_fall[3:0]);
+
+			// v12b (2026-05-24): " IM:## CR:##" — CIA1 IMR mask (5 bits, hi
+			// nibble = '0') + CRA Timer A control. If MCP causes a phantom
+			// write that clears imr (bit0 = TA enable) or cra[0] (timer run),
+			// IM or CR will differ from passthrough.
+			9'd268: line_byte = " ";
+			9'd269: line_byte = "I";
+			9'd270: line_byte = "M";
+			9'd271: line_byte = ":";
+			9'd272: line_byte = hex_nibble({3'b000, lat_cia1_imr[4]});
+			9'd273: line_byte = hex_nibble(lat_cia1_imr[3:0]);
+			9'd274: line_byte = " ";
+			9'd275: line_byte = "C";
+			9'd276: line_byte = "R";
+			9'd277: line_byte = ":";
+			9'd278: line_byte = hex_nibble(lat_cia1_cra[7:4]);
+			9'd279: line_byte = hex_nibble(lat_cia1_cra[3:0]);
+
+			// Option F (2026-05-25): " M2:## T2:##" CIA2 IMR + CRA snapshots.
+			// M2 hi nibble = '0' (imr is 5 bits). Renamed from I2/C2 to avoid
+			// collision with the legacy "C2:" field appearing earlier in line.
+			9'd280: line_byte = " ";
+			9'd281: line_byte = "M";
+			9'd282: line_byte = "2";
+			9'd283: line_byte = ":";
+			9'd284: line_byte = hex_nibble({3'b000, lat_cia2_imr[4]});
+			9'd285: line_byte = hex_nibble(lat_cia2_imr[3:0]);
+			9'd286: line_byte = " ";
+			9'd287: line_byte = "T";
+			9'd288: line_byte = "2";
+			9'd289: line_byte = ":";
+			9'd290: line_byte = hex_nibble(lat_cia2_cra[7:4]);
+			9'd291: line_byte = hex_nibble(lat_cia2_cra[3:0]);
+
+			// Option G (2026-05-25): " PA:## PB:## DA:## DB:##" CIA2 port + DDR.
+			// CIA2 PRA $DD00 = IEC ATN/CLK/DATA out + serial bus drive bits.
+			// CIA2 DDRA $DD02 sets which bits are outputs. If MCP phantom-clears
+			// DDRA bits, IEC outputs go hi-Z and drive sees no command edges.
+			9'd292: line_byte = " ";
+			9'd293: line_byte = "P";
+			9'd294: line_byte = "A";
+			9'd295: line_byte = ":";
+			9'd296: line_byte = hex_nibble(lat_cia2_pra[7:4]);
+			9'd297: line_byte = hex_nibble(lat_cia2_pra[3:0]);
+			9'd298: line_byte = " ";
+			9'd299: line_byte = "P";
+			9'd300: line_byte = "B";
+			9'd301: line_byte = ":";
+			9'd302: line_byte = hex_nibble(lat_cia2_prb[7:4]);
+			9'd303: line_byte = hex_nibble(lat_cia2_prb[3:0]);
+			9'd304: line_byte = " ";
+			9'd305: line_byte = "D";
+			9'd306: line_byte = "A";
+			9'd307: line_byte = ":";
+			9'd308: line_byte = hex_nibble(lat_cia2_ddra[7:4]);
+			9'd309: line_byte = hex_nibble(lat_cia2_ddra[3:0]);
+			9'd310: line_byte = " ";
+			9'd311: line_byte = "D";
+			9'd312: line_byte = "B";
+			9'd313: line_byte = ":";
+			9'd314: line_byte = hex_nibble(lat_cia2_ddrb[7:4]);
+			9'd315: line_byte = hex_nibble(lat_cia2_ddrb[3:0]);
+
+			// newline (LINE_LEN-1 = 318)
+			9'd316: line_byte = " ";
+			9'd317: line_byte = " ";
+			9'd318: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -569,6 +694,22 @@ module debug_uart_pool_fmt
 				// v269: VIC-internal $D019 ack diagnostic latches
 				lat_vic_d019_wr       <= pool.vic_d019_wr_count;
 				lat_vic_resetraster   <= pool.vic_resetraster_count;
+				// v9 MCP probe (2026-05-24): CIA1 ICR-read + d019 ack-write
+				lat_dc0d_rd           <= pool.dc0d_rd_count;
+				lat_d019_wr           <= pool.d019_wr_count;
+				// v12 (2026-05-24): CIA1-only IRQ falling edges
+				lat_irq_cia1_fall     <= pool.irq_cia1_fall_count;
+				// v12b (2026-05-24): CIA1 IMR/CRA snapshots
+				lat_cia1_imr          <= pool.cia1_imr;
+				lat_cia1_cra          <= pool.cia1_cra;
+				// Option F (2026-05-25): CIA2 imr/cra snapshots
+				lat_cia2_imr          <= pool.cia2_imr;
+				lat_cia2_cra          <= pool.cia2_cra;
+				// Option G (2026-05-25): CIA2 PRA/PRB/DDR snapshots
+				lat_cia2_pra          <= pool.cia2_pra;
+				lat_cia2_prb          <= pool.cia2_prb;
+				lat_cia2_ddra         <= pool.cia2_ddra;
+				lat_cia2_ddrb         <= pool.cia2_ddrb;
 				// v309: BRK vector lo/hi
 				lat_brk_vec_lo        <= pool.brk_vec_lo;
 				lat_brk_vec_hi        <= pool.brk_vec_hi;
@@ -592,7 +733,7 @@ module debug_uart_pool_fmt
 				// v347 doom bitmap-write probe (bm1/bm3 per-frame counters)
 				lat_bm1_writes <= pool.bm1_writes;
 				lat_bm3_writes <= pool.bm3_writes;
-				byte_idx  <= 8'd0;
+				byte_idx  <= 9'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin
 				tx_data      <= line_byte(byte_idx);
@@ -602,7 +743,7 @@ module debug_uart_pool_fmt
 			else if (byte_pending && tx_busy) begin
 				// Send pulse acknowledged by transmitter; advance.
 				byte_pending <= 1'b0;
-				byte_idx     <= byte_idx + 8'd1;
+				byte_idx     <= byte_idx + 9'd1;
 			end
 		end
 	end

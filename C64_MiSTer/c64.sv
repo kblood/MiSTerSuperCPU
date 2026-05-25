@@ -1199,6 +1199,15 @@ wire [15:0] scpu_dbg_nmi_vec_count;
 wire [15:0] scpu_dbg_d019_wr_count;
 wire [15:0] scpu_dbg_dc0d_rd_count;
 wire [15:0] scpu_dbg_irq_fall_count;
+wire [15:0] scpu_dbg_irq_cia1_fall_count;
+wire  [4:0] scpu_dbg_cia1_imr;
+wire  [7:0] scpu_dbg_cia1_cra;
+wire  [4:0] scpu_dbg_cia2_imr;
+wire  [7:0] scpu_dbg_cia2_cra;
+wire  [7:0] scpu_dbg_cia2_pra;
+wire  [7:0] scpu_dbg_cia2_prb;
+wire  [7:0] scpu_dbg_cia2_ddra;
+wire  [7:0] scpu_dbg_cia2_ddrb;
 wire        scpu_dbg_irq_vic_lvl;
 wire        scpu_dbg_irq_cia1_lvl;
 wire        scpu_dbg_irq_n_lvl;
@@ -1555,6 +1564,15 @@ assign dbg_pool.nmi_vec_count  = scpu_dbg_nmi_vec_count;
 assign dbg_pool.d019_wr_count  = scpu_dbg_d019_wr_count;
 assign dbg_pool.dc0d_rd_count  = scpu_dbg_dc0d_rd_count;
 assign dbg_pool.irq_fall_count = scpu_dbg_irq_fall_count;
+assign dbg_pool.irq_cia1_fall_count = scpu_dbg_irq_cia1_fall_count;
+assign dbg_pool.cia1_imr = scpu_dbg_cia1_imr;
+assign dbg_pool.cia1_cra = scpu_dbg_cia1_cra;
+assign dbg_pool.cia2_imr  = scpu_dbg_cia2_imr;
+assign dbg_pool.cia2_cra  = scpu_dbg_cia2_cra;
+assign dbg_pool.cia2_pra  = scpu_dbg_cia2_pra;
+assign dbg_pool.cia2_prb  = scpu_dbg_cia2_prb;
+assign dbg_pool.cia2_ddra = scpu_dbg_cia2_ddra;
+assign dbg_pool.cia2_ddrb = scpu_dbg_cia2_ddrb;
 assign dbg_pool.irq_vic_lvl    = scpu_dbg_irq_vic_lvl;
 assign dbg_pool.irq_cia1_lvl   = scpu_dbg_irq_cia1_lvl;
 assign dbg_pool.irq_n_lvl      = scpu_dbg_irq_n_lvl;
@@ -1996,6 +2014,15 @@ fpga64_sid_iec fpga64
 	.dbg_d019_wr_count    (scpu_dbg_d019_wr_count),
 	.dbg_dc0d_rd_count    (scpu_dbg_dc0d_rd_count),
 	.dbg_irq_fall_count   (scpu_dbg_irq_fall_count),
+	.dbg_irq_cia1_fall_count (scpu_dbg_irq_cia1_fall_count),
+	.dbg_cia1_imr           (scpu_dbg_cia1_imr),
+	.dbg_cia1_cra           (scpu_dbg_cia1_cra),
+	.dbg_cia2_imr           (scpu_dbg_cia2_imr),
+	.dbg_cia2_cra           (scpu_dbg_cia2_cra),
+	.dbg_cia2_pra           (scpu_dbg_cia2_pra),
+	.dbg_cia2_prb           (scpu_dbg_cia2_prb),
+	.dbg_cia2_ddra          (scpu_dbg_cia2_ddra),
+	.dbg_cia2_ddrb          (scpu_dbg_cia2_ddrb),
 	.dbg_irq_vic_lvl      (scpu_dbg_irq_vic_lvl),
 	.dbg_irq_cia1_lvl     (scpu_dbg_irq_cia1_lvl),
 	.dbg_irq_n_lvl        (scpu_dbg_irq_n_lvl),

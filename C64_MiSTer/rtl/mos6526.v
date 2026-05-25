@@ -36,8 +36,27 @@ module mos6526 (
   input  wire       cnt_in,
   output reg        cnt_out,
 
-  output reg        irq_n
+  output reg        irq_n,
+
+  // v12b (2026-05-24) MCP-probe debug taps — expose imr/cra so external
+  // counters can detect phantom writes during MCP wedge.
+  output wire [4:0] dbg_imr,
+  output wire [7:0] dbg_cra,
+  // Option G (2026-05-25): port + DDR snapshots for CIA2 IEC-port phantom-write
+  // detection. CIA2 $DD00/$DD01/$DD02/$DD03 drive IEC ATN/CLK/DATA — if these
+  // get phantom-written between bridge requests, IEC handshake breaks silently.
+  output wire [7:0] dbg_pra,
+  output wire [7:0] dbg_prb,
+  output wire [7:0] dbg_ddra,
+  output wire [7:0] dbg_ddrb
 );
+
+assign dbg_imr  = imr;
+assign dbg_cra  = cra;
+assign dbg_pra  = pra;
+assign dbg_prb  = prb;
+assign dbg_ddra = ddra;
+assign dbg_ddrb = ddrb;
 
 // Internal Registers
 reg [7:0] pra;

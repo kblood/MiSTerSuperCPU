@@ -224,6 +224,23 @@ typedef struct packed {
   // for both T65 and SCPU. If SCPU IV/2 >> falling edges, the CPU
   // re-enters on a single source pulse (level-IRQ tail-chain).
   logic [15:0] irq_fall_count;
+  // v12 (2026-05-24): CIA1-only IRQ falling edges (pre-AND).
+  // Differential vs irq_fall_count disambiguates whether MCP affects
+  // CIA1 internally vs eats the assertion downstream of the AND.
+  logic [15:0] irq_cia1_fall_count;
+  // v12b (2026-05-24): CIA1 internal IMR / CRA snapshots. If MCP causes
+  // phantom $DC0D/$DC0E writes, these will differ between passthrough
+  // (imr=$81, cra[0]=1 during LOAD) and MCP (likely cleared).
+  logic  [4:0] cia1_imr;
+  logic  [7:0] cia1_cra;
+  // Option F (2026-05-25): CIA2 imr/cra snapshots for LOAD"*",8,1 wedge.
+  logic  [4:0] cia2_imr;
+  logic  [7:0] cia2_cra;
+  // Option G (2026-05-25): CIA2 port + DDR snapshots for IEC-port phantom-write.
+  logic  [7:0] cia2_pra;
+  logic  [7:0] cia2_prb;
+  logic  [7:0] cia2_ddra;
+  logic  [7:0] cia2_ddrb;
 
   // v232: per-source IRQ levels + last $D019 write value. Identifies
   // which source is stuck low and confirms SCPU writes the correct

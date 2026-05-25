@@ -467,6 +467,17 @@ begin
 	bus_addr_out    <= cpu_req_addr_reg    when EFF_BRIDGE_ACTIVE = '1' else cpu_addr_in;
 	bus_addr_hi_out <= cpu_req_addr_hi_reg when EFF_BRIDGE_ACTIVE = '1' else cpu_addr_hi_in;
 	bus_do_out      <= cpu_req_do_reg      when EFF_BRIDGE_ACTIVE = '1' else cpu_do_in;
+	-- v13 reverted (2026-05-24): gating bus_we_out by bus_request_pending_reg
+	-- broke RAM writes during KERNAL boot (sync-chain gap dropped we strobe
+	-- before CYCLE_CPUC). Phantom-write fix now applied at cs_cia1 in
+	-- fpga64_buslogic.vhd by gating with bus_vpa/vda OR. Memory:
+	-- [[v13-bus-we-gate-broke-boot-2026-05-24]].
+	-- v13f reverted (2026-05-25): gating ALL bus_*_out signals coherently by
+	-- request_pending wedged CPU at PC=$FCD1 from boot — black screen, no
+	-- progress. Hypothesis: synthesis routes the extra muxes in a way that
+	-- creates a setup-time race on bus_di_in capture by the sink at
+	-- enableCpu_816 edge, when bus_addr_out has just changed. Reverting
+	-- bus_*_out gating; v13d's CIA1 partial fix remains the working state.
 	bus_we_out      <= cpu_req_we_reg      when EFF_BRIDGE_ACTIVE = '1' else cpu_we_in;
 	bus_vpa_out     <= (cpu_req_vpa_reg and bus_request_pending_reg) when EFF_BRIDGE_ACTIVE = '1' else cpu_vpa_in;
 	bus_vda_out     <= (cpu_req_vda_reg and bus_request_pending_reg) when EFF_BRIDGE_ACTIVE = '1' else cpu_vda_in;

@@ -285,6 +285,30 @@ port(
 	-- v231: source-side IRQ falling-edge count (matches IV/2 if no
 	-- mid-handler re-entry).
 	dbg_irq_fall_count   : out std_logic_vector(15 downto 0);
+	-- v12 (2026-05-24): CIA1-only IRQ falling-edge count. Pre-AND with
+	-- vic/n/ext_n. Differential vs dbg_irq_fall_count disambiguates
+	-- whether MCP affects CIA1 internally (both rates drop together)
+	-- or whether a downstream AND'd term eats the assertion (CIA1
+	-- rate stays ~50/s, combined drops).
+	dbg_irq_cia1_fall_count : out std_logic_vector(15 downto 0);
+	-- v12b (2026-05-24): CIA1 imr/cra current value snapshots. If MCP
+	-- causes phantom $DC0D/$DC0E writes during LOAD, imr (interrupt
+	-- mask) or cra (Timer A control) will differ from passthrough.
+	dbg_cia1_imr         : out std_logic_vector(4 downto 0);
+	dbg_cia1_cra         : out std_logic_vector(7 downto 0);
+	-- Option F (2026-05-25): CIA2 imr/cra snapshots for LOAD"*",8,1 wedge.
+	-- Distinguishes CIA2 phantom-write (would change imr/cra during wedge)
+	-- from IEC protocol stall (imr/cra steady but byte-receive stuck).
+	dbg_cia2_imr         : out std_logic_vector(4 downto 0);
+	dbg_cia2_cra         : out std_logic_vector(7 downto 0);
+	-- Option G (2026-05-25): CIA2 port + DDR snapshots. PRA/DDRA = $DD00/$DD02
+	-- (IEC ATN/CLK/DATA out + serial bus drive bits). PRB/DDRB = $DD01/$DD03
+	-- (user port). If MCP phantom-writes any of these between bridge requests,
+	-- IEC handshake breaks silently.
+	dbg_cia2_pra         : out std_logic_vector(7 downto 0);
+	dbg_cia2_prb         : out std_logic_vector(7 downto 0);
+	dbg_cia2_ddra        : out std_logic_vector(7 downto 0);
+	dbg_cia2_ddrb        : out std_logic_vector(7 downto 0);
 	-- v232: per-source IRQ level samples + last $D019 write value.
 	-- Identifies WHICH source is stuck low and confirms whether the
 	-- SCPU is writing the correct ack value to $D019.
@@ -844,6 +868,17 @@ signal addr_hi_816  : unsigned(7 downto 0);
 signal emu_mode_816_i : std_logic;
 signal vpa_816      : std_logic;  -- unused for now; reserved for future
 signal vda_816      : std_logic;  -- unused for now; reserved for future
+-- v13g (2026-05-25): 1-cycle delayed vpa/vda for widening the CIA2
+-- cs_n gate window. v13e proved the v13d CIA1-style gate
+-- (cs_n => not (cs_cia2 and (not cpuWe or vpa or vda))) drops some
+-- early KERNAL CIA2 setup write, wedging CPU at PC=$018C. CIA2 IEC
+-- writes appear edge-timing-critical in a way CIA1 mask writes aren't.
+-- Hypothesis: widening the gate by 1 clk_sys cycle on either side of
+-- the vpa/vda window keeps phantom-write protection (gap between
+-- requests is many cycles) while letting all legitimate writes through.
+signal vpa_816_d1   : std_logic := '0';
+signal vda_816_d1   : std_logic := '0';
+signal cia2_write_safe : std_logic;
 signal enableCpu_6510 : std_logic;
 signal enableCpu_816  : std_logic;
 
@@ -945,10 +980,26 @@ signal nmi_vec_count_r  : unsigned(15 downto 0) := (others => '0');
 -- v230
 signal d019_wr_count_r  : unsigned(15 downto 0) := (others => '0');
 signal dc0d_rd_count_r  : unsigned(15 downto 0) := (others => '0');
+-- v13 (2026-05-24) $DC0D write count for phantom-write detection
+signal dc0d_wr_count_r  : unsigned(15 downto 0) := (others => '0');
 -- v231 IRQ source-level falling-edge counter
 signal irq_combined     : std_logic;
 signal irq_combined_d   : std_logic := '1';
 signal irq_fall_count_r : unsigned(15 downto 0) := (others => '0');
+-- v12 (2026-05-24) CIA1-only IRQ falling-edge counter for MCP probe
+signal irq_cia1_d       : std_logic := '1';
+signal irq_cia1_fall_count_r : unsigned(15 downto 0) := (others => '0');
+-- v12b (2026-05-24) CIA1 internal reg taps for phantom-write detection
+signal cia1_imr_lvl     : std_logic_vector(4 downto 0);
+signal cia1_cra_lvl     : std_logic_vector(7 downto 0);
+-- Option F (2026-05-25) CIA2 internal reg taps for LOAD"*",8,1 wedge probe
+signal cia2_imr_lvl     : std_logic_vector(4 downto 0);
+signal cia2_cra_lvl     : std_logic_vector(7 downto 0);
+-- Option G (2026-05-25) CIA2 port + DDR taps for IEC-port phantom-write detect
+signal cia2_pra_lvl     : std_logic_vector(7 downto 0);
+signal cia2_prb_lvl     : std_logic_vector(7 downto 0);
+signal cia2_ddra_lvl    : std_logic_vector(7 downto 0);
+signal cia2_ddrb_lvl    : std_logic_vector(7 downto 0);
 -- v232 last $D019 write value
 signal d019_last_val_r  : std_logic_vector(7 downto 0) := (others => '0');
 -- v234 $D019 read-side probes
@@ -1422,9 +1473,16 @@ component mos6526
 		sp_out        : out std_logic;
 		cnt_in        : in  std_logic;
 		cnt_out       : out std_logic;
-		irq_n         : out std_logic
+		irq_n         : out std_logic;
+		dbg_imr       : out std_logic_vector(4 downto 0);
+		dbg_cra       : out std_logic_vector(7 downto 0);
+		-- Option G (2026-05-25): CIA port + DDR taps for IEC phantom-write probe
+		dbg_pra       : out std_logic_vector(7 downto 0);
+		dbg_prb       : out std_logic_vector(7 downto 0);
+		dbg_ddra      : out std_logic_vector(7 downto 0);
+		dbg_ddrb      : out std_logic_vector(7 downto 0)
 	);
-end component; 
+end component;
 
 begin
 
@@ -1512,6 +1570,22 @@ begin
 		end case;
 	end if;
 end process;
+
+-- v13g (2026-05-25): 1-cycle delayed vpa/vda for the CIA2 write gate.
+-- The combinational cia2_write_safe widens the "safe to write" window
+-- by 1 clk_sys cycle on each side of the vpa/vda transitions, so CIA2
+-- IEC edge-timing-critical writes don't fall on the gate's edges.
+-- Between bridge requests (vpa/vda low for many cycles), the gate
+-- still blocks phantom writes — a 1-cycle widening is far smaller
+-- than the inter-request gap.
+process(clk32) begin
+	if rising_edge(clk32) then
+		vpa_816_d1 <= vpa_816;
+		vda_816_d1 <= vda_816;
+	end if;
+end process;
+
+cia2_write_safe <= vpa_816 or vda_816 or vpa_816_d1 or vda_816_d1;
 
 -- -----------------------------------------------------------------------
 -- Color RAM
@@ -2491,6 +2565,13 @@ port map (
 -- -----------------------------------------------------------------------
 -- CIAs
 -- -----------------------------------------------------------------------
+-- v13d (2026-05-24): cs_cia1 gated ONLY for WRITES (cpuWe=1). Read path
+-- is preserved exactly, so KERNAL polling/timing reads of CIA registers
+-- are unaffected. Writes require an active CPU access (vpa OR vda) — this
+-- blocks the phantom-write seen in v12b_mcp where stale cpu_req_we_reg
+-- caused multi-strobe writes to $DC0D between requests.
+-- (v13b full-gating broke IEC; v13c CIA1-only-full broke at different
+-- PC range; this targeted write-only gating is the surgical attempt.)
 cia1: mos6526
 port map (
 	clk => clk32,
@@ -2498,7 +2579,16 @@ port map (
 	phi2_p => enableCia_p,
 	phi2_n => enableCia_n,
 	res_n => not reset,
-	cs_n => not cs_cia1,
+	-- v13d (2026-05-25): write-only gate. Reads ungated (cpuWe=0 → not
+	-- cpuWe='1' → cs always asserted on cs_cia1). Writes require vpa OR
+	-- vda active (= bridge has a real CPU request in flight). Blocks
+	-- phantom $DC0D writes from the "between requests" window in the
+	-- MCP bridge (see [[v12b-mcp-phantom-write-confirmed-2026-05-24]]).
+	-- v13e tried the same gate on CIA2 and broke IEC; v13f tried
+	-- bridge-level gating and wedged CPU at PC=$FCD1. v13d remains the
+	-- best-known partial fix: LOAD"$",8 works, LOAD"*",8,1 wedges
+	-- (CIA2 still vulnerable).
+	cs_n => not (cs_cia1 and (not cpuWe or vpa_816 or vda_816)),
 	rw => not cpuWe,
 
 	rs => cpuAddr(3 downto 0),
@@ -2518,7 +2608,13 @@ port map (
 
 	tod => todclk,
 
-	irq_n => irq_cia1
+	irq_n => irq_cia1,
+	dbg_imr => cia1_imr_lvl,
+	dbg_cra => cia1_cra_lvl,
+	dbg_pra => open,
+	dbg_prb => open,
+	dbg_ddra => open,
+	dbg_ddrb => open
 );
 
 cia2: mos6526
@@ -2528,7 +2624,15 @@ port map (
 	phi2_p => enableCia_p,
 	phi2_n => enableCia_n,
 	res_n => not reset,
-	cs_n => not cs_cia2,
+	-- v13g (2026-05-25): write-only gate using cia2_write_safe (wider
+	-- window: vpa OR vda OR vpa_d1 OR vda_d1). v13e used the narrower
+	-- v13d CIA1 pattern (just vpa OR vda) and wedged at PC=$018C — too
+	-- narrow for CIA2 IEC edge writes. v13f bridge-level gating also
+	-- wedged. v13g widens the gate by 1 clk_sys on each side to catch
+	-- legitimate writes whose bus-side timing doesn't precisely align
+	-- with vpa/vda assertion. Between requests vpa/vda are low for many
+	-- cycles, so 1-cycle widening still blocks phantom writes.
+	cs_n => not (cs_cia2 and (not cpuWe or cia2_write_safe)),
 	rw => not cpuWe,
 
 	rs => cpuAddr(3 downto 0),
@@ -2551,7 +2655,13 @@ port map (
 
 	tod => todclk,
 
-	irq_n => irq_cia2
+	irq_n => irq_cia2,
+	dbg_imr => cia2_imr_lvl,
+	dbg_cra => cia2_cra_lvl,
+	dbg_pra => cia2_pra_lvl,
+	dbg_prb => cia2_prb_lvl,
+	dbg_ddra => cia2_ddra_lvl,
+	dbg_ddrb => cia2_ddrb_lvl
 );
 
 serialBus: process(clk32)
@@ -2736,6 +2846,9 @@ generic map (
 	-- $D072/$D07A throttle stays effective in passthrough because it
 	-- gates cpu_cyc → enableCpu_816, which now drives cpu_enable_out
 	-- directly via bus_ack_pulse_in.
+	-- 2026-05-25: passthrough mode (MCP disabled) to test whether v13d
+	-- CIA1 + v13g CIA2 cs-gates work correctly without MCP. Disambiguates
+	-- whether remaining LOAD"*" wedge is MCP-specific or affects passthrough.
 	SAME_CLOCK_PASSTHROUGH => '1'
 )
 port map (
@@ -3027,8 +3140,11 @@ begin
 			nmi_vec_count_r      <= (others => '0');
 			d019_wr_count_r      <= (others => '0');
 			dc0d_rd_count_r      <= (others => '0');
+			dc0d_wr_count_r      <= (others => '0');
 			irq_combined_d       <= '1';
 			irq_fall_count_r     <= (others => '0');
+			irq_cia1_d           <= '1';
+			irq_cia1_fall_count_r <= (others => '0');
 			d019_last_read_r     <= (others => '0');
 			d019_seen_bits_r     <= (others => '0');
 			d01a_last_val_r      <= (others => '0');
@@ -3835,6 +3951,13 @@ begin
 			if cs_cia1 = '1' and cpuWe = '0' and cpuAddr(3 downto 0) = "1101" then
 				dc0d_rd_count_r <= dc0d_rd_count_r + 1;
 			end if;
+			-- v13 (2026-05-24): $DC0D write count. If MCP without bus_we
+			-- gating causes phantom IMR-clears, this counts the spurious
+			-- write cycles. With the gating fix in place, this should match
+			-- passthrough's $DC0D write rate.
+			if cs_cia1 = '1' and cpuWe = '1' and cpuAddr(3 downto 0) = "1101" then
+				dc0d_wr_count_r <= dc0d_wr_count_r + 1;
+			end if;
 
 			-- v234: $D019 read value latch + sticky bits-seen mask. cpuDi
 			-- carries VIC's `do` output during a $D019 read. Bits 0-3 are
@@ -3952,6 +4075,13 @@ begin
 				cycles_since_irq_fall_r <= (others => '0');
 			elsif cycles_since_irq_fall_r /= x"FFFF" then
 				cycles_since_irq_fall_r <= cycles_since_irq_fall_r + 1;
+			end if;
+			-- v12 (2026-05-24): CIA1-only falling-edge count for MCP probe.
+			-- Differential vs irq_fall_count_r tells us whether MCP wedge
+			-- affects CIA1 IRQ generation or only the downstream AND.
+			irq_cia1_d <= irq_cia1;
+			if irq_cia1_d = '1' and irq_cia1 = '0' then
+				irq_cia1_fall_count_r <= irq_cia1_fall_count_r + 1;
 			end if;
 			-- v268: irq_combined rising-edge counter (0->1 transitions).
 			if irq_combined_d = '0' and irq_combined = '1' then
@@ -4159,6 +4289,15 @@ dbg_nmi_vec_count    <= std_logic_vector(nmi_vec_count_r);
 dbg_d019_wr_count    <= std_logic_vector(d019_wr_count_r);
 dbg_dc0d_rd_count    <= std_logic_vector(dc0d_rd_count_r);
 dbg_irq_fall_count   <= std_logic_vector(irq_fall_count_r);
+dbg_irq_cia1_fall_count <= std_logic_vector(irq_cia1_fall_count_r);
+dbg_cia1_imr <= cia1_imr_lvl;
+dbg_cia1_cra <= cia1_cra_lvl;
+dbg_cia2_imr  <= cia2_imr_lvl;
+dbg_cia2_cra  <= cia2_cra_lvl;
+dbg_cia2_pra  <= cia2_pra_lvl;
+dbg_cia2_prb  <= cia2_prb_lvl;
+dbg_cia2_ddra <= cia2_ddra_lvl;
+dbg_cia2_ddrb <= cia2_ddrb_lvl;
 
 -- v231 source-IRQ aggregate (mirror of port-map gate)
 irq_combined <= irq_cia1 and irq_vic and irq_n and irq_ext_n;
