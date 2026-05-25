@@ -1210,6 +1210,10 @@ wire [15:0] scpu_dbg_irq_fall_count;
 wire [15:0] scpu_dbg_irq_cia1_fall_count;
 wire  [4:0] scpu_dbg_cia1_imr;
 wire  [7:0] scpu_dbg_cia1_cra;
+// mb-probe-003: CIA1 Timer A + ICR internal taps
+wire [15:0] scpu_dbg_cia1_timer_a;
+wire [15:0] scpu_dbg_cia1_timer_a_latch;
+wire  [4:0] scpu_dbg_cia1_icr;
 wire  [4:0] scpu_dbg_cia2_imr;
 wire  [7:0] scpu_dbg_cia2_cra;
 wire  [7:0] scpu_dbg_cia2_pra;
@@ -1633,6 +1637,10 @@ assign dbg_pool.irq_fall_count = scpu_dbg_irq_fall_count;
 assign dbg_pool.irq_cia1_fall_count = scpu_dbg_irq_cia1_fall_count;
 assign dbg_pool.cia1_imr = scpu_dbg_cia1_imr;
 assign dbg_pool.cia1_cra = scpu_dbg_cia1_cra;
+// mb-probe-003 — clk_sys-domain regs, no sync needed (mos6526 clk = clk_sys)
+assign dbg_pool.cia1_timer_a       = scpu_dbg_cia1_timer_a;
+assign dbg_pool.cia1_timer_a_latch = scpu_dbg_cia1_timer_a_latch;
+assign dbg_pool.cia1_icr           = scpu_dbg_cia1_icr;
 assign dbg_pool.cia2_imr  = scpu_dbg_cia2_imr;
 assign dbg_pool.cia2_cra  = scpu_dbg_cia2_cra;
 assign dbg_pool.cia2_pra  = scpu_dbg_cia2_pra;
@@ -2095,6 +2103,9 @@ fpga64_sid_iec fpga64
 	.dbg_irq_cia1_fall_count (scpu_dbg_irq_cia1_fall_count),
 	.dbg_cia1_imr           (scpu_dbg_cia1_imr),
 	.dbg_cia1_cra           (scpu_dbg_cia1_cra),
+	.dbg_cia1_timer_a       (scpu_dbg_cia1_timer_a),
+	.dbg_cia1_timer_a_latch (scpu_dbg_cia1_timer_a_latch),
+	.dbg_cia1_icr           (scpu_dbg_cia1_icr),
 	.dbg_cia2_imr           (scpu_dbg_cia2_imr),
 	.dbg_cia2_cra           (scpu_dbg_cia2_cra),
 	.dbg_cia2_pra           (scpu_dbg_cia2_pra),

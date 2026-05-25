@@ -233,6 +233,13 @@ typedef struct packed {
   // (imr=$81, cra[0]=1 during LOAD) and MCP (likely cleared).
   logic  [4:0] cia1_imr;
   logic  [7:0] cia1_cra;
+  // mb-probe-003 (2026-05-26): CIA1 Timer A counter, reload latch, raw ICR.
+  // Identifies which of (counter halted / reload zeroed / ICR latch stuck /
+  // downstream IRQ logic) explains why CIA1 stops firing Timer A IRQs
+  // during the MCP LOAD"*",8,1 wedge.
+  logic [15:0] cia1_timer_a;
+  logic [15:0] cia1_timer_a_latch;
+  logic  [4:0] cia1_icr;
   // Option F (2026-05-25): CIA2 imr/cra snapshots for LOAD"*",8,1 wedge.
   logic  [4:0] cia2_imr;
   logic  [7:0] cia2_cra;

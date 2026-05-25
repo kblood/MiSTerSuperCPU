@@ -139,6 +139,10 @@ module debug_uart_pool_fmt
 	reg [15:0] lat_bridge_wait_dwell_max;
 	reg [7:0]  lat_bridge_activity_flags;
 	reg [7:0]  lat_bridge_gap_max;
+	// mb-probe-003 (2026-05-26): CIA1 Timer A + ICR taps.
+	reg [15:0] lat_cia1_timer_a;
+	reg [15:0] lat_cia1_timer_a_latch;
+	reg  [4:0] lat_cia1_icr;
 	// v309 doom wedge: BRK vector lo/hi — repurposes the AC slot.
 	reg  [7:0] lat_brk_vec_lo;
 	reg  [7:0] lat_brk_vec_hi;
@@ -191,9 +195,12 @@ module debug_uart_pool_fmt
 	// counter per docs/milestone_b_bridge_probe_design.md §B.3.
 	// Milestone B v2 (2026-05-26 — Codex Design 3): +20 bytes for
 	// " WD:#### FL:## GM:##" — max WAIT_ACK dwell per frame, sticky activity
-	// flags, max RQ-AK gap per frame. Padded to LINE_LEN=380 (safety margin
-	// past 349+20=369) so the newline lands at byte 379.
-	localparam LINE_LEN = 9'd380;
+	// flags, max RQ-AK gap per frame.
+	// mb-probe-003 (2026-05-26): +22 bytes for " TA:#### TL:#### IC:##" —
+	// CIA1 Timer A current counter, reload latch, raw ICR pending bits.
+	// New tail uses bytes 369..390; newline at LINE_LEN-1 = 401, with
+	// padding bytes 391..400 as safety margin.
+	localparam LINE_LEN = 9'd402;
 
 	reg [8:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -708,18 +715,48 @@ module debug_uart_pool_fmt
 			9'd367: line_byte = hex_nibble(lat_bridge_gap_max[7:4]);
 			9'd368: line_byte = hex_nibble(lat_bridge_gap_max[3:0]);
 
-			// Padding to safety margin; newline at LINE_LEN-1 = 379.
+			// mb-probe-003: CIA1 Timer A internal state.
+			//   " TA:####" = lat_cia1_timer_a       (live counter)
+			//   " TL:####" = lat_cia1_timer_a_latch (reload value {ta_hi,ta_lo})
+			//   " IC:##"   = lat_cia1_icr           (raw 5-bit ICR; bit 0 = TA pending)
+			// " TA:####"
 			9'd369: line_byte = " ";
-			9'd370: line_byte = " ";
-			9'd371: line_byte = " ";
-			9'd372: line_byte = " ";
-			9'd373: line_byte = " ";
-			9'd374: line_byte = " ";
-			9'd375: line_byte = " ";
-			9'd376: line_byte = " ";
+			9'd370: line_byte = "T";
+			9'd371: line_byte = "A";
+			9'd372: line_byte = ":";
+			9'd373: line_byte = hex_nibble(lat_cia1_timer_a[15:12]);
+			9'd374: line_byte = hex_nibble(lat_cia1_timer_a[11:8]);
+			9'd375: line_byte = hex_nibble(lat_cia1_timer_a[7:4]);
+			9'd376: line_byte = hex_nibble(lat_cia1_timer_a[3:0]);
+			// " TL:####"
 			9'd377: line_byte = " ";
-			9'd378: line_byte = " ";
-			9'd379: line_byte = 8'h0A;
+			9'd378: line_byte = "T";
+			9'd379: line_byte = "L";
+			9'd380: line_byte = ":";
+			9'd381: line_byte = hex_nibble(lat_cia1_timer_a_latch[15:12]);
+			9'd382: line_byte = hex_nibble(lat_cia1_timer_a_latch[11:8]);
+			9'd383: line_byte = hex_nibble(lat_cia1_timer_a_latch[7:4]);
+			9'd384: line_byte = hex_nibble(lat_cia1_timer_a_latch[3:0]);
+			// " IC:##" — upper nibble is bit 4 only (icr is 5 bits)
+			9'd385: line_byte = " ";
+			9'd386: line_byte = "I";
+			9'd387: line_byte = "C";
+			9'd388: line_byte = ":";
+			9'd389: line_byte = hex_nibble({3'b000, lat_cia1_icr[4]});
+			9'd390: line_byte = hex_nibble(lat_cia1_icr[3:0]);
+
+			// Padding to safety margin; newline at LINE_LEN-1 = 401.
+			9'd391: line_byte = " ";
+			9'd392: line_byte = " ";
+			9'd393: line_byte = " ";
+			9'd394: line_byte = " ";
+			9'd395: line_byte = " ";
+			9'd396: line_byte = " ";
+			9'd397: line_byte = " ";
+			9'd398: line_byte = " ";
+			9'd399: line_byte = " ";
+			9'd400: line_byte = " ";
+			9'd401: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -847,6 +884,11 @@ module debug_uart_pool_fmt
 				lat_bridge_wait_dwell_max  <= pool.bridge_wait_dwell_max;
 				lat_bridge_activity_flags  <= pool.bridge_activity_flags;
 				lat_bridge_gap_max         <= pool.bridge_gap_max;
+				// mb-probe-003: CIA1 internal taps (clk_sys-domain regs,
+				// no sync needed — captured at vblank for line consistency).
+				lat_cia1_timer_a           <= pool.cia1_timer_a;
+				lat_cia1_timer_a_latch     <= pool.cia1_timer_a_latch;
+				lat_cia1_icr               <= pool.cia1_icr;
 				byte_idx  <= 9'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin

@@ -48,7 +48,16 @@ module mos6526 (
   output wire [7:0] dbg_pra,
   output wire [7:0] dbg_prb,
   output wire [7:0] dbg_ddra,
-  output wire [7:0] dbg_ddrb
+  output wire [7:0] dbg_ddrb,
+  // mb-probe-003 (2026-05-26): CIA Timer A + ICR internal state to identify
+  // why Timer A IRQs stop firing during the MCP LOAD"*" wedge (mb-probe-002
+  // proved the bridge is healthy; CIA1 IF/C1 freeze at $054D mid-LOAD).
+  // dbg_timer_a       = live 16-bit Timer A counter value
+  // dbg_timer_a_latch = 16-bit reload value {ta_hi, ta_lo}
+  // dbg_icr           = raw 5-bit ICR pending bits (bit 0 = Timer A pending)
+  output wire [15:0] dbg_timer_a,
+  output wire [15:0] dbg_timer_a_latch,
+  output wire [4:0]  dbg_icr
 );
 
 assign dbg_imr  = imr;
@@ -57,6 +66,10 @@ assign dbg_pra  = pra;
 assign dbg_prb  = prb;
 assign dbg_ddra = ddra;
 assign dbg_ddrb = ddrb;
+// mb-probe-003: Timer A counter + reload latch + raw ICR pending bits
+assign dbg_timer_a       = timer_a;
+assign dbg_timer_a_latch = {ta_hi, ta_lo};
+assign dbg_icr           = icr;
 
 // Internal Registers
 reg [7:0] pra;

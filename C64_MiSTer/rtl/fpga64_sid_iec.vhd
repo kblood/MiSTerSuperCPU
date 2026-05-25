@@ -296,6 +296,16 @@ port(
 	-- mask) or cra (Timer A control) will differ from passthrough.
 	dbg_cia1_imr         : out std_logic_vector(4 downto 0);
 	dbg_cia1_cra         : out std_logic_vector(7 downto 0);
+	-- mb-probe-003 (2026-05-26): CIA1 Timer A counter, reload latch,
+	-- and raw 5-bit ICR pending bits. Identifies whether Timer A IRQ
+	-- generation stops because (a) counter frozen at $0000 = count
+	-- enable lost via phantom CRA[0] clear, (b) reload latch frozen at
+	-- $0000 = phantom write to $DC04/$DC05, (c) ICR bit 0 stuck set =
+	-- int_reset doesn't fire on $DC0D read, or (d) all three sane and
+	-- irq_n stays high anyway = downstream IRQ logic bug.
+	dbg_cia1_timer_a       : out std_logic_vector(15 downto 0);
+	dbg_cia1_timer_a_latch : out std_logic_vector(15 downto 0);
+	dbg_cia1_icr           : out std_logic_vector(4 downto 0);
 	-- Option F (2026-05-25): CIA2 imr/cra snapshots for LOAD"*",8,1 wedge.
 	-- Distinguishes CIA2 phantom-write (would change imr/cra during wedge)
 	-- from IEC protocol stall (imr/cra steady but byte-receive stuck).
@@ -1053,6 +1063,10 @@ signal irq_cia1_fall_count_r : unsigned(15 downto 0) := (others => '0');
 -- v12b (2026-05-24) CIA1 internal reg taps for phantom-write detection
 signal cia1_imr_lvl     : std_logic_vector(4 downto 0);
 signal cia1_cra_lvl     : std_logic_vector(7 downto 0);
+-- mb-probe-003: CIA1 Timer A + ICR internal taps
+signal cia1_timer_a_lvl       : std_logic_vector(15 downto 0);
+signal cia1_timer_a_latch_lvl : std_logic_vector(15 downto 0);
+signal cia1_icr_lvl           : std_logic_vector(4 downto 0);
 -- Option F (2026-05-25) CIA2 internal reg taps for LOAD"*",8,1 wedge probe
 signal cia2_imr_lvl     : std_logic_vector(4 downto 0);
 signal cia2_cra_lvl     : std_logic_vector(7 downto 0);
@@ -1541,7 +1555,11 @@ component mos6526
 		dbg_pra       : out std_logic_vector(7 downto 0);
 		dbg_prb       : out std_logic_vector(7 downto 0);
 		dbg_ddra      : out std_logic_vector(7 downto 0);
-		dbg_ddrb      : out std_logic_vector(7 downto 0)
+		dbg_ddrb      : out std_logic_vector(7 downto 0);
+		-- mb-probe-003 (2026-05-26): Timer A + ICR internal state
+		dbg_timer_a       : out std_logic_vector(15 downto 0);
+		dbg_timer_a_latch : out std_logic_vector(15 downto 0);
+		dbg_icr           : out std_logic_vector(4 downto 0)
 	);
 end component;
 
@@ -2675,7 +2693,11 @@ port map (
 	dbg_pra => open,
 	dbg_prb => open,
 	dbg_ddra => open,
-	dbg_ddrb => open
+	dbg_ddrb => open,
+	-- mb-probe-003: Timer A + ICR internal taps on CIA1 only.
+	dbg_timer_a       => cia1_timer_a_lvl,
+	dbg_timer_a_latch => cia1_timer_a_latch_lvl,
+	dbg_icr           => cia1_icr_lvl
 );
 
 cia2: mos6526
@@ -2722,7 +2744,12 @@ port map (
 	dbg_pra => cia2_pra_lvl,
 	dbg_prb => cia2_prb_lvl,
 	dbg_ddra => cia2_ddra_lvl,
-	dbg_ddrb => cia2_ddrb_lvl
+	dbg_ddrb => cia2_ddrb_lvl,
+	-- mb-probe-003: CIA2 internal taps not currently routed to UART
+	-- (only CIA1 Timer A is suspect for the wedge).
+	dbg_timer_a       => open,
+	dbg_timer_a_latch => open,
+	dbg_icr           => open
 );
 
 serialBus: process(clk32)
@@ -4461,6 +4488,9 @@ dbg_irq_fall_count   <= std_logic_vector(irq_fall_count_r);
 dbg_irq_cia1_fall_count <= std_logic_vector(irq_cia1_fall_count_r);
 dbg_cia1_imr <= cia1_imr_lvl;
 dbg_cia1_cra <= cia1_cra_lvl;
+dbg_cia1_timer_a       <= cia1_timer_a_lvl;
+dbg_cia1_timer_a_latch <= cia1_timer_a_latch_lvl;
+dbg_cia1_icr           <= cia1_icr_lvl;
 dbg_cia2_imr  <= cia2_imr_lvl;
 dbg_cia2_cra  <= cia2_cra_lvl;
 dbg_cia2_pra  <= cia2_pra_lvl;
