@@ -698,7 +698,18 @@ port(
 	-- saw any non-zero byte that frame. B6=$00 → screen is genuinely empty
 	-- (everything VIC fetched was zero). B6 != $00 → screen has data but VIC
 	-- pipeline / colour / mode register is mismatched.
-	dbg_vic_di_or              : out std_logic_vector(7 downto 0)
+	dbg_vic_di_or              : out std_logic_vector(7 downto 0);
+
+	-- Milestone B (2026-05-25): bridge-internal UART probes per
+	-- docs/milestone_b_bridge_probe_design.md §B. These are clk_cpu-domain
+	-- snapshots; c64.sv handles the 2-FF sync into clk_sys for the UART
+	-- formatter. Purpose: discriminate Race α (vector-byte aliasing) vs
+	-- Race β (ack-stall accumulation) at the LOAD"*",8,1 wedge moment.
+	dbg_bridge_fsm_state       : out std_logic_vector(3 downto 0);
+	dbg_bridge_last_bus_di     : out std_logic_vector(7 downto 0);
+	dbg_bridge_req_count       : out std_logic_vector(15 downto 0);
+	dbg_bridge_ack_count       : out std_logic_vector(15 downto 0);
+	dbg_bridge_vec_fetch_count : out std_logic_vector(7 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -887,6 +898,13 @@ signal cpu816_di_to_cpu   : unsigned(7 downto 0);
 signal cpu816_rdy_to_cpu  : std_logic;
 signal cpu816_enable_to_cpu : std_logic;
 signal cpu816_dbg_is_slow : std_logic;
+-- Milestone B (2026-05-25): bridge-internal probes (clk_cpu domain).
+-- Wired from scpu_async_bridge_inst out the entity ports to c64.sv.
+signal cpu816_dbg_fsm_state          : unsigned(3 downto 0);
+signal cpu816_dbg_last_bus_di        : unsigned(7 downto 0);
+signal cpu816_dbg_req_count          : unsigned(15 downto 0);
+signal cpu816_dbg_ack_count          : unsigned(15 downto 0);
+signal cpu816_dbg_vec_fetch_count    : unsigned(7 downto 0);
 signal cpuIO_816    : unsigned(7 downto 0);
 signal nmi_ack_816  : std_logic;
 signal addr_hi_816  : unsigned(7 downto 0);
@@ -2905,7 +2923,14 @@ port map (
 	-- the MCP path (BRIDGE_ACTIVE='1' + SAME_CLOCK_PASSTHROUGH='0').
 	bus_request_strobe_in => cpu_cyc,
 
-	dbg_is_slow      => cpu816_dbg_is_slow
+	dbg_is_slow      => cpu816_dbg_is_slow,
+
+	-- Milestone B (2026-05-25): bridge-internal UART probes.
+	dbg_fsm_state           => cpu816_dbg_fsm_state,
+	dbg_last_bus_di         => cpu816_dbg_last_bus_di,
+	dbg_req_count           => cpu816_dbg_req_count,
+	dbg_ack_count           => cpu816_dbg_ack_count,
+	dbg_irq_vec_fetch_count => cpu816_dbg_vec_fetch_count
 );
 
 -- CPU-output mux: select active CPU's outputs.
@@ -4316,6 +4341,14 @@ dbg_mem_1d02    <= mem_1d02_r;
 dbg_mem_1d04    <= mem_1d04_r;
 -- v346 doom bitmap-content probe — sticky OR of vicDi over previous frame
 dbg_vic_di_or   <= std_logic_vector(vic_di_or_lat);
+-- Milestone B (2026-05-25): bridge-internal UART probes — direct pass-through
+-- from scpu_async_bridge_inst (still in clk_cpu domain). c64.sv re-syncs into
+-- clk_sys via 2-FF chains before driving the dbg_pool / UART formatter.
+dbg_bridge_fsm_state       <= std_logic_vector(cpu816_dbg_fsm_state);
+dbg_bridge_last_bus_di     <= std_logic_vector(cpu816_dbg_last_bus_di);
+dbg_bridge_req_count       <= std_logic_vector(cpu816_dbg_req_count);
+dbg_bridge_ack_count       <= std_logic_vector(cpu816_dbg_ack_count);
+dbg_bridge_vec_fetch_count <= std_logic_vector(cpu816_dbg_vec_fetch_count);
 -- vsync output: route through internal signal so the per-frame OR latch
 -- (above) can detect the rising edge.
 vsync           <= vSync_sig;

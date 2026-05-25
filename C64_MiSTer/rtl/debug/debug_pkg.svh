@@ -625,6 +625,17 @@ typedef struct packed {
   // its bitmap renderer (init wedge somewhere upstream).
   logic  [7:0] bm1_writes;
   logic  [7:0] bm3_writes;
+
+  // Milestone B (2026-05-25): bridge-internal UART probes per
+  // docs/milestone_b_bridge_probe_design.md §B. Drive the new
+  // " FS:# DI:## RQ:#### AK:#### VF:##" suffix in the UART line so
+  // the next HW build can discriminate Race α (vector-byte aliasing)
+  // vs Race β (ack-stall accumulation) at the LOAD"*",8,1 wedge.
+  logic [3:0]  bridge_fsm_state;       // 0=IDLE 1=REQ_PENDING 2=WAIT_ACK 3=LATCH
+  logic [7:0]  bridge_last_bus_di;     // bus_di_capture_reg snapshot
+  logic [15:0] bridge_req_count;       // saturating IDLE→REQ_PENDING count
+  logic [15:0] bridge_ack_count;       // saturating WAIT_ACK→LATCH count
+  logic [7:0]  bridge_vec_fetch_count; // saturating $00:$FFFE/$FFFF read count
 } dbg_pool_t;
 `endif
 

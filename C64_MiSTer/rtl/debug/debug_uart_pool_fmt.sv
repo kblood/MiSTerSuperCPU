@@ -127,6 +127,14 @@ module debug_uart_pool_fmt
 	reg [7:0]  lat_cia2_prb;
 	reg [7:0]  lat_cia2_ddra;
 	reg [7:0]  lat_cia2_ddrb;
+	// Milestone B (2026-05-25): bridge-internal UART probes per
+	// docs/milestone_b_bridge_probe_design.md §B. Latched at vblank rising
+	// edge so the emitted UART line is internally consistent.
+	reg [3:0]  lat_bridge_fsm_state;
+	reg [7:0]  lat_bridge_last_bus_di;
+	reg [15:0] lat_bridge_req_count;
+	reg [15:0] lat_bridge_ack_count;
+	reg [7:0]  lat_bridge_vec_fetch_count;
 	// v309 doom wedge: BRK vector lo/hi — repurposes the AC slot.
 	reg  [7:0] lat_brk_vec_lo;
 	reg  [7:0] lat_brk_vec_hi;
@@ -174,8 +182,12 @@ module debug_uart_pool_fmt
 	// Renamed from I2/C2 to M2/T2 to avoid colliding with legacy C2: field.
 	// Option G (2026-05-25): +24 bytes for " PA:## PB:## DA:## DB:##" — CIA2
 	// PRA/PRB/DDRA/DDRB to detect IEC-port phantom writes during LOAD"*" wedge.
-	// Newline now at byte 318.
-	localparam LINE_LEN = 9'd319;
+	// Milestone B (2026-05-25): +33 bytes for " FS:# DI:## RQ:#### AK:#### VF:##"
+	// — bridge FSM state, last bus_di, req/ack counters, IRQ vector-fetch
+	// counter per docs/milestone_b_bridge_probe_design.md §B.3. Padded out
+	// to LINE_LEN=357 (safety margin past 319+33=352) so the newline lands
+	// at byte 356.
+	localparam LINE_LEN = 9'd357;
 
 	reg [8:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -615,10 +627,60 @@ module debug_uart_pool_fmt
 			9'd314: line_byte = hex_nibble(lat_cia2_ddrb[7:4]);
 			9'd315: line_byte = hex_nibble(lat_cia2_ddrb[3:0]);
 
-			// newline (LINE_LEN-1 = 318)
+			// Milestone B (2026-05-25): bridge-internal UART probes per
+			// docs/milestone_b_bridge_probe_design.md §B.3. Layout:
+			//   " FS:# DI:## RQ:#### AK:#### VF:##"
+			// 33 bytes total — FS=5, DI=6, RQ=8, AK=8, VF=6.
+			// " FS:#" — bridge FSM state (1 hex char, 0..3).
 			9'd316: line_byte = " ";
-			9'd317: line_byte = " ";
-			9'd318: line_byte = 8'h0A;
+			9'd317: line_byte = "F";
+			9'd318: line_byte = "S";
+			9'd319: line_byte = ":";
+			9'd320: line_byte = hex_nibble(lat_bridge_fsm_state);
+			// " DI:##" — last_bus_di (bus_di_capture_reg).
+			9'd321: line_byte = " ";
+			9'd322: line_byte = "D";
+			9'd323: line_byte = "I";
+			9'd324: line_byte = ":";
+			9'd325: line_byte = hex_nibble(lat_bridge_last_bus_di[7:4]);
+			9'd326: line_byte = hex_nibble(lat_bridge_last_bus_di[3:0]);
+			// " RQ:####" — saturating IDLE→REQ_PENDING request count.
+			9'd327: line_byte = " ";
+			9'd328: line_byte = "R";
+			9'd329: line_byte = "Q";
+			9'd330: line_byte = ":";
+			9'd331: line_byte = hex_nibble(lat_bridge_req_count[15:12]);
+			9'd332: line_byte = hex_nibble(lat_bridge_req_count[11:8]);
+			9'd333: line_byte = hex_nibble(lat_bridge_req_count[7:4]);
+			9'd334: line_byte = hex_nibble(lat_bridge_req_count[3:0]);
+			// " AK:####" — saturating WAIT_ACK→LATCH ack count.
+			9'd335: line_byte = " ";
+			9'd336: line_byte = "A";
+			9'd337: line_byte = "K";
+			9'd338: line_byte = ":";
+			9'd339: line_byte = hex_nibble(lat_bridge_ack_count[15:12]);
+			9'd340: line_byte = hex_nibble(lat_bridge_ack_count[11:8]);
+			9'd341: line_byte = hex_nibble(lat_bridge_ack_count[7:4]);
+			9'd342: line_byte = hex_nibble(lat_bridge_ack_count[3:0]);
+			// " VF:##" — saturating $00:$FFFE/$FFFF read count (IRQs).
+			9'd343: line_byte = " ";
+			9'd344: line_byte = "V";
+			9'd345: line_byte = "F";
+			9'd346: line_byte = ":";
+			9'd347: line_byte = hex_nibble(lat_bridge_vec_fetch_count[7:4]);
+			9'd348: line_byte = hex_nibble(lat_bridge_vec_fetch_count[3:0]);
+
+			// Padding to safety margin (per design doc §B.3); newline at
+			// LINE_LEN-1 = 356. The default branch already emits spaces,
+			// but enumerating keeps the layout explicit.
+			9'd349: line_byte = " ";
+			9'd350: line_byte = " ";
+			9'd351: line_byte = " ";
+			9'd352: line_byte = " ";
+			9'd353: line_byte = " ";
+			9'd354: line_byte = " ";
+			9'd355: line_byte = " ";
+			9'd356: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -733,6 +795,15 @@ module debug_uart_pool_fmt
 				// v347 doom bitmap-write probe (bm1/bm3 per-frame counters)
 				lat_bm1_writes <= pool.bm1_writes;
 				lat_bm3_writes <= pool.bm3_writes;
+				// Milestone B (2026-05-25): bridge-internal UART probes per
+				// docs/milestone_b_bridge_probe_design.md §B. Already
+				// 2-FF-synced to clk_sys in c64.sv; latch once per vblank
+				// so the UART line stays internally consistent.
+				lat_bridge_fsm_state       <= pool.bridge_fsm_state;
+				lat_bridge_last_bus_di     <= pool.bridge_last_bus_di;
+				lat_bridge_req_count       <= pool.bridge_req_count;
+				lat_bridge_ack_count       <= pool.bridge_ack_count;
+				lat_bridge_vec_fetch_count <= pool.bridge_vec_fetch_count;
 				byte_idx  <= 9'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin

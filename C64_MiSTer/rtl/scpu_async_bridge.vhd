@@ -102,7 +102,20 @@ port (
 	bus_request_strobe_in : in  std_logic := '0';
 
 	-- Debug observability
-	dbg_is_slow      : out std_logic
+	dbg_is_slow      : out std_logic;
+
+	-- Milestone B (2026-05-25): bridge-internal UART probes per
+	-- docs/milestone_b_bridge_probe_design.md §B. Five clk_cpu-domain
+	-- outputs that let the next HW build discriminate Race α (vector-byte
+	-- aliasing) vs Race β (ack-stall accumulation) at the LOAD"*",8,1
+	-- wedge moment, in <1 RTL build cycle. All values are slow-changing
+	-- (counters increment <kHz, FSM state changes per bus access); the
+	-- consumer (clk_sys domain UART formatter) syncs via 2-FF chains.
+	dbg_fsm_state           : out unsigned(3 downto 0);
+	dbg_last_bus_di         : out unsigned(7 downto 0);
+	dbg_req_count           : out unsigned(15 downto 0);
+	dbg_ack_count           : out unsigned(15 downto 0);
+	dbg_irq_vec_fetch_count : out unsigned(7 downto 0)
 );
 end entity;
 
@@ -181,6 +194,17 @@ architecture rtl of scpu_async_bridge is
 	signal cpu_enable_reg      : std_logic := '0';
 
 	------------------------------------------------------------------
+	-- Milestone B probe counters (clk_cpu domain). Saturating — hold at
+	-- max instead of wrapping, per design doc §B.1. Increments fire on
+	-- specific FSM transitions to keep counts comparable across runs.
+	-- Preserve attribute applied later (see below) so synthesis doesn't
+	-- collapse / re-time these probe registers away from the FSM edges.
+	------------------------------------------------------------------
+	signal dbg_req_count_reg  : unsigned(15 downto 0) := (others => '0');
+	signal dbg_ack_count_reg  : unsigned(15 downto 0) := (others => '0');
+	signal dbg_vec_count_reg  : unsigned(7 downto 0)  := (others => '0');
+
+	------------------------------------------------------------------
 	-- Sink domain (clk_sys) signals
 	------------------------------------------------------------------
 	-- 2-FF sync chain of the source-side req toggle into clk_sys domain,
@@ -214,6 +238,12 @@ architecture rtl of scpu_async_bridge is
 	attribute preserve of ack_sync2_reg    : signal is true;
 	attribute preserve of strobe_sync1_reg : signal is true;
 	attribute preserve of strobe_sync2_reg : signal is true;
+
+	-- Milestone B probe registers — preserved so synthesis doesn't
+	-- re-time or collapse them, matching the Option F/G convention.
+	attribute preserve of dbg_req_count_reg : signal is true;
+	attribute preserve of dbg_ack_count_reg : signal is true;
+	attribute preserve of dbg_vec_count_reg : signal is true;
 
 	attribute altera_attribute of req_sync1_reg : signal is
 		"-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
@@ -319,6 +349,10 @@ begin
 				cpu_req_vpa_reg     <= '0';
 				cpu_req_vda_reg     <= '0';
 				bus_di_capture_reg  <= (others => '0');
+				-- Milestone B probe counters reset to zero.
+				dbg_req_count_reg   <= (others => '0');
+				dbg_ack_count_reg   <= (others => '0');
+				dbg_vec_count_reg   <= (others => '0');
 			else
 				cpu_enable_reg <= '0';  -- default deassert each clk_cpu
 				case cpu_fsm is
@@ -345,6 +379,11 @@ begin
 							cpu_rdy_reg         <= '0';
 							cpu_enable_reg      <= '0';  -- override sustain when stalling
 							cpu_fsm             <= CPU_REQ_PENDING;
+							-- Milestone B (race β detector): saturating increment
+							-- of req-count on every IDLE→REQ_PENDING transition.
+							if dbg_req_count_reg /= x"FFFF" then
+								dbg_req_count_reg <= dbg_req_count_reg + 1;
+							end if;
 						end if;
 					when CPU_REQ_PENDING =>
 						-- Stage 2: hold the captured payload until the
@@ -354,6 +393,19 @@ begin
 						if strobe_edge = '1' then
 							cpu_req_toggle_reg <= not cpu_req_toggle_reg;
 							cpu_fsm            <= CPU_WAIT_ACK;
+							-- Milestone B IRQ-vector-fetch probe: increment
+							-- when this REQ_PENDING→WAIT_ACK is dispatching a
+							-- read of $00:$FFFE or $00:$FFFF (IRQ vector low /
+							-- high). Tracked at strobe_edge (not ack) so the
+							-- counter ticks once per dispatched IRQ vector
+							-- fetch even if the ack later stalls (race β).
+							if cpu_req_addr_hi_reg = x"00"
+							   and cpu_req_addr_reg(15 downto 1) = "111111111111111"
+							   and cpu_req_we_reg = '0' then
+								if dbg_vec_count_reg /= x"FF" then
+									dbg_vec_count_reg <= dbg_vec_count_reg + 1;
+								end if;
+							end if;
 						end if;
 					when CPU_WAIT_ACK =>
 						-- Ack observed when synced toggle catches up to req.
@@ -370,6 +422,13 @@ begin
 							-- CPU sees EN=RDY AND CE both true simultaneously.
 							cpu_enable_reg     <= '1';
 							cpu_fsm            <= CPU_LATCH;
+							-- Milestone B (race β detector): saturating increment
+							-- of ack-count on every WAIT_ACK→LATCH transition.
+							-- Pair with dbg_req_count_reg to detect req-vs-ack
+							-- divergence (race β = req > ack and growing).
+							if dbg_ack_count_reg /= x"FFFF" then
+								dbg_ack_count_reg <= dbg_ack_count_reg + 1;
+							end if;
 						end if;
 					when CPU_LATCH =>
 						-- One clk_cpu where rdy=1, en=1, fsm=LATCH so the
@@ -514,5 +573,21 @@ begin
 	                      and (cpu_vpa_in = '1' or cpu_vda_in = '1')
 	                 else cpu_enable_reg when EFF_BRIDGE_ACTIVE = '1'
 	                 else bus_ack_pulse_in;
+
+	------------------------------------------------------------------
+	-- Milestone B probe outputs (clk_cpu domain, slow-changing).
+	-- Per docs/milestone_b_bridge_probe_design.md §B.1, the consumer
+	-- syncs each into clk_sys via a 2-FF chain in c64.sv. fsm_state is
+	-- a 4-bit combinational encode of the enum so the formatter can
+	-- print it as a single hex nibble.
+	------------------------------------------------------------------
+	dbg_fsm_state <= x"0" when cpu_fsm = CPU_IDLE        else
+	                 x"1" when cpu_fsm = CPU_REQ_PENDING else
+	                 x"2" when cpu_fsm = CPU_WAIT_ACK    else
+	                 x"3";  -- CPU_LATCH
+	dbg_last_bus_di         <= bus_di_capture_reg;
+	dbg_req_count           <= dbg_req_count_reg;
+	dbg_ack_count           <= dbg_ack_count_reg;
+	dbg_irq_vec_fetch_count <= dbg_vec_count_reg;
 
 end architecture;

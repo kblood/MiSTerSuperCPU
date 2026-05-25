@@ -1355,6 +1355,43 @@ wire  [7:0] scpu_dbg_mem_1d02;        // v341 doom bitmap probe: $00:$1D02 last 
 wire  [7:0] scpu_dbg_mem_1d04;        // v341 doom bitmap probe: $00:$1D04 last R/W
 wire  [7:0] scpu_dbg_vic_di_or;       // v346 per-frame sticky OR of vicDi
 
+// Milestone B (2026-05-25): bridge-internal UART probes per
+// docs/milestone_b_bridge_probe_design.md §B. These come out of
+// fpga64_sid_iec/scpu_async_bridge in the clk_cpu domain. Today
+// clk_cpu === clk_sys (see clk_cpu alias above) so no CDC is strictly
+// required, but per the design doc we keep 2-FF sync chains so the
+// build stays correct when clk_cpu=clk64 is revived (the same purpose
+// for which this probe exists). Sync chains live in clk_sys domain and
+// feed the dbg_pool / debug_uart_pool_fmt formatter.
+wire  [3:0] scpu_dbg_bridge_fsm_state;
+wire  [7:0] scpu_dbg_bridge_last_bus_di;
+wire [15:0] scpu_dbg_bridge_req_count;
+wire [15:0] scpu_dbg_bridge_ack_count;
+wire  [7:0] scpu_dbg_bridge_vec_fetch_count;
+
+// 2-FF sync chains for the five bridge probes. Each register is marked
+// (* preserve *) so Quartus does NOT merge them into adjacent logic and
+// preserves the metastability-hardening intent (per the design doc and
+// the project's existing sync convention in scpu_async_bridge.vhd).
+(* preserve *) reg [3:0]  bridge_fsm_state_s1, bridge_fsm_state_s2;
+(* preserve *) reg [7:0]  bridge_last_bus_di_s1, bridge_last_bus_di_s2;
+(* preserve *) reg [15:0] bridge_req_count_s1, bridge_req_count_s2;
+(* preserve *) reg [15:0] bridge_ack_count_s1, bridge_ack_count_s2;
+(* preserve *) reg [7:0]  bridge_vec_fetch_count_s1, bridge_vec_fetch_count_s2;
+
+always @(posedge clk_sys) begin
+	bridge_fsm_state_s1        <= scpu_dbg_bridge_fsm_state;
+	bridge_fsm_state_s2        <= bridge_fsm_state_s1;
+	bridge_last_bus_di_s1      <= scpu_dbg_bridge_last_bus_di;
+	bridge_last_bus_di_s2      <= bridge_last_bus_di_s1;
+	bridge_req_count_s1        <= scpu_dbg_bridge_req_count;
+	bridge_req_count_s2        <= bridge_req_count_s1;
+	bridge_ack_count_s1        <= scpu_dbg_bridge_ack_count;
+	bridge_ack_count_s2        <= bridge_ack_count_s1;
+	bridge_vec_fetch_count_s1  <= scpu_dbg_bridge_vec_fetch_count;
+	bridge_vec_fetch_count_s2  <= bridge_vec_fetch_count_s1;
+end
+
 // v347 per-frame saturating counters of CPU writes to bank-0 SDRAM bitmap
 // regions. Latched on vsync rising edge. Answers: is Doom's CPU emitting
 // any writes to where VIC reads its bitmap? bitmap_test PRGs proved the
@@ -1820,6 +1857,14 @@ assign dbg_pool.vic_di_or               = {scpu_dbg_irq_vic_lvl, scpu_dbg_irq_ci
 // v347 per-frame CPU-write counters for bank-0 SDRAM bitmap regions
 assign dbg_pool.bm1_writes              = bm1_writes_lat;
 assign dbg_pool.bm3_writes              = bm3_writes_lat;
+// Milestone B (2026-05-25): bridge-internal probes — drive the
+// clk_sys-synced 2-FF snapshots into the dbg_pool so the UART formatter
+// can render " FS:# DI:## RQ:#### AK:#### VF:##" each vblank.
+assign dbg_pool.bridge_fsm_state        = bridge_fsm_state_s2;
+assign dbg_pool.bridge_last_bus_di      = bridge_last_bus_di_s2;
+assign dbg_pool.bridge_req_count        = bridge_req_count_s2;
+assign dbg_pool.bridge_ack_count        = bridge_ack_count_s2;
+assign dbg_pool.bridge_vec_fetch_count  = bridge_vec_fetch_count_s2;
 
 `ifdef DBG_CAP_FRAME
 cap_frame u_cap_frame (
@@ -2240,7 +2285,13 @@ fpga64_sid_iec fpga64
 	.dbg_brk_vec_hi             (scpu_dbg_brk_vec_hi),
 	.dbg_mem_1d02               (scpu_dbg_mem_1d02),
 	.dbg_mem_1d04               (scpu_dbg_mem_1d04),
-	.dbg_vic_di_or              (scpu_dbg_vic_di_or)
+	.dbg_vic_di_or              (scpu_dbg_vic_di_or),
+	// Milestone B (2026-05-25): bridge-internal UART probes.
+	.dbg_bridge_fsm_state       (scpu_dbg_bridge_fsm_state),
+	.dbg_bridge_last_bus_di     (scpu_dbg_bridge_last_bus_di),
+	.dbg_bridge_req_count       (scpu_dbg_bridge_req_count),
+	.dbg_bridge_ack_count       (scpu_dbg_bridge_ack_count),
+	.dbg_bridge_vec_fetch_count (scpu_dbg_bridge_vec_fetch_count)
 );
 
 wire [7:0] mouse_x;
