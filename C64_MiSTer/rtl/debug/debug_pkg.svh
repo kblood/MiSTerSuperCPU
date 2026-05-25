@@ -633,9 +633,24 @@ typedef struct packed {
   // vs Race β (ack-stall accumulation) at the LOAD"*",8,1 wedge.
   logic [3:0]  bridge_fsm_state;       // 0=IDLE 1=REQ_PENDING 2=WAIT_ACK 3=LATCH
   logic [7:0]  bridge_last_bus_di;     // bus_di_capture_reg snapshot
-  logic [15:0] bridge_req_count;       // saturating IDLE→REQ_PENDING count
-  logic [15:0] bridge_ack_count;       // saturating WAIT_ACK→LATCH count
+  // v2 (2026-05-26 — Codex Design 3): the next three fields are now
+  // vblank-SNAPSHOT registers (held stable per frame in clk_cpu before
+  // crossing to clk_sys, fixing v1's multi-bit-tearing CDC).
+  logic [15:0] bridge_req_count;       // wrapping IDLE→REQ_PENDING count (snap)
+  logic [15:0] bridge_ack_count;       // wrapping WAIT_ACK→LATCH count (snap)
   logic [7:0]  bridge_vec_fetch_count; // saturating $00:$FFFE/$FFFF read count
+
+  // Milestone B v2 (2026-05-26): Codex Design 3 additions.
+  //   wait_dwell_max — max clk_cpu cycles in WAIT_ACK per frame (sat $FFFF).
+  //     The real Race β detector — bridge is one-outstanding so RQ-AK gap
+  //     can't widen, but a wedge in WAIT_ACK shows up here.
+  //   activity_flags — sticky-per-frame: {dwell_sat,_,_,_,_,wait_seen,
+  //     ack_seen,req_seen}. Tells you whether the FSM made any progress.
+  //   gap_max — max RQ-AK divergence per frame (sat $FF). Sanity check —
+  //     should be 0/1 always; any higher = invariant broken.
+  logic [15:0] bridge_wait_dwell_max;
+  logic [7:0]  bridge_activity_flags;
+  logic [7:0]  bridge_gap_max;
 } dbg_pool_t;
 `endif
 

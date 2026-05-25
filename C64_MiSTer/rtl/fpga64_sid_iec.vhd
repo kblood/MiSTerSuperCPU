@@ -710,6 +710,12 @@ port(
 	dbg_bridge_req_count       : out std_logic_vector(15 downto 0);
 	dbg_bridge_ack_count       : out std_logic_vector(15 downto 0);
 	dbg_bridge_vec_fetch_count : out std_logic_vector(7 downto 0);
+	-- Milestone B v2 (2026-05-26): three new bridge probes per Codex
+	-- Design 3. WD = max WAIT_ACK dwell in clk_cpu cycles per vblank;
+	-- FL = sticky activity flags; GM = max RQ-AK gap per vblank.
+	dbg_bridge_wait_dwell_max  : out std_logic_vector(15 downto 0);
+	dbg_bridge_activity_flags  : out std_logic_vector(7 downto 0);
+	dbg_bridge_gap_max         : out std_logic_vector(7 downto 0);
 
 	-- Milestone A Option (b) (2026-05-26): SuperRAM-only HIT gate for
 	-- sdram_pm.v. Surfaces the internal scpu_fast_path signal so the
@@ -913,6 +919,10 @@ signal cpu816_dbg_last_bus_di        : unsigned(7 downto 0);
 signal cpu816_dbg_req_count          : unsigned(15 downto 0);
 signal cpu816_dbg_ack_count          : unsigned(15 downto 0);
 signal cpu816_dbg_vec_fetch_count    : unsigned(7 downto 0);
+-- Milestone B v2 (Codex Design 3) snapshot outputs from bridge.
+signal cpu816_dbg_wait_dwell_max     : unsigned(15 downto 0);
+signal cpu816_dbg_activity_flags     : unsigned(7 downto 0);
+signal cpu816_dbg_gap_max            : unsigned(7 downto 0);
 signal cpuIO_816    : unsigned(7 downto 0);
 signal nmi_ack_816  : std_logic;
 signal addr_hi_816  : unsigned(7 downto 0);
@@ -2900,7 +2910,21 @@ generic map (
 	-- 2026-05-25: passthrough mode (MCP disabled) to test whether v13d
 	-- CIA1 + v13g CIA2 cs-gates work correctly without MCP. Disambiguates
 	-- whether remaining LOAD"*" wedge is MCP-specific or affects passthrough.
-	SAME_CLOCK_PASSTHROUGH => '1'
+	-- 2026-05-26 (mb-probe-001 result): re-enabled MCP on top of Option (a)
+	-- silicon and ran milestone-b probe (FS/DI/RQ/AK/VF). MCP wedge
+	-- reproduces identically: CIA1 IF/C1 frozen → irq_n stuck low → ICR
+	-- never cleared. Race α (PC byte-aliasing) FALSIFIED. Race β (RQ-AK
+	-- divergence) NOT discriminable because both saturated at $FFFF before
+	-- first vblank sample. FS=IDLE/WAIT_ACK split ~50/50, not stuck at 2.
+	-- 2026-05-26 (mb-probe-002, Codex Design 3 build): flipping back to '0'
+	-- to re-engage MCP path so the v2 vblank-snapped bridge probes
+	-- (RQ/AK wrapping, WD dwell-max, FL activity flags, GM gap-max) can
+	-- actually observe the wedge. v1's saturating counters maxed out at
+	-- $FFFF before the first vblank sample; v2 fixes that with source-
+	-- domain snapshot + vblank-rise capture. REMEMBER TO REVERT TO '1'
+	-- BEFORE MERGING if MCP debug is incomplete (see Codex review for
+	-- the rationale on snapshot-before-case ordering).
+	SAME_CLOCK_PASSTHROUGH => '0'
 )
 port map (
 	clk_cpu        => clk_cpu,
@@ -2938,7 +2962,15 @@ port map (
 	dbg_last_bus_di         => cpu816_dbg_last_bus_di,
 	dbg_req_count           => cpu816_dbg_req_count,
 	dbg_ack_count           => cpu816_dbg_ack_count,
-	dbg_irq_vec_fetch_count => cpu816_dbg_vec_fetch_count
+	dbg_irq_vec_fetch_count => cpu816_dbg_vec_fetch_count,
+	-- Milestone B v2 (2026-05-26 — Codex Design 3): vblank-snapped probes.
+	dbg_wait_dwell_max      => cpu816_dbg_wait_dwell_max,
+	dbg_activity_flags      => cpu816_dbg_activity_flags,
+	dbg_gap_max             => cpu816_dbg_gap_max,
+	-- vSync_sig is the clk_sys-domain vblank rising edge (PAL ~50Hz /
+	-- NTSC ~60Hz). The bridge 3-FF syncs it into clk_cpu and
+	-- rising-edge-detects to trigger the per-frame snapshot.
+	dbg_vblank_sys_in       => vSync_sig
 );
 
 -- CPU-output mux: select active CPU's outputs.
@@ -4361,6 +4393,10 @@ dbg_bridge_last_bus_di     <= std_logic_vector(cpu816_dbg_last_bus_di);
 dbg_bridge_req_count       <= std_logic_vector(cpu816_dbg_req_count);
 dbg_bridge_ack_count       <= std_logic_vector(cpu816_dbg_ack_count);
 dbg_bridge_vec_fetch_count <= std_logic_vector(cpu816_dbg_vec_fetch_count);
+-- Milestone B v2 (2026-05-26): vblank-snapped bridge probes.
+dbg_bridge_wait_dwell_max  <= std_logic_vector(cpu816_dbg_wait_dwell_max);
+dbg_bridge_activity_flags  <= std_logic_vector(cpu816_dbg_activity_flags);
+dbg_bridge_gap_max         <= std_logic_vector(cpu816_dbg_gap_max);
 -- vsync output: route through internal signal so the per-frame OR latch
 -- (above) can detect the rising edge.
 vsync           <= vSync_sig;

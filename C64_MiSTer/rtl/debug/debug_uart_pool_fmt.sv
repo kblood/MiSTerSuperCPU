@@ -135,6 +135,10 @@ module debug_uart_pool_fmt
 	reg [15:0] lat_bridge_req_count;
 	reg [15:0] lat_bridge_ack_count;
 	reg [7:0]  lat_bridge_vec_fetch_count;
+	// Milestone B v2 (2026-05-26): vblank-snapped bridge probes.
+	reg [15:0] lat_bridge_wait_dwell_max;
+	reg [7:0]  lat_bridge_activity_flags;
+	reg [7:0]  lat_bridge_gap_max;
 	// v309 doom wedge: BRK vector lo/hi — repurposes the AC slot.
 	reg  [7:0] lat_brk_vec_lo;
 	reg  [7:0] lat_brk_vec_hi;
@@ -184,10 +188,12 @@ module debug_uart_pool_fmt
 	// PRA/PRB/DDRA/DDRB to detect IEC-port phantom writes during LOAD"*" wedge.
 	// Milestone B (2026-05-25): +33 bytes for " FS:# DI:## RQ:#### AK:#### VF:##"
 	// — bridge FSM state, last bus_di, req/ack counters, IRQ vector-fetch
-	// counter per docs/milestone_b_bridge_probe_design.md §B.3. Padded out
-	// to LINE_LEN=357 (safety margin past 319+33=352) so the newline lands
-	// at byte 356.
-	localparam LINE_LEN = 9'd357;
+	// counter per docs/milestone_b_bridge_probe_design.md §B.3.
+	// Milestone B v2 (2026-05-26 — Codex Design 3): +20 bytes for
+	// " WD:#### FL:## GM:##" — max WAIT_ACK dwell per frame, sticky activity
+	// flags, max RQ-AK gap per frame. Padded to LINE_LEN=380 (safety margin
+	// past 349+20=369) so the newline lands at byte 379.
+	localparam LINE_LEN = 9'd380;
 
 	reg [8:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -670,17 +676,50 @@ module debug_uart_pool_fmt
 			9'd347: line_byte = hex_nibble(lat_bridge_vec_fetch_count[7:4]);
 			9'd348: line_byte = hex_nibble(lat_bridge_vec_fetch_count[3:0]);
 
-			// Padding to safety margin (per design doc §B.3); newline at
-			// LINE_LEN-1 = 356. The default branch already emits spaces,
-			// but enumerating keeps the layout explicit.
+			// Milestone B v2 (2026-05-26 — Codex Design 3) field layout:
+			//   " WD:####"  — max WAIT_ACK dwell per frame (Race β detector)
+			//   " FL:##"    — sticky activity flags
+			//                 bit 0 = req_seen (any IDLE→REQ_PENDING)
+			//                 bit 1 = ack_seen (any WAIT_ACK→LATCH)
+			//                 bit 2 = wait_seen (any clk_cpu in WAIT_ACK)
+			//                 bit 7 = wait_dwell saturated to $FFFF
+			//   " GM:##"    — max RQ-AK gap per frame (sanity check)
+			// " WD:####"
 			9'd349: line_byte = " ";
-			9'd350: line_byte = " ";
-			9'd351: line_byte = " ";
-			9'd352: line_byte = " ";
-			9'd353: line_byte = " ";
-			9'd354: line_byte = " ";
-			9'd355: line_byte = " ";
-			9'd356: line_byte = 8'h0A;
+			9'd350: line_byte = "W";
+			9'd351: line_byte = "D";
+			9'd352: line_byte = ":";
+			9'd353: line_byte = hex_nibble(lat_bridge_wait_dwell_max[15:12]);
+			9'd354: line_byte = hex_nibble(lat_bridge_wait_dwell_max[11:8]);
+			9'd355: line_byte = hex_nibble(lat_bridge_wait_dwell_max[7:4]);
+			9'd356: line_byte = hex_nibble(lat_bridge_wait_dwell_max[3:0]);
+			// " FL:##"
+			9'd357: line_byte = " ";
+			9'd358: line_byte = "F";
+			9'd359: line_byte = "L";
+			9'd360: line_byte = ":";
+			9'd361: line_byte = hex_nibble(lat_bridge_activity_flags[7:4]);
+			9'd362: line_byte = hex_nibble(lat_bridge_activity_flags[3:0]);
+			// " GM:##"
+			9'd363: line_byte = " ";
+			9'd364: line_byte = "G";
+			9'd365: line_byte = "M";
+			9'd366: line_byte = ":";
+			9'd367: line_byte = hex_nibble(lat_bridge_gap_max[7:4]);
+			9'd368: line_byte = hex_nibble(lat_bridge_gap_max[3:0]);
+
+			// Padding to safety margin; newline at LINE_LEN-1 = 379.
+			9'd369: line_byte = " ";
+			9'd370: line_byte = " ";
+			9'd371: line_byte = " ";
+			9'd372: line_byte = " ";
+			9'd373: line_byte = " ";
+			9'd374: line_byte = " ";
+			9'd375: line_byte = " ";
+			9'd376: line_byte = " ";
+			9'd377: line_byte = " ";
+			9'd378: line_byte = " ";
+			9'd379: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -804,6 +843,10 @@ module debug_uart_pool_fmt
 				lat_bridge_req_count       <= pool.bridge_req_count;
 				lat_bridge_ack_count       <= pool.bridge_ack_count;
 				lat_bridge_vec_fetch_count <= pool.bridge_vec_fetch_count;
+				// Milestone B v2 (2026-05-26): vblank-snapped probes.
+				lat_bridge_wait_dwell_max  <= pool.bridge_wait_dwell_max;
+				lat_bridge_activity_flags  <= pool.bridge_activity_flags;
+				lat_bridge_gap_max         <= pool.bridge_gap_max;
 				byte_idx  <= 9'd0;
 			end
 			else if (byte_idx < LINE_LEN && !tx_busy && !byte_pending) begin

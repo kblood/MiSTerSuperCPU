@@ -104,18 +104,38 @@ port (
 	-- Debug observability
 	dbg_is_slow      : out std_logic;
 
-	-- Milestone B (2026-05-25): bridge-internal UART probes per
-	-- docs/milestone_b_bridge_probe_design.md §B. Five clk_cpu-domain
-	-- outputs that let the next HW build discriminate Race α (vector-byte
-	-- aliasing) vs Race β (ack-stall accumulation) at the LOAD"*",8,1
-	-- wedge moment, in <1 RTL build cycle. All values are slow-changing
-	-- (counters increment <kHz, FSM state changes per bus access); the
-	-- consumer (clk_sys domain UART formatter) syncs via 2-FF chains.
+	-- Milestone B v2 (2026-05-26 — Codex Design 3): bridge-internal UART
+	-- probes per docs/milestone_b_bridge_probe_design.md §B AND today's
+	-- handoff §2.1. v1 saturated at $FFFF before the first vblank sample
+	-- because 16-bit counters at clk_cpu=32MHz fill in ~2ms while vblank
+	-- arrives every ~20ms — Race β was UNTESTABLE, not falsified.
+	--
+	-- v2 changes:
+	--   • RQ/AK counters now WRAP (free-running mod 65536), snapshotted in
+	--     clk_cpu on synced vblank-rise → snapshot held stable until next
+	--     frame, so the c64.sv 2-FF sync of the OUTPUTS is valid (the
+	--     existing live-counter sync had multi-bit tearing per Codex).
+	--   • WD (wait_dwell_max): max consecutive clk_cpu cycles spent in
+	--     CPU_WAIT_ACK per frame. The real Race β detector — the bridge
+	--     is structurally one-outstanding so RQ-AK ≤ 1 always, but a
+	--     wedge in WAIT_ACK shows up as WD growing toward saturation.
+	--   • FL (activity flags): sticky-per-frame {req_seen, ack_seen,
+	--     wait_seen} → tells you whether the source FSM made ANY progress
+	--     in the last frame. 8 bits wide for future expansion.
+	--   • GM (gap_max): max RQ-AK divergence observed during the frame.
+	--     Sanity check — should be 0 or 1 in healthy operation; any
+	--     higher implies the one-outstanding invariant is broken.
+	--   • dbg_vblank_sys_in: clk_sys vsync rising-edge trigger for the
+	--     snapshot. 3-FF synced into clk_cpu inside the bridge.
 	dbg_fsm_state           : out unsigned(3 downto 0);
 	dbg_last_bus_di         : out unsigned(7 downto 0);
 	dbg_req_count           : out unsigned(15 downto 0);
 	dbg_ack_count           : out unsigned(15 downto 0);
-	dbg_irq_vec_fetch_count : out unsigned(7 downto 0)
+	dbg_irq_vec_fetch_count : out unsigned(7 downto 0);
+	dbg_wait_dwell_max      : out unsigned(15 downto 0);
+	dbg_activity_flags      : out unsigned(7 downto 0);
+	dbg_gap_max             : out unsigned(7 downto 0);
+	dbg_vblank_sys_in       : in  std_logic := '0'
 );
 end entity;
 
@@ -194,15 +214,58 @@ architecture rtl of scpu_async_bridge is
 	signal cpu_enable_reg      : std_logic := '0';
 
 	------------------------------------------------------------------
-	-- Milestone B probe counters (clk_cpu domain). Saturating — hold at
-	-- max instead of wrapping, per design doc §B.1. Increments fire on
-	-- specific FSM transitions to keep counts comparable across runs.
-	-- Preserve attribute applied later (see below) so synthesis doesn't
-	-- collapse / re-time these probe registers away from the FSM edges.
+	-- Milestone B v2 probe counters (clk_cpu domain).
+	--
+	-- TOTALS (now WRAPPING, not saturating). dbg_req_count_reg flips on
+	-- IDLE→REQ_PENDING; dbg_ack_count_reg flips on WAIT_ACK→LATCH.
+	-- dbg_vec_count_reg is the 8-bit IRQ vector-fetch saturator (unchanged).
 	------------------------------------------------------------------
 	signal dbg_req_count_reg  : unsigned(15 downto 0) := (others => '0');
 	signal dbg_ack_count_reg  : unsigned(15 downto 0) := (others => '0');
 	signal dbg_vec_count_reg  : unsigned(7 downto 0)  := (others => '0');
+
+	------------------------------------------------------------------
+	-- v2 additions: vblank-snapshot registers (held stable for a full
+	-- frame so the c64.sv 2-FF sync sees a slow-changing signal — the
+	-- live-counter tearing problem Codex flagged).
+	------------------------------------------------------------------
+	signal dbg_req_snap_reg   : unsigned(15 downto 0) := (others => '0');
+	signal dbg_ack_snap_reg   : unsigned(15 downto 0) := (others => '0');
+	signal dbg_vec_snap_reg   : unsigned(7 downto 0)  := (others => '0');
+
+	-- WAIT_ACK dwell tracker. dwell_reg counts clk_cpu cycles spent in
+	-- WAIT_ACK in the current visit (resets to 0 on every other state);
+	-- dwell_max_accum is the max-over-frame, saturating at $FFFF;
+	-- dwell_max_snap is the vblank-latched output.
+	signal wait_dwell_reg        : unsigned(15 downto 0) := (others => '0');
+	signal wait_dwell_max_accum  : unsigned(15 downto 0) := (others => '0');
+	signal wait_dwell_max_snap   : unsigned(15 downto 0) := (others => '0');
+
+	-- Sticky activity flags (cleared on vblank-snap):
+	--   bit 0 = req_seen   (any IDLE→REQ_PENDING this frame)
+	--   bit 1 = ack_seen   (any WAIT_ACK→LATCH this frame)
+	--   bit 2 = wait_seen  (any clk_cpu spent in WAIT_ACK this frame)
+	--   bit 7 = dwell_sat  (wait_dwell_max_accum saturated to $FFFF)
+	signal req_seen_accum   : std_logic := '0';
+	signal ack_seen_accum   : std_logic := '0';
+	signal wait_seen_accum  : std_logic := '0';
+	signal dbg_flags_snap   : unsigned(7 downto 0) := (others => '0');
+
+	-- Live RQ-AK gap (one-outstanding FSM should hold this at 0 or 1).
+	-- gap_max_accum is the frame max, saturating at $FF; gap_max_snap
+	-- is the vblank-latched output.
+	signal gap_cur          : unsigned(7 downto 0) := (others => '0');
+	signal gap_max_accum    : unsigned(7 downto 0) := (others => '0');
+	signal gap_max_snap     : unsigned(7 downto 0) := (others => '0');
+
+	-- vblank sync: clk_sys → clk_cpu 3-FF chain + rising-edge detect.
+	-- Slow signal (60Hz NTSC / 50Hz PAL) so 3-FF level sync + edge-detect
+	-- is the correct CDC pattern (docs/hdl-coding-guidelines/24-cdc...
+	-- §3.1). 3 FFs (not 2) because we form the edge from vb_s2 XOR vb_s3.
+	signal vb_s1            : std_logic := '0';
+	signal vb_s2            : std_logic := '0';
+	signal vb_s3            : std_logic := '0';
+	signal vb_cpu_rise      : std_logic;
 
 	------------------------------------------------------------------
 	-- Sink domain (clk_sys) signals
@@ -244,6 +307,33 @@ architecture rtl of scpu_async_bridge is
 	attribute preserve of dbg_req_count_reg : signal is true;
 	attribute preserve of dbg_ack_count_reg : signal is true;
 	attribute preserve of dbg_vec_count_reg : signal is true;
+
+	-- v2 additions: snapshot regs + dwell/gap trackers + vblank-sync chain.
+	-- All preserve=true so Quartus does not collapse the per-frame snapshot
+	-- pipeline (the OUTPUTS are slow but the source counters are fast).
+	attribute preserve of dbg_req_snap_reg      : signal is true;
+	attribute preserve of dbg_ack_snap_reg      : signal is true;
+	attribute preserve of dbg_vec_snap_reg      : signal is true;
+	attribute preserve of wait_dwell_reg        : signal is true;
+	attribute preserve of wait_dwell_max_accum  : signal is true;
+	attribute preserve of wait_dwell_max_snap   : signal is true;
+	attribute preserve of dbg_flags_snap        : signal is true;
+	attribute preserve of req_seen_accum       : signal is true;
+	attribute preserve of ack_seen_accum       : signal is true;
+	attribute preserve of wait_seen_accum      : signal is true;
+	attribute preserve of gap_cur               : signal is true;
+	attribute preserve of gap_max_accum         : signal is true;
+	attribute preserve of gap_max_snap          : signal is true;
+	attribute preserve of vb_s1                 : signal is true;
+	attribute preserve of vb_s2                 : signal is true;
+	attribute preserve of vb_s3                 : signal is true;
+
+	-- Mark vb_s1/s2 as the synchronizer pair so Quartus's Synchronizer
+	-- Statistics report includes them.
+	attribute altera_attribute of vb_s1 : signal is
+		"-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
+	attribute altera_attribute of vb_s2 : signal is
+		"-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
 
 	attribute altera_attribute of req_sync1_reg : signal is
 		"-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
@@ -335,6 +425,22 @@ begin
 
 	strobe_edge <= strobe_sync2_reg and (not strobe_sync3_reg);
 
+	-- Milestone B v2 (2026-05-26): vsync (clk_sys) → clk_cpu 3-FF sync
+	-- chain + rising-edge detect. Drives the per-frame snapshot of the
+	-- wrapping RQ/AK counters, the dwell-max tracker, the sticky activity
+	-- flags, and the gap-max tracker. Slow signal (50/60 Hz) — 3-FF level
+	-- sync is the canonical CDC pattern for this kind of single-bit edge
+	-- (docs/hdl-coding-guidelines/24-cdc-multi-bit.md §3.1).
+	vblank_sync : process(clk_cpu) begin
+		if rising_edge(clk_cpu) then
+			vb_s1 <= dbg_vblank_sys_in;
+			vb_s2 <= vb_s1;
+			vb_s3 <= vb_s2;
+		end if;
+	end process;
+
+	vb_cpu_rise <= vb_s2 and (not vb_s3);
+
 	cpu_side : process(clk_cpu) begin
 		if rising_edge(clk_cpu) then
 			if reset = '1' then
@@ -350,11 +456,96 @@ begin
 				cpu_req_vda_reg     <= '0';
 				bus_di_capture_reg  <= (others => '0');
 				-- Milestone B probe counters reset to zero.
-				dbg_req_count_reg   <= (others => '0');
-				dbg_ack_count_reg   <= (others => '0');
-				dbg_vec_count_reg   <= (others => '0');
+				dbg_req_count_reg     <= (others => '0');
+				dbg_ack_count_reg     <= (others => '0');
+				dbg_vec_count_reg     <= (others => '0');
+				-- v2 (Codex Design 3) accumulators + snapshots
+				dbg_req_snap_reg      <= (others => '0');
+				dbg_ack_snap_reg      <= (others => '0');
+				dbg_vec_snap_reg      <= (others => '0');
+				wait_dwell_reg        <= (others => '0');
+				wait_dwell_max_accum  <= (others => '0');
+				wait_dwell_max_snap   <= (others => '0');
+				req_seen_accum        <= '0';
+				ack_seen_accum        <= '0';
+				wait_seen_accum       <= '0';
+				dbg_flags_snap        <= (others => '0');
+				gap_cur               <= (others => '0');
+				gap_max_accum         <= (others => '0');
+				gap_max_snap          <= (others => '0');
 			else
 				cpu_enable_reg <= '0';  -- default deassert each clk_cpu
+				-- v2 default: dwell counter resets unless we're in WAIT_ACK.
+				-- Overridden in `when CPU_WAIT_ACK` below (last-assignment-wins).
+				wait_dwell_reg <= (others => '0');
+
+				-- ----------------------------------------------------------
+				-- Milestone B v2 (Codex Design 3) per-vblank snapshot.
+				-- ----------------------------------------------------------
+				-- PLACED BEFORE THE CASE STATEMENT so any same-clk_cpu FSM
+				-- transition (IDLE→PENDING, WAIT_ACK→LATCH) overrides our
+				-- carry-forward/clear via last-assignment-wins. This fixes
+				-- the Codex v2 review finding 2: if vb_cpu_rise coincides
+				-- with an event clk, the case branch's updates take precedence
+				-- and the new frame correctly inherits the just-fired event.
+				--
+				-- The snapshot itself captures the value AS OF this clk_cpu
+				-- edge (pre-event). The clears/carry-forward set "defaults for
+				-- the new frame"; the case below may override them this cycle.
+				--
+				-- Note on FL bit assignments: the per-bit assignments below
+				-- avoid VHDL-2008 aggregate-with-conditional syntax for
+				-- Quartus 17 / GHDL 1.0 compatibility.
+				if vb_cpu_rise = '1' then
+					dbg_req_snap_reg    <= dbg_req_count_reg;
+					dbg_ack_snap_reg    <= dbg_ack_count_reg;
+					dbg_vec_snap_reg    <= dbg_vec_count_reg;
+					wait_dwell_max_snap <= wait_dwell_max_accum;
+					gap_max_snap        <= gap_max_accum;
+					-- Pack sticky activity flags into the snap byte:
+					--   bit 0 = req_seen
+					--   bit 1 = ack_seen
+					--   bit 2 = wait_seen
+					--   bit 7 = wait_dwell_max_accum saturated to $FFFF
+					dbg_flags_snap(6 downto 3) <= "0000";
+					dbg_flags_snap(0) <= req_seen_accum;
+					dbg_flags_snap(1) <= ack_seen_accum;
+					dbg_flags_snap(2) <= wait_seen_accum;
+					if wait_dwell_max_accum = x"FFFF" then
+						dbg_flags_snap(7) <= '1';
+					else
+						dbg_flags_snap(7) <= '0';
+					end if;
+					-- Defaults for the new frame. The case statement (below)
+					-- can override these via last-assignment-wins.
+					req_seen_accum       <= '0';
+					ack_seen_accum       <= '0';
+					wait_seen_accum      <= '0';
+					-- Carry-forward: a wait or gap that survives the frame
+					-- boundary keeps its observable state in the new frame.
+					--
+					-- WAIT_ACK dwell carry uses (wait_dwell_reg + 1) to match
+					-- the "+1 semantic" of the case CPU_WAIT_ACK compare. If
+					-- we carried the bare dwell_reg, the case's compare
+					-- `(dwell_reg + 1) > max_accum` would land at equality on
+					-- vblank clk and decline to override — leaving max_accum
+					-- 1 unit low until the next case-firing clk. Matching the
+					-- +1 here makes the boundary cycle a no-op for max.
+					if wait_dwell_reg /= x"FFFF" then
+						wait_dwell_max_accum <= wait_dwell_reg + 1;
+					else
+						wait_dwell_max_accum <= x"FFFF";
+					end if;
+					-- Gap carry: the case's IDLE→PENDING uses `gap_cur + 1`,
+					-- so carry-forward should pre-load that too — same reason
+					-- as WD above. If we're not in IDLE→PENDING on the
+					-- boundary clk, the bare gap_cur is fine; defensive +1
+					-- here would over-bump. Stick with gap_cur and rely on
+					-- the next IDLE→PENDING (which uses gap_cur+1>max) to
+					-- correct any 1-unit dent.
+					gap_max_accum        <= gap_cur;
+				end if;
+
 				case cpu_fsm is
 					when CPU_IDLE =>
 						cpu_rdy_reg <= '1';
@@ -379,10 +570,17 @@ begin
 							cpu_rdy_reg         <= '0';
 							cpu_enable_reg      <= '0';  -- override sustain when stalling
 							cpu_fsm             <= CPU_REQ_PENDING;
-							-- Milestone B (race β detector): saturating increment
-							-- of req-count on every IDLE→REQ_PENDING transition.
-							if dbg_req_count_reg /= x"FFFF" then
-								dbg_req_count_reg <= dbg_req_count_reg + 1;
+							-- Milestone B v2: WRAPPING req-count + sticky req_seen
+							-- flag + gap_cur bump. Wrap (mod 65536) instead of
+							-- saturating so RQ-snap deltas remain meaningful past
+							-- the first vblank.
+							dbg_req_count_reg <= dbg_req_count_reg + 1;
+							req_seen_accum    <= '1';
+							if gap_cur /= x"FF" then
+								gap_cur <= gap_cur + 1;
+								if gap_cur + 1 > gap_max_accum then
+									gap_max_accum <= gap_cur + 1;
+								end if;
 							end if;
 						end if;
 					when CPU_REQ_PENDING =>
@@ -408,6 +606,29 @@ begin
 							end if;
 						end if;
 					when CPU_WAIT_ACK =>
+						-- Milestone B v2: WAIT_ACK dwell tracker — increment the
+						-- live dwell counter and the sticky wait_seen flag every
+						-- clk_cpu we spend here. Saturates at $FFFF so a hung
+						-- WAIT_ACK is clearly distinguishable from a healthy
+						-- short dwell. The pre-case `wait_dwell_reg <= 0`
+						-- default is overridden here (last-assignment-wins);
+						-- in all other states, dwell_reg returns to 0.
+						--
+						-- Off-by-one fix (Codex v2 review, 2026-05-26): we use
+						-- `wait_dwell_reg + 1` for both the SCHEDULED next value
+						-- AND the max compare/capture so a 1-clk WAIT_ACK reports
+						-- as 1, not 0. The semantic "dwell counted in this state
+						-- so far" includes the current clk_cpu.
+						if wait_dwell_reg /= x"FFFF" then
+							wait_dwell_reg <= wait_dwell_reg + 1;
+							if (wait_dwell_reg + 1) > wait_dwell_max_accum then
+								wait_dwell_max_accum <= wait_dwell_reg + 1;
+							end if;
+						end if;
+						-- (saturated branch: dwell_reg stays at $FFFF; max
+						-- already pegged to $FFFF too, no update needed)
+						wait_seen_accum <= '1';
+
 						-- Ack observed when synced toggle catches up to req.
 						if ack_sync2_reg = cpu_req_toggle_reg then
 							-- Capture read data. The bus_di_in net crosses
@@ -422,12 +643,16 @@ begin
 							-- CPU sees EN=RDY AND CE both true simultaneously.
 							cpu_enable_reg     <= '1';
 							cpu_fsm            <= CPU_LATCH;
-							-- Milestone B (race β detector): saturating increment
-							-- of ack-count on every WAIT_ACK→LATCH transition.
-							-- Pair with dbg_req_count_reg to detect req-vs-ack
-							-- divergence (race β = req > ack and growing).
-							if dbg_ack_count_reg /= x"FFFF" then
-								dbg_ack_count_reg <= dbg_ack_count_reg + 1;
+							-- Milestone B v2: WRAPPING ack-count + sticky
+							-- ack_seen flag + gap_cur decrement. The bridge is
+							-- structurally one-outstanding, so gap_cur should
+							-- never exceed 1 in healthy operation; if GM>1
+							-- ever shows up it implies an FSM invariant
+							-- violation worth investigating.
+							dbg_ack_count_reg <= dbg_ack_count_reg + 1;
+							ack_seen_accum    <= '1';
+							if gap_cur /= x"00" then
+								gap_cur <= gap_cur - 1;
 							end if;
 						end if;
 					when CPU_LATCH =>
@@ -575,19 +800,31 @@ begin
 	                 else bus_ack_pulse_in;
 
 	------------------------------------------------------------------
-	-- Milestone B probe outputs (clk_cpu domain, slow-changing).
-	-- Per docs/milestone_b_bridge_probe_design.md §B.1, the consumer
-	-- syncs each into clk_sys via a 2-FF chain in c64.sv. fsm_state is
-	-- a 4-bit combinational encode of the enum so the formatter can
-	-- print it as a single hex nibble.
+	-- Milestone B v2 probe outputs (clk_cpu domain).
+	--
+	-- All RQ/AK/WD/FL/GM outputs are driven from per-vblank SNAPSHOT
+	-- registers (not live counters). The snapshots are held stable for
+	-- a full frame, so the c64.sv 2-FF sync of these outputs is valid
+	-- — the live-counter multi-bit tearing problem Codex flagged in v1
+	-- is fixed by source-domain snapshotting (docs/hdl-coding-guidelines
+	-- /24-cdc-multi-bit.md §3.3).
+	--
+	-- fsm_state and last_bus_di are still passed through "live" because
+	-- they are observability hints, not race detectors — occasional
+	-- skew on those is acceptable.
 	------------------------------------------------------------------
 	dbg_fsm_state <= x"0" when cpu_fsm = CPU_IDLE        else
 	                 x"1" when cpu_fsm = CPU_REQ_PENDING else
 	                 x"2" when cpu_fsm = CPU_WAIT_ACK    else
 	                 x"3";  -- CPU_LATCH
 	dbg_last_bus_di         <= bus_di_capture_reg;
-	dbg_req_count           <= dbg_req_count_reg;
-	dbg_ack_count           <= dbg_ack_count_reg;
-	dbg_irq_vec_fetch_count <= dbg_vec_count_reg;
+	dbg_req_count           <= dbg_req_snap_reg;
+	dbg_ack_count           <= dbg_ack_snap_reg;
+	-- v2 fix (Codex review finding 1): drive VF from snapshot so the
+	-- multi-bit value crossing to clk_sys is frame-stable, like RQ/AK.
+	dbg_irq_vec_fetch_count <= dbg_vec_snap_reg;
+	dbg_wait_dwell_max      <= wait_dwell_max_snap;
+	dbg_activity_flags      <= dbg_flags_snap;
+	dbg_gap_max             <= gap_max_snap;
 
 end architecture;

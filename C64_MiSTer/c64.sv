@@ -1376,16 +1376,31 @@ wire  [7:0] scpu_dbg_bridge_last_bus_di;
 wire [15:0] scpu_dbg_bridge_req_count;
 wire [15:0] scpu_dbg_bridge_ack_count;
 wire  [7:0] scpu_dbg_bridge_vec_fetch_count;
+// Milestone B v2 (2026-05-26): vblank-snapped bridge probes. The bridge
+// drives these from clk_cpu-domain SNAPSHOT registers (held stable for a
+// full frame), so the 2-FF sync below is safe for multi-bit values — the
+// underlying values only change once per ~16-20 ms.
+wire [15:0] scpu_dbg_bridge_wait_dwell_max;
+wire  [7:0] scpu_dbg_bridge_activity_flags;
+wire  [7:0] scpu_dbg_bridge_gap_max;
 
-// 2-FF sync chains for the five bridge probes. Each register is marked
+// 2-FF sync chains for the bridge probes. Each register is marked
 // (* preserve *) so Quartus does NOT merge them into adjacent logic and
 // preserves the metastability-hardening intent (per the design doc and
 // the project's existing sync convention in scpu_async_bridge.vhd).
+//
+// Note (v2): the v1 sync of LIVE RQ/AK counters had multi-bit tearing
+// (Codex flagged this 2026-05-26). v2 fixed it by snapshotting in clk_cpu
+// before the value crosses; the 2-FF chain here now sees a frame-stable
+// signal that's safe to sync per-bit independently.
 (* preserve *) reg [3:0]  bridge_fsm_state_s1, bridge_fsm_state_s2;
 (* preserve *) reg [7:0]  bridge_last_bus_di_s1, bridge_last_bus_di_s2;
 (* preserve *) reg [15:0] bridge_req_count_s1, bridge_req_count_s2;
 (* preserve *) reg [15:0] bridge_ack_count_s1, bridge_ack_count_s2;
 (* preserve *) reg [7:0]  bridge_vec_fetch_count_s1, bridge_vec_fetch_count_s2;
+(* preserve *) reg [15:0] bridge_wait_dwell_max_s1, bridge_wait_dwell_max_s2;
+(* preserve *) reg [7:0]  bridge_activity_flags_s1, bridge_activity_flags_s2;
+(* preserve *) reg [7:0]  bridge_gap_max_s1, bridge_gap_max_s2;
 
 always @(posedge clk_sys) begin
 	bridge_fsm_state_s1        <= scpu_dbg_bridge_fsm_state;
@@ -1398,6 +1413,12 @@ always @(posedge clk_sys) begin
 	bridge_ack_count_s2        <= bridge_ack_count_s1;
 	bridge_vec_fetch_count_s1  <= scpu_dbg_bridge_vec_fetch_count;
 	bridge_vec_fetch_count_s2  <= bridge_vec_fetch_count_s1;
+	bridge_wait_dwell_max_s1   <= scpu_dbg_bridge_wait_dwell_max;
+	bridge_wait_dwell_max_s2   <= bridge_wait_dwell_max_s1;
+	bridge_activity_flags_s1   <= scpu_dbg_bridge_activity_flags;
+	bridge_activity_flags_s2   <= bridge_activity_flags_s1;
+	bridge_gap_max_s1          <= scpu_dbg_bridge_gap_max;
+	bridge_gap_max_s2          <= bridge_gap_max_s1;
 end
 
 // v347 per-frame saturating counters of CPU writes to bank-0 SDRAM bitmap
@@ -1873,6 +1894,10 @@ assign dbg_pool.bridge_last_bus_di      = bridge_last_bus_di_s2;
 assign dbg_pool.bridge_req_count        = bridge_req_count_s2;
 assign dbg_pool.bridge_ack_count        = bridge_ack_count_s2;
 assign dbg_pool.bridge_vec_fetch_count  = bridge_vec_fetch_count_s2;
+// Milestone B v2 (2026-05-26): vblank-snapped bridge probes.
+assign dbg_pool.bridge_wait_dwell_max   = bridge_wait_dwell_max_s2;
+assign dbg_pool.bridge_activity_flags   = bridge_activity_flags_s2;
+assign dbg_pool.bridge_gap_max          = bridge_gap_max_s2;
 
 `ifdef DBG_CAP_FRAME
 cap_frame u_cap_frame (
@@ -2300,6 +2325,10 @@ fpga64_sid_iec fpga64
 	.dbg_bridge_req_count       (scpu_dbg_bridge_req_count),
 	.dbg_bridge_ack_count       (scpu_dbg_bridge_ack_count),
 	.dbg_bridge_vec_fetch_count (scpu_dbg_bridge_vec_fetch_count),
+	// Milestone B v2 (2026-05-26 — Codex Design 3): vblank-snapped probes.
+	.dbg_bridge_wait_dwell_max  (scpu_dbg_bridge_wait_dwell_max),
+	.dbg_bridge_activity_flags  (scpu_dbg_bridge_activity_flags),
+	.dbg_bridge_gap_max         (scpu_dbg_bridge_gap_max),
 	// Milestone A Option (b): SuperRAM-only HIT gate for sdram_pm.
 	.scpu_fast_path_o           (scpu_fast_path)
 );
