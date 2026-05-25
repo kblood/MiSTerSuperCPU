@@ -192,3 +192,106 @@ The wedge IS:
    milestone-B probe so far has been CIA1-internal or
    bridge-internal. CIA2 IEC was never probed despite v8/v13g
    memory pointing at exactly that.
+
+## 5. Firmware-revival attempt (added 2026-05-26 evening)
+
+User asked: "Aren't we doing some patching of the ROM with some
+SuperCPU stuff at runtime? Isn't that our firmware?" — this prompted
+investigating whether `scpu64.mif` (917 KB, byte-identical to VICE)
+ever actually executes on our build. Probe (`tools/dump_vectors_test`)
+dumped KERNAL vectors $0300-$0333 and bytes at $801A/$8020/$8000:
+
+- **T65 mode**: stock C64 vectors ($F4A5 ILOAD, $F157 IBASIN, etc.),
+  $801A-$8054 = zeros. Expected.
+- **SCPU mode**: identical to T65. $801A-$8054 = zeros. → **the
+  CMD kickstart never installed handlers**.
+
+Root cause: `scpu_bootmap` was being driven to '0' at reset
+(fpga64_sid_iec.vhd:2292), so the bank-$00 $E000+ EPROM overlay
+never activated. Without overlay, the RESET vector at $FFFC reads
+stock C64 KERNAL ($FCE2 = standard reset), and the CMD chain
+$FCE2 → $FC90 → JML $F8:$00FC → JML $F8:$80C1 (kickstart entry)
+was never executed.
+
+Memory: [[kickstart-never-runs-confirmed-2026-05-26]].
+
+### 5.1 v346 attempt
+
+Two-line change to enable kickstart at reset:
+- Line 2292: `scpu_bootmap <= '0'` → `'1'` at reset
+- Lines 2262-2263: outer cpuDi mux carve-out: native-mode bank $F8
+  reads route to `cpuDi_raw` (EPROM via buslogic) when bootmap=0,
+  so the kickstart can continue reading EPROM after it clears
+  bootmap at $F8:$80F7.
+
+Build: md5 `6c854d98`, 65% ALMs, 11:57 Quartus.
+
+Result on hardware:
+- Kickstart progresses past STA $D07E (UART captures PCs at
+  $F8:$80DA, $F8:$80F1)
+- JSL at $F8:$810E enters subroutine at $F8:$8148 (SIMM-detection
+  scan) and reaches internal PC $F8:$8174
+- **Crashes inside the SIMM scan** — never returns via $F8:$8203
+  RTL nor reaches $F8:$8147 RTL → $00:$FCE2 (KERNAL boot)
+- CPU ends up stuck in $00:$0000-$0002 BRK runaway + $00:$FF48-$FF58
+  ack-stub loop
+- Screen stays BLACK in all of t=4s, 8s, 15s, 30s, 60s — BASIC
+  never reaches READY
+
+Memory: [[v346-kickstart-partial-2026-05-26]] (updated with 2nd
+session verification).
+
+### 5.2 The deeper blocker
+
+The SIMM-scan loop at $F8:$81A9-$81F0 does inverted-pattern test
+writes/reads against bank $F6:xxxx via `LDA [$02]` / `STA [$02]`
+long-indirect. Our outer cpuDi mux routes bank $F6/$F7 reads to
+`ramDin` (SuperRAM SDRAM), and `cs_ram` fires via
+`scpu_long_access`. On paper this should work. Empirically the
+scan doesn't terminate cleanly — likely because the SDRAM
+read-after-write at bank $F6/$F7 returns stale or wrong data
+under the specific access pattern used by the scan.
+
+Two compounding issues need investigation:
+1. `scpu_sdram_addr` mapping for bank $F6/$F7 (c64.sv:1112).
+   `{1'b1, supercpu_bank, c64_addr}` — does this collide with
+   anything? Bank $F6 → SDRAM offset $01F60000 = 28.6 MB into a
+   32 MB SDRAM. Should be safe but worth verifying.
+2. `cs_ram` routing for bank $F6/$F7 in native mode. The
+   `scpu_long_access` predicate (buslogic line 551) should fire
+   for any non-$00 bank in SCPU mode, but specific timing of
+   the read-after-write windows under the SIMM scan may need
+   trace-level inspection.
+
+### 5.3 v346 reverted at end of session
+
+- v346 RTL changes reverted (`git checkout fpga64_sid_iec.vhd`)
+- MiSTer restored to mb-probe-003 RBF (md5 `ef01bea6`) — boots to
+  READY, confirmed by screenshot
+- v346 build artifact kept as `C64.rbf` in repo root for future
+  diff work (not committed)
+
+### 5.4 Revised options for next session
+
+Options (a)/(b)/(c) from §2.4 still apply, with the following
+update to (a):
+
+(a) **Auto-throttle on $DD00 access (RTL state machine)** — still
+    the best software-transparent fix. ~1-2 builds. Does NOT
+    require firmware revival.
+
+(a') **Full firmware revival (continue v346 path)** — now confirmed
+    to need bank-$F6/$F7 SDRAM read-after-write debugging. Many
+    builds. Adds full CMD ecosystem when done (IEC throttle, JiffyDOS,
+    fast loaders) but is multi-day work.
+
+(b) **POKE $D072,0 launcher wrap** — works today, no build needed,
+    user discipline required.
+
+(c) **Ship passthrough** — `ef01bea6` is silicon-validated; 18h
+    uptime; passes Lorenz + IEC LOAD in passthrough. Drop MCP turbo
+    for v1.0.
+
+Recommendation: try (a) before (a'). If the auto-throttle FSM works,
+ship it. If not, fall back to (c) for v1.0 and revisit firmware
+revival for v1.1.
