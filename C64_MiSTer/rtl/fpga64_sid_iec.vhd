@@ -1355,6 +1355,16 @@ signal scpu_bootmap      : std_logic := '1';                            -- v343 
 -- $F0-$FE with copied ROM code (49+98+67 JMLs to $FC/$F5/$F4 hit empty
 -- SuperRAM and spin in $00:$284A loop at runtime).
 signal scpu_optim_mode   : unsigned(1 downto 0) := "11";                -- $D074-$D077 select; "11" = no optimization
+-- Bug 3 (firmware_correctness_plan.md Stage 1): SIMM-extent registers
+-- $D27C-$D27F are writable by the kickstart's STZ at $F8:$81EB-$81F0.
+-- Real HW exposes these as the available-RAM extent so software can size
+-- itself. Reset defaults match the prior hardcoded read constants so any
+-- consumer that polls them before the kickstart writes sees the same
+-- "$02-$F6 = SuperRAM bank $02..$F5" geometry the v347 build advertised.
+signal scpu_simm_27c     : unsigned(7 downto 0) := x"00";                -- first available page low
+signal scpu_simm_27d     : unsigned(7 downto 0) := x"02";                -- first available page bank
+signal scpu_simm_27e     : unsigned(7 downto 0) := x"00";                -- last+1 page low
+signal scpu_simm_27f     : unsigned(7 downto 0) := x"F6";                -- last+1 page bank
 -- Phase 5 (WriteSmart + write buffer drain) — architectural gap analysis.
 --
 -- Real CMD SuperCPU has 128KB on-board SRAM + 1-byte write buffer that
@@ -1869,14 +1879,26 @@ cpuDi <= scpu_dos_ext_mode
          --
          -- Intentionally NOT gated on scpu_regs_enabled — real HW SRAM
          -- is permanently present, not subject to $D07E hwenable.
-         x"00"
-            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"27C") else
-         x"02"
-            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"27D") else
-         x"00"
-            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"27E") else
-         x"F6"
-            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"27F") else
+         -- Bug 3 (firmware_correctness_plan.md Stage 1): writable.
+         -- Kickstart's STZ at $F8:$81EB-$81F0 updates these; the prior
+         -- hardcoded read constants ignored those writes. The 16-bit
+         -- `cpuAddr_816` compare (vs `cs_vic + cpuAddr(11:0)`) matches
+         -- the working pattern used by the native-vector intercepts
+         -- below — the cs_vic-gated clauses at lines 1842-1860 are dead
+         -- code on the 65C816 path (memory cs_vic_gated_scpu_reg_reads_are_dead).
+         -- Empirically verified by the bridge-side data-latch diagnostic
+         -- in RBF md5 0a8490a5 (commit 81af800f91-dirty): kickstart's
+         -- $F8:$8116 SBC $D27D read sees bus_di_in = $02 at the ack
+         -- edge — i.e. these clauses fire. See memory
+         -- bug3_outer_mux_actually_works.
+         scpu_simm_27c
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D27C") else
+         scpu_simm_27d
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D27D") else
+         scpu_simm_27e
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D27E") else
+         scpu_simm_27f
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D27F") else
          -- v285 — Native vector intercept + RTI sink (mini SCPU ROM stub).
          --
          -- All native vectors at $00:$FFE4..$FFEF point to $00:$FF00, which
@@ -2324,6 +2346,13 @@ begin
 			scpu_nmi_vec_lo   <= x"00";
 			scpu_nmi_vec_hi   <= x"FF";
 			scpu_dos_ext_mode <= x"00";  -- Phase 6: DOS extension disabled at reset
+			-- Bug 3: SIMM-extent reset defaults match the previously
+			-- hardcoded read constants so a poll before any kickstart
+			-- write sees identical geometry.
+			scpu_simm_27c     <= x"00";
+			scpu_simm_27d     <= x"02";
+			scpu_simm_27e     <= x"00";
+			scpu_simm_27f     <= x"F6";
 			-- Phase 3 — native vector defaults: all → $00:$FF00 (RTI sink).
 			-- Matches the prior hardcoded intercept pattern exactly so
 			-- cold-boot behaviour before EPROM kickstart is unchanged.
@@ -2408,6 +2437,20 @@ begin
 				scpu_nmi_vec_lo <= std_logic_vector(cpuDo);
 			elsif cpuAddr = x"FFEB" then
 				scpu_nmi_vec_hi <= std_logic_vector(cpuDo);
+			end if;
+			-- Bug 3 (firmware_correctness_plan.md Stage 1): SIMM-extent
+			-- registers. Kickstart STZ at $F8:$81EB-$81F0 writes $00 to
+			-- all four; later boot code may write configured values. No
+			-- hwenable gate — real HW exposes SRAM extent regs as
+			-- always-on (matches the symmetric ungated read path above).
+			if cpuAddr = x"D27C" then
+				scpu_simm_27c <= cpuDo;
+			elsif cpuAddr = x"D27D" then
+				scpu_simm_27d <= cpuDo;
+			elsif cpuAddr = x"D27E" then
+				scpu_simm_27e <= cpuDo;
+			elsif cpuAddr = x"D27F" then
+				scpu_simm_27f <= cpuDo;
 			end if;
 			-- Phase 3 — writable native vectors. EPROM kickstart writes
 			-- handler addresses to $00:$FFE4..$FFEF during cold boot;

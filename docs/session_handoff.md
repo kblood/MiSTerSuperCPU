@@ -1,123 +1,75 @@
-# Session handoff — 2026-05-26 (overnight): v347 Phase 2 shipped, Phase 3 building
+# Session handoff — 2026-05-26 (night): Bug 3 outer mux empirically validated, CDC theory dead
 
 ## 0. TL;DR
 
-- **Phase 2 (committed `b95b4fe`)**: BASIC READY via SCPU EPROM kickstart. Done.
-- **Banner work**: Build #3 (md5 `c5052bb0`, buslogic shadow extension) BROKE boot. Reverted. Root cause: even with correct ROM shadow, the patched KERNAL/BASIC need the CMD library handlers at `$00:$801A-$8054` which our SIMM-detect bypass never installs. **Blocked on Phase 3.**
-- **Lorenz autoload "regression"**: NOT a regression — it's the documented mb-probe-003 stochastic MCP+LOAD wedge inherited by v347. Disk mounts fine, BASIC reaches "SEARCHING FOR *", then IEC transfer wedges (same `irq_n`-stuck path).
-- **Doom regression under v347**: NEW — Doom stuck at green init screen for full 8-min smoke test. UART end-state PC at `$00:$0003` (BRK runaway, bank-N last fetch was `$54:$0000` inside Doom SuperRAM, so Doom DID start then crashed). Hypothesis: v347's `scpu_bootmap='1' at reset` triggers kickstart MVN to `$01:$6000-$7FFF` which lands at `$00:$6000-$7FFF` via `bank01_mirror_to_00`, polluting bank-$00 main RAM. Last validated Doom run was May 21 (pre-milestone-b CDC).
-- **Phase 3 source**: Codex Fourth Option SIMM-alias mode staged in working tree. Full design: `docs/phase3_codex_fourth_option_design.md`. Build `bu0q5fv04` running (~12 min ETA).
+- **SHIP BUILD: v347 Phase 2 (`b95b4fe`, md5 `cfcbf617`).** Unchanged. Boots to BASIC READY.
+- **The previous handoff's CDC theory is WRONG.** `clk_cpu === clk_sys` at `c64.sv:349` — there is no CDC. The "outer mux dead" symptom from the prior session was a measurement artifact, not a real bug.
+- **Empirical proof the outer cpuDi mux works:** RBF md5 `0a8490a5` (commit `81af800f91`-dirty) added a bridge-side data-latch that captured `bus_di_in` (the outer mux's actual output) at the $D27D ack edge. UART telemetry showed `GM=$02` — exactly `scpu_simm_27d`'s reset default. If the mux were unreachable, GM would have been `$FF`. See `memory/project_bug3_outer_mux_actually_works.md`.
+- **Bug 3 Stage 1 IS a clean writable-register addition.** No CDC fix needed. Working tree now contains only the production fix (4 signals + reset defaults + 4 read mux clauses + 4 write-process clauses, ~30 lines net).
 
 ## 1. Where things stand now
 
-- MiSTer at `/media/fat/_Test/C64.rbf` = v347 Phase 2 (md5 `cfcbf617`), idle at READY.
-- Working tree DIRTY with Phase 3 source changes (see §3 below). Build running.
-- All v347 Phase 2 changes still committed at `b95b4fe`.
+- **Working tree (uncommitted):**
+  - `C64_MiSTer/rtl/fpga64_sid_iec.vhd` — clean Bug 3 production fix. Diagnostic v2 comment about GM/VF repurpose removed. Massive falsified-journey comment in the cpuDi mux replaced with a short accurate one. Syntax check PASSED 2026-05-26 20:56 (0 errors, 116 warnings).
+  - `C64_MiSTer/rtl/scpu_async_bridge.vhd` — reverted to HEAD (diagnostic v2/v3: planted $A5, dbg_clksys_d27_data_reg, VF/GM repurpose all gone).
+  - Other tracked changes (build_c64.ps1, docs, lorenz_run.py, .gitignore, c64.qpf, deleted screenshots) are pre-existing and orthogonal to Bug 3.
+- **Build in progress:** full Quartus build of cleaned Bug 3 launched 2026-05-26 ~21:00 (background `bua0syogt`, log `build_bug3_clean.log`). ETA ~30-40 min.
+- **MiSTer at `/media/fat/_Test/C64.rbf`:** still RBF `0a8490a5` (the diagnostic build with plant + data-latch). Will be overwritten by the new clean build when ready.
+- **HEAD:** v348 (`81af800`) on `milestone-b-cdc-rewrite`. v347 ship build untouched on disk.
 
-## 2. Validation results
+## 2. What we learned (and what we got wrong)
 
-### 2.1 Phase 2 boot — PASS
+### 2.1 The journey
 
-- `tools/v347_restored.png`: clean READY after redeploy. Confirms Phase 2 silicon-stable.
+Three sessions burned ~12 Quartus builds chasing a CDC bug that doesn't exist. The chain of misreads:
 
-### 2.2 Banner shadow (Build #3, md5 `c5052bb0`) — FAIL
+- Session N-2: probe_d27.prg returns `FF FF FF FF FF` for $D27C-$D27F → conclude outer mux dead → memory `cs_vic_gated_scpu_reg_reads_are_dead`.
+- Session N-1: try cpuAddr_816 + 16-bit compare → build #6 source comment notes `$85` return → next-session TL;DR misreads as `$55` (the planted constant) → conclude cpuAddr_816 works.
+- Session N: build #7 with signal sources via cpuAddr_816 returns `FF FF FF FF FF` → build #8 with planted constants $A1-$A4 same → conclude cpuAddr_816 ALSO broken → invent CDC theory.
+- This session: data-latch in bridge proves outer mux output IS `$02` at the kickstart $D27D ack. The "$FF" from probe_d27.prg has a different cause.
 
-- Extended `fpga64_buslogic.vhd:386` to fire `dataToCpu <= ramData` for `cs_romLoc/cs_CharLoc/cs_romHLoc/cs_romLLoc` when `(scpu_native_mode='1' OR scpu_bootmap='0')`. Idea: after kickstart MVN'd patched KERNAL/BASIC into bank-$00 via bank01_mirror_to_00, expose them via ROM-shadow reads.
-- Result: screen filled with `@` chars. KERNAL never cleared screen RAM. Most likely the patched KERNAL ran but jumped to a missing CMD library handler at `$00:$801A` (which contains $00 = BRK in our build).
-- Reverted via `git checkout`. Source clean wrt buslogic.
+### 2.2 What the `FF FF FF FF FF` symptom actually was
 
-### 2.3 Lorenz autoload — wedges at SEARCHING FOR *
+Candidates ranked by plausibility (per `bug3_outer_mux_actually_works`):
 
-- Manual `LOAD"*",8,1`: BASIC reaches "SEARCHING FOR *" then stalls. Disk drive 8 IS mounted (no DEVICE NOT PRESENT). IEC transfer hangs per `[[mb-probe-003-irq-n-stuck-confirmed-2026-05-26]]` mechanism.
-- MGL `<file type="s">` mount works. MGL `<file type="f">` PRG inject works. RUN gets typed. The hang is in the IEC stack inside the wedged stock KERNAL.
+1. **mbc load_rom C64.PRG silently switched to vanilla rbf** (`_Computer/C64_20250828.rbf` — no SCPU regs, $D27D is VIC mirror = $FF). CLAUDE.md documents mbc CART has this pathology; PRG path may share it.
+2. **PRG ran with DBR≠$00** so addr_hi_816 ≠ $00 → mux clause fails. P65C816 abs uses [DBR:operand] in both emu and native modes, no zero-override. If BASIC SYS to ML left DBR=$F8, every LDA $D27x targets `$F8:D27D`.
+3. **Build #8's planted constants placed wrong in the mux ladder** — without seeing the exact source from that build it can't be fully ruled out.
 
-### 2.4 Doom v347 smoke — FAIL (8-min stuck-green)
+The cheap verification (re-run probe_d27.prg on the new clean build) is **blocked** by broken input paths: `mtype.py` keyboard injection silently drops in milestone-b passthrough builds, and `<file type="f">` MGL autostart didn't trigger in this session's attempts.
 
-- `tools/doom_v342_test.py` ran cleanly: REU upload, loader.prg inject, loader RUN (60s, back to READY), launcher POKE+SYS49152.
-- Screen went black then green within 1s. Stayed green for entire 485s capture window.
-- UART final-state: `PC:000003 P:44 V:00 00 44 88 SP:FA3F WP:000003 ... N:540000 B:00`
-- Interpretation: native-mode native-stack (SP > $01FF), DBR=$00, last bank-N read was `$54:$0000` (Doom SuperRAM), PC stuck at `$00:$0003`. Classic BRK / vector-indirect runaway after Doom started, hit an exception, and bounced through a corrupted vector.
-- See task #8 description for full hypothesis (bank-$00 RAM pollution by kickstart MVN via bank01_mirror_to_00).
+### 2.3 What's actually true about CDC in this codebase
 
-## 3. Phase 3 source changes (uncommitted, in this build)
+`c64.sv:349` does `assign clk_cpu = clk_sys;`. The async-bridge FSM still goes through its full handshake protocol (CPU_REQ_PENDING / WAIT_ACK / IDLE), but the two clocks are identical edges. There is no CDC. The `bus_addr_out` combinational path is fine. The handoff's whole "single bit didn't propagate" mechanism was impossible.
 
-### 3.1 `C64_MiSTer/rtl/fpga64_sid_iec.vhd`
+## 3. Bug 3 production fix (uncommitted)
 
-1. Entity port additions (lines ~737-740):
-   - NEW: `scpu_bootmap_o : out std_logic`
-2. Architecture assignment (next to `scpu_fast_path_o`):
-   - NEW: `scpu_bootmap_o <= scpu_bootmap;`
-3. Bypass clause narrowed (lines 2298-2300):
-   - WAS: `x"6B" when ... cpuAddr = x"8147" or cpuAddr = x"8148"`
-   - NOW: `x"6B" when ... cpuAddr = x"8147"`  ← removed $8148 case
-   - Effect: kickstart's JSL $F88148 now reaches the real SIMM-detect scan. $8147 RTL still synthesised because XCE-then-RTL puts the fetch in emu mode with bootmap=0, neither carve-out serves EPROM there.
+`fpga64_sid_iec.vhd`:
+1. Signal decls at line ~1362-1368: `scpu_simm_27c/d/e/f` with reset defaults `$00 / $02 / $00 / $F6`.
+2. cpuDi mux clauses at ~line 1890-1898 (4 entries): `scpu_simm_27X when (supercpu_en='1' AND addr_hi_816=x"00" AND cpuAddr_816=x"D27X") else`.
+3. Reset assignments in the SCPU-regs reset clause.
+4. Write process clauses (cpuAddr = $D27C..$D27F → scpu_simm_27X <= cpuDo).
 
-### 3.2 `C64_MiSTer/c64.sv`
+Diff stat: `fpga64_sid_iec.vhd | 56 ++++++++++++++++++++++++--` vs HEAD. The 56 is mostly comment lines; functional change is ~25 lines.
 
-1. Port instantiation (around line 2346):
-   - NEW: `.scpu_bootmap_o(scpu_bootmap_w)`
-2. `simm_detect_active` always-block + bank remap (around line 1117):
-   ```verilog
-   wire scpu_bootmap_w;
-   reg  simm_detect_active = 1'b0;
-   reg  scpu_bootmap_prev  = 1'b1;
-   always @(posedge clk_sys) begin
-       if (reset_n == 1'b0) begin
-           simm_detect_active <= 1'b0;
-           scpu_bootmap_prev  <= 1'b1;
-       end else begin
-           scpu_bootmap_prev <= scpu_bootmap_w;
-           if (scpu_bootmap_prev && !scpu_bootmap_w)
-               simm_detect_active <= 1'b1;
-           else if (simm_detect_active && cpu_has_bus
-                    && (supercpu_bank == 8'h00) && supercpu_emul)
-               simm_detect_active <= 1'b0;
-       end
-   end
-   wire [7:0] simm_remap_bank =
-       (simm_detect_active && (supercpu_bank == 8'hF6)) ? 8'h02 :
-       (simm_detect_active && (supercpu_bank == 8'hF7)) ? 8'h03 :
-       supercpu_bank;
-   ```
-3. `scpu_sdram_addr` concat at line 1115 uses `simm_remap_bank` in place of `supercpu_bank`.
+## 4. Next steps
 
-### 3.3 `docs/phase3_codex_fourth_option_design.md` (NEW)
+- **When current build finishes** (notification will arrive automatically — don't poll):
+  1. Deploy RBF to `/media/fat/_Test/C64.rbf` via `tools/mister_debug.py deploy`.
+  2. `load_core` + screenshot. Verify BASIC READY (regression check — Bug 3 must not break boot).
+  3. UART capture 8s. Verify VF/GM telemetry is back to original semantics (IRQ vector count / gap_max snapshot), not the diagnostic v2 repurpose.
+  4. If clean + asked by user → commit Bug 3 with reference to `bug3_outer_mux_actually_works` memory. **Do not commit without explicit user authorization** (CLAUDE.md rule).
 
-Full design rationale, RTL listings, validation strategy, risk list.
+- **Open question deferred:** verify Bug 3 actually writes successfully (silicon-confirm STZ at $F8:$81EB-$81F0 lands a `$00` in scpu_simm_27d). Requires running a probe PRG — blocked by input-injection issue. Punt to a future session when MGL autostart is fixed, or hand-type the BASIC PEEK at the keyboard if the user is at the machine.
 
-## 4. Next steps after Phase 3 build lands
-
-### 4.1 If Phase 3 boots to READY
-
-1. **Banner check** — capture screenshot, look for `**** C=64 SCPU64 ROM V0.07 ****` (or similar patched string) instead of stock `**** COMMODORE 64 BASIC V2 ****`. If yes → CMD library install worked, kickstart natural flow restored.
-2. **CMD lib bytes** — dump $00:$801A-$8054 via the existing `tools/test_cart/gen_dump_vectors.py` PRG. Expect non-zero bytes if SIMM scan completed.
-3. **Doom smoke re-run** — same `doom_v342_test.py`. If Phase 3 installs proper IRQ vectors, BRK-runaway should disappear.
-4. **MCP+LOAD probe** — manual `LOAD"*",8,1`. If CMD IEC throttle restored, LOAD should complete.
-
-### 4.2 If Phase 3 wedges in kickstart
-
-UART signature to watch:
-- PC stuck inside `$F8:$81A9-$81D5` → alias remap not working
-- PC stuck in `$F8:$8112-$813A` → SIMM scan returned but post-scan crashed
-- PC stuck in `$00:$801A-$8054` → kickstart handed off, but CMD lib code crashed
-
-In any of these cases the kickstart got further than Phase 2 (which never reached the scan). Document the new failure mode and either:
-- Add target-specific bypasses (narrow synthetic stores)
-- Pin down what kickstart wants from `$D2xx` registers that we're not providing
-
-### 4.3 Doom regression (separate track)
-
-Independent of Phase 3 result, the Doom failure should be confirmed against a known-good build. Quickest: deploy `C64_milestone-b-cdc-rewrite_b6a02076e9_20260525T163655Z_ef01bea6-dirty.rbf` (mb-probe-003 baseline) and re-run `doom_v342_test.py`. If Doom also wedges there, the regression predates v347 and Phase 3 isn't to blame. If Doom passes on mb-probe-003, v347 is the culprit and the `bootmap='1'` + bank01_mirror_to_00 polluting bank-$00 RAM is the most likely vector.
+- **Bug 3 silicon-truth status:** the read mux is empirically validated (GM=$02). The write path is logically correct (mirrors existing native-vector write clauses that work) but not silicon-validated. Reasonable confidence to ship.
 
 ## 5. References
 
-- `docs/phase3_codex_fourth_option_design.md` — Phase 3 design
-- `tools/v346_boot_trace/codex_v346_falsification.txt` — Codex's ranked falsification + Fourth Option proposal
-- `memory/project_v347_phase2_shipped.md` — Phase 2 record
-- `memory/project_v346_phase1_3bug_stack.md` — three-bug stack analysis
-- `memory/project_mb_probe_003_irq_n_stuck_confirmed.md` — MCP+LOAD wedge mechanism
-- `tools/scpu64.bin` — raw EPROM image (64KB, contains patched KERNAL/BASIC + kickstart)
-- `tools/disasm_kickstart.py` — kickstart disassembler
-- `tools/v347_restored.png` — Phase 2 boot evidence
-- `tools/doom_full/v342_t485s.png` — green-screen Doom failure
-- `tools/doom_full/v342_uart.txt` — 240s capture showing PC stuck at $00:$0003
+- `memory/project_bug3_outer_mux_actually_works.md` — empirical proof + falsification of prior memories.
+- `memory/project_cpu_addr_816_path_also_broken.md` — superseded.
+- `memory/project_outer_mux_cpu_addr_d27d_mystery.md` — superseded.
+- `tools/_d27_plant_v3.png` + `tools/_d27_plant_v3_uart.txt` — the evidence.
+- `tools/deploy_and_observe_d27.py` + `tools/analyze_d27_uart.py` — reusable diagnostic toolchain (still useful for future Bug-4+ register additions).
+- `codex_bridge_diff_review.txt` — Codex's review of the diagnostic diff (no blocking issues found).
+- `codex_mux_paradox.txt` — Codex's structured walk through why the outer mux paradox pointed at bridge capture path.
