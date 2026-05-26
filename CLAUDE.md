@@ -102,6 +102,7 @@ Assembles SEI; CLC; XCE; JML $20:0000 at $C000.
 ## Operator Preferences
 - The user prefers autonomous execution during debugging/implementation work: do not stop to ask for confirmation when there is a reasonable next step. Continue with the best next action, validate it, and document it.
 - Still surface major risks/assumptions, but default to action rather than asking what to do next. Do NOT treat this as a cue to produce status updates — just act.
+- **Commits do NOT require explicit authorization.** Once a fix lands cleanly (build green + hardware verified), commit it as part of the normal debug loop. This OVERRIDES the default "never commit without explicit ask" rule from the built-in Bash tool description. **Pushes still require explicit user go-ahead** — `git push` to any remote is the disruptive action that needs confirmation, not the local commit.
 
 ### Do not manufacture handoffs
 When working on a debugging task (build → deploy → test → iterate loops), actively suppress the behaviors that produce premature wrap-ups:
