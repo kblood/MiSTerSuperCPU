@@ -733,7 +733,11 @@ port(
 	-- not I/O, no DMA). c64.sv passes this through into sdram_pm's new
 	-- fast_path input. Drives '0' when 6510-only or during DMA, which keeps
 	-- the controller on its MISS-only path = bit-identical to Build B.
-	scpu_fast_path_o           : out std_logic
+	scpu_fast_path_o           : out std_logic;
+	-- Phase 3 (2026-05-26 — Codex Fourth Option): expose the internal
+	-- scpu_bootmap state so c64.sv can drive a SIMM-detect alias mode that
+	-- remaps bank $F6/$F7 → $02/$03 during kickstart's SIMM scan.
+	scpu_bootmap_o             : out std_logic
 );
 end fpga64_sid_iec;
 
@@ -2260,39 +2264,20 @@ cpuDi <= scpu_dos_ext_mode
          -- padding; bank-$FF reads fetched $FF → SBC long,X chain → state
          -- corruption. Full analysis: docs/v345e_fix_plan.md.
          --
-         -- v347 (2026-05-26): SIMM-detect bypass. Synthesise $6B (RTL) at
-         -- $F8:$8148 AND $F8:$8147.
+         -- v347/Phase 3 (2026-05-26 — Codex Fourth Option): retain only the
+         -- $F8:$8147 synthesised RTL. The $8148 entry-bypass is REMOVED so
+         -- the kickstart's SIMM-detection JSL at $F8:$810E now reaches the
+         -- real scan; c64.sv's simm_detect_active remaps bank $F6/$F7 to
+         -- $02/$03 during the scan so the alias-loop CMPs at $F8:$81A9-$81D5
+         -- observe the expected SIMM aliasing.
          --
-         -- $8148 is the entry of the kickstart SIMM-detect subroutine
-         -- (sole call site: JSL $F88148 at $F8:$810E, verified via
-         -- tools/disasm_kickstart.py). The synthesised RTL there pops the
-         -- 3-byte return ($F8:$8111) and continues at $F8:$8112, which
-         -- reads the hardcoded $D27D=$02 / $D27F=$F6 (lines 1870/1875),
-         -- takes the benign size-display patch path, then runs PHB / REP
-         -- #$20 / LDA $FFFC / DEC / PHA / SEC / XCE / RTL at $8147 to
-         -- pop $00:$FCE2 in emu mode → KERNAL boot.
-         --
-         -- $8147 is the actual final RTL of the continuation. Its
-         -- genuine EPROM byte IS $6B already, but we still need this
-         -- clause because XCE at $8146 switches to emu mode BEFORE the
-         -- $8147 opcode fetch, and emu-mode bank-$F8 reads with
-         -- bootmap='0' fall through both this mux's carve-outs AND
-         -- buslogic line 339's `(native_mode='1' or bootmap='1')` gate,
-         -- so the fetch would otherwise return ramDin = uninit SDRAM
-         -- = $00 = BRK → infinite BRK-runaway via $00:$FF48-$FF58 ack
-         -- stub + JMP ($0316)→$0000 loop (observed v347 first build).
-         -- Synthesising $6B here matches the genuine EPROM value, so
-         -- the patch is non-spoofing for this address.
-         --
-         -- The whole bypass is required because three independent bugs
-         -- block the natural kickstart flow: (1) c64.sv:1115 makes
-         -- $F6:0000 ≠ $02:0000 so the alias loop at $F8:$81A9-$81D5
-         -- never exits; (2) the v345e ramDin gate below cuts EPROM
-         -- exposure once bootmap clears at $F8:$80F7; (3) $D27D/$D27F
-         -- are hardcoded so kickstart's STZ writes are ineffective.
-         -- Full analysis: project_v346_phase1_3bug_stack.md.
+         -- The $8147 clause stays because XCE at $8146 switches to emu mode
+         -- BEFORE the $8147 opcode fetch; in emu mode with bootmap='0' the
+         -- bank-$F8 fetch otherwise falls through to ramDin = uninit SDRAM
+         -- = $00 = BRK. Genuine EPROM byte IS $6B (RTL), so the synthesis
+         -- here is non-spoofing.
          x"6B" when (supercpu_en = '1' and addr_hi_816 = x"F8"
-                     and (cpuAddr = x"8147" or cpuAddr = x"8148")
+                     and cpuAddr = x"8147"
                      and cpuWe = '0') else
          -- v346 (2026-05-26): widen carve-out so native-mode SCPU at
          -- bank $F8 keeps fetching from EPROM (cpuDi_raw → buslogic →
@@ -3060,6 +3045,10 @@ cpu_has_bus   <= cpuHasBus;
 -- signal so c64.sv can wire it into sdram_pm.v's HIT gate. Driven from
 -- the existing internal definition further down (line ~2974).
 scpu_fast_path_o <= scpu_fast_path;
+-- Phase 3 (2026-05-26 — Codex Fourth Option): export scpu_bootmap so
+-- c64.sv can detect the kickstart's STA $D07E (bootmap 1→0) and activate
+-- the SIMM-detect alias mode that remaps bank $F6/$F7 → $02/$03.
+scpu_bootmap_o <= scpu_bootmap;
 
 cass_motor <= cpuIO(5);
 cass_write <= cpuIO(3);
