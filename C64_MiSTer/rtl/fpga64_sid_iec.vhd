@@ -1469,6 +1469,24 @@ signal cia2_pbi     : unsigned(7 downto 0);
 signal cia2_pbo     : unsigned(7 downto 0);
 signal cia2_pbe     : unsigned(7 downto 0);
 
+-- CIA2 write latch+replay (Codex 2026-05-27): the v13g cia2_write_safe
+-- gate keeps cs_n='0' for ~2 clk32 around the bridge access window, but
+-- in MCP mode the actual CIA write-sample edge (rising clk32 at end of
+-- CYCLE_CPUD interval where phi2_n=enableCia_n='1') can miss that window
+-- entirely. mos6526.v:123 latches on `wr = phi2_n & !cs_n & !rw` at
+-- posedge clk → cs_n must be '0' during the CYCLE_CPUD interval. We
+-- capture the write into pending regs whenever cs_cia2+cpuWe+write_safe
+-- is true, then replay (fire) at sysCycle=CYCLE_CPUC so cs_n is held
+-- low for the full CYCLE_CPUD interval.
+signal cia2_wr_pending : std_logic := '0';
+signal cia2_wr_fire    : std_logic := '0';
+signal cia2_wr_rs      : unsigned(3 downto 0) := (others => '0');
+signal cia2_wr_do      : unsigned(7 downto 0) := (others => '0');
+signal cia2_cs_n       : std_logic;
+signal cia2_rw_q       : std_logic;
+signal cia2_rs_q       : unsigned(3 downto 0);
+signal cia2_db_q       : unsigned(7 downto 0);
+
 signal todclk       : std_logic;
 
 -- video
@@ -2779,6 +2797,42 @@ port map (
 	dbg_icr           => cia1_icr_lvl
 );
 
+-- v14 (Codex 2026-05-27): CIA2 write latch+replay. The v13g widened
+-- write_safe gate kept cs_n='0' for the bridge access window, but in
+-- MCP mode the bridge's vpa/vda window can fall entirely outside the
+-- one-clk32 CYCLE_CPUD interval where enableCia_n is high. The CIA
+-- latches writes on `wr = phi2_n & !cs_n & !rw` at posedge clk
+-- (mos6526.v:123); if cs_n is high during CYCLE_CPUD, the write is
+-- dropped. We now latch the write request into cia2_wr_pending when
+-- cs_cia2+cpuWe+write_safe is true, then fire it deterministically at
+-- sysCycle=CYCLE_CPUC so cs_cia2_n is asserted for the entire CYCLE_CPUD
+-- interval. Reads remain ungated.
+process(clk32) begin
+	if rising_edge(clk32) then
+		cia2_wr_fire <= '0';
+		if reset = '1' then
+			cia2_wr_pending <= '0';
+		else
+			if cs_cia2 = '1' and cpuWe = '1' and cia2_write_safe = '1'
+			   and cia2_wr_pending = '0' then
+				cia2_wr_pending <= '1';
+				cia2_wr_rs      <= cpuAddr(3 downto 0);
+				cia2_wr_do      <= cpuDo;
+			end if;
+			if sysCycle = CYCLE_CPUC and cia2_wr_pending = '1' then
+				cia2_wr_fire    <= '1';
+				cia2_wr_pending <= '0';
+			end if;
+		end if;
+	end if;
+end process;
+
+cia2_cs_n <= '0' when cia2_wr_fire = '1'
+                  or (cs_cia2 = '1' and cpuWe = '0') else '1';
+cia2_rw_q <= '0' when cia2_wr_fire = '1' else not cpuWe;
+cia2_rs_q <= cia2_wr_rs when cia2_wr_fire = '1' else cpuAddr(3 downto 0);
+cia2_db_q <= cia2_wr_do when cia2_wr_fire = '1' else cpuDo;
+
 cia2: mos6526
 port map (
 	clk => clk32,
@@ -2786,19 +2840,11 @@ port map (
 	phi2_p => enableCia_p,
 	phi2_n => enableCia_n,
 	res_n => not reset,
-	-- v13g (2026-05-25): write-only gate using cia2_write_safe (wider
-	-- window: vpa OR vda OR vpa_d1 OR vda_d1). v13e used the narrower
-	-- v13d CIA1 pattern (just vpa OR vda) and wedged at PC=$018C — too
-	-- narrow for CIA2 IEC edge writes. v13f bridge-level gating also
-	-- wedged. v13g widens the gate by 1 clk_sys on each side to catch
-	-- legitimate writes whose bus-side timing doesn't precisely align
-	-- with vpa/vda assertion. Between requests vpa/vda are low for many
-	-- cycles, so 1-cycle widening still blocks phantom writes.
-	cs_n => not (cs_cia2 and (not cpuWe or cia2_write_safe)),
-	rw => not cpuWe,
+	cs_n => cia2_cs_n,
+	rw => cia2_rw_q,
 
-	rs => cpuAddr(3 downto 0),
-	db_in => cpuDo,
+	rs => cia2_rs_q,
+	db_in => cia2_db_q,
 	db_out => cia2Do,
 
 	pa_in => cia2_pai and cia2_pao,
