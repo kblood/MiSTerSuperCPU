@@ -99,35 +99,30 @@ SYS49152
 ```
 Assembles SEI; CLC; XCE; JML $20:0000 at $C000.
 
-**Doom autoload v3 (PARTIAL — boots loader, does NOT reach bitmap mode)**:
-`tools/_doom_autoload_abs.mgl` + `crt/doom_autoload.crt` fires the
-REU upload + cart autoboot chain end-to-end with no BASIC, no
-keystrokes, and no `start_strk` synthesis. Cart bootstrap copies
-doom_loader's inner ML body (187 bytes from $0820-$08DA in
-`tools/doom_loader.prg`) to $0700 and JMPs there.
-- **Known limitation (2026-05-27 evening)**: the resulting screen is
-  bitmap data sitting in $0400 displayed in TEXT MODE through the
-  BASIC font at $1000 — it *looks* like the Doom title silhouette
-  but VIC-II is never switched into bitmap mode (`$D011` BMM,
-  `$D018` bitmap-base, `$D016` MCM). The mode-switch must live in
-  REU-loaded code the original full-chain reaches; our 187-byte
-  fragment is just the loader kickstart. NOT a complete autoloader
-  yet.
-- Generator: `tools/test_cart/gen_doom_autoload_crt_v3.py` — current
-  output also splices a 17-byte $D800 init stub at $8049 (clears
-  color RAM to $01 white before JMP $0700; replicates the color-RAM
-  half of doom_loader's $08DB screen-clear sub).
-- Fire: `scp crt/doom_autoload.crt tools/_doom_autoload_abs.mgl` to
-  MiSTer (paths in MGL are absolute), then
-  `echo load_core /media/fat/.../_doom_autoload_abs.mgl > /dev/MiSTer_cmd`.
-- Validation harness: `tools/v3_on_v356_probe.py` (deploys v356 archive
-  RBF + runs the MGL + captures checkpoint screenshots).
-- Earlier failed approaches: v1 (`prg_to_crt` direct wrap, JMP $080D
-  — crashed: SYS dispatch needs A/X/Y from $030C-$030E). v2 (Lorenz
-  pattern RESTOR+CINT+JMP $A474 — crashed: BASIC warm start needs
-  CHRGOT installed at $0073-$008A by $E3BF cold init).
-- Until the chain reaches bitmap-mode entry, the BASIC-launcher
-  path above remains the working unattended sequence.
+**Doom autoload (unattended via MGL + single PRG)**:
+`tools/_doom_autoload.mgl` chains REU + `doom_loader.prg`. MiSTer
+loads the REU image (~25 s for 16 MB), then loads `doom_loader.prg`
+to $0801, and `start_strk` (c64.sv) synthesizes R-U-N + RETURN.
+BASIC parses RUN → SYS 2061 → doom_loader's inner ML runs at
+$0700: REU FETCH chain transfers Doom from REU SDRAM into
+SuperRAM, then XCE + JML $20:0000 launches the game.
+- Silicon-validated 2026-05-27 on v356 RBF (md5 `19839ee7`): id
+  Software credits + main menu reached unattended at ~t180-220 s
+  from MGL fire.
+- Probe: `python tools/doom_autoload_probe.py`.
+- doom_loader.prg is self-contained — same pattern as Wolfenstein.
+  Do NOT chain a second `doom_launcher.prg` afterwards: that PRG
+  is just bare `SEI; CLC; XCE; JML $20:0000` (no transfer) and
+  if loaded after doom_loader has already JMP'd into Doom, it
+  yanks the running game by re-JMPing with corrupted state =
+  black screen.
+- HEAD/milestone-b status: blocked because `start_strk` is
+  regressed (commit `58f9dc3` wiped both the latched ioctl
+  classification AND the deferred start_strk fixes). Restoring
+  those c64.sv pieces is the right fix; CRT-based v1/v2/v3 attempts
+  (in commits `f6ee52e`, `7866e3d`) can't substitute because they
+  skip BASIC SYS dispatch context that doom_loader's inner ML
+  depends on for the final JML.
 
 ## Operator Preferences
 - The user prefers autonomous execution during debugging/implementation work: do not stop to ask for confirmation when there is a reasonable next step. Continue with the best next action, validate it, and document it.
