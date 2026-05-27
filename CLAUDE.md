@@ -99,27 +99,35 @@ SYS49152
 ```
 Assembles SEI; CLC; XCE; JML $20:0000 at $C000.
 
-**Doom autoload v3 (unattended, BASIC-free, CPU-speed-independent)**:
-Use `tools/_doom_autoload_abs.mgl` — fires REU upload then loads
-`crt/doom_autoload.crt` which auto-boots into Doom without any
-keystrokes, BASIC dispatch, or `start_strk` synthesis. The cart
-bootstrap copies doom_loader's inner ML body (187 bytes from
-$0820-$08DA in `tools/doom_loader.prg`) straight to $0700 and JMPs
-there, bypassing the BASIC stub/SYS-dispatch path that earlier
-attempts (v1 direct-JMP, v2 Lorenz/JMP $A474) crashed on.
-- Generator: `tools/test_cart/gen_doom_autoload_crt_v3.py` (rebuild if
-  `doom_loader.prg` changes).
+**Doom autoload v3 (PARTIAL — boots loader, does NOT reach bitmap mode)**:
+`tools/_doom_autoload_abs.mgl` + `crt/doom_autoload.crt` fires the
+REU upload + cart autoboot chain end-to-end with no BASIC, no
+keystrokes, and no `start_strk` synthesis. Cart bootstrap copies
+doom_loader's inner ML body (187 bytes from $0820-$08DA in
+`tools/doom_loader.prg`) to $0700 and JMPs there.
+- **Known limitation (2026-05-27 evening)**: the resulting screen is
+  bitmap data sitting in $0400 displayed in TEXT MODE through the
+  BASIC font at $1000 — it *looks* like the Doom title silhouette
+  but VIC-II is never switched into bitmap mode (`$D011` BMM,
+  `$D018` bitmap-base, `$D016` MCM). The mode-switch must live in
+  REU-loaded code the original full-chain reaches; our 187-byte
+  fragment is just the loader kickstart. NOT a complete autoloader
+  yet.
+- Generator: `tools/test_cart/gen_doom_autoload_crt_v3.py` — current
+  output also splices a 17-byte $D800 init stub at $8049 (clears
+  color RAM to $01 white before JMP $0700; replicates the color-RAM
+  half of doom_loader's $08DB screen-clear sub).
 - Fire: `scp crt/doom_autoload.crt tools/_doom_autoload_abs.mgl` to
   MiSTer (paths in MGL are absolute), then
   `echo load_core /media/fat/.../_doom_autoload_abs.mgl > /dev/MiSTer_cmd`.
 - Validation harness: `tools/v3_on_v356_probe.py` (deploys v356 archive
   RBF + runs the MGL + captures checkpoint screenshots).
-- Silicon-validated 2026-05-27 on v356 RBF (md5 `19839ee7`): Doom
-  title screen visible at t200s, fully unattended. See memory
-  `project_doom_autoload_v3_silicon_validated.md`.
-- Does NOT currently work on HEAD/milestone-b — blocked by the SDRAM
-  A10 auto-precharge bug, not by the autoloader itself. v3 needs no
-  changes once A10 is fixed.
+- Earlier failed approaches: v1 (`prg_to_crt` direct wrap, JMP $080D
+  — crashed: SYS dispatch needs A/X/Y from $030C-$030E). v2 (Lorenz
+  pattern RESTOR+CINT+JMP $A474 — crashed: BASIC warm start needs
+  CHRGOT installed at $0073-$008A by $E3BF cold init).
+- Until the chain reaches bitmap-mode entry, the BASIC-launcher
+  path above remains the working unattended sequence.
 
 ## Operator Preferences
 - The user prefers autonomous execution during debugging/implementation work: do not stop to ask for confirmation when there is a reasonable next step. Continue with the best next action, validate it, and document it.

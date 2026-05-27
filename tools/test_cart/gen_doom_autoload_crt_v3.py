@@ -72,6 +72,58 @@ def build_payload_prg() -> bytes:
     return bytes([INNER_LOAD & 0xFF, (INNER_LOAD >> 8) & 0xFF]) + bytes(padded)
 
 
+COLOR_RAM_STUB_ADDR = 0x8049  # right after the 64-byte prg_to_crt bootstrap
+
+
+def build_color_ram_stub() -> bytes:
+    """17 bytes: clear $D800-$DBFF to $01 (white), then JMP $0700.
+
+    Replicates the color-RAM half of doom_loader's screen-clear sub at
+    $08DB (the original also clears $0400-$07FF to $20 but we skip that
+    because (a) $0700 must NOT be clobbered after the cart copy, and (b)
+    the inner ML's first REU FETCH overwrites $0400 with bitmap data).
+    """
+    return bytes([
+        0xA9, 0x01,              # LDA #$01
+        0xA2, 0x00,              # LDX #$00
+        # loop:
+        0x9D, 0x00, 0xD8,        # STA $D800,X
+        0x9D, 0x00, 0xD9,        # STA $D900,X
+        0x9D, 0x00, 0xDA,        # STA $DA00,X
+        0x9D, 0x00, 0xDB,        # STA $DB00,X
+        0xE8,                    # INX
+        0xD0, 0xF1,              # BNE loop (-15)
+        0x4C, 0x00, 0x07,        # JMP $0700
+    ])
+
+
+def patch_color_ram_init(crt: bytes, info: dict) -> bytes:
+    """Splice the color-RAM-clear stub into the cart's unused ROM area and
+    retarget the bootstrap's final JMP at it. The stub ends with JMP $0700
+    so the inner ML still runs."""
+    crt = bytearray(crt)
+    rom_off = 64 + 16  # CRT header + CHIP header = 80
+    boot_off = rom_off + 9  # vectors + CBM80 magic = 9 bytes before bootstrap
+    bootstrap_size = info['bootstrap_size']
+    # Final 3 bytes of bootstrap = `4C lo hi` JMP to entry ($0700).
+    jmp_off = boot_off + bootstrap_size - 3
+    if crt[jmp_off] != 0x4C:
+        raise RuntimeError(f"expected JMP opcode at CRT[{jmp_off:#x}], got {crt[jmp_off]:#x}")
+    # Retarget the JMP to the stub address ($8049).
+    crt[jmp_off + 1] = COLOR_RAM_STUB_ADDR & 0xFF
+    crt[jmp_off + 2] = (COLOR_RAM_STUB_ADDR >> 8) & 0xFF
+    # Place stub at $8049 in cart ROM = rom[0x49] = CRT[rom_off + 0x49].
+    stub = build_color_ram_stub()
+    stub_off_in_rom = COLOR_RAM_STUB_ADDR - 0x8000  # = 0x49
+    stub_crt_off = rom_off + stub_off_in_rom
+    if boot_off + bootstrap_size > stub_crt_off:
+        raise RuntimeError("bootstrap overlaps stub location")
+    if stub_crt_off + len(stub) > rom_off + 0x100:
+        raise RuntimeError("stub overlaps payload at $8100")
+    crt[stub_crt_off:stub_crt_off + len(stub)] = stub
+    return bytes(crt)
+
+
 def main():
     payload_prg = build_payload_prg()
     payload_prg_path = os.path.join(HERE, 'out', 'doom_autoload_inner.prg')
@@ -82,6 +134,12 @@ def main():
 
     # entry_offset=0 because inner ML starts directly at $0700.
     crt, info = make_boot_crt(payload_prg, name="DOOM AUTOLOAD V3", entry_offset=0)
+    # v3.1: prepend a color-RAM-clear stub so $D800-$DBFF starts at $01 (white).
+    # Without this the C64 bitmap mode shows BASIC's leftover color RAM (mostly
+    # light blue + brown smear), giving a brown wash instead of the proper
+    # green/red palette.
+    crt = patch_color_ram_init(crt, info)
+    print("v3.1: color-RAM-clear stub spliced at $8049 (17 bytes)")
     crt_path = os.path.join(ROOT, 'crt', 'doom_autoload.crt')
     with open(crt_path, 'wb') as f:
         f.write(crt)
