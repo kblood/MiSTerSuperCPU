@@ -35,13 +35,19 @@ core itself is well-validated by GHDL benches.
      handler 4/7 copy loops. Fix: cycle-N+1 write-data forward in
      `c64_ram64k.vhd`. Title bitmap renders, SPACE advances to gameplay.
      Do NOT drop `no_rw_check` — clk64 timing collapses (-8.5 ns slack).
-   - **Doom K:2D state ambiguous** — earlier reports of deterministic crash;
-     recent memory `project_doom_runs_mgl_only.md` (2026-04-18) shows 90s of
-     stable Doom execution captured. Status needs re-verification.
+   - **Doom playable via single-PRG MGL on v356** — `tools/_doom_autoload.mgl`
+     (REU + `doom_loader.prg`) + MiSTer `start_strk` reaches the id Software
+     credits + main menu unattended in ~3 min. Validated 2026-05-27 (v356
+     RBF md5 19839ee7) via `tools/doom_autoload_probe.py`. Same pattern as
+     Wolfenstein. Replaces the older K:2D-ambiguous status. CRT-based
+     autoload (v3, commit `f6ee52e`) does NOT work — cart-direct-JMP skips
+     the BASIC SYS dispatch context the loader's inner ML depends on.
    - **MGL pipe `<file>` PRG ioctl** — `echo load_core foo.mgl > /dev/MiSTer_cmd`
-     reloads rbf but does not fire the PRG load ioctl in the current build.
-     Workaround: `mbc load_rom` or `tools/mister_debug.py load_prg`. Not
-     blocking, but should be diagnosed.
+     DOES fire the PRG load ioctl on v356 — empirically reaches the Doom
+     menu end-to-end. On HEAD/milestone-b it's broken because commit
+     `58f9dc3` (vanilla restore) wiped `start_strk` deferred-fire fix from
+     `8713403` and the latched ioctl classification from `0bcfabe`. Restoring
+     those c64.sv pieces is the right unblock; not a structural ioctl issue.
 
 2. **Tooling blocker** (P0):
    - **Build-cache propagation** — RTL edits compile cleanly with new md5 but
@@ -142,20 +148,43 @@ UART `W:` field) — useful for future "decompressor stuck" symptoms;
 W>$01FF means SCPU code escaped the dispatcher page; W≥$CB00 means
 decomp reached game entry.
 
-### 2.2 Doom K:2D state (AMBIGUOUS, needs re-test)
+### 2.2 Doom autoload (RESOLVED 2026-05-27 on v356)
 
-**Older narrative** (2026-03-22, this doc's prior version):
-- Deterministic crash at K:2D → K:00 transition with bit-for-bit identical state
-  across 3 hardware runs. Last good fetch K:2D A:037D, first bad K:00 A:0111.
-- Interpretation: PC ran into uninitialized memory near $2D:$FFE6.
+**Current status**: Unattended boot to playable Doom main menu via
+`tools/_doom_autoload.mgl` (REU + single `doom_loader.prg`). MiSTer
+`start_strk` fires R-U-N + RETURN after `doom_loader.prg` lands at
+`$0801`; BASIC SYS-dispatches into the inner ML at `$0700`; REU FETCH
+chain transfers Doom from REU SDRAM into SuperRAM; final `XCE; JML
+$20:0000` launches the game. Same pattern as Wolfenstein.
 
-**Newer narrative** (2026-04-18, `project_doom_runs_mgl_only.md`):
-- 90s stable Doom execution captured with MGL + launcher. No loader.prg needed.
-- X-flip trigger did NOT fire in that window.
-- Prior "Doom crashes" observations may have been mtype keyboard timing failures.
+Validated 2026-05-27 (v356 RBF, md5 `19839ee7`) via
+`tools/doom_autoload_probe.py`:
+- t030: `LOADING` text visible
+- t090: engine init (`W_Init: Init WADfiles`, `R_Init: Init DOOM
+  refresh daemon`, `InitTextures/Flats/Sprites/Colormaps...`)
+- t180: id Software credits screen
+- t220: **playable main menu** with proper Doom palette/bitmap mode
 
-**Action required**: re-run Doom with current head commit and resolve which
-narrative is current. Add to compatibility lane in roadmap.
+**Older "K:2D crash" narrative** (2026-03-22) is no longer the operative
+story — those mtype-driven runs were keyboard-timing-fragile. The
+April-18 "90 s stable Doom execution" memory was directionally right
+but said "No loader.prg needed", which is incorrect: `doom_loader.prg`
+IS the loader. The launcher/loader distinction was loose nomenclature.
+
+**HEAD/milestone-b status**: The MGL+PRG path is broken because commit
+`58f9dc3` (vanilla restore) wiped `8713403`'s deferred-`start_strk` fix
+and `0bcfabe`'s latched ioctl classification from `c64.sv`. Restoring
+those is the right unblock — separate workstream from this autoload
+mechanism. (Also stacked: SDRAM A10 auto-precharge bug breaks Doom
+itself on milestone-b independent of how it's launched. See
+`project_doom_regression_is_a10_autoprecharge_2026-05-27.md`.)
+
+CRT-based autoloaders (v1/v2/v3 in commits `f6ee52e`, `7866e3d`) do
+NOT substitute: cart-direct-JMP skips BASIC SYS dispatch context the
+loader's terminal JML depends on. Visible failure mode: bitmap data
+loaded into `$0400` but VIC-II stays in text mode → silhouette of the
+title rendered through the BASIC font. Don't rebuild those without
+re-reading the post-mortem memory note.
 
 ### 2.3 Build-cache propagation (RESOLVED 2026-04-25, not a real bug)
 
