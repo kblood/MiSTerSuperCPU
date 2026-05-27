@@ -91,13 +91,35 @@ SDRAM is volatile but survives `load_core` bitstream reloads on the same
 power-on cycle (see `project_sdram_survives_deploy.md`), so a single MGL
 load populates REU SDRAM that persists across subsequent iterative deploys.
 
-**Doom launcher (after REU loaded)**:
+**Doom launcher (after REU loaded, manual)**:
 ```
 POKE49152,120:POKE49153,24:POKE49154,251:POKE49155,92
 POKE49156,0:POKE49157,0:POKE49158,32
 SYS49152
 ```
 Assembles SEI; CLC; XCE; JML $20:0000 at $C000.
+
+**Doom autoload v3 (unattended, BASIC-free, CPU-speed-independent)**:
+Use `tools/_doom_autoload_abs.mgl` — fires REU upload then loads
+`crt/doom_autoload.crt` which auto-boots into Doom without any
+keystrokes, BASIC dispatch, or `start_strk` synthesis. The cart
+bootstrap copies doom_loader's inner ML body (187 bytes from
+$0820-$08DA in `tools/doom_loader.prg`) straight to $0700 and JMPs
+there, bypassing the BASIC stub/SYS-dispatch path that earlier
+attempts (v1 direct-JMP, v2 Lorenz/JMP $A474) crashed on.
+- Generator: `tools/test_cart/gen_doom_autoload_crt_v3.py` (rebuild if
+  `doom_loader.prg` changes).
+- Fire: `scp crt/doom_autoload.crt tools/_doom_autoload_abs.mgl` to
+  MiSTer (paths in MGL are absolute), then
+  `echo load_core /media/fat/.../_doom_autoload_abs.mgl > /dev/MiSTer_cmd`.
+- Validation harness: `tools/v3_on_v356_probe.py` (deploys v356 archive
+  RBF + runs the MGL + captures checkpoint screenshots).
+- Silicon-validated 2026-05-27 on v356 RBF (md5 `19839ee7`): Doom
+  title screen visible at t200s, fully unattended. See memory
+  `project_doom_autoload_v3_silicon_validated.md`.
+- Does NOT currently work on HEAD/milestone-b — blocked by the SDRAM
+  A10 auto-precharge bug, not by the autoloader itself. v3 needs no
+  changes once A10 is fixed.
 
 ## Operator Preferences
 - The user prefers autonomous execution during debugging/implementation work: do not stop to ask for confirmation when there is a reasonable next step. Continue with the best next action, validate it, and document it.
