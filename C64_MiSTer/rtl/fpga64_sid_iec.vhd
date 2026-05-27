@@ -1341,7 +1341,15 @@ signal supercpu_en_prev  : std_logic := '0';                            -- risin
 signal scpu_rom_vis      : std_logic := '1';                            -- '1' = SuperCPU ROM at $E000-$FFFF (Phase C uses)
 signal scpu_speed_1mhz   : std_logic := '0';                            -- $D07A=1, $D07B=0
 signal scpu_sys_1mhz     : std_logic := '0';                            -- $D072=1, $D073=0
-signal scpu_force_1mhz   : std_logic := '0';                            -- = scpu_speed_1mhz OR scpu_sys_1mhz; gates cpu_cyc turbo slots
+signal scpu_force_1mhz   : std_logic := '0';                            -- = scpu_speed_1mhz OR scpu_sys_1mhz OR cia2_throttle_active
+-- Problem C (Codex 2026-05-27): per-access CIA2 auto-throttle. Whenever
+-- the CPU touches $DD00-$DDFF and supercpu_en is on, hold the 1MHz
+-- throttle for N clk32 cycles so KERNAL's IEC byte-receive loop at
+-- $EEAF gets stock-CIA2 timing without requiring software to set $D072.
+-- Fixes MCP+LOAD wedge (PC stuck at $00:$E5D5, IRQ counter frozen, see
+-- memory btest_passthrough_breaks_boot for diagnostic confirmation).
+signal cia2_throttle_active : std_logic := '0';
+signal cia2_throttle_cnt    : unsigned(6 downto 0) := (others => '0');   -- 7-bit: 0..127 clk32 cycles (1..4 1MHz periods)
 signal scpu_regs_enabled : std_logic := '1';                            -- $D07E enables, $D07F/$D07D disables
 signal scpu_hwenable     : std_logic := '0';                            -- ANY write to $D07E sets; $D07F/$D07D clears
 signal scpu_bootmap      : std_logic := '1';                            -- v343 retry: bootmap on at reset (kickstart needs it)
@@ -3161,7 +3169,31 @@ sdram_hit_pred <= '1' when sdram_pred_valid = '1'
 -- (~3MHz effective). Bridge-side change deemed unnecessary: enableCpu_816 =
 -- cpu_cyc_s(1), so gating cpu_cyc here propagates through the bridge ack
 -- pulse naturally and makes the CPU advance at 1MHz with no MCP changes.
-scpu_force_1mhz <= scpu_speed_1mhz or scpu_sys_1mhz;
+scpu_force_1mhz <= scpu_speed_1mhz or scpu_sys_1mhz or cia2_throttle_active;
+
+-- Problem C (Codex 2026-05-27): CIA2 auto-throttle counter. Reloads on any
+-- accepted CPU CIA2 access; counts down on every clk32 otherwise. While
+-- nonzero, scpu_force_1mhz stays asserted so the CPU advances one slot per
+-- 1MHz period. Trigger condition matches Codex's recommendation:
+-- supercpu_en + addr_hi_816=$00 + cs_cia2 + enableCpu_816 (covers both
+-- reads and writes; CIA2 polling reads are the actual wedge mechanism).
+-- N=64 clk32 = 2 1MHz periods after each access. Sweep target if this
+-- proves insufficient: 32/64/128.
+cia2_throttle_active <= '1' when cia2_throttle_cnt /= 0 else '0';
+
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if reset = '1' then
+			cia2_throttle_cnt <= (others => '0');
+		elsif supercpu_en = '1' and addr_hi_816 = x"00"
+			and cs_cia2 = '1' and enableCpu_816 = '1' then
+			cia2_throttle_cnt <= to_unsigned(64, cia2_throttle_cnt'length);
+		elsif cia2_throttle_cnt /= 0 then
+			cia2_throttle_cnt <= cia2_throttle_cnt - 1;
+		end if;
+	end if;
+end process;
 
 cpu_cyc <= '1' when (sdram_busy = '0' and (
 				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
