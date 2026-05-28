@@ -216,24 +216,22 @@ begin
 	-- the bank-$00/$01 SRAM shadow (offsets confirmed by disasm: KERNAL from
 	-- $F8:$2100, BASIC from $F8:$0100 — see docs/scpu_patched_kernal_emulation_mode.md).
 	-- Because MVN is a plain block move, the shadow bytes are byte-identical
-	-- to those EPROM slices, so we read them straight from the resident
-	-- scpu_rom dprom by offsetting its read address:
-	--   KERNAL: $E000-$FFFF -> EPROM $2100-$40FF  (cpuAddr - $BF00)
-	--   BASIC : $A000-$BFFF -> EPROM $0100-$20FF  (cpuAddr - $9F00)
-	-- Gated to emulation mode (scpu_native_mode='0') with bootmap off, so the
-	-- kickstart/native bank-$F8 EPROM reads still see the raw image at cpuAddr.
-	-- The emu-mode patched read and the bootmap/native EPROM read never occur
-	-- in the same cycle, so reusing the single scpu_rom read port is safe and
-	-- costs no extra block RAM. The dataToCpu mux below only selects scpuRomData
-	-- on cs_romLoc (a genuine KERNAL/BASIC ROM read), so this eager address
-	-- offset is harmless when the access is actually RAM-under-ROM.
+	-- Hybrid (2026-05-28): emu-mode KERNAL/BASIC code is served from romData
+	-- (the C64 KERNAL+BASIC dprom — stock C64 in SuperCPU mode after the firmware
+	-- ROM download, with edge-robust serial that LOADs cleanly in 65816). The
+	-- ONLY thing pulled from the SuperCPU EPROM in emu mode is the cold-start
+	-- banner string $E47E-$E4AB ("**** C=64 SCPU64 ROM V0.07 ****" / "64K RAM
+	-- SYSTEM"), so the boot screen shows the SuperCPU identity. The resident
+	-- scpu_rom dprom has no wren, so this banner is download-immune (unlike the
+	-- romData dprom, which the firmware overwrites with a stock C64 ROM at boot).
+	-- For that 46-byte window the read address is offset cpuAddr-$BF00 (KERNAL
+	-- $E000 -> EPROM $2100); everywhere else scpu_rom is read at raw cpuAddr for
+	-- the native/bootmap bank-$F8 EPROM reads (native_mode='1' or bootmap='1',
+	-- which never hit the banner window). The two uses never coincide.
 	scpu_rom_rdaddr <=
 		std_logic_vector(cpuAddr - x"BF00")
 			when supercpu_en = '1' and scpu_native_mode = '0' and scpu_bootmap = '0'
-			     and cpuAddr(15 downto 13) = "111"      -- $E000-$FFFF KERNAL
-		else std_logic_vector(cpuAddr - x"9F00")
-			when supercpu_en = '1' and scpu_native_mode = '0' and scpu_bootmap = '0'
-			     and cpuAddr(15 downto 13) = "101"      -- $A000-$BFFF BASIC
+			     and cpuAddr >= x"E47E" and cpuAddr <= x"E4AB"
 		else std_logic_vector(cpuAddr);
 
 	romData <= romData_c64;
@@ -418,12 +416,18 @@ begin
 		elsif cs_CharLoc = '1' then
 			dataToCpu <= unsigned(charData);
 		elsif cs_romLoc = '1' then
-			if supercpu_en = '1' then
-				-- SuperCPU: serve the EPROM-patched KERNAL/BASIC in emulation
-				-- mode (VICE-faithful), read via the scpu_rom_rdaddr offset mux
-				-- above. supercpu_en is hardcoded '1' on this branch, so this is
-				-- the active path; the romData (stock C64 KERNAL) branch is kept
-				-- for vanilla (supercpu_en='0') builds.
+			-- Hybrid (2026-05-28): serve romData (the C64 KERNAL+BASIC dprom) in
+			-- emulation mode. The EPROM-patched SCPU KERNAL (scpuRomData) ships
+			-- $D072/$D073-wrapped IEC serial helpers whose extra 1MHz cycles shift
+			-- the bit-cell timing and wedge LOAD"*",8,1 in 65816 mode at $ED5A.
+			-- Stock/DolphinDOS serial (romData) is unwrapped and LOADs cleanly.
+			-- EXCEPTION: the cold-start banner string $E47E-$E4AB is pulled from
+			-- the resident SuperCPU EPROM (scpuRomData, via the cpuAddr-$BF00
+			-- offset above) so the boot screen reads "**** C=64 SCPU64 ROM V0.07
+			-- ****". scpu_rom has no wren -> download-immune; pure data bytes, no
+			-- code, so serving them from the EPROM cannot affect serial behaviour.
+			if supercpu_en = '1' and scpu_native_mode = '0' and scpu_bootmap = '0'
+			   and cpuAddr >= x"E47E" and cpuAddr <= x"E4AB" then
 				dataToCpu <= unsigned(scpuRomData);
 			else
 				dataToCpu <= unsigned(romData);

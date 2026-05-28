@@ -33,6 +33,7 @@ import sys
 import os
 import time
 import glob
+import socket
 from pathlib import Path
 
 # Configuration
@@ -50,11 +51,25 @@ except ImportError:
     HAS_PARAMIKO = False
 
 def _get_ssh_client():
-    """Create a paramiko SSH client connected to MiSTer."""
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(HOST, username=USER, password=PASS, timeout=5)
-    return client
+    """Create a paramiko SSH client connected to MiSTer.
+
+    Pre-connects a raw socket and hands it to paramiko via sock= to dodge an
+    intermittent Windows Winsock getaddrinfo race (errno 10109 / WSANO_DATA)
+    that paramiko.connect() hits when it resolves the host itself. Retries a
+    few times since the race is transient.
+    """
+    last = None
+    for _ in range(4):
+        try:
+            sock = socket.create_connection((HOST, 22), timeout=8)
+            client = paramiko.SSHClient()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            client.connect(HOST, username=USER, password=PASS, timeout=8, sock=sock)
+            return client
+        except Exception as e:
+            last = e
+            time.sleep(1)
+    raise last
 
 def ssh(cmd, timeout=10):
     """Run a command on MiSTer via SSH."""
