@@ -185,13 +185,14 @@ April-18 "90 s stable Doom execution" memory was directionally right
 but said "No loader.prg needed", which is incorrect: `doom_loader.prg`
 IS the loader. The launcher/loader distinction was loose nomenclature.
 
-**HEAD/milestone-b status**: The MGL+PRG path is broken because commit
-`58f9dc3` (vanilla restore) wiped `8713403`'s deferred-`start_strk` fix
-and `0bcfabe`'s latched ioctl classification from `c64.sv`. Restoring
-those is the right unblock — separate workstream from this autoload
-mechanism. (Also stacked: SDRAM A10 auto-precharge bug breaks Doom
-itself on milestone-b independent of how it's launched. See
-`project_doom_regression_is_a10_autoprecharge_2026-05-27.md`.)
+**HEAD/milestone-b status** (updated 2026-05-28): RESTORED. Commit `2a130da`
+(bootmap='0' + passthrough='1') reverted the two stacked regressions, and the
+hybrid LOAD-fix build `0ce20bf9` re-verified Doom unregressed — engine init
+into the main playloop (PC banks `$28-$2B`) with the title/menu bitmap
+rendered. The earlier "`58f9dc3` wiped start_strk" and "SDRAM A10
+auto-precharge breaks Doom" narratives are superseded: the A10 theory was
+falsified, and passthrough='1' alone fixed the autoload. See
+`project_doom_autoload_restored_passthrough_bootmap_2026-05-28.md`.
 
 CRT-based autoloaders (v1/v2/v3 in commits `f6ee52e`, `7866e3d`) do
 NOT substitute: cart-direct-JMP skips BASIC SYS dispatch context the
@@ -481,9 +482,9 @@ See `docs/roadmap.md` for the dependency-ordered three-lane plan. Headline:
 2. ~~Asterix root-cause~~ DONE — c64_ram64k RAW-hazard bypass (commit b267455 2026-04-27)
 3. ~~VICE PC-trace diff harness~~ DONE (task #17, validated 200K-line match 2026-04-28)
 4. ~~$D200-$D3FF I/O hole RAM~~ DONE (task #3)
-5. **Doom re-verify** (task #15, resolves bug 2.2 ambiguity — pending hardware)
-6. **M10K reclaim R1** (task #20, gate KERNAL dproms — biggest single block-saving win, prerequisite for #7)
-7. **Bank $01 SRAM shadow** (correctness, M10K-constrained, ~3-5 days, blocked on #6/#20)
+5. ~~Doom re-verify~~ DONE — silicon-verified on hybrid build `0ce20bf9` (2026-05-28): main playloop reached + title/menu bitmap rendered (resolves bug 2.2)
+6. ~~M10K reclaim R1~~ DONE — duplicate KERNAL/chargen dproms removed; fit re-baselined to 73% M10K (403/553), ~150 free blocks (verified 2026-05-28, §14)
+7. **Bank $01 SRAM shadow** (correctness, ~3-5 days) — NOW UNBLOCKED by #6; the largest remaining correctness gap (§5). Needs ~16-32 KB BRAM, fits current headroom
 8. **Phase B: write buffer drain + WriteSmart** (task #6, in_progress — v164 path-(b) Quartus build running, smoke matrix #22)
 9. **SCPU library compatibility sweep** (task #19, baseline run pending #22 deploy)
 10. **DOS extension $D0BE/$D0BF** (low priority)
@@ -493,8 +494,15 @@ See `docs/roadmap.md` for the dependency-ordered three-lane plan. Headline:
 
 ## 14. Resource Budget (current)
 
-- **ALMs**: ~73% (30,300 / 41,910)
-- **M10K blocks**: ~95% (496+ / 553) — sensitivity high; +2 blocks risks fitter failure
+Re-baselined 2026-05-28 from `output_files/C64.fit.summary` (revision C64,
+build `0ce20bf9`, the hybrid LOAD-fix build). The prior "~95% M10K / 30,300
+ALM" figures were stale (a 2026-04-25 snapshot, pre-dating the R1 dprom
+reclamation) and had been incorrectly gating §13 #6/#7 as fitter-critical.
+
+- **ALMs**: 65% (27,368 / 41,910)
+- **M10K blocks**: 73% (403 / 553) — ~150 free blocks. R1 reclaim (duplicate
+  KERNAL/chargen dprom removal) already shipped, so the fitter-failure pressure
+  is resolved. Bank $01 SRAM shadow (#7) is no longer M10K-blocked.
 - **Async-probe trap**: a single async read in `c64_ram64k.vhd:74` previously
   disabled M10K inference and exploded 64 KB RAM into 524k LUT flops, making
   the design 1120% oversized (`project_bram64k_async_probe_breaks_fit.md`).
