@@ -10,7 +10,7 @@ loader's inner ML, and ~90-180 s later the Doom menu is up.
 Validated on v356 RBF (md5 19839ee7) 2026-05-27: full Doom engine
 init + id Software credits + main menu reached unattended.
 """
-import paramiko, time, os, sys, hashlib, datetime
+import paramiko, time, os, sys, hashlib, datetime, socket
 
 HOST, USER, PASS = '192.168.50.130', 'root', '1'
 MGL_LOCAL = 'tools/_doom_autoload.mgl'
@@ -44,7 +44,19 @@ def shot(c, sftp, dest_path):
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     c = paramiko.SSHClient(); c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    c.connect(HOST, username=USER, password=PASS, timeout=10)
+    # Winsock getaddrinfo race workaround: pre-connect a raw socket, retry.
+    last = None
+    for attempt in range(4):
+        try:
+            sk = socket.create_connection((HOST, 22), timeout=10)
+            c.connect(HOST, username=USER, password=PASS, timeout=10, sock=sk)
+            last = None
+            break
+        except Exception as ex:
+            last = ex
+            time.sleep(1.5)
+    if last is not None:
+        raise last
     c.get_transport().set_keepalive(20)
 
     out, _ = run(c, 'md5sum %s' % RBF_REMOTE)

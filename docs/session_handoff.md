@@ -1,5 +1,23 @@
 # Session handoff — 2026-05-28: hybrid banner-patch (working LOAD + SCPU64 banner)
 
+## -1. STATUS (latest): DONE except push
+- Hybrid fix **committed** as `1db9e51` (local, NOT pushed), single file
+  `fpga64_buslogic.vhd`. Build `0ce20bf9`.
+- **LOAD verified** in SCPU/65816: `LOAD"*",8,1` runs Lorenz, `IE:1F`, no `$ED5A`.
+- **Banner verified**: cold boot shows `**** C=64 SCPU64 ROM V0.07 ****`
+  (`tools/hybrid_banner_v3.png`).
+- **Doom verified NOT regressed** (build `0ce20bf9`, 2026-05-28):
+  `deploy_and_probe_doom.py` → engine full init into main playloop (PC J:`$0CAx`,
+  banks `$28-$2B`, `IE:1F`) and **DOOM title/menu bitmap rendered**
+  (`tools/doom_autoload/single_prg/live_t2.png`, `live_t3.png`). The
+  `cs_romLoc`→`romData` swap is gated `scpu_native_mode='0'`, so native Doom
+  untouched.
+- **ONLY remaining step: `git push`** — pending explicit user go-ahead.
+  Device freed (CORENAME=MENU, my `/tmp/mister_session.lock` cleared).
+- Tooling note: hardened `deploy_and_probe_doom.py` + `doom_autoload_probe.py`
+  connects with the `socket.create_connection`+`sock=` Winsock-race bypass
+  (same as `mister_debug.py`/`iec_wedge_probe.py`).
+
 ## 0. TL;DR
 
 - **Decision (operator):** "Hybrid — banner-patch JiffyDOS/DolphinDOS." Serve a
