@@ -146,6 +146,7 @@ architecture rtl of fpga64_buslogic is
 	-- below stays identical to master's, with all clauses gated false in
 	-- vanilla mode and trivially in SuperCPU mode.
 	signal scpuRomData    : std_logic_vector(7 downto 0);
+	signal scpu_rom_rdaddr : std_logic_vector(15 downto 0);
 	signal scpu_rom_en    : std_logic;
 	signal scpu_sysram_cs   : std_logic;
 	signal scpu_sysram_data : std_logic_vector(7 downto 0);
@@ -204,9 +205,36 @@ begin
 		wrclock => clk,
 		rdclock => clk,
 
-		rdaddress => std_logic_vector(cpuAddr),
+		rdaddress => scpu_rom_rdaddr,
 		q => scpuRomData
 	);
+
+	-- VICE-faithful patched KERNAL/BASIC (2026-05-28): in EMULATION mode the
+	-- SuperCPU serves its EPROM-patched KERNAL ($E000-$FFFF) and BASIC
+	-- ($A000-$BFFF) instead of the stock C64 ROM, matching xscpu64. On real
+	-- HW the kickstart MVN-block-copies these 8KB images from the EPROM into
+	-- the bank-$00/$01 SRAM shadow (offsets confirmed by disasm: KERNAL from
+	-- $F8:$2100, BASIC from $F8:$0100 — see docs/scpu_patched_kernal_emulation_mode.md).
+	-- Because MVN is a plain block move, the shadow bytes are byte-identical
+	-- to those EPROM slices, so we read them straight from the resident
+	-- scpu_rom dprom by offsetting its read address:
+	--   KERNAL: $E000-$FFFF -> EPROM $2100-$40FF  (cpuAddr - $BF00)
+	--   BASIC : $A000-$BFFF -> EPROM $0100-$20FF  (cpuAddr - $9F00)
+	-- Gated to emulation mode (scpu_native_mode='0') with bootmap off, so the
+	-- kickstart/native bank-$F8 EPROM reads still see the raw image at cpuAddr.
+	-- The emu-mode patched read and the bootmap/native EPROM read never occur
+	-- in the same cycle, so reusing the single scpu_rom read port is safe and
+	-- costs no extra block RAM. The dataToCpu mux below only selects scpuRomData
+	-- on cs_romLoc (a genuine KERNAL/BASIC ROM read), so this eager address
+	-- offset is harmless when the access is actually RAM-under-ROM.
+	scpu_rom_rdaddr <=
+		std_logic_vector(cpuAddr - x"BF00")
+			when supercpu_en = '1' and scpu_native_mode = '0' and scpu_bootmap = '0'
+			     and cpuAddr(15 downto 13) = "111"      -- $E000-$FFFF KERNAL
+		else std_logic_vector(cpuAddr - x"9F00")
+			when supercpu_en = '1' and scpu_native_mode = '0' and scpu_bootmap = '0'
+			     and cpuAddr(15 downto 13) = "101"      -- $A000-$BFFF BASIC
+		else std_logic_vector(cpuAddr);
 
 	romData <= romData_c64;
 
@@ -390,7 +418,16 @@ begin
 		elsif cs_CharLoc = '1' then
 			dataToCpu <= unsigned(charData);
 		elsif cs_romLoc = '1' then
-			dataToCpu <= unsigned(romData);
+			if supercpu_en = '1' then
+				-- SuperCPU: serve the EPROM-patched KERNAL/BASIC in emulation
+				-- mode (VICE-faithful), read via the scpu_rom_rdaddr offset mux
+				-- above. supercpu_en is hardcoded '1' on this branch, so this is
+				-- the active path; the romData (stock C64 KERNAL) branch is kept
+				-- for vanilla (supercpu_en='0') builds.
+				dataToCpu <= unsigned(scpuRomData);
+			else
+				dataToCpu <= unsigned(romData);
+			end if;
 		elsif cs_ramLoc = '1' then
 			dataToCpu <= ramData;
 		elsif cs_vicLoc = '1' then

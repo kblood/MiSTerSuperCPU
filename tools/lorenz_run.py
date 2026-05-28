@@ -21,7 +21,7 @@ import os, sys, time, paramiko, hashlib
 HOST, USER, PASS = '192.168.50.130', 'root', '1'
 CFG = '/media/fat/config/C64.cfg'
 MGL = '/media/fat/_Test/lorenz_disk1.mgl'           # legacy: disk only (needs mtype)
-MGL_AUTO = '/tmp/lorenz_autoload.mgl'                # disk + autoload PRG (no keys)
+MGL_AUTO = '/media/fat/_Test/lorenz_autoload.mgl'    # disk + autoload PRG (no keys); SD not /tmp (shared /tmp full)
 RBF = '/media/fat/_Test/C64.rbf'
 OUT_BASE = r'C:\LLM\C64\MiSTerSuperCPU\tools\lorenz_run'
 MTYPE_REMOTE = '/tmp/mtype.py'
