@@ -100,11 +100,29 @@ Document but don't implement until 6c+6d settle.
   to $00. There may be a discrepancy: the memory file is dated
   2026-05-18 and may predate a fix. Worth running a quick PRG probe to
   confirm what $D0BC actually reads on the current build.
-- **$D07A/$D07B speed switch** — writes update `scpu_speed_1mhz` but
-  this signal is not consumed anywhere that gates the CPU clock. The
-  symptom matches: tools/scpu_speedtest reports 1.0x ratio regardless
-  of writes, and the memory file confirms $D0B8 returns $FF.
-- **$D072/$D073 sys_1MHz** — same status (stubbed latch, no consumer).
+- **$D07A/$D07B speed switch** — ⚠️ STALE: this was true when written, but
+  is no longer the case. As of 2026-05-24 (`fpga64_sid_iec.vhd:3230`),
+  `scpu_force_1mhz <= scpu_speed_1mhz or scpu_sys_1mhz or cia2_throttle_active`
+  and `scpu_force_1mhz` gates the turbo cycle slots in `cpu_cyc`
+  (lines 3257-3262): when asserted, CYCLE_CPU0/4/8 are disabled so the CPU
+  advances one slot per 1 MHz period. So `$D07A`/`$D07B` ARE wired into clock
+  gating now. Verified 2026-05-28.
+- **$D072/$D073 sys_1MHz** — same: `scpu_sys_1mhz` also feeds `scpu_force_1mhz`,
+  so it IS consumed now (same 2026-05-24 change).
+
+> **2026-05-28 LOAD-at-turbo note.** The patched SuperCPU KERNAL (now served in
+> emulation mode) does NOT use the software `$D07A` switch during I/O — an EPROM
+> scan finds ZERO `$D07A`/`$D07B` stores in the KERNAL/BASIC images; the only
+> store in the whole 64 KB is one boot-time `STA $D07B` at `$8105`. Real SuperCPU
+> relies on **hardware transparent-I/O throttling** during serial routines, which
+> on MiSTer is `cia2_throttle_active` (reloads a 64-clk32 1 MHz window on every
+> CPU CIA2 access). Despite that throttle, `LOAD` still wedges at turbo: the CPU
+> spins in the stock IEC handshake at `$ED5A` (`JSR $EEA9` = stable read of
+> `$DD00`, `BCC $ED5A`) waiting for the serial DATA line (CIA2 PA7) to transition
+> — the drive never responds / the line state never reads as expected at turbo.
+> v14 CIA2 write latch+replay (`a0dd60e`) IS in this branch, so it is NOT a
+> write-loss; it is a CIA2-read / IEC-timing issue at turbo. See
+> `docs/scpu_patched_kernal_emulation_mode.md` §LOAD.
 
 These gaps don't block Doom/Wolf3D (those programs use the OSD turbo
 or compile-time speed assumptions), but they would block Vision BASIC
