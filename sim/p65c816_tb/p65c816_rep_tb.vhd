@@ -14,7 +14,11 @@
 --   $0807 80 FE     BRA $0807   ; spin
 --
 -- Pass criteria: after the REP retires, dbg_p has bit 5 (M) AND bit 4 (X)
--- both cleared. LDA must then consume 3 bytes and PC must reach $0807.
+-- both cleared. LDA must then consume 3 bytes. DBG_PC points one byte PAST
+-- the freshly-latched opcode (verified uniform: REP latches at PC=$0803,
+-- LDA at $0805), so when BRA ($80) first appears in IR, PC = $0807+1 = $0808.
+-- $0808 is therefore the PASS value; the address bus fetching $0804/$0805/
+-- $0806 for the LDA is the ground-truth proof the immediate was 16-bit.
 
 library IEEE;
 use IEEE.std_logic_1164.all;
@@ -204,6 +208,7 @@ begin
     end process;
 
     main_proc: process
+        variable all_pass : boolean := true;
     begin
         rst_n <= '0';
         wait for CLK_PERIOD * 8;
@@ -220,21 +225,31 @@ begin
 
         if p_after_rep(5) = '1' then
             report "FAIL: M flag (bit 5) NOT cleared by REP #$30 -- bug REPRODUCES" severity warning;
+            all_pass := false;
         else
             report "PASS: M flag cleared by REP #$30" severity note;
         end if;
         if p_after_rep(4) = '1' then
             report "FAIL: X flag (bit 4) NOT cleared by REP #$30" severity warning;
+            all_pass := false;
         else
             report "PASS: X flag cleared by REP #$30" severity note;
         end if;
-        if pc_at_bra /= x"0807" then
-            report "FAIL: PC reached BRA at $" & to_hstring(pc_at_bra) & " not $0807 -- LDA was wrong width" severity warning;
+        -- DBG_PC points one byte past the latched opcode (see header), so the
+        -- correctly-decoded 3-byte LDA #$EAEA lands BRA in IR with PC=$0808.
+        if pc_at_bra /= x"0808" then
+            report "FAIL: PC reached BRA at $" & to_hstring(pc_at_bra) & " not $0808 -- LDA was wrong width" severity warning;
+            all_pass := false;
         else
-            report "PASS: BRA reached at $0807 (LDA was 3-byte 16-bit form)" severity note;
+            report "PASS: BRA reached at $0808 (LDA was 3-byte 16-bit form)" severity note;
         end if;
 
         report "================ DONE ================";
+        -- Hard gate: turns any regression into a non-zero ghdl exit (the
+        -- compat sweep keys on exit code, not just on log text).
+        assert all_pass
+            report "p65c816_rep_tb: one or more checks FAILED (see warnings above)"
+            severity failure;
         std.env.finish;
     end process;
 

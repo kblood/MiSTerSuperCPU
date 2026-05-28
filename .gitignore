@@ -187,3 +187,7 @@ sim/cocotb/.tmp_*
 # VICE oracle gameplay snapshot artifact (~9 MB, regenerable via
 # tools/vice_dump_gameplay_state.py --warp-secs 90)
 tools/vice_oracle/gameplay/
+
+# GHDL compat sweep transient outputs (regenerable via tools/ghdl_compat_sweep.ps1)
+tools/ghdl_sweep_logs/
+tools/ghdl_compat_sweep_results.txt

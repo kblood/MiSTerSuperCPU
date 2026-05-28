@@ -1,160 +1,90 @@
-# Session handoff — 2026-05-28: hybrid banner-patch (working LOAD + SCPU64 banner)
+# Session handoff — 2026-05-29: autonomous compat+speed loop (iteration 1)
 
-## -1. STATUS (latest): DONE except push
-- Hybrid fix **committed** as `1db9e51` (local, NOT pushed), single file
-  `fpga64_buslogic.vhd`. Build `0ce20bf9`.
-- **LOAD verified** in SCPU/65816: `LOAD"*",8,1` runs Lorenz, `IE:1F`, no `$ED5A`.
-- **Banner verified**: cold boot shows `**** C=64 SCPU64 ROM V0.07 ****`
-  (`tools/hybrid_banner_v3.png`).
-- **Doom verified NOT regressed** (build `0ce20bf9`, 2026-05-28):
-  `deploy_and_probe_doom.py` → engine full init into main playloop (PC J:`$0CAx`,
-  banks `$28-$2B`, `IE:1F`) and **DOOM title/menu bitmap rendered**
-  (`tools/doom_autoload/single_prg/live_t2.png`, `live_t3.png`). The
-  `cs_romLoc`→`romData` swap is gated `scpu_native_mode='0'`, so native Doom
-  untouched.
-- **ONLY remaining step: `git push`** — pending explicit user go-ahead.
-  Device freed (CORENAME=MENU, my `/tmp/mister_session.lock` cleared).
-- Tooling note: hardened `deploy_and_probe_doom.py` + `doom_autoload_probe.py`
-  connects with the `socket.create_connection`+`sock=` Winsock-race bypass
-  (same as `mister_debug.py`/`iec_wedge_probe.py`).
+## STATUS
+Self-paced `/loop` driving the north-star: **make the SCPU as compatible and
+fast as possible.** Iteration 1 ran OFF-DEVICE — the MiSTer was held by the
+CD32 agent (`/tmp/CORENAME = Universe-DCON-CD32MVP`), so per the cooperation
+protocol no deploy/Lorenz this iteration; off-device GHDL + analysis + a
+proactive build instead.
 
-## 0. TL;DR
+### Done + GREEN (commit pending asterix-sweep completion)
+- **GHDL CPU-correctness baseline tool:** `tools/ghdl_compat_sweep.ps1`. Runs the
+  per-scenario runners in `sim/p65c816_tb` (each in a child pwsh so their `exit`
+  doesn't leak), classifies FAIL by non-zero exit OR a fired fail-marker
+  (`FAIL`/`MISMATCH`/`severity failure`) in the log. Persists a one-line-per-runner
+  baseline to `tools/ghdl_compat_sweep_results.txt`.
+  **Core sweep = 7/7 PASS** (lda-long, REP, native-switch, xflag, copy-loop,
+  jml-indirect-long, jml-long-crossbank, jmp-indirect-pagewrap, long-abs,x-carry,
+  sr-emu-wrap, scpumips-copy). Asterix integration sweep = 4/7 PASS, 3 FAIL
+  (`phase1`, `overlay`, `full_nmi`) — PRE-EXISTING benches that reproduce the
+  asterix demo-dispatcher/NMI bug on the bare CPU (not caused by this iteration;
+  none of my edits touch the GHDL datapath). Real compat gap = a future lever.
+- **Fixed a tolerated false-alarm in `sim/p65c816_tb/p65c816_rep_tb.vhd`.** The CPU
+  is CORRECT: REP #$30 clears M+X (P $35->$05) and `LDA #$EAEA` decodes as a 3-byte
+  16-bit immediate — proven by the address bus fetching $0804/$0805/$0806 (cyc
+  22-24 in the trace). The bench hard-coded the wrong expected PC ($0807) behind
+  `severity warning`; this core's `DBG_PC` points one byte PAST the freshly-latched
+  opcode (uniform: REP latches at PC=$0803, LDA at $0805), so BRA-in-IR with
+  PC=$0808 is the CORRECT pass value. Fixed the expectation, documented the PC
+  convention, added a hard `severity failure` gate so any real regression fails the
+  sweep by exit code. -> REP->16-bit-immediate path now VERIFIED CORRECT (heavily
+  used by native SCPU code).
 
-- **Decision (operator):** "Hybrid — banner-patch JiffyDOS/DolphinDOS." Serve a
-  **non-SCPU-patched** KERNAL in emu mode (working serial → working LOAD) and
-  cosmetically restore the `**** C=64 SCPU64 ROM V0.07 ****` cold-start banner.
-  Accepted as NOT bit-identical / not VICE-faithful.
-- **Functional goal MET (silicon-verified, build `12867108`):** `LOAD"*",8,1`
-  now completes in SuperCPU/65816 mode — the Lorenz suite loads and runs
-  (`basic commands - ok`, `ldab/ldaz/ldazx/... - ok`), UART shows `IE:1F` (all
-  IEC lines released, the success state) with NO `$ED5A` wedge.
-  Screenshot: `tools/hybrid_load_test_scpu.png`.
-- **Root cause REFINED (important correction):** it is **NOT** a universal
-  "P65C816 core cycle timing ≠ 6510" bug. **Stock C64 serial works fine in
-  65816** (LOAD succeeded with stock KERNAL in the dprom). Only the
-  **SCPU-EPROM-patched** KERNAL wedges — its IEC helpers are wrapped with
-  `STA $D072`/`STA $D073` (1MHz throttle toggles); those extra cycles shift the
-  bit-cell/handshake timing enough to desync the emulated c1541. Serving ANY
-  unwrapped KERNAL (stock or DolphinDOS) fixes LOAD.
-- **Banner snag (builds #1, #2):** the embedded dprom init
-  (`rtl/roms/dol_C64.mif`) is **overwritten at boot** by the MiSTer firmware
-  downloading a stock C64 ROM (`c64rom_wr` / `load_rom`, no ROM file needed —
-  embedded in MiSTer Main). The boot banner is read from KERNAL `$E47E`, so it
-  showed stock. **Build #2's `c64rom_wr && !supercpu_enable` gate FAILED**
-  (still stock banner) — `status[82]` isn't latched before the boot download
-  (timing race). Reverted.
-- **Banner fix (build #3, verifying):** download-immune **banner-window
-  override**. In emu mode, reads of the 46-byte cold-start message
-  `$E47E-$E4AB` are served from the **resident `scpu_rom` EPROM dprom** (which
-  has the SCPU64 banner at `$E483` and **no `wren`** → the firmware download
-  can't touch it), via the `cpuAddr-$BF00` offset. All KERNAL/BASIC *code*
-  (incl. serial) still comes from `romData`. Pure data bytes, no code → cannot
-  affect serial. Reuses existing BRAM. `dol_C64.mif` and the c64.sv gate are
-  reverted; the only source change vs HEAD is now in `fpga64_buslogic.vhd`.
+### Done + BUILDING (uncommitted — needs HARDWARE validation before commit)
+- **SCPU fast-by-default** (`C64_MiSTer/c64.sv:1949-1958`). `turbo_mode`/`turbo_speed`
+  now force max turbo (4x) when `supercpu_enable`.
+  - **Why:** OSD turbo (`status[46/47]` enable, `status[49:48]` speed) and
+    `supercpu_enable` (`status[82]`) were INDEPENDENT. With OSD Turbo off (default)
+    `turbo_m="000"` so only `CYCLE_CPUC` fires -> the SuperCPU ran at **~1 MHz**
+    regardless of being "enabled". Real SCPU software controls speed via
+    $D07A(slow)/$D07B(fast) -> `scpu_force_1mhz`, with NO knowledge of the OSD —
+    so software asking to "go fast" still got 1 MHz unless the user also toggled
+    OSD Turbo. This is the single biggest compat+speed footgun found.
+  - **Shape:** OR'd `supercpu_enable` into the disk-aware "always" turbo term
+    (`(status[47] | supercpu_enable) & ~disk_access`) and forced `turbo_speed` to
+    `2'b10` (4x) in SCPU mode. Turbo therefore still drops to 1 MHz during IEC
+    activity (`disk_access`, c64.sv:2478 — asserts on any IEC-clk edge, holds 0.5s)
+    via the SAME path vanilla smart-turbo uses -> LOAD/SAVE serial timing preserved.
+    `scpu_force_1mhz` ($D07A/$D072/cia2_throttle) still modulates on top. Vanilla
+    (`supercpu_enable=0`) path is bit-identical.
+  - **Build:** `b33jz3ihu` running (started ~00:55). Archived to `C64_MiSTer/builds/`,
+    staged at `C64.rbf` on success.
 
-## 1. The hybrid — now a single-file change (this session, UNCOMMITTED)
+## Speed baseline (verified file:line; the loop's "effective-MHz" axis)
+- clk32 = 31.53 MHz; 1 sysCycle period = 32 clk32 = 16 CPU slots (CPU0..CPUF).
+  CPU advances only on `enableCpu` pulses (`cpu_cyc` -> 2-FF `cpu_cyc_s` ->
+  `enableCpu` -> `enableCpu_816`).
+- Live bridge `scpu_async_bridge` runs EFF_BRIDGE_ACTIVE='0' (pure passthrough,
+  `cpu_di_out<=bus_di_in`, `cpu_rdy_out<='1'`) = ZERO added latency.
+- One bank-$00 SDRAM access = ~2 clk32 (busy reservation 3 clk32, fpga64_sid_iec
+  :3308) — already shorter than the 4-clk32 CPU0->CPU4 slot spacing.
+- **Effective MHz:** turbo off -> 1 slot/period (CYCLE_CPUC only) = ~1 MHz.
+  turbo 4x -> CPU0/4/8/C = 4 slots = **~4 MHz = current ceiling** (not 20).
+- **Dominant bottleneck = sysCycle slot arbitration, NOT SDRAM latency.** CPU gets
+  <=4 of 16 slots. Alt-slots CPU2/6/A/E are HARD-GATED off (fpga64_sid_iec.vhd:3358
+  `alt_fire_r<='0'`, :3381 `alt_fire_r2<='0'`); HIT predictor forced off (:3206).
 
-All in `rtl/fpga64_buslogic.vhd` (build #3):
-1. **LOAD fix (verified, build #1):** emu-mode `cs_romLoc` serves `romData`
-   (the C64 KERNAL+BASIC dprom — working serial) instead of the wedging
-   `scpuRomData` (SCPU-EPROM-patched KERNAL).
-2. **Banner override (build #3):** within `cs_romLoc`, for emu mode and
-   `cpuAddr` in `$E47E-$E4AB`, serve `scpuRomData` (resident `scpu_rom` EPROM,
-   download-immune) so the cold-start banner reads `**** C=64 SCPU64 ROM V0.07
-   ****`. `scpu_rom_rdaddr` gets the `cpuAddr-$BF00` offset only for that
-   window; raw `cpuAddr` elsewhere (native/bootmap bank-$F8 EPROM reads).
+## NEXT — on hardware (when MiSTer frees AND build b33jz3ihu done)
+Validation battery for the auto-turbo change (deploy `C64.rbf` to `/media/fat/_Test/`):
+1. **Boot:** cold-boot scpu mode (cfg byte10=0x0C) -> READY prompt, SCPU64 banner.
+2. **LOAD:** `python tools/iec_wedge_probe.py scpu --secs 90` -> must NOT wedge at
+   $ED5A, expect `IE:1F`. (Confirms 4x default didn't re-break the LOAD fix.)
+3. **Doom:** `python tools/deploy_and_probe_doom.py` -> must reach $2C main loop +
+   title/menu bitmap. (REU-in-turbo already fixed via iof_fall_pulse.)
+4. **Speed:** run a timing loop / scpu_speedtest -> expect ~4 MHz (was ~1).
+- All green -> **commit `c64.sv`**. LOAD/Doom regress -> disk_access gate or
+  cia2_throttle insufficient at 4x; narrow (try `turbo_speed` 2x first) or revert.
 
-REVERTED dead ends: build #2's `c64.sv` `c64rom_wr && !supercpu_enable` gate
-(status[82] timing race — no effect, still stock banner); the `dol_C64.mif`
-banner splice (moot — banner now comes from `scpu_rom`); a stale force-turbo
-comment in `fpga64_sid_iec.vhd`. The `IE:##` UART diagnostic field
-(`debug_pkg.svh`, `c64.sv`, `debug_uart_pool_fmt.sv`) stays UNCOMMITTED
-(instrumentation, not a fix).
+## NEXT speed lever (future iteration — GHDL-first, medium risk)
+Re-enable alt-slots (CPU2/6/A/E) gated on the real `sdram_ready` rising edge ->
+~6-8 MHz. Prior attempts wedged Doom via a `cpu_cyc->ramCE->cart_ce` synthesis
+hazard (fpga64_sid_iec.vhd:3217) — PROVE in `sim/sdram_pm_tb` + `sim/arbiter_demand_tb`
+BEFORE any Quartus build. Do NOT re-enable the bank-$00 cache (CACHE_ACTIVE='1') —
+black screens (v159/v161), files are dead/uncompiled.
 
-`git push` still needs explicit user go-ahead. Commit the hybrid
-(`fpga64_buslogic.vhd`) once build #3 verifies banner + LOAD together.
-
-## 2. How the C64 system ROM is actually served (the mechanism that bit us)
-
-- `kernel_c64` dprom (`fpga64_buslogic.vhd:170`) init = `rtl/roms/dol_C64.mif`
-  (DolphinDOS 2.0), 16KB: `$0000-$1FFF`=BASIC (`$A000-$BFFF`),
-  `$2000-$3FFF`=KERNAL (`$E000-$FFFF`). rdaddress = `cpuAddr(14) & cpuAddr(12:0)`.
-- It has `wren => c64rom_wr`. `c64rom_wr` (c64.sv:2050) pulses on `load_rom`
-  (`ioctl_index==8`, the OSD `P2FC8` "System ROM C64+C1541" path) for the low
-  16KB.
-- OSD `P2O[15:14],System ROM` = `0 Loadable C64 | 1 Standard C64 | 2 C64GS |
-  3 Japanese` → fed as `.bios(status[15:14])`, but the **bios ROM-selector was
-  removed** in our fork (buslogic:258) — `bios` is inert. ROM content is purely
-  dprom-init-OR-overwritten-by-`c64rom_wr`.
-- The MiSTer firmware downloads a stock C64 ROM at boot **even with no ROM file
-  on the SD card** (embedded in MiSTer Main) and **even in "Loadable C64" mode**
-  — empirically confirmed (cfg byte1 `0x00` still booted stock). That download
-  overwrote our patched dprom init. Hence the `c64rom_wr` gate (change #3).
-
-## 3. EXACT next steps (build #3 verification)
-
-Build #3 (`/tmp/hybrid_build3.log`, background id `bjxqf0thk`) is the banner
-window override. On completion (auto-archived to `C64_MiSTer/builds/`, staged at
-`C64.rbf`):
-
-```powershell
-# verify ownership first (see §5)
-python tools/mister_debug.py deploy
-# cold-boot SCPU mode (no MGL) and check the banner:
-#   expect  **** C=64 SCPU64 ROM V0.07 ****   /   64K RAM SYSTEM ...
-#   (cfg byte10 must be 0x0C = scpu)
-python tools/mister_debug.py screen tools/hybrid_banner_v3.png
-# re-confirm LOAD still completes (serial in 65816):
-python tools/iec_wedge_probe.py scpu --secs 90
-#   pass = Lorenz "- ok" lines / PC in $08xx / IE:1F ; fail = J:ED5A + IE:13
-```
-
-- **Banner SCPU64 + LOAD ok** → DONE. Commit `fpga64_buslogic.vhd`.
-  Then `python tools/deploy_and_probe_doom.py` (Doom must still reach the `$2C`
-  main loop — serving the dprom in emu mode shouldn't touch native-mode Doom,
-  but confirm).
-- **Banner still stock** → the banner window read isn't selected at boot. Check
-  the `cs_romLoc`/`scpu_native_mode`/`scpu_bootmap` gating during the cold-boot
-  BASIC banner print (bootmap must already be `0` and CPU in emu mode when the
-  banner prints — verify with the `T:`/overlay fields), and confirm `scpu_rom`
-  holds the SCPU64 banner at EPROM `$257E`.
-- **LOAD breaks / garbled banner** → the `$E47E-$E4AB` window override is wrong
-  (offset or range); narrow/verify against `tools/disasm_serial_region.py
-  E460 E4B0`.
-
-## 4. Build / verification artifacts
-
-- Build #1 (LOAD fix only, serve `romData`): md5
-  `1286710858b13d317fff65d803862a65`. **Proves LOAD works**
-  (`tools/hybrid_load_test_scpu.png` — Lorenz running) but banner = stock
-  (`tools/hybrid_banner_scpu.png`, `tools/hybrid_banner_loadable.png`).
-- Build #2 (`c64rom_wr` gate): md5 `764613fc5b128c1ef4b5826243d3c3b9`. Gate
-  FAILED — still stock banner (`tools/hybrid_banner_v2.png`). Reverted.
-- Build #3 (banner window override): building now, md5 TBD →
-  `tools/hybrid_banner_v3.png`.
-- Tooling: `tools/iec_wedge_probe.py [t65|scpu]` (sets cfg byte10, fires lorenz
-  autoload MGL, captures UART); `tools/wait_for_c64_free.py` (read-only poll of
-  `/tmp/CORENAME`); `tools/disasm_serial_region.py` (serial-region 6502 disasm).
-
-## 5. Shared-MiSTer state & a tooling gotcha
-
-- The MiSTer is shared with the CD32/Minimig agent. `/tmp/CORENAME` showed
-  `CannonFodder-Z2fix` (their Amiga workload) earlier; the operator explicitly
-  cleared us to use the device. Re-verify ownership before disruptive ops;
-  do NOT delete the other agent's `/tmp` files.
-- **Winsock race:** paramiko's `client.connect(HOST,...)` intermittently fails
-  with `getaddrinfo failed` (errno 10109) on this Windows host while heavy
-  WSL/network load is present. Fixed in `tools/mister_debug.py` and
-  `tools/iec_wedge_probe.py` by pre-connecting a raw socket
-  (`socket.create_connection`) and passing it via `sock=`, with a small retry.
-  Apply the same pattern to any new SSH tool.
-
-## 6. What this supersedes
-
-- The prior handoff's "FINAL ROOT CAUSE = P65C816 core cycle timing, fix needs
-  CPU-core surgery, cosmetic-only" is **superseded**: stock serial works in
-  65816, only the SCPU-patched `$D072`-wrapped serial wedges, and the hybrid
-  (serve unwrapped KERNAL + banner-patch + gate the ROM download) gives BOTH
-  working LOAD and the SCPU64 banner with NO CPU-core changes.
-- The memory `project_load_wedge_is_p65c816_serial_cycle_timing.md` needs a
-  follow-up note with this refinement (do after build #2 confirms).
+## Shared-MiSTer + tooling notes (unchanged)
+- Check `/tmp/CORENAME` before disruptive ops (C64=mine; anything else=back off).
+- Winsock `getaddrinfo` race worked around via `socket.create_connection`+`sock=`
+  in `mister_debug.py` / `iec_wedge_probe.py` / `deploy_and_probe_doom.py`.
+- Local commits unpushed beyond origin `747cdea`: 20e0ac5, 9437377, 6df990c,
+  5f4f574 (+ this iteration's pending REP/sweep commit). **Pushes stay gated.**
