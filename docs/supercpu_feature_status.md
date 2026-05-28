@@ -48,6 +48,20 @@ core itself is well-validated by GHDL benches.
      `58f9dc3` (vanilla restore) wiped `start_strk` deferred-fire fix from
      `8713403` and the latched ioctl classification from `0bcfabe`. Restoring
      those c64.sv pieces is the right unblock; not a structural ioctl issue.
+   - ~~**`LOAD"*",8,1` wedges in SCPU/65816 mode at `$ED5A`**~~ — **FIXED +
+     PUSHED 2026-05-28, commits `1db9e51` + `fd11afb`, build `0ce20bf9`.**
+     Root cause (corrected): NOT a universal P65C816-vs-6510 timing bug —
+     stock/DolphinDOS serial LOADs fine in 65816. Only the SCPU-EPROM-*patched*
+     KERNAL wedges: its IEC helpers are wrapped with `STA $D072`/`$D073` 1 MHz
+     throttle toggles whose extra cycles shift the bit-cell timing and desync
+     the emulated c1541. Fix (single file `fpga64_buslogic.vhd`, `cs_romLoc`
+     branch): emu mode serves the unwrapped `romData` KERNAL (working serial)
+     and restores only the 46-byte `$E47E-$E4AB` cold-start banner from the
+     download-immune `scpu_rom` EPROM (`**** C=64 SCPU64 ROM V0.07 ****`).
+     Gated `scpu_native_mode='0'`, so Doom autoload re-verified unregressed
+     (title/menu bitmap, PC J:`$0CAx` main loop). Probe: `tools/iec_wedge_probe.py
+     scpu`. The abandoned "serve patched KERNAL in emu mode" path is documented
+     dead in `docs/scpu_patched_kernal_emulation_mode.md`.
 
 2. **Tooling blocker** (P0):
    - **Build-cache propagation** — RTL edits compile cleanly with new md5 but

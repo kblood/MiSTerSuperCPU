@@ -1,9 +1,24 @@
 # SuperCPU patched KERNAL/BASIC in emulation mode (VICE-faithful ROM)
 
-**Status:** plan / scoping. No RTL changed yet. Written 2026-05-28.
-**Goal:** make the SuperCPU's *patched* KERNAL and BASIC (from the `scpu64` EPROM)
-active during normal C64 operation (emulation mode), the way VICE's `xscpu64`
-does — instead of only in 65816 native mode as we do today.
+> **⚠️ SUPERSEDED 2026-05-28 — do NOT pursue this approach.** Serving the
+> SCPU-*patched* KERNAL in emulation mode **wedges `LOAD"*",8,1`** at `$ED5A`:
+> the patch wraps the IEC serial helpers with `STA $D072`/`$D073` 1 MHz-throttle
+> toggles whose extra cycles shift the bit-cell timing and desync the emulated
+> c1541. The shipped fix does the **opposite** — serve the *unwrapped* stock/
+> DolphinDOS KERNAL (`romData`) in emu mode (working serial) and restore only the
+> 46-byte `$E47E-$E4AB` cold-start banner from the download-immune `scpu_rom`
+> EPROM. Commits `1db9e51` + `fd11afb`, build `0ce20bf9`, pushed to
+> `milestone-b-cdc-rewrite`; Doom autoload re-verified unaffected. See
+> `fpga64_buslogic.vhd` `cs_romLoc` branch and memory
+> `project_scpu_load_wedge_hybrid_shipped.md`. The §1 "$D07A throttle is real"
+> finding below is still TRUE but did not buy a working LOAD in practice. Kept
+> for archaeology only.
+
+**Status:** SUPERSEDED — see banner above. (Original: plan / scoping, no RTL
+changed, written 2026-05-28.)
+**Goal (abandoned):** make the SuperCPU's *patched* KERNAL and BASIC (from the
+`scpu64` EPROM) active during normal C64 operation (emulation mode), the way
+VICE's `xscpu64` does — instead of only in 65816 native mode as we do today.
 
 ---
 
@@ -256,3 +271,136 @@ the machine boots the patched KERNAL directly (most VICE-like). This is fine
 - Reset sources: `C64_MiSTer/c64.sv:415-453`.
 - Bank-$01 shadow mirror: `C64_MiSTer/c64.sv:1100-1127`.
 - VICE memory model: `docs/supercpu_architecture_reference.md` §2 / §6.
+
+---
+
+## 9. Results & LOAD-at-turbo findings (2026-05-28)
+
+**Implemented + committed** as `744ee44` (address-mux Option B, zero new block
+RAM). Build md5 `95db2dda`, 65% ALMs, 73% RAM.
+
+**Verified PASS:**
+- Cold boot shows `**** C=64 SCPU64 ROM V0.07 ****` → patched KERNAL/BASIC live
+  in emulation mode.
+- Doom MGL autoload NOT regressed — 125/125 UART PC samples in the `$2C` Doom
+  main loop, matches LKG `8a7489ef`.
+
+**§7 step 5 hypothesis FALSIFIED — LOAD still wedges at turbo.**
+`tools/lorenz_run.py scpu` reaches the patched banner + `RUN`, but the suite
+never starts; the healthy t65 reference (`tools/lorenz_run/t65/`) shows tests by
+t29s. UART during the wedge: `PC:00ED5A`, `J:ED5A ED5A ED5A ED5A`, `M:...F4A5`.
+
+Root-cause chain established this session (all cheap static/UART probes, no extra
+builds):
+
+1. **The patched KERNAL has NO software `$D07A` throttle.** EPROM scan of the
+   served KERNAL (`$2100-$40FF`) and BASIC (`$0100-$20FF`) finds ZERO
+   `$D07A`/`$D07B` stores. Only store in the whole 64 KB is one boot-time
+   `STA $D07B` at EPROM `$8105`. So the "patched KERNAL self-throttles via
+   `$D07A`" premise behind this whole doc is **wrong** — real SuperCPU uses
+   *hardware transparent-I/O* throttling during serial routines, not software
+   speed writes. (The patched KERNAL's serial code is byte-identical to stock C64
+   KERNAL — `$ED40` ISOUR, `$EE13` ACPTR, `$EEA9` stable-`$DD00`-read, etc.)
+
+2. **The RTL `$D07A` path is live (gemini doc was stale).** `scpu_force_1mhz`
+   (`fpga64_sid_iec.vhd:3230`) = `scpu_speed_1mhz or scpu_sys_1mhz or
+   cia2_throttle_active`, and it disables the turbo cycle slots in `cpu_cyc`
+   (`:3257-3262`). So speed control IS wired — but the patched KERNAL never
+   exercises the software half.
+
+3. **The MiSTer transparent-I/O equivalent is `cia2_throttle_active`** — reloads
+   a 64-clk32 (~2× 1 MHz period) window on every accepted CPU **CIA2** access
+   (`supercpu_en + addr_hi_816=$00 + cs_cia2 + enableCpu_816`, `:3247-3249`). It
+   covers `$DD00` reads, so the IEC handshake *should* run at 1 MHz.
+
+4. **Yet LOAD wedges in the IEC handshake.** Disassembly of the wedge:
+   ```
+   $ED5A: JSR $EEA9   ; $EEA9 = LDA $DD00 / CMP $DD00 / BNE $EEA9 / ASL A / RTS
+   $ED5D: BCC $ED5A   ; spin until serial DATA-in (CIA2 PA7) reads high
+   ```
+   The CPU is waiting for the IEC **DATA** line (`$DD00` PA7) to transition during
+   the LOAD turnaround. Works at 1 MHz (t65), hangs at turbo.
+
+5. **NOT a CIA2 write-loss.** v14 CIA2 write latch+replay (`a0dd60e`) IS an
+   ancestor of HEAD, so ATN/LISTEN/filename writes land. This is a CIA2 **read** /
+   IEC-timing problem at turbo (and/or the C1541 drive emulation not responding
+   when the C64 side is effectively faster than 1 MHz between throttle windows).
+
+**Next hypotheses to test (RTL, off-device until deploy):**
+- (a) Widen the auto-throttle to **CIA1** too (`cs_cia1`), matching real-HW
+  transparent-I/O across the whole CIA range — the IEC turnaround also touches
+  CIA1 timer B (`$DC07`/`$DC0F`/`$DC0D`, seen at `$ED92-$ED9C`) for the EOI/byte
+  timeout, and those reads at turbo could derail the handshake.
+- (b) Instrument `scpu_force_1mhz` / `cia2_throttle_active` into a UART/overlay
+  field and confirm the throttle is actually asserted during the `$ED5A` spin
+  (cheapest disambiguator before more RTL changes — is the throttle firing or not?).
+- (c) Check whether the **first** `$DD00` read in each pair is at turbo timing
+  (throttle reloads *on* the access, so access N may sample the CIA before the
+  window aligns to phi2) → consider asserting the throttle one access earlier, or
+  on any I/O-space (`io_enable`) access rather than CIA2-only.
+
+The patched KERNAL in emu mode is a correct, self-contained foundation; the LOAD
+fix is a SEPARATE CIA/IEC-at-turbo RTL workstream and does not depend on the ROM
+swap.
+
+---
+
+## 10. The wedge is PROTOCOL-specific, not infra-uniform (2026-05-28, later)
+
+Two RTL fix theories from §9 were tested on silicon and **both falsified**:
+
+1. **Throttle-window widening (§9-a) — FALSIFIED.** Widening `cia2_throttle_cnt`
+   to 1024 had zero effect; the wedge also reproduces at guaranteed true 1 MHz
+   (Turbo=Off, `turbo_m="000"`). Not a speed/throttle problem.
+   (See the in-code comment at `fpga64_sid_iec.vhd:3268`.)
+2. **CIA cs-gate revert — FALSIFIED.** Hypothesis: `d564dea`'s write-only
+   `cs_cia1`/`cs_cia2` gates (`not (cs_cia1 and (not cpuWe or vpa_816 or
+   vda_816))`) dropped CIA writes when the 65816's vpa/vda window missed the
+   CYCLE_CPUD CIA sample. Reverted both gates to v8-direct in passthrough
+   (`... or not scpu_mcp_active`, build `6da64bfc`). **Still wedges identically**
+   (`J:ED5A ED5A`, PC looping `$EEA9`/`$ED5A`, `IE:13`). The CIA cs-gates are not
+   the cause.
+
+**The decisive new experiment — JiffyDOS LOADs on the SAME HEAD infra.**
+Built HEAD with the emu-mode ROM forced back to stock (`romData`, which is our
+**JiffyDOS** `dol_C64.mif`) instead of the patched `scpuRomData` (build
+`dd13a427`). Result: **SCPU LOAD works** — Lorenz suite loads and chains
+(`tools/dd13a427_stockkernal_LOADS.png`: "Commodore 64 Emulator Test Suite …
+basic commands - ok / ldab - ok …", PC running in `$08xx` loaded code, `IF`
+counter incrementing, no `$ED5A`, `IE:1F`). v8 (`b1aceea1`, also JiffyDOS in emu
+mode) LOADs identically.
+
+**Conclusion — corrects §9.** The LOAD wedge is **not** a uniform 65816-bridge
+CIA2/IEC bus bug (if it were, JiffyDOS would wedge too — it uses the same CIA2/
+bridge/IEC infra). The bug is **specific to the original-C64 serial protocol**
+(`$ED40` ISOUR / `$EEA9` / `$ED5A`) that the patched SCPU KERNAL ships, running
+under our P65C816 core. JiffyDOS's own (timing-robust, edge-handshake) serial
+protocol is immune. So:
+
+- This is **NOT a regression of working functionality.** v8 "worked" only
+  because it served JiffyDOS — the original-C64 serial path has **never** been
+  exercised in 65816 mode on this core until the patched-KERNAL-in-emu feature
+  introduced it.
+- The patched KERNAL provides **zero functional benefit** here (§1's throttle
+  payoff was falsified in §9.1 — it has no `$D07A`/`$D07B` software throttle).
+  Its only value is the cosmetic VICE-faithful `SCPU64 ROM V0.07` banner and the
+  bit-identical ROM identity.
+- Suspected mechanism: the original serial routine's handshake/bit-cell timing
+  assumes 6510 cycle-by-cycle bus behaviour; our P65C816 core's per-opcode bus
+  timing differs enough that the 1541 emulation never completes the talk/listen
+  turnaround (drive holds DATA low under ATN — `IE:13`: `c64_iec_atn=0`,
+  `drive_iec_data=0`). VICE `xscpu64` runs the same ROM cleanly, so it is fixable
+  in principle but lives in CPU/IEC timing infrastructure, not the ROM.
+
+**Resolution options (for the operator):**
+- **A — serve JiffyDOS in emu mode (revert the patched-KERNAL-emu ROM mux).**
+  ~1 build, low risk, restores LOAD immediately. Cost: loses the cosmetic
+  `SCPU64 ROM V0.07` banner (emu mode reverts to JiffyDOS, as v8). Doom (native)
+  untouched.
+- **B — keep patched KERNAL, fix the P65C816↔original-serial timing in RTL.**
+  Faithful end state but a deep, uncertain workstream (cheap throttle fixes
+  already exhausted; likely a cycle-timing or 1541-handshake issue). Could be
+  many builds with no guarantee.
+- **C — hybrid: patched KERNAL for identity, JiffyDOS bytes spliced into the
+  `$ED00-$EFFF` serial region.** Gets banner + working LOAD, but fragile (the
+  patched KERNAL may call its own serial entry points / zero-page usage).
