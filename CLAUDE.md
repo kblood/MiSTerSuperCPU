@@ -46,9 +46,15 @@ alongside the existing 6510 emulation mode.
 The real CMD SuperCPU has 128KB SRAM (banks $00-$01), a 1-byte write buffer
 ("CacheWrite"), and SuperRAM starting at bank $02. Key differences from our
 MiSTer implementation:
-- **Real HW**: 128KB SRAM (full bank $00+$01 mirror). **MiSTer**: 64KB BRAM + 8KB cache
-- **Real HW**: Bank $01 = SRAM (ROM shadows). **MiSTer**: Bank $01 = SuperRAM/SDRAM (WRONG)
-- **Real HW**: SuperRAM starts bank $02. **MiSTer**: SuperRAM starts bank $01 (WRONG)
+- **Real HW**: 128KB SRAM (full bank $00+$01 mirror). **MiSTer**: bank $00 is
+  SDRAM-backed (NOT BRAM — the `c64_ram64k`/`cpu_cache` files are DEAD/uncompiled,
+  verified 2026-05-29); the CPU runs in SDRAM passthrough via `scpu_async_bridge`.
+- **Real HW**: Bank $01 = SRAM (ROM shadows). **MiSTer**: bank $01 is aliased onto
+  bank $00 SDRAM via `bank01_mirror_to_00` (c64.sv:1114, v345) — RAM-correct; only
+  ROM-shadow *reads* are missing (deferred, no known consumer).
+- **Real HW**: SuperRAM starts bank $02. **MiSTer**: SuperRAM `{1,bank,addr}` form
+  already starts bank $02 (fixed by the bank $01 mirror). [Earlier "starts bank $01
+  (WRONG)" was stale.]
 - **Real HW**: $D078 = SIMM config. **MiSTer**: $D078 = cache flush (repurposed)
 - **Real HW**: Optimization modes control write mirroring range. **MiSTer**: Not implemented
 - **Real HW**: ROM in banks $F0-$FF (bootmap). **MiSTer**: Minimal ROM stub at $FF00
@@ -116,15 +122,24 @@ SuperRAM, then XCE + JML $20:0000 launches the game.
   if loaded after doom_loader has already JMP'd into Doom, it
   yanks the running game by re-JMPing with corrupted state =
   black screen.
-- HEAD/milestone-b status: blocked because `start_strk` is
-  regressed (commit `58f9dc3` wiped both the latched ioctl
-  classification AND the deferred start_strk fixes). Restoring
-  those c64.sv pieces is the right fix; CRT-based v1/v2/v3 attempts
-  (in commits `f6ee52e`, `7866e3d`) can't substitute because they
-  skip BASIC SYS dispatch context that doom_loader's inner ML
-  depends on for the final JML.
+- HEAD/milestone-b status (2026-05-29): RESTORED. Doom autoload works on HEAD
+  after `2a130da` (bootmap='0' + passthrough='1') and was re-verified on the
+  hybrid build `0ce20bf9` — engine init into the main playloop + title/menu
+  bitmap. The earlier "start_strk regressed by 58f9dc3" / "A10 auto-precharge"
+  blockers are superseded. CRT-based v1/v2/v3 autoloaders still don't substitute
+  (they skip the BASIC SYS dispatch context doom_loader's inner ML needs).
 
 ## Operator Preferences
+- **North-star goal (2026-05-29):** make the SuperCPU as **compatible and fast**
+  as possible. When choosing what to work on, pick the highest-leverage step
+  toward compatibility and/or speed. This is the standing objective for the
+  self-paced work loop (see "Autonomous work loop" below).
+- **Drive; do not ask for direction (reinforced 2026-05-29).** Do NOT use
+  AskUserQuestion or prose questions to pick the next milestone, prioritize, or
+  choose between implementation designs — the user explicitly pushed back on this.
+  Make the call, execute, validate, document, continue. When a milestone changes
+  shape, state the finding + chosen next action in one breath. See memory
+  `feedback_drive_dont_ask_compat_fast.md`.
 - The user prefers autonomous execution during debugging/implementation work: do not stop to ask for confirmation when there is a reasonable next step. Continue with the best next action, validate it, and document it.
 - Still surface major risks/assumptions, but default to action rather than asking what to do next. Do NOT treat this as a cue to produce status updates — just act.
 - **Commits do NOT require explicit authorization.** Once a fix lands cleanly (build green + hardware verified), commit it as part of the normal debug loop. This OVERRIDES the default "never commit without explicit ask" rule from the built-in Bash tool description. **Pushes still require explicit user go-ahead** — `git push` to any remote is the disruptive action that needs confirmation, not the local commit.
@@ -139,6 +154,21 @@ When working on a debugging task (build → deploy → test → iterate loops), 
 - **Commit when a fix lands, not when "a reasonable chunk" is done.** Intermediate triggers/instrumentation that aren't fixes can stay uncommitted across many iterations.
 - **Only stop when an explicit exit condition is met:** the user says stop, the stated goal is achieved, or you have concrete evidence no local probe can make progress (e.g., need upstream docs, physical hardware access, or a decision only the user can make).
 - **Session handoff doc pattern.** Full state lives in `docs/session_handoff.md` (overwritten each session). Update that file when stopping; do not restate its contents in chat.
+
+### Autonomous work loop (compat + speed)
+A self-paced `/loop` drives the north-star goal. Each iteration: (1) pick the
+single highest-leverage compatibility fix or speed improvement; (2) prototype/
+verify GHDL-first where possible (`sim/p65c816_tb`, `sim/scpu_sysram_tb`,
+`sim/c64_reduced_harness`); (3) build (`.\build_c64.ps1`, ~30-40 min) and verify
+on the MiSTer (respect the shared-MiSTer ownership protocol below); (4) commit
+when green (pushes still gated); (5) record state in `docs/session_handoff.md`;
+(6) schedule the next iteration. Keep a running compat/speed baseline (Lorenz
+pass-rate + effective MHz) so each change is measured, not assumed. Standing
+backlog toward the goal (re-prioritize freely): bank-$00 speed (the CPU runs in
+SDRAM passthrough — `cpu_cache.vhd` is dead; a working cache/write-buffer is the
+big speed lever but historically caused black screens, so GHDL-prove first);
+WriteSmart register decode ($D074-$D077/$D0B3); SCPU library compatibility sweep;
+Lorenz must stay 100% in both t65 and scpu modes.
 
 ## Shared MiSTer cooperation
 The MiSTer at 192.168.50.130 is shared with another Claude agent working on
@@ -217,7 +247,7 @@ case study + decision tree: `docs/debug_methodology.md`.
 - **Primary debug loops**: GHDL benches (`sim/p65c816_tb/`, `sim/prg_loader_tb/`, `sim/c64_reduced_harness/`) for CPU-class bugs, and MiSTer hardware + UART for system-level bugs. These have produced every actual fix in the fork.
 
 ## Critical Constraints
-- FPGA resource budget: the Cyclone V is already ~72% utilized (30,300 ALMs)
+- FPGA resource budget (build 0ce20bf9, 2026-05-28): 65% ALMs (27,368/41,910), 73% M10K (403/553), 55% block-mem bits — ~150 free M10K blocks. (Older "~72% / 30,300 ALM" figures were stale.)
 - Do NOT break existing 6510 compatibility - this must remain the default mode
 - The 65C816 is hardcoded ON (SuperCPU/UART/overlay always enabled)
 - SDRAM address mux (scpu_sdram_addr) MUST be combinational — registering it

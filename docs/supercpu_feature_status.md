@@ -119,6 +119,14 @@ Distinct from "missing features" — these are things that should work but don't
 
 ### 2.1 Asterix SCPU-ON hang (FIXED 2026-04-27, commit `b267455`)
 
+> **⚠️ The fix file is now DEAD CODE (verified 2026-05-29):** `c64_ram64k.vhd` is
+> not compiled (absent from C64.qsf / any `.qip`, instantiated nowhere; the only
+> reference is a stale comment at fpga64_sid_iec.vhd:1383). Bank $00 RAM is
+> SDRAM-backed (fpga64_sid_iec.vhd:3164 → cartridge.v → sdram_pm.v), so the M10K
+> RAW-bypass below is orphaned. Whether Asterix still passes on the SDRAM bank-$00
+> path is UNVERIFIED — worth a re-test on the current build (SDRAM reads are
+> registered/pipelined, a different hazard profile than M10K, so it may be moot).
+
 **Root cause**: `c64_ram64k.vhd` was inferred as M10K with
 `READ_DURING_WRITE_MODE = DONT_CARE` via `attribute ramstyle … "M10K, no_rw_check"`.
 On Cyclone V, this leaves the registered read output undefined when the same
@@ -271,19 +279,23 @@ longer needed, remove workaround documentation.
 
 | Bank range | Spec (real HW) | MiSTer | Status |
 |---|---|---|---|
-| $01 | 64 KB SRAM (KERNAL/BASIC/CHARGEN shadow) | SDRAM SuperRAM | **WRONG** |
+| $01 | 64 KB SRAM (KERNAL/BASIC/CHARGEN shadow) | Aliased to bank $00 SDRAM via `bank01_mirror_to_00` (c64.sv:1114, v345) | PARTIAL — RAM-correct; ROM-shadow reads deferred |
 | $02-$EF | SuperRAM (PS/2 SIMM, 1-16 MB) | SDRAM `{1, bank[7:0], addr[15:0]}` | DONE — 3-stage pipeline |
 | $F0-$FF (bootmap=0) | SuperRAM | SDRAM | DONE for code; ROM stub overlay $FF00-$FFEF only |
 | $F0-$FF (bootmap=1) | EPROM (SuperCPU OS, 64-512 KB) | Minimal stub (RTI/RTL at $FF00) | PARTIAL |
 | Bank crossing in JML/JSL | DONE | core | Verified end-to-end. |
-| Bank $01 SRAM shadow | MISSING | — | Real HW writes ROM copies here at boot. |
+| Bank $01 ROM-shadow reads | DEFERRED | — | Real HW shadows ROM here; no known consumer in the fork (2026-05-29). |
 
-**Implementation gap — Bank $01 SRAM shadow:**
-M10K constrained at 95% — adding 64 KB more is not feasible without freeing
-elsewhere. Workable compromise: 16 KB BRAM region for $01:A000-$01:DFFF (BASIC +
-CHARGEN); for $01:E000-$01:FFFF (KERNAL) reuse the 64 KB BRAM via bank-bit
-aliasing trick. Boot stub copies ROM during first ~256 cycles. **Medium** lift
-(~3-5 days). Sequence after Asterix/Doom stable.
+**Status (re-investigated 2026-05-29):** The headline bug ("SuperRAM starts at
+bank $01") is ALREADY FIXED: since v345, `bank01_mirror_to_00` (c64.sv:1114-1127)
+aliases bank $01 onto bank $00's SDRAM region — bank $01 is RAM-correct and the
+SuperRAM `{1,bank,addr}` form already starts at bank $02. Doom depends on this
+mirror (its loader sweeps dest banks $00→$01→$02…). The only remaining piece is
+bank-$01 ROM-shadow *reads* (returning KERNAL/BASIC/char ROM in the ROM windows),
+which has NO known consumer (Doom uses bank $01 as plain RAM). DEFERRED until a
+real consumer surfaces (e.g. via the SCPU library compat sweep, §13 #9). The old
+"M10K at 95% / needs 64 KB BRAM" framing was doubly stale: M10K is 73% (§14), and
+no new BRAM is needed (the mirror reuses bank $00).
 
 **Test strategy:** **Gap**: No regression PRG for bank $01. Recommend a test that
 copies known patterns to $01:0000, $01:8000, $01:FFFF and reads back via long
@@ -381,6 +393,16 @@ which probably won't fit in M10K budget.
 ---
 
 ## 8. Cache and Write Buffer
+
+> **⚠️ DEAD CODE (verified 2026-05-29):** `cpu_cache.vhd` is NOT compiled — it is
+> in no `VHDL_FILE`/`.qip` entry of C64.qsf and is instantiated nowhere in the
+> synthesized design. The live CPU datapath is `scpu_async_bridge` in pure
+> passthrough (`CACHE_ACTIVE=>'0'`, `SAME_CLOCK_PASSTHROUGH=>'1'`,
+> fpga64_sid_iec.vhd:3039-3047); ALL CPU accesses (bank $00 included) go to SDRAM.
+> The "DONE in cpu_cache.vhd" rows below describe an orphaned module — treat them
+> as NOT in the build. Re-wiring a working cache/write-buffer is the main bank-$00
+> SPEED lever, but historically caused black screens (v159/v161) — GHDL-prove
+> before building. Bridge passthrough is the current safe baseline.
 
 | Feature | Status | RTL location | Notes |
 |---|---|---|---|
@@ -484,7 +506,7 @@ See `docs/roadmap.md` for the dependency-ordered three-lane plan. Headline:
 4. ~~$D200-$D3FF I/O hole RAM~~ DONE (task #3)
 5. ~~Doom re-verify~~ DONE — silicon-verified on hybrid build `0ce20bf9` (2026-05-28): main playloop reached + title/menu bitmap rendered (resolves bug 2.2)
 6. ~~M10K reclaim R1~~ DONE — duplicate KERNAL/chargen dproms removed; fit re-baselined to 73% M10K (403/553), ~150 free blocks (verified 2026-05-28, §14)
-7. **Bank $01 SRAM shadow** (correctness, ~3-5 days) — NOW UNBLOCKED by #6; the largest remaining correctness gap (§5). Needs ~16-32 KB BRAM, fits current headroom
+7. ~~Bank $01 SRAM shadow~~ MOSTLY DONE — core bug (SuperRAM base) already fixed by v345 `bank01_mirror_to_00` (bank $01 aliases bank $00; SuperRAM starts $02). Only bank-$01 ROM-shadow *reads* remain — DEFERRED, no known consumer (investigated 2026-05-29, §5)
 8. **Phase B: write buffer drain + WriteSmart** (task #6, in_progress — v164 path-(b) Quartus build running, smoke matrix #22)
 9. **SCPU library compatibility sweep** (task #19, baseline run pending #22 deploy)
 10. **DOS extension $D0BE/$D0BF** (low priority)
