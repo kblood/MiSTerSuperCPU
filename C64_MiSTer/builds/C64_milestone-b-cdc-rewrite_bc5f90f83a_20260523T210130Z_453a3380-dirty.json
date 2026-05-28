@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_bc5f90f83a_20260523T210130Z_453a3380-dirty",
+  "md5": "453a3380d9c01ed7692b8fea22b32582",
+  "size_bytes": 3841092,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "bc5f90f83a",
+  "git_subject": "docs(handoff): F.2 done; next is bridge restoration from backup",
+  "git_dirty": true,
+  "built_utc": "20260523T210130Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_159bf8e0da_20260523T220442Z_c61bfa77-dirty",
+  "md5": "c61bfa77fa85d5f886730f29abcbaa2e",
+  "size_bytes": 3819400,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "159bf8e0da",
+  "git_subject": "docs(handoff): F.1' checkpoint \u00e2\u20ac\u201d Milestone B at F.0/F.1'/F.2 done",
+  "git_dirty": true,
+  "built_utc": "20260523T220442Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

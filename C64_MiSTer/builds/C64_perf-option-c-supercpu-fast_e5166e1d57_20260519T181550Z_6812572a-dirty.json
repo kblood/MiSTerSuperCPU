@@ -1,0 +1,11 @@
+{
+  "name": "C64_perf-option-c-supercpu-fast_e5166e1d57_20260519T181550Z_6812572a-dirty",
+  "md5": "6812572aab83800509d96a3ccbaea3c2",
+  "size_bytes": 3843456,
+  "git_branch": "perf-option-c-supercpu-fast",
+  "git_sha": "e5166e1d57",
+  "git_subject": "perf: Option C iter 1 \u00e2\u20ac\u201d SuperRAM fast-path lifts effective CPU from 4 MHz to 10 MHz",
+  "git_dirty": true,
+  "built_utc": "20260519T181550Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

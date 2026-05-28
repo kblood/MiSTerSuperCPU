@@ -1,0 +1,11 @@
+{
+  "name": "C64_step5-altslot-registered_0cee649fa2_20260520T123744Z_3ba225b0-dirty",
+  "md5": "3ba225b0a5f233cf35cfb94c69330278",
+  "size_bytes": 3863164,
+  "git_branch": "step5-altslot-registered",
+  "git_sha": "0cee649fa2",
+  "git_subject": "feat: Step 2 \u00e2\u20ac\u201d SDRAM-busy backpressure scaffolding (alt-slot deferred)",
+  "git_dirty": true,
+  "built_utc": "20260520T123744Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

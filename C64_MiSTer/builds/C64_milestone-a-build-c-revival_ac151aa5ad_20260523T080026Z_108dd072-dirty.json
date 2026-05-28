@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-a-build-c-revival_ac151aa5ad_20260523T080026Z_108dd072-dirty",
+  "md5": "108dd0720a25706ac1da1dc8ebdcd1b5",
+  "size_bytes": 3819448,
+  "git_branch": "milestone-a-build-c-revival",
+  "git_sha": "ac151aa5ad",
+  "git_subject": "bench: CPU-bound speed bench bypasses I/O floor + V6 reconfirm + V8 failed",
+  "git_dirty": true,
+  "built_utc": "20260523T080026Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

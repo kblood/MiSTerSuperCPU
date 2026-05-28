@@ -1,0 +1,11 @@
+{
+  "name": "C64_step5-build-c-altslot-conflict-gate_79b9c9fc24_20260520T165616Z_12a28745-dirty",
+  "md5": "12a28745a9d13d4a9a1295960c6e78b9",
+  "size_bytes": 3805872,
+  "git_branch": "step5-build-c-altslot-conflict-gate",
+  "git_sha": "79b9c9fc24",
+  "git_subject": "fix: CONFLICT gate v2 \u00e2\u20ac\u201d sync(0) + one-shot guard + clear is_conflict at q=0",
+  "git_dirty": true,
+  "built_utc": "20260520T165616Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

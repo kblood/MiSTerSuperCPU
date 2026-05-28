@@ -1,0 +1,11 @@
+{
+  "name": "C64_perf-option-c-supercpu-fast_b46aad25cb_20260519T211633Z_6259d7a5",
+  "md5": "6259d7a5a39d2a877ed73f3f39acc7c8",
+  "size_bytes": 3851436,
+  "git_branch": "perf-option-c-supercpu-fast",
+  "git_sha": "b46aad25cb",
+  "git_subject": "fix: sdram_pm reset countdown was stuck \u00e2\u20ac\u201d q never reached 9",
+  "git_dirty": false,
+  "built_utc": "20260519T211633Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

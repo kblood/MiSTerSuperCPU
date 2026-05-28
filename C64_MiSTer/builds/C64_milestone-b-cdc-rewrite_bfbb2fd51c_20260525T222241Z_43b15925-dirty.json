@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_bfbb2fd51c_20260525T222241Z_43b15925-dirty",
+  "md5": "43b15925f7f7a45b1e7773b5611fc58b",
+  "size_bytes": 3830996,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "bfbb2fd51c",
+  "git_subject": "docs: v346 Phase 1 handoff \u00e2\u20ac\u201d three-bug stack identified, minimal bypass is 1 byte",
+  "git_dirty": true,
+  "built_utc": "20260525T222241Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

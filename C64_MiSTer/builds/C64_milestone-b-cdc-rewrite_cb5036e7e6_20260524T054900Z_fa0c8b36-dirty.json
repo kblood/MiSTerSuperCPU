@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_cb5036e7e6_20260524T054900Z_fa0c8b36-dirty",
+  "md5": "fa0c8b369228cc8af2ceec5d146cbba4",
+  "size_bytes": 3841284,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "cb5036e7e6",
+  "git_subject": "docs(handoff): REVISED 9 -- Path B v2 reaches CMD SuperCPU MENU",
+  "git_dirty": true,
+  "built_utc": "20260524T054900Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

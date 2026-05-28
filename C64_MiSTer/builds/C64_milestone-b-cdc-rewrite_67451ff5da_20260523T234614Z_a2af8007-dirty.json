@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_67451ff5da_20260523T234614Z_a2af8007-dirty",
+  "md5": "a2af80074904497d886eabce970150cf",
+  "size_bytes": 3804508,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "67451ff5da",
+  "git_subject": "bridge(F.3' enable rollback): document CPU enable CDC gap",
+  "git_dirty": true,
+  "built_utc": "20260523T234614Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

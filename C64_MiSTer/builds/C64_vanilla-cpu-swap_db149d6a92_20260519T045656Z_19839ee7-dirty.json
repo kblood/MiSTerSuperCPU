@@ -1,0 +1,11 @@
+{
+  "name": "C64_vanilla-cpu-swap_db149d6a92_20260519T045656Z_19839ee7-dirty",
+  "md5": "19839ee723662d8fb439208dd0ca6e7b",
+  "size_bytes": 3837164,
+  "git_branch": "vanilla-cpu-swap",
+  "git_sha": "db149d6a92",
+  "git_subject": "fix: v356 \u00e2\u20ac\u201d universal IRQ ack via $FF00 stub; fixes Wolf3D REU IRQ wedge",
+  "git_dirty": true,
+  "built_utc": "20260519T045656Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

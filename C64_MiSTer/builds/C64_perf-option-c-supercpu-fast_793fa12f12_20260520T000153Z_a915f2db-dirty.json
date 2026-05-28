@@ -1,0 +1,11 @@
+{
+  "name": "C64_perf-option-c-supercpu-fast_793fa12f12_20260520T000153Z_a915f2db-dirty",
+  "md5": "a915f2db374d6b870e3d6f44a62b75fd",
+  "size_bytes": 3841808,
+  "git_branch": "perf-option-c-supercpu-fast",
+  "git_sha": "793fa12f12",
+  "git_subject": "fix: C64.sdc filter pattern \u00e2\u20ac\u201d sdram_pm not sdram (Build C wedge fix)",
+  "git_dirty": true,
+  "built_utc": "20260520T000153Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_aafa4a4417_20260525T151755Z_cd639f31-dirty",
+  "md5": "cd639f31cbfed4d323c7e01f14850fe6",
+  "size_bytes": 3797436,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "aafa4a4417",
+  "git_subject": "milestone A: Option (a) PRECHARGE FSM in sdram_pm.v \u00e2\u20ac\u201d silicon-validated",
+  "git_dirty": true,
+  "built_utc": "20260525T151755Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_19140b1a81_20260524T095320Z_0aa93cfd-dirty",
+  "md5": "0aa93cfdea31aafd6e48db439c1baef8",
+  "size_bytes": 3821464,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "19140b1a81",
+  "git_subject": "docs(plan): $D072/$D07A runtime throttle to unblock IEC LOAD on v6",
+  "git_dirty": true,
+  "built_utc": "20260524T095320Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-a-build-c-revival_80dc8d70c7_20260522T203050Z_7c4b3b11",
+  "md5": "7c4b3b11032a7a6600efb50a9c6923c9",
+  "size_bytes": 3866776,
+  "git_branch": "milestone-a-build-c-revival",
+  "git_sha": "80dc8d70c7",
+  "git_subject": "fix(bridge): restore baLoc stall path \u00e2\u20ac\u201d was the root of $AB wedge",
+  "git_dirty": false,
+  "built_utc": "20260522T203050Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

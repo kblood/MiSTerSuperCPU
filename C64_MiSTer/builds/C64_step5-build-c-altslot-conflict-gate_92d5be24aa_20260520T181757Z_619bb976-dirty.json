@@ -1,0 +1,11 @@
+{
+  "name": "C64_step5-build-c-altslot-conflict-gate_92d5be24aa_20260520T181757Z_619bb976-dirty",
+  "md5": "619bb976857501a690111d1750c69de2",
+  "size_bytes": 3841660,
+  "git_branch": "step5-build-c-altslot-conflict-gate",
+  "git_sha": "92d5be24aa",
+  "git_subject": "fix: CONFLICT gate v4 \u00e2\u20ac\u201d self-manage conflict_used in cpu_cyc_s gate",
+  "git_dirty": true,
+  "built_utc": "20260520T181757Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

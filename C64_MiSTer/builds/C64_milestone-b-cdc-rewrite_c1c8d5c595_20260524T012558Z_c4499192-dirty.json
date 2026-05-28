@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_c1c8d5c595_20260524T012558Z_c4499192-dirty",
+  "md5": "c44991922e936827879d957c2a4b69d8",
+  "size_bytes": 3855196,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "c1c8d5c595",
+  "git_subject": "bridge(F.3' Path B): cpu_enable_out aligned with rdy release -- sim-validated; HW test pending",
+  "git_dirty": true,
+  "built_utc": "20260524T012558Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

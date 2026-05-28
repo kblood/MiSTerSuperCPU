@@ -1,0 +1,11 @@
+{
+  "name": "C64_perf-option-c-supercpu-fast_a65b3f7607_20260520T085304Z_829b0fa8-dirty",
+  "md5": "829b0fa8fb4488d8f72c71bb94cfdaf5",
+  "size_bytes": 3876328,
+  "git_branch": "perf-option-c-supercpu-fast",
+  "git_sha": "a65b3f7607",
+  "git_subject": "feat: Step 1 \u00e2\u20ac\u201d Layer 2 sdram_ready synchroniser plumbing",
+  "git_dirty": true,
+  "built_utc": "20260520T085304Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

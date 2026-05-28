@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_0e0441681d_20260524T120035Z_b1aceea1-dirty",
+  "md5": "b1aceea1b93df6a78dc614aed4cb6d97",
+  "size_bytes": 3821948,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "0e0441681d",
+  "git_subject": "docs(handoff): IEC differential confirms bridge-introduced regression",
+  "git_dirty": true,
+  "built_utc": "20260524T120035Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

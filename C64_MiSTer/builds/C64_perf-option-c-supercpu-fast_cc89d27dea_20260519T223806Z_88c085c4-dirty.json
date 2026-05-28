@@ -1,0 +1,11 @@
+{
+  "name": "C64_perf-option-c-supercpu-fast_cc89d27dea_20260519T223806Z_88c085c4-dirty",
+  "md5": "88c085c4031102cca8aa9b28a7f68acd",
+  "size_bytes": 3804140,
+  "git_branch": "perf-option-c-supercpu-fast",
+  "git_sha": "cc89d27dea",
+  "git_subject": "",
+  "git_dirty": true,
+  "built_utc": "20260519T223806Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

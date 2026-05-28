@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_b6a02076e9_20260525T163655Z_ef01bea6-dirty",
+  "md5": "ef01bea65d493c4177a28ad46a77cf55",
+  "size_bytes": 3859232,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "b6a02076e9",
+  "git_subject": "milestone-b: mb-probe-003 CIA1 Timer A internal taps",
+  "git_dirty": true,
+  "built_utc": "20260525T163655Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

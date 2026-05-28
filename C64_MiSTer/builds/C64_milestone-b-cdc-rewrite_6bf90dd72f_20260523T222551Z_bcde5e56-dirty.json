@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_6bf90dd72f_20260523T222551Z_bcde5e56-dirty",
+  "md5": "bcde5e56faccdbbbe481d05f752c95ea",
+  "size_bytes": 3838636,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "6bf90dd72f",
+  "git_subject": "docs(handoff): F.3' two-stage FSM landed; next is F.3' enable",
+  "git_dirty": true,
+  "built_utc": "20260523T222551Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

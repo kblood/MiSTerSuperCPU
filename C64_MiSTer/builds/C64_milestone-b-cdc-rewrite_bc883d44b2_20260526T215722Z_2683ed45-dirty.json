@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_bc883d44b2_20260526T215722Z_2683ed45-dirty",
+  "md5": "2683ed457446959639f502573e0e6071",
+  "size_bytes": 3829448,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "bc883d44b2",
+  "git_subject": "Bug 3: writable SIMM-extent registers $D27C-$D27F",
+  "git_dirty": true,
+  "built_utc": "20260526T215722Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

@@ -518,6 +518,17 @@ if ($SyntaxOnly) {
         Copy-Item $rbfPath $destRbf -Force
         Write-Host "  Copied:  $destRbf" -ForegroundColor Green
 
+        # Archive into C64_MiSTer/builds/ keyed by branch+sha+timestamp+md5
+        # so we can roll back to any prior build (we lost v342 this way).
+        $archiveScript = Join-Path $ProjectRoot "tools\archive_rbf.py"
+        if (Test-Path $archiveScript) {
+            try {
+                & python $archiveScript $rbfPath
+            } catch {
+                Write-Host "  WARN: archive_rbf.py failed: $_" -ForegroundColor Yellow
+            }
+        }
+
         # Auto-program via USB Blaster if -Program was specified
         if ($Program) {
             Write-Step "Programming FPGA via USB Blaster"

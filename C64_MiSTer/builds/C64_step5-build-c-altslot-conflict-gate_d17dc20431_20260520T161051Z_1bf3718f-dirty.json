@@ -1,0 +1,11 @@
+{
+  "name": "C64_step5-build-c-altslot-conflict-gate_d17dc20431_20260520T161051Z_1bf3718f-dirty",
+  "md5": "1bf3718ffcde1c82b0e13c0a9477c995",
+  "size_bytes": 3874200,
+  "git_branch": "step5-build-c-altslot-conflict-gate",
+  "git_sha": "d17dc20431",
+  "git_subject": "feat: Step 5 CONFLICT gate \u00e2\u20ac\u201d extend busy counter for sdram_pm P_CONFLICT",
+  "git_dirty": true,
+  "built_utc": "20260520T161051Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

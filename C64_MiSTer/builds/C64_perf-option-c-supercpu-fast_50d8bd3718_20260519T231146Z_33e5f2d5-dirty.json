@@ -1,0 +1,11 @@
+{
+  "name": "C64_perf-option-c-supercpu-fast_50d8bd3718_20260519T231146Z_33e5f2d5-dirty",
+  "md5": "33e5f2d5d555657aac998e22d044b35d",
+  "size_bytes": 3888740,
+  "git_branch": "perf-option-c-supercpu-fast",
+  "git_sha": "50d8bd3718",
+  "git_subject": "draft: Build C \u00e2\u20ac\u201d page-mode with baseline-preserved command timing",
+  "git_dirty": true,
+  "built_utc": "20260519T231146Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

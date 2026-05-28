@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_4116673dcc_20260524T014754Z_0af2d5b9-dirty",
+  "md5": "0af2d5b9cb7478c4a7f6f56893ddc754",
+  "size_bytes": 3840696,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "4116673dcc",
+  "git_subject": "bridge(F.3' Path B v2): sustain cpu_enable while cpu_fsm=IDLE",
+  "git_dirty": true,
+  "built_utc": "20260524T014754Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

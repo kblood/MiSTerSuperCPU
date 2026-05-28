@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_a3931ff94e_20260526T001548Z_904eb357-dirty",
+  "md5": "904eb357e6ef129cb95bef1f6aac11aa",
+  "size_bytes": 3847888,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "a3931ff94e",
+  "git_subject": "docs: v347 Phase 2 handoff + READY screenshot",
+  "git_dirty": true,
+  "built_utc": "20260526T001548Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

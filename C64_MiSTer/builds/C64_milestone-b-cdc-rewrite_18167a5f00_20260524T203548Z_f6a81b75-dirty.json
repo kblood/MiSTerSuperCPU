@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_18167a5f00_20260524T203548Z_f6a81b75-dirty",
+  "md5": "f6a81b754135a5741dcb5247374db229",
+  "size_bytes": 3796932,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "18167a5f00",
+  "git_subject": "sdram_pm: hoist reset decl + name main_clk_block for SV-strict simulators",
+  "git_dirty": true,
+  "built_utc": "20260524T203548Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

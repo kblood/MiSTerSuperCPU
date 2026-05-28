@@ -1,0 +1,11 @@
+{
+  "name": "C64_async-cpu-bridge_80dc8d70c7_20260522T074416Z_21418c2e-dirty",
+  "md5": "21418c2e5e0ddae65e835ec1e9c60328",
+  "size_bytes": 3839636,
+  "git_branch": "async-cpu-bridge",
+  "git_sha": "80dc8d70c7",
+  "git_subject": "fix(bridge): restore baLoc stall path \u00e2\u20ac\u201d was the root of $AB wedge",
+  "git_dirty": true,
+  "built_utc": "20260522T074416Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

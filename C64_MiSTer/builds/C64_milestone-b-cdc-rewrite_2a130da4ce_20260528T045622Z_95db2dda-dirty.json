@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_2a130da4ce_20260528T045622Z_95db2dda-dirty",
+  "md5": "95db2dda7e4ed3cf8145eef10813696d",
+  "size_bytes": 3878524,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "2a130da4ce",
+  "git_subject": "fix(scpu): restore Doom MGL autoload on HEAD \u00e2\u20ac\u201d bootmap='0' + passthrough='1'",
+  "git_dirty": true,
+  "built_utc": "20260528T045622Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

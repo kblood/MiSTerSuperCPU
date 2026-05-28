@@ -1,0 +1,11 @@
+{
+  "name": "C64_step6-rdy-handshake_8434077358_20260520T222044Z_88963b9e-dirty",
+  "md5": "88963b9e2a3c0656c634b7829430cbce",
+  "size_bytes": 3853612,
+  "git_branch": "step6-rdy-handshake",
+  "git_sha": "8434077358",
+  "git_subject": "feat: Step 6 Phase 6a \u00e2\u20ac\u201d data_valid handshake signal plumbing (no consumer)",
+  "git_dirty": true,
+  "built_utc": "20260520T222044Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

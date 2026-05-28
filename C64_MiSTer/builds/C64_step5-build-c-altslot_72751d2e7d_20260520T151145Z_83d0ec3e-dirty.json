@@ -1,0 +1,11 @@
+{
+  "name": "C64_step5-build-c-altslot_72751d2e7d_20260520T151145Z_83d0ec3e-dirty",
+  "md5": "83d0ec3ed6a1a4365ebe59ac0ed17e74",
+  "size_bytes": 3819152,
+  "git_branch": "step5-build-c-altslot",
+  "git_sha": "72751d2e7d",
+  "git_subject": "draft: Build C \u00e2\u20ac\u201d page-mode with baseline-preserved command timing",
+  "git_dirty": true,
+  "built_utc": "20260520T151145Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_81af800f91_20260526T155206Z_2d062e8f-dirty",
+  "md5": "2d062e8fa691785d4abe4a2b93a157da",
+  "size_bytes": 3835916,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "81af800f91",
+  "git_subject": "v348: Phase 3 (Codex Fourth Option) SIMM-alias mode \u00e2\u20ac\u201d does NOT fix Doom",
+  "git_dirty": true,
+  "built_utc": "20260526T155206Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

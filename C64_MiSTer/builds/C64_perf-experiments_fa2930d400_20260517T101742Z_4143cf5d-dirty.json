@@ -1,0 +1,11 @@
+{
+  "name": "C64_perf-experiments_fa2930d400_20260517T101742Z_4143cf5d-dirty",
+  "md5": "4143cf5de84477deb7221f026c568588",
+  "size_bytes": 3864012,
+  "git_branch": "perf-experiments",
+  "git_sha": "fa2930d400",
+  "git_subject": "fix(timing): close -4.65 ns clk_sys slack via clk64\u00e2\u2020\u2019clk_sys multicycle SDC",
+  "git_dirty": true,
+  "built_utc": "20260517T101742Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

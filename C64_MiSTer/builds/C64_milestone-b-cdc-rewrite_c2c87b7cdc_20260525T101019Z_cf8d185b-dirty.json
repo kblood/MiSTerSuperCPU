@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_c2c87b7cdc_20260525T101019Z_cf8d185b-dirty",
+  "md5": "cf8d185b9a09ac981eeb0c27145af8c9",
+  "size_bytes": 3786284,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "c2c87b7cdc",
+  "git_subject": "milestone-b: bridge-internal UART probes (observability-only)",
+  "git_dirty": true,
+  "built_utc": "20260525T101019Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

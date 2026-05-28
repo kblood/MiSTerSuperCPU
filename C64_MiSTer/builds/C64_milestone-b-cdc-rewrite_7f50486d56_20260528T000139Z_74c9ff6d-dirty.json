@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_7f50486d56_20260528T000139Z_74c9ff6d-dirty",
+  "md5": "74c9ff6d10410fa1e19e109b0d23aec7",
+  "size_bytes": 3862480,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "7f50486d56",
+  "git_subject": "docs(feature_status): correct Doom autoload + MGL ioctl claims",
+  "git_dirty": true,
+  "built_utc": "20260528T000139Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

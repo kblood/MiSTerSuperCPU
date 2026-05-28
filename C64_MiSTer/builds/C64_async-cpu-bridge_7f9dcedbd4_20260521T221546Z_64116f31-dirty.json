@@ -1,0 +1,11 @@
+{
+  "name": "C64_async-cpu-bridge_7f9dcedbd4_20260521T221546Z_64116f31-dirty",
+  "md5": "64116f31f0d6b3a2678db2736c123b51",
+  "size_bytes": 3828400,
+  "git_branch": "async-cpu-bridge",
+  "git_sha": "7f9dcedbd4",
+  "git_subject": "async-bridge Phase F.1-F.3 prep: MCP rewrite + bench + SDC + F.0 appendix",
+  "git_dirty": true,
+  "built_utc": "20260521T221546Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

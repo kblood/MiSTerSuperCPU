@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_1cd6261831_20260524T003635Z_036110c5-dirty",
+  "md5": "036110c5757994d6a45ead11ef15d60c",
+  "size_bytes": 3815944,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "1cd6261831",
+  "git_subject": "docs(handoff): F.3' enable 6-build bisect \u00e2\u20ac\u201d MCP data path broken on HW",
+  "git_dirty": true,
+  "built_utc": "20260524T003635Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

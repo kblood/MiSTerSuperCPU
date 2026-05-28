@@ -1,0 +1,11 @@
+{
+  "name": "C64_vanilla-cpu-swap_d930a819cd_20260518T204550Z_575232ff-dirty",
+  "md5": "575232ff22a8992e845a9bba6fe80a64",
+  "size_bytes": 3859152,
+  "git_branch": "vanilla-cpu-swap",
+  "git_sha": "d930a819cd",
+  "git_subject": "doom MGL: use <setname> to load per-game Smart turbo + 4x speed config",
+  "git_dirty": true,
+  "built_utc": "20260518T204550Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

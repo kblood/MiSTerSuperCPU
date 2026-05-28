@@ -1,0 +1,11 @@
+{
+  "name": "C64_async-cpu-bridge_885ac7c299_20260521T163955Z_b0e29f58-dirty",
+  "md5": "b0e29f58822a7257e27cea3735b482ed",
+  "size_bytes": 3840356,
+  "git_branch": "async-cpu-bridge",
+  "git_sha": "885ac7c299",
+  "git_subject": "bridge D4.1: add cache valid bits so unwritten ZP returns bus, not stale $00",
+  "git_dirty": true,
+  "built_utc": "20260521T163955Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-a-build-c-revival_83d7716e49_20260523T020136Z_1396cda3-dirty",
+  "md5": "1396cda305a98008045148c342a1898e",
+  "size_bytes": 3843088,
+  "git_branch": "milestone-a-build-c-revival",
+  "git_sha": "83d7716e49",
+  "git_subject": "Milestone A scaffolding: Step 6 busy_counter feedback + Build C deferred",
+  "git_dirty": true,
+  "built_utc": "20260523T020136Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

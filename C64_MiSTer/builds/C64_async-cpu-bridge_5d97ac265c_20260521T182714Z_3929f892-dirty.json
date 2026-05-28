@@ -1,0 +1,11 @@
+{
+  "name": "C64_async-cpu-bridge_5d97ac265c_20260521T182714Z_3929f892-dirty",
+  "md5": "3929f892761c2fcc6f777e21d71eacab",
+  "size_bytes": 3854800,
+  "git_branch": "async-cpu-bridge",
+  "git_sha": "5d97ac265c",
+  "git_subject": "docs: session_handoff \u00e2\u20ac\u201d D4 scaffolding committed, D4.2 hw activation deferred",
+  "git_dirty": true,
+  "built_utc": "20260521T182714Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

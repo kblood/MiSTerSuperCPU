@@ -1,0 +1,11 @@
+{
+  "name": "C64_vanilla-cpu-swap_5b557dab5c_20260519T032825Z_d2687672-dirty",
+  "md5": "d26876724cc8a5ceb93807d34f1cacf0",
+  "size_bytes": 3843844,
+  "git_branch": "vanilla-cpu-swap",
+  "git_sha": "5b557dab5c",
+  "git_subject": "fix: v351 \u00e2\u20ac\u201d software-writeable native IRQ vector $FFEE/$FFEF unlocks Wolf3D",
+  "git_dirty": true,
+  "built_utc": "20260519T032825Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

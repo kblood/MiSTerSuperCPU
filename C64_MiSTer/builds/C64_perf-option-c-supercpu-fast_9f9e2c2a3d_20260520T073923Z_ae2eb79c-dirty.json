@@ -1,0 +1,11 @@
+{
+  "name": "C64_perf-option-c-supercpu-fast_9f9e2c2a3d_20260520T073923Z_ae2eb79c-dirty",
+  "md5": "ae2eb79cae3f20dda434e34be25fd961",
+  "size_bytes": 3835968,
+  "git_branch": "perf-option-c-supercpu-fast",
+  "git_sha": "9f9e2c2a3d",
+  "git_subject": "revert: sdram_pm.v back to Build B (page-mode CONFLICT path incompatible with pipeline)",
+  "git_dirty": true,
+  "built_utc": "20260520T073923Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

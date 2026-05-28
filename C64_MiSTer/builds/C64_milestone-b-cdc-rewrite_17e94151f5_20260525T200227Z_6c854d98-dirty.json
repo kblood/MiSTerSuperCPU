@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_17e94151f5_20260525T200227Z_6c854d98-dirty",
+  "md5": "6c854d9842d1e5716d340e3f28b921cd",
+  "size_bytes": 3848472,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "17e94151f5",
+  "git_subject": "docs: handoff \u00c2\u00a72.4 \u00e2\u20ac\u201d MCP CIA2/IEC failure is the documented 1MHz throttle gap",
+  "git_dirty": true,
+  "built_utc": "20260525T200227Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

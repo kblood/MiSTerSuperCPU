@@ -1,0 +1,11 @@
+{
+  "name": "C64_async-cpu-bridge_cfa82048ce_20260521T194317Z_7aa73eb5-dirty",
+  "md5": "7aa73eb52a039d985ecd3623884a7146",
+  "size_bytes": 3826824,
+  "git_branch": "async-cpu-bridge",
+  "git_sha": "cfa82048ce",
+  "git_subject": "bridge D4.2 retry: MLAB+flush-counter cache pattern \u00e2\u20ac\u201d also wedges KERNAL",
+  "git_dirty": true,
+  "built_utc": "20260521T194317Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

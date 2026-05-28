@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_9b0d4d0a4b_20260524T064541Z_78c83f2f-dirty",
+  "md5": "78c83f2f7511798439c7978a976991a8",
+  "size_bytes": 3810992,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "9b0d4d0a4b",
+  "git_subject": "bridge(F.3' Path B v3): CPU_POST_ACK_SETTLE state fixes one-transaction-late bus_addr",
+  "git_dirty": true,
+  "built_utc": "20260524T064541Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

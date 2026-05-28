@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_617a5b3e40_20260527T060920Z_46c9def9-dirty",
+  "md5": "46c9def9d0f53a065df1c3ac9f4d7b17",
+  "size_bytes": 3819588,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "617a5b3e40",
+  "git_subject": "docs: session_handoff \u00e2\u20ac\u201d Problem C shipped, IEC handshake is next",
+  "git_dirty": true,
+  "built_utc": "20260527T060920Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

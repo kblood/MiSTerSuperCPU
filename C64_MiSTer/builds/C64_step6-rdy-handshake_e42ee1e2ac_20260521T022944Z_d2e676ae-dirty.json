@@ -1,0 +1,11 @@
+{
+  "name": "C64_step6-rdy-handshake_e42ee1e2ac_20260521T022944Z_d2e676ae-dirty",
+  "md5": "d2e676ae50881fd0c8ed87729ade7a82",
+  "size_bytes": 3860764,
+  "git_branch": "step6-rdy-handshake",
+  "git_sha": "e42ee1e2ac",
+  "git_subject": "feat: Step 6 Phase 6b \u00e2\u20ac\u201d handshake gates enableCpu, replacing cpu_cyc_s predictor",
+  "git_dirty": true,
+  "built_utc": "20260521T022944Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

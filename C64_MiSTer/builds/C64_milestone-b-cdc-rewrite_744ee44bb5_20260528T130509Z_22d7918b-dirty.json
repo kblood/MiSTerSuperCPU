@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_744ee44bb5_20260528T130509Z_22d7918b-dirty",
+  "md5": "22d7918bc8679efe446a766e2bb493c9",
+  "size_bytes": 3864464,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "744ee44bb5",
+  "git_subject": "feat(scpu): serve EPROM-patched KERNAL/BASIC in emulation mode (VICE-faithful)",
+  "git_dirty": true,
+  "built_utc": "20260528T130509Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}
