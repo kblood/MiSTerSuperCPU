@@ -733,11 +733,7 @@ port(
 	-- not I/O, no DMA). c64.sv passes this through into sdram_pm's new
 	-- fast_path input. Drives '0' when 6510-only or during DMA, which keeps
 	-- the controller on its MISS-only path = bit-identical to Build B.
-	scpu_fast_path_o           : out std_logic;
-	-- Phase 3 (2026-05-26 — Codex Fourth Option): expose the internal
-	-- scpu_bootmap state so c64.sv can drive a SIMM-detect alias mode that
-	-- remaps bank $F6/$F7 → $02/$03 during kickstart's SIMM scan.
-	scpu_bootmap_o             : out std_logic
+	scpu_fast_path_o           : out std_logic
 );
 end fpga64_sid_iec;
 
@@ -2325,7 +2321,7 @@ cpuDi <= scpu_dos_ext_mode
          -- = $00 = BRK. Genuine EPROM byte IS $6B (RTL), so the synthesis
          -- here is non-spoofing.
          x"6B" when (supercpu_en = '1' and addr_hi_816 = x"F8"
-                     and cpuAddr = x"8147"
+                     and (cpuAddr = x"8147" or cpuAddr = x"8148")
                      and cpuWe = '0') else
          -- v346 (2026-05-26): widen carve-out so native-mode SCPU at
          -- bank $F8 keeps fetching from EPROM (cpuDi_raw → buslogic →
@@ -2359,13 +2355,22 @@ begin
 			-- BRK → SP runaway) is now covered by the v347 cpuDi bypass at
 			-- $F8:$8148 (above) PLUS the v346 native-mode bank-$F8 carve-out
 			-- in the ramDin gate. With bootmap='1' at reset, the CPU fetches
-			-- RESET via $00:$FFFC → $FCE2 → JML $F8:$80C1, runs the kickstart
-			-- through $F8:$810E (JSL $F88148 → RTL bypass → $F8:$8112),
-			-- finishes at $F8:$8147 (RTL → $00:$FCE2 in emu mode), and lands
-			-- in KERNAL ROM → BASIC READY. See
-			-- project_v346_phase1_3bug_stack.md for the full three-bug
-			-- analysis and bypass design.
-			scpu_bootmap      <= '1';
+			-- 2026-05-28: reverted to '0' — v347's bootmap='1' at reset
+			-- causes the kickstart to run on every reset, including the
+			-- PRG-load reset_wait (c64.sv:429-437, 100000-cycle window for
+			-- SCPU PRGs). During that window, the kickstart's MVN
+			-- ($F8:$0100→$01:$0100-$60FF, mirrored to bank $00 via
+			-- bank01_mirror_to_00) OVERWRITES the just-injected PRG at
+			-- $0801. Doom MGL autoload regression Bug B was caused by
+			-- exactly this — confirmed empirically: aafa4a4-CLEAN
+			-- (bootmap='0' default) streams Doom; HEAD (bootmap='1') does
+			-- not. Per v348 commit message: "Doom regression is upstream
+			-- of Phase 3 — caused by the kickstart running at all".
+			-- LKG 8a7489ef predates v347 and used bootmap='0' default —
+			-- this restores that. v347 $F8:$8147/$8148 bypass + widened
+			-- bank-$F8 carve-out are retained, harmless when kickstart
+			-- doesn't run.
+			scpu_bootmap      <= '0';
 			scpu_optim_mode   <= "11";
 			scpu_irq_tramp_installed <= '0';
 			scpu_irq_vec_installed   <= '0';  -- v356
@@ -3076,7 +3081,17 @@ generic map (
 	-- domain snapshot + vblank-rise capture. REMEMBER TO REVERT TO '1'
 	-- BEFORE MERGING if MCP debug is incomplete (see Codex review for
 	-- the rationale on snapshot-before-case ordering).
-	SAME_CLOCK_PASSTHROUGH => '0'
+	-- 2026-05-28: reverted to '1' (LKG 18167a5 behavior). MCP path was
+	-- the only difference between LKG's known-good Doom autoload and
+	-- my fix-stacked HEAD build that still wedged at REU C0500. The
+	-- 851-line bridge+sid_iec changes between LKG and HEAD include MCP
+	-- activation in d673dd6; with bootmap='0' at reset, kickstart no
+	-- longer runs so boot doesn't depend on MCP. Passthrough='1' makes
+	-- EFF_BRIDGE_ACTIVE=0 → CPU runs at full speed on clk_sys directly,
+	-- bypassing the F.3' CDC bridge that was wedging Doom's REU FETCH
+	-- chain. Tradeoff: loses observability of the kickstart's irq_n-stuck
+	-- mechanism — but kickstart isn't running anymore, so that's moot.
+	SAME_CLOCK_PASSTHROUGH => '1'
 )
 port map (
 	clk_cpu        => clk_cpu,
@@ -3142,10 +3157,6 @@ cpu_has_bus   <= cpuHasBus;
 -- signal so c64.sv can wire it into sdram_pm.v's HIT gate. Driven from
 -- the existing internal definition further down (line ~2974).
 scpu_fast_path_o <= scpu_fast_path;
--- Phase 3 (2026-05-26 — Codex Fourth Option): export scpu_bootmap so
--- c64.sv can detect the kickstart's STA $D07E (bootmap 1→0) and activate
--- the SIMM-detect alias mode that remaps bank $F6/$F7 → $02/$03.
-scpu_bootmap_o <= scpu_bootmap;
 
 cass_motor <= cpuIO(5);
 cass_write <= cpuIO(3);
@@ -3182,16 +3193,17 @@ scpu_fast_path <= '1' when supercpu_en = '1'
 -- conservative: only mark HIT when (a) the predictor was last updated for
 -- the SAME path class AND (b) the bank+row bits actually match. Path-class
 -- transitions invalidate the row (handled in the clk32 process below).
-sdram_hit_pred <= '1' when sdram_pred_valid = '1'
-                       and ( (scpu_fast_path = '1'
-                              and sdram_pred_bank = addr_hi_816(6 downto 5)
-                              and sdram_pred_row  = addr_hi_816(4 downto 0)
-                                                  & systemAddr(15 downto 8))
-                          or (scpu_fast_path = '0'
-                              and sdram_pred_bank = "00"
-                              and sdram_pred_row(12 downto 8) = "00000"
-                              and sdram_pred_row(7 downto 0)  = systemAddr(15 downto 8))
-                           ) else '0';
+-- 2026-05-28: predictor force-disabled. Per session_handoff §5, the
+-- dual-tracker (sdram_pm.v last_row_valid vs this sdram_pred_valid) can
+-- disagree across the refresh→VIC0 window — when sdram_pm closes the row
+-- on a non-fast_path MISS but sdram_pred_valid stays high until CYCLE_VIC0,
+-- the arbiter trusts HIT (busy_cnt=001) while sdram_pm executes MISS
+-- (~8 clk64), so the CPU latches stale data. This caused Doom autoload's
+-- REU→SuperRAM transfer to corrupt mid-stream → BRK $00:000A. Forcing
+-- hit_pred='0' makes the arbiter always use MISS budget (busy_cnt=011),
+-- bit-identical to Build B / pre-829ee06. Slight perf cost (~2-4 clk64
+-- per CPU access) but Doom runs.
+sdram_hit_pred <= '0';
 
 -- Step 7b (2026-05-23): no extra combinational helper needed —
 -- alt_fire_r2 reuses scpu_fast_path directly (already SuperRAM-only).

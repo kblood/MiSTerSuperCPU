@@ -1054,7 +1054,12 @@ wire sdram_data_valid;
 // (REU DMA) because those don't touch SuperRAM and should always take the
 // MISS path with auto-precharge (== Build B behaviour).
 wire scpu_fast_path;
-wire sdram_fast_path = scpu_fast_path & ~io_cycle & ~ext_cycle;
+// 2026-05-28: sdram_pm.v restored to LKG 18167a5 (pre-829ee06 Build B-only
+// MISS-only path) to eliminate Bug A — the HIT path's A10 auto-precharge
+// bug. LKG sdram_pm doesn't have a `fast_path` input, so the port is
+// removed below. sdram_fast_path wire kept as a stub so fpga64_sid_iec's
+// scpu_fast_path_o output still has a sink (driven '0' since unused).
+wire sdram_fast_path = 1'b0;
 sdram_pm sdram
 (
 	.sd_addr(SDRAM_A),
@@ -1083,8 +1088,8 @@ sdram_pm sdram
 	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : ext_cycle ? reu_ram_dout : cart_wrdata     ),
 	.dout( sdram_data ),
 	.ready( sdram_ready ),
-	.data_valid( sdram_data_valid ),
-	.fast_path( sdram_fast_path )
+	.data_valid( sdram_data_valid )
+	// .fast_path removed 2026-05-28 — LKG sdram_pm.v has no fast_path port
 );
 
 // Phase D SuperRAM address mux. Combinational so the SCPU CPU cycle's address
@@ -1110,47 +1115,15 @@ wire bank01_mirror_to_00 = supercpu_enable && cpu_has_bus
                           && (supercpu_bank == 8'h01)
                           && !supercpu_emul;
 
-// Phase 3 (2026-05-26 — Codex Fourth Option): SIMM-detect alias mode.
-// The CMD SuperCPU kickstart's SIMM-detection scan at $F8:$81A9-$81D5
-// expects bank $F6/$F7 to alias bank $02/$03 (real CMD hardware uses
-// the same SRAM for both ranges). Our build keeps them distinct because
-// Doom depends on that separation. simm_detect_active is asserted
-// between the kickstart's STA $D07E at $F8:$80F7 (bootmap 1→0 falling
-// edge) and the post-RTL handoff to bank-$00 KERNAL in emu mode. While
-// active, bank $F6/$F7 SDRAM accesses are remapped to $02/$03 so the
-// alias-loop CMPs see what the kickstart expects. Cleared after
-// kickstart exits, so steady-state Doom/Wolf3D bank $F6+ reads are
-// unaffected. Full design: docs/phase3_codex_fourth_option_design.md.
-wire scpu_bootmap_w;
-reg  simm_detect_active = 1'b0;
-reg  scpu_bootmap_prev  = 1'b1;
-always @(posedge clk_sys) begin
-    if (reset_n == 1'b0) begin
-        simm_detect_active <= 1'b0;
-        scpu_bootmap_prev  <= 1'b1;
-    end else begin
-        scpu_bootmap_prev <= scpu_bootmap_w;
-        // Set on bootmap falling edge (kickstart's STA $D07E at $F8:$80F7).
-        if (scpu_bootmap_prev && !scpu_bootmap_w)
-            simm_detect_active <= 1'b1;
-        // Clear once kickstart returns to bank $00 in emu mode (post-RTL
-        // handoff to patched KERNAL). cpu_has_bus gate avoids spurious
-        // bank=$00 sightings during VIC/DMA slots.
-        else if (simm_detect_active && cpu_has_bus
-                 && (supercpu_bank == 8'h00) && supercpu_emul)
-            simm_detect_active <= 1'b0;
-    end
-end
-
-wire [7:0] simm_remap_bank =
-    (simm_detect_active && (supercpu_bank == 8'hF6)) ? 8'h02 :
-    (simm_detect_active && (supercpu_bank == 8'hF7)) ? 8'h03 :
-    supercpu_bank;
-
+// Phase 3 (2026-05-26) simm_detect_active REVERTED 2026-05-27 — bisecting
+// Doom-MGL-autoload-inject regression (HEAD pristine fails to stream;
+// aafa4a4-CLEAN streams). The simm_remap_bank intercept is the only
+// structural change between aafa4a4 and HEAD; reverting to confirm or
+// rule out before deeper inject-path investigation.
 wire [24:0] scpu_sdram_addr =
     (supercpu_enable && cpu_has_bus
      && (supercpu_bank != 8'h00) && !bank01_mirror_to_00)
-        ? {1'b1, simm_remap_bank, c64_addr}
+        ? {1'b1, supercpu_bank, c64_addr}
         : cart_addr;
 
 wire  [7:0] c64_data_out;
@@ -2379,9 +2352,7 @@ fpga64_sid_iec fpga64
 	.dbg_bridge_activity_flags  (scpu_dbg_bridge_activity_flags),
 	.dbg_bridge_gap_max         (scpu_dbg_bridge_gap_max),
 	// Milestone A Option (b): SuperRAM-only HIT gate for sdram_pm.
-	.scpu_fast_path_o           (scpu_fast_path),
-	// Phase 3 (2026-05-26): expose bootmap for SIMM-detect alias mode.
-	.scpu_bootmap_o             (scpu_bootmap_w)
+	.scpu_fast_path_o           (scpu_fast_path)
 );
 
 wire [7:0] mouse_x;
