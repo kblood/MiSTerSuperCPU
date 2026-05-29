@@ -126,6 +126,37 @@ Registers only active when hardware registers enabled ($D07E).
 | $D0BE | W | DOS Extension Enable |
 | $D0BF | W | DOS Extension Disable |
 
+#### Authoritative READ semantics (VICE xscpu64 `scpu64_hardware_read`, validated 2026-05-29)
+
+Cross-checked against VICE 3.10 `scpu64mem.c` AND captured live from xscpu64 via
+`tools/vice_scpu_regprobe.py` (ground-truth oracle). **Every $D0Bx read ORs in
+`(mem_reg_optim & 7)` as the low 3 bits** — i.e. the optimization-mode register's
+low nibble bleeds through on *every* status read (this is why a bare probe sees
+`$01` even on undecoded addresses like $D0B1/$D0B7; it is the optim value, not
+open-bus noise). Detection software MUST mask to the documented high bits.
+
+| Reg | VICE read value | High-bit meaning |
+|-----|-----------------|------------------|
+| $D0B0 | `0x40` (v2) / `0xC0` (v1) `\| optim&7` | Mode detect: $40 = v2/64 |
+| $D0B2 | `hwenable?0x80 \| sys_1mhz?0x40 \| optim&7` | HW-enable + sys-1MHz |
+| $D0B3 | (v2) `optim & 0xC0 \| optim&7` | Enhanced-optim readback |
+| $D0B4 | `optim & 0xC0 \| optim&7` | Optimization-mode readback |
+| $D0B5 | `sw_jiffy?0x80 \| sw_1mhz?0x40 \| optim&7` | Physical Jiffy + 1MHz switch |
+| $D0B6 | `emulation?0x80 \| optim&7` | b7 = emulation (6502) mode |
+| $D0B8 | `soft_1mhz?0x80 \| eff_1mhz?0x40 \| optim&7` | SW speed flag + effective speed |
+| $D0BC | `dosext?0x80 \| ramlink?0x40 \| optim&7` | b7=DOS-ext, b6=RAMLink |
+| $D07E/$D078 | `0xFF` | write-only → open bus |
+
+**MiSTer conformance (build `97392a1f`, HW + VICE validated 2026-05-29):** all
+**detection-critical** semantic bits match VICE exactly on silicon —
+`$D0B0=$40` (v2/64), `$D0B2=$80` (hwenable after $D07E), `$D0B6=$80` (emulation),
+`$D0BC=$00` (b7=0 ⇒ SuperCPU present, the canonical §8 Method-1 detect). We do
+**not** OR `optim&7` into the low bits and do not drive the $D0B3/$D0B4 high
+nibble or the $D0B5 jiffy bit — all confirmed to have **zero firmware/detection
+consumers** (iter-5 EPROM scan: optimization regs are 9 writes / 0 reads), so the
+divergence is benign. Probes: `tools/build_scpu_regprobe.py` +
+`tools/vice_scpu_regprobe.py` (oracle), `tools/d0bx_full_hw_sweep.py` (silicon).
+
 ### $D200-$D3FF — SRAM in I/O Space
 
 | Range | Function |
