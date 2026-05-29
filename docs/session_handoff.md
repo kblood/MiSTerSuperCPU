@@ -29,14 +29,45 @@ genuine bug to chase next, NOT a closed win.
 - **Evidence:** HW `tools/scpu_compat/run/scpukicks_d1/{00_boot,0110s,0178s}.png`;
   oracle `tools/scpu_compat/run/scpukicks_d1_VICE_ORACLE.png` (+ `_scroller`,
   `_part_b`). Memory: `project_scpu_thirdparty_demo_validated.md`.
-- **NEXT (the actual compat lever):** classify the rendering bug. (1) Get a
-  SAME-part VICE-vs-HW shot (VICE loads slowly via real serial IEC — run >180s or
-  add warp). (2) Re-run the demo with SCPU turbo forced OFF to test the
-  raster-IRQ-timing-under-turbo hypothesis (this is SCPU-aware sw that likely
-  writes $D07B → hits the iter-3 emu-turbo path). (3) If turbo-independent,
-  suspect VIC-II badline/sprite timing under accelerated CPU or a DYCP
-  $D011/$D016 fine-scroll interaction. Harness `run_d64_scpu.py` +
-  `vice_run_d64.py` not yet committed pending this honest write-up.
+- **ROOT CAUSE (offline disasm — strong, no build needed):** extracted all 12
+  demo PRGs (`c1541 -read`) and byte-scanned them: the demo references **NO** SCPU
+  speed/control register ($D079/$D07A/$D07B, nor any $D070-7F/$D0B0-BF). It relies
+  on the real SuperCPU being **FAST (20MHz) by default** in emulation mode (real
+  SCPU sw writes $D07A only to SLOW). Our core (iter-3) defaults emulation to
+  **1MHz**, gated on a $D07B write that never happens here → the demo runs at
+  **1MHz** on our core, so its raster effect (coded for ~20MHz of per-line work)
+  can't finish before the beam → DYCP splits land late → collapse + flicker.
+  It's turbo-too-SLOW, NOT turbo-too-fast (my first guess). UART confirms the
+  demo is live-looping its effect code at $8145-$837C, IRQs firing.
+- **DESIGN TENSION surfaced:** real-faithful = emulation fast-by-default (fixes
+  this + any fast-by-default SCPU title) BUT breaks the "Lorenz 100% in scpu mode"
+  hard constraint (cycle-exact CIA/timer tests fail at 4MHz — as they would on
+  real SCPU too). iter-3 chose 1MHz-default+$D07B-gate to keep Lorenz green.
+  Needs a DECISION (OSD-gated SCPU-turbo default? accept Lorenz-timing-fails-in-
+  scpu as real-faithful? auto-detect?), not just an RTL flip.
+- **ROOT CAUSE CONFIRMED (VICE oracle):** ran the demo in VICE, and once the
+  intro was up (clean at full speed) poked `$D07A=01` via the monitor to force
+  the SCPU to 1MHz → the effect broke the SAME way (logo gone, raster bars
+  collapsed; `scpukicks_d1_VICE_1mhz.png` vs clean `_VICE_ORACLE.png`). The
+  effect REQUIRES ~20MHz; at 1MHz it collapses on VICE and on us. Confirmed.
+- **DIAGNOSTIC BUILD RESULT — fix BLOCKED on P65C816 serial** (build `44c6f2f8`,
+  RTL since REVERTED to pristine): made emu fast-by-default → it **wedged serial
+  LOAD at $ED5A**, demo never loaded (stuck at READY, `scpukicks_fastdefault/`
+  all frames = boot screen). And this demo OVERLAPS loading parts b/c WITH the
+  intro effect (VICE monitor showed serial $eeXX active throughout the intro), so
+  "load at 1MHz then switch to fast" CANNOT work — it needs fast serial AND fast
+  effect at once. Our P65C816 serial can't run fast (the documented $ED5A
+  cycle-timing limit). **⇒ fast-by-default emulation compat is GATED on the
+  deferred P65C816 fast-serial fix**, which this iteration ELEVATES from
+  "cosmetic (banner only)" to "the gate for a whole class of fast-by-default SCPU
+  titles." (The Lorenz-100%-vs-fast tension is real but moot until serial-at-
+  speed works.) Good build `97392a1f` redeployed; device released.
+- **NEXT:** the highest-leverage compat lever is now the P65C816 fast-serial fix
+  (was deferred as CPU-core surgery / cosmetic) — reframe it as the
+  fast-by-default-emulation enabler. Also: try OTHER 3rd-party SCPU titles via
+  `run_d64_scpu.py` — ones that DON'T overlap load+effect, or that DO write
+  $D07B, would render fine today and broaden the validated set (F19 SCPU, Popel
+  Premiere; patched games on supercpu.cbm8bit.com).
 - Speed past 4MHz stays Milestone-B-gated (iter 4).
 
 ## ITERATION 7 — COMPAT: SST F3 (RTI) re-characterized as BENIGN (DONE, docs-only)
