@@ -33,6 +33,7 @@ entity turbo_throughput_tb is
         G_BUSY_FROM_READY : boolean := false;
         G_STRIDE          : integer := 1;
         G_REFRESH_PERIOD  : integer := 0;   -- 0=off; else clk64 cycles between refresh pulses (async row-close stress)
+        G_INTERLEAVE      : boolean := false; -- true=alternate SuperRAM(fast)/bank-$00 accesses (Doom-loader shape; forces conflict-MISS)
         G_US              : integer := 1000
     );
 end entity;
@@ -123,9 +124,22 @@ begin
     --------------------------------------------------------------------
     -- CPU address generator: sequential walk with configurable stride.
     -- A new address is presented after each launched access (cpu_cyc).
+    --
+    -- G_INTERLEAVE models the REAL Doom-loader / 6502 access shape: odd
+    -- accesses target bank-$00 (fast_path=0) instead of SuperRAM. A bank-$00
+    -- access after a SuperRAM access is a different bank+row while the SuperRAM
+    -- row is still tracked open -> the controller's CONFLICT-MISS path fires
+    -- (PRECHARGE-ALL + ACTIVE + R/W, sample at q=7 = 1 clk64-pair later than a
+    -- plain MISS). The pure-sequential pattern (default) NEVER exercises this,
+    -- which is why mode-2 showed 0 stale in sim yet BRK'd on HW. With interleave
+    -- on, the correctness monitor sees the conflict-MISS data arrive after the
+    -- arbiter's fixed-timing sample -> stale, faithfully reproducing the HW bug.
     --------------------------------------------------------------------
-    offset21 <= resize(acc_index * to_unsigned(G_STRIDE, 16), 21);
-    cpu_addr <= unsigned(ADDR_TOP4) & offset21;
+    offset21  <= resize(acc_index * to_unsigned(G_STRIDE, 16), 21);
+    cpu_addr  <= (unsigned'("0000") & offset21)
+                     when (G_INTERLEAVE and acc_index(0) = '1')
+                 else unsigned(ADDR_TOP4) & offset21;
+    scpu_fast <= '0' when (G_INTERLEAVE and acc_index(0) = '1') else '1';
 
     cpu_gen : process(clk32)
     begin

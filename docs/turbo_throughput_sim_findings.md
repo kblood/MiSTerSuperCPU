@@ -122,3 +122,39 @@ Expected effective speed: **~8 MHz on SuperRAM-bank code with good locality,
 Bigger lever beyond this (separate, larger): the BRAM CPU cache (up to
 32 MHz on hits, bypasses SDRAM) — the same sim harness can be extended to
 model the cache + write-buffer before reviving the dead `cpu_cache.vhd`.
+
+---
+
+## ITER 2 UPDATE (2026-05-30) — HW-FALSIFIED + interleave correction
+
+**Build-1 (the controller-only bisect of the plan above) was built and tested
+on silicon. It REGRESSED Doom.** Full case: `docs/turbo_build1_controller_falsified.md`.
+Two corrections to the optimistic read above:
+
+1. **The ~8 MHz figure is a SEQUENTIAL-ONLY artifact.** Added a `G_INTERLEAVE`
+   knob to the bench that alternates SuperRAM (fast_path=1) and bank-$00
+   (fast_path=0) accesses — the real shape of C64/SCPU code (pervasive ZP,
+   stack, KERNAL in bank-$00 interleaved with SuperRAM code/data, and exactly
+   Doom's REU→SuperRAM loader). Result: **mode-2 single-tracker under interleave
+   = 4.0 MHz = the baseline (no gain).** Every return to SuperRAM after a
+   bank-$00 access is a conflict-MISS (open row must PRECHARGE-ALL first), which
+   eats the HIT win. Since real code interleaves bank-$00 constantly, the
+   page-mode payoff on real workloads is ≈ nil.
+
+2. **The bench's correctness monitor does NOT yet model the real failure.**
+   mode-0/alt-off/interleave (= the EXACT Build-1 arbiter config) reports
+   `STALE_READS=0 / PASS` in sim, yet Build-1 BRK'd ($00:000A) on HW. The
+   monitor only flags premature NEXT-FIRE (`new ce while ready=0`); the real bug
+   is the CPU consuming `dout_r` at a FIXED `enableCpu` edge (ungated by
+   `data_valid`), so a q=7 conflict-MISS delivers stale data the monitor can't
+   see. Closing this needs the lite model to return real DATA values and a
+   fixed-timing consume event — substantial rework, deferred (the no-payoff
+   result already kills the lever).
+
+**Verdict: page-mode SDRAM is not a viable turbo lever** — it fails correctness
+on HW (conflict-MISS sample timing) AND delivers no speedup on interleaved
+(ZP-heavy = realistic) workloads. The page-mode controller is reverted to
+Build B. The real >4 MHz path is **Milestone B** (clk_cpu=64 MHz + bridge MCP),
+consistent with iter-4. The BRAM CPU cache remains a separate, untested lever,
+but the same interleave caveat applies — model it under interleave before any
+build.
