@@ -1,0 +1,21 @@
+disk: tools/scpu_compat/SCPUKICK/SCPU1.D64
+mode: scpu
+mins: 6
+
+  t=    0s  00_boot.png  md5=76b2bddb75ec
+  t=   20s  0020s.png  md5=3dbda78c75b9
+  t=   42s  0042s.png  md5=76a288221192
+  t=   65s  0065s.png  md5=27b51d233d23
+  t=   87s  0087s.png  md5=6b2cb755ad8d
+  t=  110s  0110s.png  md5=d601cd10ea94
+  t=  133s  0133s.png  md5=9bcd74ba749b
+  t=  155s  0155s.png  md5=ac2debf654d1
+  t=  178s  0178s.png  md5=301da21cec4d
+  t=  200s  0200s.png  md5=912447e4c6d7
+  t=  223s  0223s.png  md5=eb3f45be3ff9
+  t=  246s  0246s.png  md5=b19a7b91c85c
+  t=  268s  0268s.png  md5=276013b1a97f
+  t=  291s  0291s.png  md5=d4b2cbb3d774
+  t=  314s  0314s.png  md5=534f9f58084c
+  t=  336s  0336s.png  md5=1658357ebe4c
+  t=  359s  0359s.png  md5=65eabdfec326

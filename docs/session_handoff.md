@@ -1,5 +1,44 @@
 # Session handoff — 2026-05-29: autonomous compat+speed loop
 
+## ITERATION 8 — COMPAT: first 3rd-party SCPU title run on HW → REAL RENDERING BUG (IN PROGRESS)
+Broke the standing blocker that capped iters 5-7 ("no 3rd-party SCPU binaries to
+test") — and the very first title exposed a concrete compat defect. This is a
+genuine bug to chase next, NOT a closed win.
+- **Asset:** "SuperCPU Kicks!" by DMAgic (1999), WiLD compo @ Mekka&Symposium '99.
+  CSDb release id 3432 -> `csdb.dk/getinternalfile.php/75890/scpukicksd64.zip`
+  (3× D64, label "required: scpu with 1mb ram"). Extracted to
+  `tools/scpu_compat/SCPUKICK/SCPU{1,2,3}.D64`. Boot = first PRG `scpu kicks !/dma`.
+- **Run:** `tools/scpu_compat/run_d64_scpu.py SCPU1.D64 --name scpukicks_d1 --mins 6`
+  on build `97392a1f` (already on `_Test`; read-mux fix + both turbo modes).
+  cfg byte10=0x0C (scpu). MGL = disk(s,idx0) + `lorenz_autoload.prg` (f,idx1).
+- **RESULT — boots & detects, but RENDERS BROKEN.** Boot shows `**** C=64 SCPU64
+  ROM V0.07 ****`; demo loads parts a/b/c; **passes its own SuperCPU
+  presence-detect** (no "SuperCPU required" bail) — so detection works end-to-end.
+  BUT the display is **graphically corrupted + flickers heavily** on HW
+  (distorted/doubled DYCP scroller chars, corrupted sprite floor — operator
+  confirmed live). The **VICE 3.10 xscpu64 oracle renders the SAME demo CLEAN**
+  (sharp DMAGIC logo, smooth raster bars, crisp dual scrollers) ⇒ real
+  rendering/timing bug in OUR core, not a fragile demo.
+- **METHODOLOGY MISS (corrected):** I first called this a "clean PASS" because
+  every screenshot frame had a unique md5 ("animating ⇒ healthy"). WRONG — a
+  flickering/corrupt screen also changes every frame. The VICE differential
+  comparison is mandatory for graphical titles and I'd skipped it (the first
+  oracle screenshot silently failed). FIX: VICE monitor `screenshot` needs a
+  forward-slash path + format arg: `screenshot "C:/.../x.png" 2` (backslashes
+  write nothing). Oracle now produces PNGs.
+- **Evidence:** HW `tools/scpu_compat/run/scpukicks_d1/{00_boot,0110s,0178s}.png`;
+  oracle `tools/scpu_compat/run/scpukicks_d1_VICE_ORACLE.png` (+ `_scroller`,
+  `_part_b`). Memory: `project_scpu_thirdparty_demo_validated.md`.
+- **NEXT (the actual compat lever):** classify the rendering bug. (1) Get a
+  SAME-part VICE-vs-HW shot (VICE loads slowly via real serial IEC — run >180s or
+  add warp). (2) Re-run the demo with SCPU turbo forced OFF to test the
+  raster-IRQ-timing-under-turbo hypothesis (this is SCPU-aware sw that likely
+  writes $D07B → hits the iter-3 emu-turbo path). (3) If turbo-independent,
+  suspect VIC-II badline/sprite timing under accelerated CPU or a DYCP
+  $D011/$D016 fine-scroll interaction. Harness `run_d64_scpu.py` +
+  `vice_run_d64.py` not yet committed pending this honest write-up.
+- Speed past 4MHz stays Milestone-B-gated (iter 4).
+
 ## ITERATION 7 — COMPAT: SST F3 (RTI) re-characterized as BENIGN (DONE, docs-only)
 Off-device, GHDL-only, no build. Closed the **last big cloud on the SST
 conformance scoreboard**: F3 "RTI PC++" (~19,901 fails = **97% of all
