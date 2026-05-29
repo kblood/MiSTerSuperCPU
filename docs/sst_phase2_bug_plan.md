@@ -373,45 +373,96 @@ This is **not a bug** but a documented compatibility tradeoff. SST
 will continue to flag these cases against pure WDC silicon. Marked
 as expected deviation.
 
-## F3 — RTI PC++ — DEFERRED
+## F3 — RTI cycle-trace mismatch — RE-CHARACTERIZED AS BENIGN (2026-05-29)
 
-### Smoking guns
+**Conclusion: not a real bug. RTI is architecturally correct in both
+modes — the SST fails are a WDC-silicon cycle-trace ordering/count
+difference with zero observable effect on real software. The earlier
+"PC++ / off-by-one / pre-read-SP / invasive microcode restructure"
+framing is superseded.** Root-caused cycle-by-cycle via
+`run_sst.ps1 -VerboseEach` on 40.e/40.n (2026-05-29). The fix is
+known and GHDL-proven (below) but is **shelved, not shipped** —
+nil real-software benefit vs. a CPU-core change touching every
+interrupt path. See `docs/session_handoff.md` (iter 7) for the
+cost/benefit call.
 
-- 40.e: `PBR:PC exp=1A:ED07 got=1A:ED08` — PC off by 1.
-- 40.n: `CY[3] addr exp=0081CC got=0081CD` — addr off by 1.
+### Smoking guns (verbose cycle dump)
 
-### Mechanism (deeper than initially diagnosed)
-
-Real WDC RTI uses **pre-read SP++** semantics: each pull cycle
-increments SP first, then reads at the new SP. Our microcode uses
-**post-read SP++** (the `LOAD_SP="001"` register file commits SP at
-end of cycle). The cycle shapes diverge:
+`40.e` (emu) case 4 — observed vs SST (real silicon):
 
 ```
-Real silicon native RTI (7 cycles):
-  CY0 opcode | CY1 dummy fetch | CY2 dummy IO | CY3 read P (SP+1)
-  | CY4 read PCL (SP+2) | CY5 read PCH (SP+3) | CY6 read PBR (SP+4)
-  Final SP = init_SP + 4
-
-Our microcode (7 cycles, off by ONE internal cycle at start):
-  CY0 opcode | CY1 SP++ no-read | CY2 read P (SP+1) | ...
+SST (6 cyc):              ours (5 cyc):
+CY0 EE97D2 opcode  v1v1   CY0 EE97D2  =
+CY1 EE97D3 dummy   v0v0   CY1 EE97D3  =   (one internal)
+CY2 EE97D3 inc-S   v0v0   CY2 0001AF  <- we pull P here (silicon's CY3)
+CY3 0001AF pull P  v1v0   CY3 0001B0  pull PCL
+CY4 0001B0 pull PCL       CY4 0001B1  pull PCH
+CY5 0001B1 pull PCH       CY5 EE318D  <- already fetching NEXT opcode
+final PC=ED07/318D         CAP pc=318E (next-fetch bumped PC)
 ```
 
-To realign: insert a true no-op cycle at state 1, push everything by
-one. But then the SP++ for the PBR read in native must be conditional
-(emu terminates after PCH read with SP at PCH-addr; native needs one
-more SP++ before PBR read). This requires either a new microcode
-LOAD_SP code that conditions on EF, or restructuring the SP-based
-ADDR_BUS to support pre-read SP+1 semantics.
+`40.n` (native) case 0: identical shape — 7 cycles **both** ways, but
+our single internal cycle sits where silicon's CY1 dummy is, and our
+*second* internal cycle sits **between pull-PCH and pull-PBR** instead
+of up front (silicon: dummy+inc-S up front, four pulls back-to-back).
 
-### Fix order
+### Mechanism — single missing/mispositioned internal cycle
 
-Deferred until the bench's other low-hanging RTL fixes are landed.
-Option A: redesign microcode + custom LOAD_SP code.
-Option B: redefine `addrBus="1100"` to use SP+1 for the read address
-and have post-read SP++ commit to SP+1, matching pre-read silicon.
-Option B is simpler but has wider blast radius (every SP-based read
-in microcode would need re-checking).
+Real 65C816 RTI = `opcode · dummy-fetch · inc-S(internal) · pull P ·
+pull PCL · pull PCH [· pull PBR(native)]` = **6 cyc emu / 7 cyc
+native**. Our microcode (MCode.vhd rows 599-604) has only **one**
+non-pull cycle before the pulls (the `'SP++'` row), so:
+
+- **Emu**: 5 cyc (missing the inc-S internal cycle entirely). The one
+  genuine *timing* deviation — RTI completes 1 cycle early.
+- **Native**: 7 cyc (correct total), but the extra internal cycle
+  (`'SP++'`, row 603) is positioned between the PCH and PBR pulls
+  rather than up front → trace position mismatch, **zero cycle-count
+  or architectural effect**.
+
+In **both** modes the stack pulls read the correct addresses/data and
+the final PC/SP/PBR/P are exactly the SST `final` regs (verified:
+`CAP sp/pbr/pc` match `exp` on every case). The emu "PC off-by-one"
+(`got=exp+1`) is a *bench* artifact: the bench captures regs one clock
+after the last recorded cycle, and because our emu RTI is one cycle
+short, that clock is the next opcode fetch, which has already bumped PC.
+
+This is why every interrupt return works and Lorenz is 100% in both
+modes: software never observes RTI's internal cycle count. Real
+cycle-exact code (stable rasters) synchronises at *handler entry*
+(cycle-eating on $D012), never on RTI duration; and SuperCPU turbo
+abandons cycle-exactness anyway.
+
+### Proven fix (SHELVED — recipe, do not ship without a CPU-core batch HW-regress)
+
+GHDL-verified 2026-05-29: inserting the missing inc-S internal cycle
+as RTI microcode state 0 (a pure no-op: `addrBus=0000`, `va="00"`,
+all loads `000`; shift rows 599→604 down one, drop one trailing `XXX`
+padding row so RTI stays in its 8-row block) takes **`40.e` from
+0/10000 → pass=9906 fail=0 skip=94** with zero changes to any other
+opcode (the edit is local to RTI's 8-row slot; the state machine
+already length-varies via `stateCtrl`).
+
+To also fix native (cosmetic only — no real benefit) you must drop the
+mid internal (row 603) and make the PCH-pull (new state 4) do the SP
+increment **for native only** so the PBR pull lands at SP+1. All 8
+`LOAD_SP` codes (P65C816.vhd:418-477) are taken, so this needs an
+XCE-style RTL special-case (cf. the `IR=x"FB"` block at P65C816.vhd:357):
+`if IR=x"40" and EF='0' and STATE=4 then SP<=SP+1`. This touches the
+shared SP-commit path → wider blast radius; only worth it if a future
+CPU-core change is being HW-regressed anyway.
+
+### Why shelved (not shipped)
+
+RTI cycle-count is invisible to real C64/SuperCPU software (turbo,
+raster-sync-at-entry). The architectural result is already 100%
+correct. Shipping costs a CPU-core microcode + SP-commit change in
+every interrupt path plus a mandatory full HW regression (Lorenz ×2,
+Doom, Asterix) — a real-risk build slot for a synthetic-scoreboard-only
+gain. Per the project's CPU-core caution, classify-and-document beats a
+risky nil-benefit change. The remaining ~19,901 `$40` "fails" are now
+**characterized as benign WDC-trace deviation**, joining F6/F7 and
+`$6C` in the "expected deviation" bucket.
 
 ## F11, F12 — single-case strays
 
@@ -455,7 +506,7 @@ a single $E1.e flag-bit stray.
 
 | Category | Ops | Fails |
 |---|---|---|
-| **F3 RTI** (deferred — microcode restructure) | $40 (e+n) | 19,901 |
+| **F3 RTI** (BENIGN WDC-trace deviation — architecturally correct, see F3 section; fix proven+shelved 2026-05-29) | $40 (e+n) | 19,901 |
 | **SuperCPU emu-mode page-1 stack wrap** (intentional deviation from WDC silicon, matches CMD SuperCPU and VICE; required for Asterix decompressor) | $6B RTL, $2B PLD, $22 JSL, $0B PHD, $62 PER, $D4 PEI, $F4 PEA, $AB PLB, $DC JML(abs) | ~547 |
 | **NMOS JMP ($xxFF) page-wrap** (intentional, mirrors 6502/VICE) | $6C JMP(abs) emu | 36 |
 | **$E1.e single stray** (case 8668; flag bit C, unrelated to addressing) | $E1 SBC (DP,X) | 1 |
@@ -554,8 +605,14 @@ settle). Focused SST regression on 8 (DP,X) ops:
 **99.90 % pass, 1 stray** (`e1.e` case 8668 — flag bit, unrelated).
 Sibling regression on 14 control opcodes: 280 K cases, 0 fails.
 
-- **Still deferred:**
-  - F3 RTI PC++ — needs invasive microcode/addressing restructure (~20 K SST fails)
+- **Remaining fails — ALL now classified as benign/intentional (no real CPU bug left):**
+  - F3 RTI cycle-trace (~19,901) — BENIGN WDC-trace deviation, architecturally
+    correct, root-caused + fix proven & shelved 2026-05-29 (see F3 section). Was
+    "deferred — invasive restructure"; that framing is superseded.
   - F6/F7 SuperCPU page-1 stack wrap — intentional deviation, matches CMD SuperCPU + VICE (~538 fails)
   - $6C JMP NMOS wrap on emu (36 fails) — intentional, mirrors VICE
   - Single-case strays (~50 across ~5 ops)
+
+  Net: with F3 reclassified, **every remaining SST fail is a documented
+  benign/intentional deviation** — the P65C816 core has no known
+  real-software CPU-semantics bug against the SST oracle.

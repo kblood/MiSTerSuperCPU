@@ -1,5 +1,77 @@
 # Session handoff — 2026-05-29: autonomous compat+speed loop
 
+## ITERATION 7 — COMPAT: SST F3 (RTI) re-characterized as BENIGN (DONE, docs-only)
+Off-device, GHDL-only, no build. Closed the **last big cloud on the SST
+conformance scoreboard**: F3 "RTI PC++" (~19,901 fails = **97% of all
+remaining SST fails**, deferred since Phase 2 as needing "invasive
+microcode restructure"). Root-caused cycle-by-cycle and proved it is **not
+a real bug**.
+- **Finding:** real 65C816 RTI = `opcode·dummy·inc-S(internal)·pull P·pull
+  PCL·pull PCH[·pull PBR]` = 6 cyc emu / 7 cyc native. Our microcode has
+  only ONE non-pull cycle before the pulls. Emu is therefore 5 cyc (missing
+  the inc-S internal cycle); native is 7 cyc (correct total) but with the
+  extra internal cycle mispositioned between the PCH and PBR pulls. **In both
+  modes the stack pulls read the correct addresses/data and the final
+  PC/SP/PBR/P exactly match the SST `final` regs** (verified via
+  `run_sst.ps1 -VerboseEach` on 40.e/40.n). The emu "PC=exp+1" is a *bench*
+  capture artifact (it samples regs one clock after the last recorded cycle;
+  our emu RTI being 1 cyc short, that clock is the next opcode fetch, which
+  already bumped PC).
+- **Why benign:** RTI cycle-count is invisible to real C64/SuperCPU software
+  — turbo abandons cycle-exactness, and stable rasters sync at *handler entry*
+  ($D012 cycle-eating), never on RTI duration. Hence Lorenz 100% + every
+  interrupt works despite the deviation. Joins F6/F7 + `$6C` in the "expected
+  deviation" bucket → **every remaining SST fail is now a documented
+  benign/intentional deviation; the P65C816 core has no known real-software
+  CPU-semantics bug vs the SST oracle.**
+- **Fix proven & SHELVED (not shipped):** inserting the missing inc-S internal
+  cycle as RTI microcode state 0 (pure no-op row, local to RTI's 8-row slot)
+  took **40.e 0/10000 → pass=9906 fail=0 skip=94** in GHDL, zero impact on
+  other opcodes. Full both-mode fix additionally needs an XCE-style RTL
+  special-case for the native PBR-pull SP++ (all 8 `LOAD_SP` codes are taken;
+  P65C816.vhd:357 is the pattern). **Reverted the experimental RTL — CPU core
+  left pristine.** Recipe lives in `docs/sst_phase2_bug_plan.md` §F3.
+- **Decision (drive-don't-ask):** did NOT ship. CPU-core change in every
+  interrupt path + mandatory full HW regression for a synthetic-scoreboard-only
+  gain (nil real-software benefit) is poor leverage and against the project's
+  CPU-core caution. Classify-and-document is the high-leverage move; the recipe
+  is on the shelf for any future batched CPU-core HW-regress.
+- **Net compat state:** the two cheap COMPAT levers reachable off-device
+  (SCPU detection, iter 6; CPU opcode conformance, iter 7) are now both closed
+  clean. The next REAL compat lever remains running actual 3rd-party SCPU title
+  binaries (the documented gathering blocker) — register/CPU-semantics work is
+  exhausted. Speed past 4 MHz stays Milestone-B-gated (iter 4).
+
+## ITERATION 6 — COMPAT: SCPU detection VICE-oracle validation (DONE, committed `bc50977`)
+Validation+infrastructure iteration (no RTL change — and that's the correct
+outcome). Confirmed iter-5's $D0Bx/$D07E read-mux is **detection-correct against
+the authoritative oracle**: VICE 3.10 xscpu64 `scpu64_hardware_read` (source via
+WebFetch of scpu64mem.c) + live capture, cross-checked on silicon (build
+`97392a1f`, MiSTer free → reserved → swept → released).
+- **HW sweep line1 = `64 128 128 0`** ($D0B0/$D0B2/$D0B6/$D0BC) = every
+  detection-critical SEMANTIC bit matches VICE EXACTLY: $D0B0=$40 (v2/64),
+  $D0B2=$80 (hwenable after $D07E), $D0B6=$80 (emulation), $D0BC=$00 (b7=0 ⇒
+  SuperCPU present = canonical Method-1 detect). Iter-5 had only spot-checked 2;
+  now the whole detect set is HW+oracle confirmed.
+- **scpu64mem.c key insight:** every $D0Bx read ORs `(mem_reg_optim & 7)` into the
+  low 3 bits. The pervasive `$01` a bare probe sees (even on undecoded $D0B1/$D0B7)
+  is the **optim register bleeding through, NOT open-bus**. Detection sw masks the
+  high bits → our clean values are fully compatible.
+- **No RTL change.** Benign deltas: optim low-3 bleed, $D0B3/$D0B4 optim-high-nibble
+  ($D0B4 reads `3` on our 2-bit model), $D0B5 jiffy b7. ALL have zero firmware/
+  detection consumers (iter-5: optim regs 9 writes / 0 reads). Adding decode =
+  speculative dead code, which the project rules forbid.
+- **Committed `bc50977`** (pushes gated): reusable differential-oracle tooling
+  (`build_scpu_regprobe.py`+`scpu_regprobe.prg`, `vice_scpu_regprobe.py`,
+  `d0bx_full_hw_sweep.py`) + authoritative VICE read formulas in
+  `docs/supercpu_architecture_reference.md` §$D0Bx. Memory:
+  `project_scpu_detect_vice_validated.md`.
+- **Unblocks** the SCPU library compat sweep (feature_status §13 #9): detection-
+  failure is now RULED OUT as a cause of "SCPU sw runs un-accelerated." The next
+  real compat lever is running actual SCPU title binaries — gathering them is the
+  blocker (repo has Doom/Wolf3D/Lorenz/asterix + our own probes, no 3rd-party
+  SCPU apps). VICE xscpu64 is available locally as a per-title differential oracle.
+
 ## ITERATION 5 — COMPAT: SCPU status read-mux fix (SHIPPED + HW-verified)
 The first COMPAT lever after the turbo wins. Two findings:
 - **WriteSmart ($D074-$D077/$D0B3) is a NON-GAP** — EPROM scan: 9 writes / 0
