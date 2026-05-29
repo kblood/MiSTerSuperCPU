@@ -1336,6 +1336,8 @@ signal dbg_dbr_816_i  : unsigned(7 downto 0);
 signal supercpu_en_prev  : std_logic := '0';                            -- rising-edge detect on supercpu_en
 signal scpu_rom_vis      : std_logic := '1';                            -- '1' = SuperCPU ROM at $E000-$FFFF (Phase C uses)
 signal scpu_speed_1mhz   : std_logic := '0';                            -- $D07A=1, $D07B=0
+signal scpu_speed_reg_written : std_logic := '0';                       -- '1' once software writes $D07A/$D07B/$D079; gates emu-mode turbo so the default (Lorenz/BASIC, which never touch it) stays 1MHz
+signal emu_serial_throttle    : std_logic := '0';                       -- '1' while emu-mode PC is in the KERNAL IEC serial routines (pages $ED/$EE) -> force 1MHz
 signal scpu_sys_1mhz     : std_logic := '0';                            -- $D072=1, $D073=0
 signal scpu_force_1mhz   : std_logic := '0';                            -- = scpu_speed_1mhz OR scpu_sys_1mhz OR cia2_throttle_active
 -- Problem C (Codex 2026-05-27): per-access CIA2 auto-throttle. Whenever
@@ -2347,6 +2349,7 @@ begin
 		if reset = '1' or (supercpu_en = '1' and supercpu_en_prev = '0') then
 			scpu_rom_vis      <= '1';
 			scpu_speed_1mhz   <= '0';
+			scpu_speed_reg_written <= '0';
 			scpu_sys_1mhz     <= '0';
 			scpu_regs_enabled <= '1';
 			scpu_hwenable     <= '0';
@@ -2413,8 +2416,10 @@ begin
 				scpu_regs_enabled <= '0';
 			elsif cpuAddr = x"D07A" then
 				scpu_speed_1mhz <= '1';
+				scpu_speed_reg_written <= '1';
 			elsif cpuAddr = x"D07B" or cpuAddr = x"D079" then
 				scpu_speed_1mhz <= '0';
+				scpu_speed_reg_written <= '1';
 			elsif cpuAddr = x"D074" then
 				scpu_optim_mode <= "00";
 			elsif cpuAddr = x"D075" then
@@ -3227,7 +3232,28 @@ sdram_hit_pred <= '0';
 -- (~3MHz effective). Bridge-side change deemed unnecessary: enableCpu_816 =
 -- cpu_cyc_s(1), so gating cpu_cyc here propagates through the bridge ack
 -- pulse naturally and makes the CPU advance at 1MHz with no MCP changes.
-scpu_force_1mhz <= scpu_speed_1mhz or scpu_sys_1mhz or cia2_throttle_active;
+scpu_force_1mhz <= scpu_speed_1mhz or scpu_sys_1mhz or cia2_throttle_active or emu_serial_throttle;
+
+-- Emulation-mode KERNAL serial throttle. Hold the CPU at 1MHz whenever it
+-- executes the stock IEC serial routines (pages $ED/$EE, bank $00) in
+-- emulation mode. Those routines bit-bang the c1541 with CPU-cycle-counted
+-- NOP delays ($ED66-$ED90 send, $EE13 ACPTR receive) that desync the drive
+-- at turbo speed -> $ED5A LOAD wedge. Native mode never runs them (no serial).
+-- This also protects LOAD/SAVE if SCPU-aware software left emulation in fast
+-- mode ($D07B) before a serial transaction. Registered (1 clk32 engage/release
+-- latency is negligible vs the hundreds-of-clk32 serial bit cells).
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if supercpu_en = '1' and emu_mode_816_i = '1'
+			and cpu_pc_now(23 downto 16) = x"00"
+			and (cpu_pc_now(15 downto 8) = x"ED" or cpu_pc_now(15 downto 8) = x"EE") then
+			emu_serial_throttle <= '1';
+		else
+			emu_serial_throttle <= '0';
+		end if;
+	end if;
+end process;
 
 -- Problem C (Codex 2026-05-27): CIA2 auto-throttle counter. Reloads on any
 -- accepted CPU CIA2 access; counts down on every clk32 otherwise. While
@@ -3404,6 +3430,14 @@ begin
 				-- scpu_force_1mhz ($D07A/$D072/cia2_throttle) still gates the turbo
 				-- slots on top, and the cs_io guard keeps all I/O at 1MHz.
 				if supercpu_en = '1' and emu_mode_816_i = '0' then
+					turbo_m <= "111";
+				elsif supercpu_en = '1' and emu_mode_816_i = '1'
+					and scpu_speed_reg_written = '1' and scpu_speed_1mhz = '0' then
+					-- SCPU emulation mode, software took speed control and asked
+					-- for fast ($D07B): 4x. The speed-reg-written latch keeps the
+					-- DEFAULT (Lorenz/BASIC/LOAD/Doom-loader, which never write
+					-- $D07A/$D07B) at the OSD-default 1MHz so Lorenz stays 100%.
+					-- emu_serial_throttle still forces 1MHz during KERNAL serial.
 					turbo_m <= "111";
 				elsif (turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1' then
 					case turbo_speed is

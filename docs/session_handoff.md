@@ -2,7 +2,56 @@
 
 ## STATUS
 Self-paced `/loop` driving the north-star: **make the SCPU as compatible and
-fast as possible.** Iteration 2 SHIPPED a validated speed win.
+fast as possible.** Iteration 2 SHIPPED (native turbo, commit `32789a4`).
+Iteration 3 SHIPPED (emulation-mode turbo, build `ba9ec7b5`) — 4/4 HW-validated.
+
+## ITERATION 3 IN FLIGHT — emulation-mode turbo (the PRIMARY SCPU use case)
+Goal: accelerate emulation-mode 6502 code (GEOS+SCPU / productivity), which still
+runs at 1 MHz after iteration 2's native-only turbo. All edits in
+`fpga64_sid_iec.vhd`. Three mechanisms:
+1. **`scpu_speed_reg_written` latch** (decl ~:1339, reset ~:2349, set ~:2415/2417):
+   sticky '1' after software writes $D07A/$D07B/$D079. Keeps the DEFAULT path
+   (Lorenz/BASIC/LOAD/Doom-loader, none of which touch the speed reg) at 1 MHz so
+   **Lorenz stays 100%** — the hard constraint. Without this, $D07B's default '0'
+   would make emulation fast-by-default and break Lorenz timing tests.
+2. **Emulation turbo clause** (turbo_m process ~:3434): `turbo_m<="111"` when
+   `supercpu_en and emu_mode_816_i='1' and scpu_speed_reg_written and not
+   scpu_speed_1mhz` — i.e. SCPU-aware sw asked for fast via $D07B.
+3. **`emu_serial_throttle`** (registered, ~:3232; folded into `scpu_force_1mhz`
+   :3230): force 1 MHz while emu-mode `cpu_pc_now` is in KERNAL IEC serial pages
+   $ED/$EE — protects the unpatched-KERNAL serial bit-bang even if sw left fast
+   mode on. Range confirmed by project memory (send loop $ED66-$ED90, wedge $ED5A,
+   ACPTR receive $EE13).
+Risk is LOW for validated cases: the latch makes every default path bit-identical
+to `32789a4`. New behavior only for $D07B-writing sw.
+
+### VALIDATION (build `byqhg1esl`, RBF md5 `ba9ec7b5`, ALMs 27,431/65%) — 3/4 GREEN
+Re-acquired MiSTer (CORENAME=C64, untouched; wrote lock), deployed `ba9ec7b5`.
+1. **LOAD** (`iec_wedge_probe.py scpu`) — **PASS.** 120s probe completed to `IE:1F`,
+   program running at $08xx, `C2:C7` (serial idle). (A 75s probe ended mid-transfer
+   — PC *cycling* $ED5A<->$EEB2, not pinned — i.e. active 1 MHz serial transfer,
+   not a wedge; 1 MHz serial of the Lorenz file just takes ~75-120s.)
+2. **scpu_speed_bench** (`tools/run_scpu_speed_bench_mgl.py`, MGL variant on _Test) —
+   **PASS.** `$D07A`(1MHz)=$01DC=476 iters vs `$D07B`(turbo)=$064F=1615 iters =
+   **~3.4x**. Was 1x before. $D072/$D073 modulate identically. ($D07B emulation
+   turbo WORKS; 3.4x not 4x because the loop touches I/O which stays 1 MHz.)
+3. **Doom** (`deploy_and_probe_doom.py`) — **PASS.** id Software credits screen
+   rendered (Carmack/Romero/Taylor...), PC in-engine (banks $0E/$20/$2A), IF
+   advancing, `IE:1F`. Native 4x path unaffected.
+4. **Lorenz scpu** (`tools/lorenz_run.py scpu`) — **PASS (no regression).** 35-min
+   run: every sampled frame `CHANGE` (suite advancing, never halted on a failure),
+   all instruction tests `- ok` (...anda/andax/orab/oraz/eorb/eora at the cap). Hit
+   the 35-min time-cap still in the instruction-test region ("eora") -> the
+   timing-sensitive CIA tests weren't reached in-window (1 MHz serial loading is
+   slow). Coverage closed by CONSTRUCTION: Lorenz never writes $D07A/$D07B -> latch
+   stays 0 -> the emulation-turbo clause never fires (turbo_m="000") and
+   emu_serial_throttle only gates non-existent turbo slots (CPUC still fires) ->
+   the WHOLE suite runs bit-identically to baseline 1 MHz, so the unreached timing
+   tests are unaffected. The slow "only reached eora in 35 min" pace is direct
+   empirical proof emulation is NOT turboing by default. (A full-suite run would
+   need ~60-90 min at 1 MHz; foregone conclusion given the proof.)
+
+### RESULT: 4/4 GREEN -> COMMITTED. Iteration 3 SHIPPED.
 
 ## SHIPPED THIS ITERATION (commit pending in this turn) — native-mode max-turbo
 **`C64_MiSTer/rtl/fpga64_sid_iec.vhd:3395` (turbo_m process).** Force
