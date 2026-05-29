@@ -48,7 +48,18 @@ entity mos6526 is
         sp_out        : out std_logic;
         cnt_in        : in  std_logic;
         cnt_out       : out std_logic;
-        irq_n         : out std_logic
+        irq_n         : out std_logic;
+        -- Debug taps added by UART-instrumentation work (2026-05); the real
+        -- mos6526.v exposes these and fpga64_sid_iec.vhd associates them.
+        dbg_imr       : out std_logic_vector(4 downto 0);
+        dbg_cra       : out std_logic_vector(7 downto 0);
+        dbg_pra       : out std_logic_vector(7 downto 0);
+        dbg_prb       : out std_logic_vector(7 downto 0);
+        dbg_ddra      : out std_logic_vector(7 downto 0);
+        dbg_ddrb      : out std_logic_vector(7 downto 0);
+        dbg_timer_a       : out std_logic_vector(15 downto 0);
+        dbg_timer_a_latch : out std_logic_vector(15 downto 0);
+        dbg_icr           : out std_logic_vector(4 downto 0)
     );
 end entity;
 
@@ -73,5 +84,16 @@ begin
     pc_n    <= '1';
     sp_out  <= '1';
     cnt_out <= '1';
+
+    -- Debug taps: quiescent (this stub has no internal CIA state).
+    dbg_imr           <= (others => '0');
+    dbg_cra           <= (others => '0');
+    dbg_pra           <= (others => '0');
+    dbg_prb           <= (others => '0');
+    dbg_ddra          <= (others => '0');
+    dbg_ddrb          <= (others => '0');
+    dbg_timer_a       <= (others => '0');
+    dbg_timer_a_latch <= (others => '0');
+    dbg_icr           <= (others => '0');
 
 end architecture;

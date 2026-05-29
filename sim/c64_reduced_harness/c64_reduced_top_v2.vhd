@@ -515,25 +515,16 @@ begin
             cass_read   => '1'
         );
 
-    -- Task #25 — sim-only BRAM probe via VHDL-2008 external names.
-    -- We don't add a synthesisable Port C to c64_ram64k (an async probe
-    -- collapsed M10K inference, see project_bram64k_async_probe_breaks_fit.md).
-    -- Instead this top reads c64_ram64k.ram via an upward external-name alias
-    -- and re-exports the result through the bram_probe_data port, so future
-    -- benches can use the port without re-declaring their own external names.
-    --
-    -- Path encoding: '^' steps up to the bench architecture (which always
-    -- instantiates this top with label `dut`), then descends through the
-    -- fpga64_sid_iec instance (also `dut` inside this top) to ram64k_inst.
-    -- Convention requirement: every bench MUST use the instance label `dut`
-    -- for `entity work.c64_reduced_top_v2` so this path resolves.
-    bram_probe_proc : process
-        alias bram_view is
-            << variable ^.dut.dut.ram64k_inst.ram : ram_t >>;
-    begin
-        wait until rising_edge(clk32);
-        bram_probe_dout_s <= unsigned(bram_view(to_integer(probe_addr(15 downto 0))));
-    end process;
+    -- BRAM probe DISABLED (2026-05-29): the milestone-b SDRAM-passthrough
+    -- rewrite removed the c64_ram64k instance from fpga64_sid_iec entirely
+    -- (bank $00 is now SDRAM-backed via scpu_async_bridge; c64_ram64k/cpu_cache
+    -- are dead/uncompiled — see CLAUDE.md). The old external-name alias
+    -- `^.dut.dut.ram64k_inst.ram` therefore no longer resolves at elaboration.
+    -- This `bram_probe_data` export had NO consumers in the tb (the scoreboard
+    -- reads `probe_data`, driven from the SDRAM model), so it is stubbed to a
+    -- constant. If a future bench needs to read bank $00 it must go through the
+    -- SDRAM model (`probe_addr`/`sdram_probe_dout`), not a BRAM instance.
+    bram_probe_dout_s <= (others => '0');
 
     ------------------------------------------------------------------
     -- Debug pass-through to bench

@@ -117,6 +117,7 @@ SOURCES=(
     "${RTL}/fpga64_keyboard.vhd"
     "${RTL}/fpga64_buslogic.vhd"
     "${RTL}/video_vicII_656x.vhd"
+    "${RTL}/scpu_async_bridge.vhd"
 
     # The REAL DUT (patched staging copy)
     "${STAGE}/fpga64_sid_iec.vhd"
