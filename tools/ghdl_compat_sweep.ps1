@@ -43,6 +43,17 @@ $core = @(
     'run_sr_emu_wrap_only.ps1',
     'run_scpumips_copy_only.ps1'
 )
+# NOTE (2026-05-29): these are STALE April-2026 *hang-investigation* probes, NOT
+# CPU-correctness regressions. Their "FAIL" is by-design:
+#   * overlay / overlay_mirror INJECT a memory fault ($C000-$FEFF reads return
+#     stale $FF) to test an SDRAM-write-drop hypothesis -> FAIL = fault reproduces.
+#   * phase1's CPU semantics are actually CORRECT (183 outer iters is right;
+#     "target 182" mislabels taken-vs-executed). Its own thesis: "if the CPU exits
+#     clean, the hang is system-side, NOT a CPU bug."
+#   * full_nmi never initializes the NMI vector ($FFFA/$FFFB left at $EA NOP-fill)
+#     -> injected NMI lands in NOPs. Bench setup defect.
+# A CPU fix CANNOT make these pass. The real off-device CPU gate is the $core list
+# above (7/7). Keep these opt-in (-IncludeAsterix) and informational only.
 $asterix = @(
     'run_asterix_phase1_only.ps1',
     'run_asterix_dispatcher_only.ps1',

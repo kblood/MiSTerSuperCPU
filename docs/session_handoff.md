@@ -3,7 +3,41 @@
 ## STATUS
 Self-paced `/loop` driving the north-star: **make the SCPU as compatible and
 fast as possible.** Iteration 2 SHIPPED (native turbo, commit `32789a4`).
-Iteration 3 SHIPPED (emulation-mode turbo, build `ba9ec7b5`) — 4/4 HW-validated.
+Iteration 3 SHIPPED (emulation-mode turbo, commit `83d1f2d`, build `ba9ec7b5`) —
+4/4 HW-validated. Iteration 4 = OFF-DEVICE INVESTIGATION (no build): closed out
+two would-be levers and re-characterized the speed roadmap. See "ITERATION 4"
+below. **Net session result: 1MHz-default footgun fixed -> 4MHz both modes
+(biggest available speed win), shipped + validated. >4MHz is Milestone-B-gated.**
+
+## ITERATION 4 — investigation (2026-05-29, off-device, MiSTer released)
+**(a) asterix GHDL "failures" are FAKE compat levers — closed out.** The
+phase1/overlay/full_nmi benches (`-IncludeAsterix` sweep, "4/7") are STALE
+April-2026 *hang-investigation* probes, not CPU regressions: overlay/overlay_mirror
+deliberately INJECT a memory fault ($C000-$FEFF reads return stale $FF) to test an
+SDRAM-write-drop hypothesis; phase1's CPU semantics are actually CORRECT (183 outer
+iters is right — "target 182" mislabels taken-vs-executed); full_nmi never inits
+the NMI vector ($FFFA/$FFFB left at $EA NOP-fill -> NMI lands in NOPs). A CPU fix
+CANNOT make them pass. Annotated in `ghdl_compat_sweep.ps1`; the **default** sweep
+already excludes them (7/7 $core is the real off-device gate). Do not re-chase.
+**(b) 4MHz is a HARD architectural ceiling.** Confirmed via GHDL + design doc, no
+build needed:
+- `sim/sdram_pm_tb` Build-C extended bench PASSES — the Option-(a) SDRAM FSM (HIT
+  ~4 clk64, conflict-MISS PRECHARGE-first, registered glitch-free alt-fire) is
+  correct in sim. `sim/arbiter_demand_tb` PASSES — demand-arbiter priority logic
+  correct. So the FSM/arbiter LOGIC is sound; the limit is elsewhere.
+- `docs/milestone_c_arbiter_design.md` §F: the demand arbiter alone issues ≤1
+  access / 4 clk32 = today's CPU0->CPU4 cadence => ~same throughput. Bottleneck is
+  **SDRAM access latency (~4 clk32/MISS), not slot quantization.** "C-alone is NOT
+  worth pursuing."
+- The faster SDRAM HIT path (~2 clk32) can't be exploited from clk32: `sdram_ready`
+  is synced clk64->clk32 via a 2-FF chain (`fpga64_sid_iec.vhd:3293-3295`) = ~2
+  clk32 latency, so an observed HIT lands at ~4 clk32 ≈ the main-slot cadence (no
+  win). Gating alt-slots on a *predicted* busy_cnt instead is the dual-tracker bug
+  (`sdram_hit_pred<='0'` forced at :3211: predict-HIT-but-actual-MISS -> premature
+  busy clear -> stale sample -> Doom BRK $00:000A).
+- CONCLUSION: alt-slots (CPU2/6/A/E) CANNOT help on this architecture — do NOT
+  retry them. The only real >4MHz path is **Milestone B** (clk_cpu=64MHz + bridge
+  MCP), a large black-screen-prone arc, not a loop iteration.
 
 ## ITERATION 3 IN FLIGHT — emulation-mode turbo (the PRIMARY SCPU use case)
 Goal: accelerate emulation-mode 6502 code (GEOS+SCPU / productivity), which still
@@ -94,26 +128,33 @@ emu_mode_816_i='0'` (SCPU **native** mode). Emulation mode stays OSD-controlled
 - A native-mode micro-benchmark for an exact MHz number is a nice-to-have; the
   emulation-mode scpu_speed_bench.prg can't measure native (runs via BASIC SYS).
 
-## NEXT lever — emulation-mode turbo (the SuperCPU's PRIMARY use case)
-Native-only turbo MISSES the main SCPU use case: accelerating EMULATION-mode 6502
-code (GEOS+SCPU, productivity sw, accelerated BASIC) — those run at 1 MHz today.
-Fix shape: run emulation mode fast too, but **force 1 MHz only while PC is in the
-KERNAL IEC serial routine range** (~$ED00-$EF00), since that's the only
-timing-fragile emulation code. A PC-range throttle into `scpu_force_1mhz` would do
-it. Validate: LOAD (must stay IE:1F) + a fast emulation-mode compute loop + Doom.
-GHDL-prove the PC-range decode if feasible; otherwise small RTL + careful HW test.
+## NEXT iteration — pick a COMPAT lever (speed past 4MHz is B-gated, see iter 4)
+Both turbo wins (native + emulation) are banked. Past 4MHz needs Milestone B (a
+deliberate multi-session arc, not a loop iteration). So the highest-leverage
+loop-sized work is now COMPAT. Candidate compat levers, re-prioritize freely:
+- **WriteSmart register decode** ($D074-$D077/$D0B3): SCPU-aware sw that probes
+  WriteSmart may misbehave. Contained, lower-risk. First confirm a real consumer
+  (grep `tools/scpu64.bin` disasm + any SCPU lib) before building — don't add dead
+  decode.
+- **SCPU software compatibility sweep**: gather a few real SCPU titles/libs (beyond
+  Doom/Wolf3D/Lorenz) and run them on HW to find concrete breakage. Exploratory but
+  directly serves "compatible."
+- **Lorenz full-suite timing run** reaching the CIA/timer tests (currently only the
+  instruction tests are reached in the 35-min cap). Low priority — iter 3's
+  construction proof already covers the scpu-turbo no-regress, but a clean
+  full-suite pass is a nice baseline.
+If instead committing to SPEED: open the Milestone B arc deliberately (clk_cpu=
+64MHz bridge MCP). Read `docs/path_to_20mhz_plan.md` + the MCP/passthrough memory
+first; GHDL + reduced-harness HEAVILY before any build (black-screen history).
+**Do NOT retry alt-slots or re-enable bank-$00 cache** (CACHE_ACTIVE='1') — both
+dead ends (see iter 4 + memory `scpu-speed-landscape-1mhz-default`).
 
-## NEXT speed lever (later — GHDL-first, medium risk)
-Re-enable alt-slots (CPU2/6/A/E) gated on real `sdram_ready` rising edge -> ~6-8
-MHz. Prior attempts wedged Doom via a `cpu_cyc->ramCE->cart_ce` synthesis hazard
-(:3217). PROVE in `sim/sdram_pm_tb`+`sim/arbiter_demand_tb` BEFORE any build. Do
-NOT re-enable the bank-$00 cache (CACHE_ACTIVE='1') — black screens, dead files.
-
-## CPU-correctness baseline (off-device, iteration 1)
-`tools/ghdl_compat_sweep.ps1` — core sweep 7/7 PASS. Asterix integration sweep
-4/7 (phase1/overlay/full_nmi FAIL = pre-existing demo-dispatcher/NMI compat gaps,
-a future lever; not caused by turbo changes). Fixed a tolerated false-alarm in
-`p65c816_rep_tb.vhd` (PC convention; REP->16-bit-immediate VERIFIED correct).
+## CPU-correctness baseline (off-device)
+`tools/ghdl_compat_sweep.ps1` — **core sweep 7/7 PASS** (the real off-device CPU
+gate). The `-IncludeAsterix` "4/7" is NOT a compat gap: those 3 "FAIL"s are stale
+April-2026 fault-injection hang-probes (see iter 4 above) — annotated in the sweep,
+do not chase. Fixed a tolerated false-alarm in `p65c816_rep_tb.vhd` earlier (PC
+convention; REP->16-bit-immediate VERIFIED correct).
 
 ## Shared-MiSTer + tooling notes
 - Check `/tmp/CORENAME` before disruptive ops (C64=mine; else back off).
