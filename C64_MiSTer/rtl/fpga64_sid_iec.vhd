@@ -1861,27 +1861,40 @@ iof_fall_pulse_o <= iof_fall_pulse_r;
 --
 -- All clauses gate on supercpu_en='1' AND addr_hi_816=$00 so they never
 -- intercept reads in 6510 mode or in non-zero banks.
+--
+-- 2026-05-29 COMPAT FIX: these $D0Bx/$D07E status-register read clauses
+-- formerly used the `cs_vic='1' AND cpuAddr(11:0)=x"0Bx"` form, which is
+-- DEAD on the 65C816 path (cs_vic deasserts before the cpuDi sample edge in
+-- the bridge/turbo path — proven by probe_d27.prg on v347: every $D0Bx read
+-- returned $FF / VIC-mirror garbage). They now use the 16-bit `cpuAddr_816`
+-- compare — the same bridge-latched-address mechanism the $D27x SIMM and
+-- $FFEx native-vector clauses below use, which IS hardware-proven to fire
+-- (RBF 0a8490a5, memory bug3_outer_mux_actually_works). Headline effect:
+-- $D0B0 SuperCPU presence-detect ($40) and $D0B2/$D0B4/$D0B5/$D0B6/$D0B8/
+-- $D0BC status now read correctly, so external SCPU-aware software that
+-- probes them (e.g. detect-then-accelerate libraries) sees a real SuperCPU
+-- instead of open bus. Policy gates (scpu_regs_enabled) are unchanged.
 -- ----------------------------------------------------------------------
 cpuDi <= scpu_dos_ext_mode
-            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0BC" and scpu_regs_enabled = '1') else
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D0BC" and scpu_regs_enabled = '1') else
          x"40"
-            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B0" and scpu_regs_enabled = '1') else
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D0B0" and scpu_regs_enabled = '1') else
          (scpu_hwenable & scpu_sys_1mhz & "000000")
-            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B2" and scpu_regs_enabled = '1') else
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D0B2" and scpu_regs_enabled = '1') else
          (scpu_speed_1mhz & (scpu_speed_1mhz or scpu_sys_1mhz) & "000000")
-            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B8" and scpu_regs_enabled = '1') else
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D0B8" and scpu_regs_enabled = '1') else
          ("000000" & scpu_optim_mode)
-            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B4" and scpu_regs_enabled = '1') else
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D0B4" and scpu_regs_enabled = '1') else
          x"00"
-            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B3" and scpu_regs_enabled = '1') else
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D0B3" and scpu_regs_enabled = '1') else
          x"00"
-            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"078" and scpu_regs_enabled = '1') else
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D078" and scpu_regs_enabled = '1') else
          ("0" & scpu_speed_1mhz & "000000")
-            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B5" and scpu_regs_enabled = '1') else
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D0B5" and scpu_regs_enabled = '1') else
          (emu_mode_816_i & "0000000")
-            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"0B6" and scpu_regs_enabled = '1') else
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D0B6" and scpu_regs_enabled = '1') else
          (scpu_rom_vis & "0000000")
-            when (supercpu_en = '1' and addr_hi_816 = x"00" and cs_vic = '1' and cpuAddr(11 downto 0) = x"07E") else
+            when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D07E") else
          -- ----------------------------------------------------------------
          -- SuperRAM extent variables ($D27C-$D27F) — User Guide spec.
          -- Real CMD SuperCPU firmware writes these into the $D200-$D3FF
@@ -1908,8 +1921,9 @@ cpuDi <= scpu_dos_ext_mode
          -- hardcoded read constants ignored those writes. The 16-bit
          -- `cpuAddr_816` compare (vs `cs_vic + cpuAddr(11:0)`) matches
          -- the working pattern used by the native-vector intercepts
-         -- below — the cs_vic-gated clauses at lines 1842-1860 are dead
-         -- code on the 65C816 path (memory cs_vic_gated_scpu_reg_reads_are_dead).
+         -- below. The $D0Bx status clauses ABOVE were converted to this
+         -- same `cpuAddr_816` mechanism on 2026-05-29 (they previously used
+         -- the dead cs_vic form — memory cs_vic_gated_scpu_reg_reads_are_dead).
          -- Empirically verified by the bridge-side data-latch diagnostic
          -- in RBF md5 0a8490a5 (commit 81af800f91-dirty): kickstart's
          -- $F8:$8116 SBC $D27D read sees bus_di_in = $02 at the ack

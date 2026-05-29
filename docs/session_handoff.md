@@ -1,5 +1,32 @@
 # Session handoff — 2026-05-29: autonomous compat+speed loop
 
+## ITERATION 5 — COMPAT: SCPU status read-mux fix (SHIPPED + HW-verified)
+The first COMPAT lever after the turbo wins. Two findings:
+- **WriteSmart ($D074-$D077/$D0B3) is a NON-GAP** — EPROM scan: 9 writes / 0
+  reads (only the fixed init `STA $D0B6/$D077/$D0B3`); our write-through bank-$00
+  == optimization mode-0 ("always mirror"), strictly more correct than real-HW
+  stale modes. Don't build dead WriteSmart decode. Closes that backlog lever.
+- **$D0Bx/$D07E SCPU STATUS reads were DEAD** (real compat gap, now fixed). They
+  used `cs_vic + cpuAddr(11:0)`, which is dead on the 65C816 path (every read =
+  $FF). Headline: `$D0B0` SuperCPU presence-detect ($40) returned garbage, so
+  external SCPU-aware software fails detection → runs un-accelerated. Converted
+  all 10 clauses (fpga64_sid_iec.vhd ~1866-1884) to the hardware-proven 16-bit
+  `cpuAddr_816` compare (same mechanism as the working $D27x/$FFEx clauses),
+  policy gates unchanged. Firmware itself only pushes $D0B2/$D0BC to the stack
+  (tolerates garbage) → why it stayed invisible.
+- **VALIDATION — all green.** Phase-4b GHDL harness **85/85 PASS** (real
+  fpga64_sid_iec + 65C816, boot + PRG-load no regression); CPU core sweep
+  **7/7**; **HW-verified** on build md5 `97392a1f`: `POKE 53374,128 : PRINT
+  PEEK(53424)` → **64** ($D0B0=$40, was 255) and PEEK(53426) ($D0B2) → **128**.
+  Probe: `tools/d0bx_readmux_probe.py`; shot `tools/d0bx_readmux_probe/01_peeks.png`.
+- **Bonus: restored the Phase-4b harness** (broken on HEAD, unrelated to the
+  fix): added scpu_async_bridge.vhd to run_harness_v2.sh's source list, added the
+  9 `dbg_*` ports to stubs/mos6526_stub.vhd, retired the obsolete BRAM
+  external-name probe in c64_reduced_top_v2.vhd (c64_ram64k no longer
+  instantiated under SDRAM passthrough; export had zero tb consumers).
+- **Committed** (build-green + HW-verified). Pushes still gated. Memory:
+  `project_scpu_status_readmux_fix.md`.
+
 ## STATUS
 Self-paced `/loop` driving the north-star: **make the SCPU as compatible and
 fast as possible.** Iteration 2 SHIPPED (native turbo, commit `32789a4`).
