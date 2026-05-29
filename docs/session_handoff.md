@@ -1,90 +1,75 @@
-# Session handoff — 2026-05-29: autonomous compat+speed loop (iteration 1)
+# Session handoff — 2026-05-29: autonomous compat+speed loop
 
 ## STATUS
 Self-paced `/loop` driving the north-star: **make the SCPU as compatible and
-fast as possible.** Iteration 1 ran OFF-DEVICE — the MiSTer was held by the
-CD32 agent (`/tmp/CORENAME = Universe-DCON-CD32MVP`), so per the cooperation
-protocol no deploy/Lorenz this iteration; off-device GHDL + analysis + a
-proactive build instead.
+fast as possible.** Iteration 2 SHIPPED a validated speed win.
 
-### Done + GREEN (commit pending asterix-sweep completion)
-- **GHDL CPU-correctness baseline tool:** `tools/ghdl_compat_sweep.ps1`. Runs the
-  per-scenario runners in `sim/p65c816_tb` (each in a child pwsh so their `exit`
-  doesn't leak), classifies FAIL by non-zero exit OR a fired fail-marker
-  (`FAIL`/`MISMATCH`/`severity failure`) in the log. Persists a one-line-per-runner
-  baseline to `tools/ghdl_compat_sweep_results.txt`.
-  **Core sweep = 7/7 PASS** (lda-long, REP, native-switch, xflag, copy-loop,
-  jml-indirect-long, jml-long-crossbank, jmp-indirect-pagewrap, long-abs,x-carry,
-  sr-emu-wrap, scpumips-copy). Asterix integration sweep = 4/7 PASS, 3 FAIL
-  (`phase1`, `overlay`, `full_nmi`) — PRE-EXISTING benches that reproduce the
-  asterix demo-dispatcher/NMI bug on the bare CPU (not caused by this iteration;
-  none of my edits touch the GHDL datapath). Real compat gap = a future lever.
-- **Fixed a tolerated false-alarm in `sim/p65c816_tb/p65c816_rep_tb.vhd`.** The CPU
-  is CORRECT: REP #$30 clears M+X (P $35->$05) and `LDA #$EAEA` decodes as a 3-byte
-  16-bit immediate — proven by the address bus fetching $0804/$0805/$0806 (cyc
-  22-24 in the trace). The bench hard-coded the wrong expected PC ($0807) behind
-  `severity warning`; this core's `DBG_PC` points one byte PAST the freshly-latched
-  opcode (uniform: REP latches at PC=$0803, LDA at $0805), so BRA-in-IR with
-  PC=$0808 is the CORRECT pass value. Fixed the expectation, documented the PC
-  convention, added a hard `severity failure` gate so any real regression fails the
-  sweep by exit code. -> REP->16-bit-immediate path now VERIFIED CORRECT (heavily
-  used by native SCPU code).
+## SHIPPED THIS ITERATION (commit pending in this turn) — native-mode max-turbo
+**`C64_MiSTer/rtl/fpga64_sid_iec.vhd:3395` (turbo_m process).** Force
+`turbo_m<="111"` (4x, = CPU slots 0/4/8/C) whenever `supercpu_en='1' and
+emu_mode_816_i='0'` (SCPU **native** mode). Emulation mode stays OSD-controlled
+(default off -> 1 MHz).
+- **Why:** OSD turbo (`status[46/47]`,`[49:48]`) and `supercpu_enable`
+  (`status[82]`) were INDEPENDENT, so with OSD Turbo off (default) the SuperCPU
+  ran at **~1 MHz even when enabled** (only CYCLE_CPUC fired). Real SCPU software
+  sets speed via $D07A/$D07B, not the OSD. Biggest compat+speed footgun found.
+- **Why native-gated (not the obvious emu+native):** the stock 1 MHz-timed KERNAL
+  serial LOAD/SAVE routine ($ED66-$ED90, CPU-cycle-counted NOP delays) only runs
+  in EMULATION mode. Speeding emulation mode desyncs the c1541 -> $ED5A wedge.
+  Native software (Doom gameplay) never touches serial, so native-gating is safe.
+- **FALSIFIED first (do NOT repeat):** disk_access-gated emu+native turbo in
+  `c64.sv` (`(status[47]|supercpu_enable)&~disk_access` + `turbo_speed=2'b10`).
+  Built md5 `79cd45bd`, deployed -> **regressed LOAD** (`J:ED5A ED5A`+`IE:13`).
+  disk_access asserts too late / cia2_throttle only slows the CIA2 *access*, not
+  the serial routine's NOP delays. c64.sv reverted to known-good.
+- **Guards still active on top:** `scpu_force_1mhz` ($D07A/$D072/cia2_throttle)
+  gates the turbo slots; the existing `cs_io='0'` guard keeps all I/O at 1 MHz.
+  Cold boot is emulation (E=1) -> 1 MHz until software `XCE`s to native.
 
-### Done + BUILDING (uncommitted — needs HARDWARE validation before commit)
-- **SCPU fast-by-default** (`C64_MiSTer/c64.sv:1949-1958`). `turbo_mode`/`turbo_speed`
-  now force max turbo (4x) when `supercpu_enable`.
-  - **Why:** OSD turbo (`status[46/47]` enable, `status[49:48]` speed) and
-    `supercpu_enable` (`status[82]`) were INDEPENDENT. With OSD Turbo off (default)
-    `turbo_m="000"` so only `CYCLE_CPUC` fires -> the SuperCPU ran at **~1 MHz**
-    regardless of being "enabled". Real SCPU software controls speed via
-    $D07A(slow)/$D07B(fast) -> `scpu_force_1mhz`, with NO knowledge of the OSD —
-    so software asking to "go fast" still got 1 MHz unless the user also toggled
-    OSD Turbo. This is the single biggest compat+speed footgun found.
-  - **Shape:** OR'd `supercpu_enable` into the disk-aware "always" turbo term
-    (`(status[47] | supercpu_enable) & ~disk_access`) and forced `turbo_speed` to
-    `2'b10` (4x) in SCPU mode. Turbo therefore still drops to 1 MHz during IEC
-    activity (`disk_access`, c64.sv:2478 — asserts on any IEC-clk edge, holds 0.5s)
-    via the SAME path vanilla smart-turbo uses -> LOAD/SAVE serial timing preserved.
-    `scpu_force_1mhz` ($D07A/$D072/cia2_throttle) still modulates on top. Vanilla
-    (`supercpu_enable=0`) path is bit-identical.
-  - **Build:** `b33jz3ihu` running (started ~00:55). Archived to `C64_MiSTer/builds/`,
-    staged at `C64.rbf` on success.
+### HARDWARE VALIDATION — ALL GREEN (build md5 `99289ecb`)
+1. **LOAD** (`iec_wedge_probe.py scpu --secs 90`): `IE:1F` every frame, PC running
+   at $08xx (loaded program), **no $ED5A**. Regression FIXED.
+2. **Doom** (`deploy_and_probe_doom.py`): t150 shows the DOOM engine startup
+   console (`V_Init`/`Z_Init`/`W_Init adding ./dooml.wad`/`M_Init`/`C_Init`),
+   then the **DOOM title screen** (logo + "id software") rendered. PC healthy
+   in-engine (SuperRAM banks $0F/$21/$2A), IRQ counter `IF` advancing. Works at 4x.
+3. **Boot/READY:** implicit — both probes started from a clean BASIC READY.
 
-## Speed baseline (verified file:line; the loop's "effective-MHz" axis)
-- clk32 = 31.53 MHz; 1 sysCycle period = 32 clk32 = 16 CPU slots (CPU0..CPUF).
-  CPU advances only on `enableCpu` pulses (`cpu_cyc` -> 2-FF `cpu_cyc_s` ->
-  `enableCpu` -> `enableCpu_816`).
-- Live bridge `scpu_async_bridge` runs EFF_BRIDGE_ACTIVE='0' (pure passthrough,
-  `cpu_di_out<=bus_di_in`, `cpu_rdy_out<='1'`) = ZERO added latency.
-- One bank-$00 SDRAM access = ~2 clk32 (busy reservation 3 clk32, fpga64_sid_iec
-  :3308) — already shorter than the 4-clk32 CPU0->CPU4 slot spacing.
-- **Effective MHz:** turbo off -> 1 slot/period (CYCLE_CPUC only) = ~1 MHz.
-  turbo 4x -> CPU0/4/8/C = 4 slots = **~4 MHz = current ceiling** (not 20).
-- **Dominant bottleneck = sysCycle slot arbitration, NOT SDRAM latency.** CPU gets
-  <=4 of 16 slots. Alt-slots CPU2/6/A/E are HARD-GATED off (fpga64_sid_iec.vhd:3358
-  `alt_fire_r<='0'`, :3381 `alt_fire_r2<='0'`); HIT predictor forced off (:3206).
+## Speed baseline (the loop's effective-MHz axis)
+- clk32=31.53 MHz; 32 clk32/period = 16 CPU slots. `cpu_cyc` (fpga64_sid_iec.vhd
+  :3256-3262) grants CPU0/4/8 only when the matching `turbo_m` bit is set AND
+  `scpu_force_1mhz='0'`; CPUC always fires.
+- **Native (post-fix): 4 slots (CPU0/4/8/C) = ~4 MHz ceiling** (source-verified;
+  Doom runs native cleanly => active+stable). Was 1 slot = ~1 MHz.
+- **Emulation: still ~1 MHz by default** (OSD-controlled). This is the next gap.
+- A native-mode micro-benchmark for an exact MHz number is a nice-to-have; the
+  emulation-mode scpu_speed_bench.prg can't measure native (runs via BASIC SYS).
 
-## NEXT — on hardware (when MiSTer frees AND build b33jz3ihu done)
-Validation battery for the auto-turbo change (deploy `C64.rbf` to `/media/fat/_Test/`):
-1. **Boot:** cold-boot scpu mode (cfg byte10=0x0C) -> READY prompt, SCPU64 banner.
-2. **LOAD:** `python tools/iec_wedge_probe.py scpu --secs 90` -> must NOT wedge at
-   $ED5A, expect `IE:1F`. (Confirms 4x default didn't re-break the LOAD fix.)
-3. **Doom:** `python tools/deploy_and_probe_doom.py` -> must reach $2C main loop +
-   title/menu bitmap. (REU-in-turbo already fixed via iof_fall_pulse.)
-4. **Speed:** run a timing loop / scpu_speedtest -> expect ~4 MHz (was ~1).
-- All green -> **commit `c64.sv`**. LOAD/Doom regress -> disk_access gate or
-  cia2_throttle insufficient at 4x; narrow (try `turbo_speed` 2x first) or revert.
+## NEXT lever — emulation-mode turbo (the SuperCPU's PRIMARY use case)
+Native-only turbo MISSES the main SCPU use case: accelerating EMULATION-mode 6502
+code (GEOS+SCPU, productivity sw, accelerated BASIC) — those run at 1 MHz today.
+Fix shape: run emulation mode fast too, but **force 1 MHz only while PC is in the
+KERNAL IEC serial routine range** (~$ED00-$EF00), since that's the only
+timing-fragile emulation code. A PC-range throttle into `scpu_force_1mhz` would do
+it. Validate: LOAD (must stay IE:1F) + a fast emulation-mode compute loop + Doom.
+GHDL-prove the PC-range decode if feasible; otherwise small RTL + careful HW test.
 
-## NEXT speed lever (future iteration — GHDL-first, medium risk)
-Re-enable alt-slots (CPU2/6/A/E) gated on the real `sdram_ready` rising edge ->
-~6-8 MHz. Prior attempts wedged Doom via a `cpu_cyc->ramCE->cart_ce` synthesis
-hazard (fpga64_sid_iec.vhd:3217) — PROVE in `sim/sdram_pm_tb` + `sim/arbiter_demand_tb`
-BEFORE any Quartus build. Do NOT re-enable the bank-$00 cache (CACHE_ACTIVE='1') —
-black screens (v159/v161), files are dead/uncompiled.
+## NEXT speed lever (later — GHDL-first, medium risk)
+Re-enable alt-slots (CPU2/6/A/E) gated on real `sdram_ready` rising edge -> ~6-8
+MHz. Prior attempts wedged Doom via a `cpu_cyc->ramCE->cart_ce` synthesis hazard
+(:3217). PROVE in `sim/sdram_pm_tb`+`sim/arbiter_demand_tb` BEFORE any build. Do
+NOT re-enable the bank-$00 cache (CACHE_ACTIVE='1') — black screens, dead files.
 
-## Shared-MiSTer + tooling notes (unchanged)
-- Check `/tmp/CORENAME` before disruptive ops (C64=mine; anything else=back off).
-- Winsock `getaddrinfo` race worked around via `socket.create_connection`+`sock=`
-  in `mister_debug.py` / `iec_wedge_probe.py` / `deploy_and_probe_doom.py`.
+## CPU-correctness baseline (off-device, iteration 1)
+`tools/ghdl_compat_sweep.ps1` — core sweep 7/7 PASS. Asterix integration sweep
+4/7 (phase1/overlay/full_nmi FAIL = pre-existing demo-dispatcher/NMI compat gaps,
+a future lever; not caused by turbo changes). Fixed a tolerated false-alarm in
+`p65c816_rep_tb.vhd` (PC convention; REP->16-bit-immediate VERIFIED correct).
+
+## Shared-MiSTer + tooling notes
+- Check `/tmp/CORENAME` before disruptive ops (C64=mine; else back off).
+- Winsock `getaddrinfo` race worked around via `socket.create_connection`+`sock=`.
 - Local commits unpushed beyond origin `747cdea`: 20e0ac5, 9437377, 6df990c,
-  5f4f574 (+ this iteration's pending REP/sweep commit). **Pushes stay gated.**
+  5f4f574, c258e29 (+ this iteration's native-turbo commit). **Pushes stay gated.**
+- Uncommitted-by-design: c64.sv / debug_pkg.svh / debug_uart_pool_fmt.sv / C64.qpf
+  carry local IE:## UART instrumentation — NOT fixes, leave uncommitted.

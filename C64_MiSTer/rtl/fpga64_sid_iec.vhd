@@ -3394,14 +3394,26 @@ begin
 			dma_active <= dma_req;
 			turbo_en <= turbo_mode(0);
 			turbo_m <= "000";
-			if cs_io = '0' and dma_req = '0' and ((turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1') then
-				case turbo_speed is
-					when "00" => turbo_m <= "010";
-					when "01" => turbo_m <= "110";
-					when "10" => turbo_m <= "111";
-					when "11" => turbo_m <= "111"; -- unused
-					when others => turbo_m <= "000"; -- GHDL: std_logic_vector is open-valued
-				end case;
+			if cs_io = '0' and dma_req = '0' then
+				-- SCPU native mode is fast-by-default: force max turbo (4x). The
+				-- stock 1MHz-timed KERNAL serial LOAD/SAVE routine only runs in
+				-- EMULATION mode, so native turbo never desyncs the c1541. (A
+				-- disk_access-gated emu+native turbo was tried 2026-05-29 and
+				-- regressed LOAD -> $ED5A wedge, because emu-mode serial still ran
+				-- at 4x.) Native software (Doom gameplay) never touches serial.
+				-- scpu_force_1mhz ($D07A/$D072/cia2_throttle) still gates the turbo
+				-- slots on top, and the cs_io guard keeps all I/O at 1MHz.
+				if supercpu_en = '1' and emu_mode_816_i = '0' then
+					turbo_m <= "111";
+				elsif (turbo_mode(0) and turbo_state) = '1' or turbo_mode(1) = '1' then
+					case turbo_speed is
+						when "00" => turbo_m <= "010";
+						when "01" => turbo_m <= "110";
+						when "10" => turbo_m <= "111";
+						when "11" => turbo_m <= "111"; -- unused
+						when others => turbo_m <= "000"; -- GHDL: std_logic_vector is open-valued
+					end case;
+				end if;
 			end if;
 		end if;
 	end if;
