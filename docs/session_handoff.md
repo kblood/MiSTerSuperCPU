@@ -550,20 +550,69 @@ deploy → Doom no-regress + Lorenz scpu/t65 100% + MHz. Details below.
 
 **IMMEDIATE NEXT TICK (iter-7b, after the Build-1 wedge):** before anything else,
 two off-the-critical-path steps de-confound and de-risk:
-1. **Cache-only HW isolation build** — `CACHE_READ_PATH:=true`, `RDY_HANDSHAKE:=false`,
-   `alt_fire_r2` OFF. This is cadence-identical to the shipped build except the
-   read-path cache feeds `cache_di→cpuDi` on hits (STA already +31ns at 2-cyc, clean).
-   If it boots + Doom no-regress + Lorenz 100% → `CACHE_READ_PATH` is HW-clean and the
-   Build-1 wedge is pinned to `RDY_HANDSHAKE`. If it ALSO wedges → the read-path
-   override itself is the problem (re-examine the cpuDi mux priority).
-2. **Fix the `data_ready` source** — `sdram_data_valid_sync` does not track per-access
-   readiness on real `sdram_pm` (Build-1 proof: rdy never re-asserts → $FCE5 hang).
-   Need a signal that pulses high exactly when the CPU's current SDRAM read datum is
-   on the bus. Candidates: derive from the arbiter's own busy_cnt reaching the
-   sample-cycle (the slot where dout_r is latched), NOT the controller-level valid
-   flag; or mirror the proven main-slot latch timing. GHDL-model against the real
-   sdram_pm cycle in a harness BEFORE the next rdy-gating HW build. Only after BOTH
-   pass does the alt_fire_r2 turnkey plan below become reachable.
+1. **Cache-only HW isolation build — DONE 2026-05-31, build `e0e83e5c`
+   (`CACHE_READ_PATH:=true`, `RDY_HANDSHAKE:=false`, alt_fire OFF; 85% ALM, TNS=0,
+   setup +0.241ns). RESULT: boots clean but CORRUPTS the Lorenz-scpu serial LOAD.**
+   - Boot: clean (KERNAL editor idle loop, NOT the Build-1 $FCE5 wedge) → so
+     `CACHE_READ_PATH` does not break boot, and the Build-1 wedge is pinned to
+     `RDY_HANDSHAKE` (✓ that half of the isolation succeeded).
+   - Doom autoload: inconclusive — REU/MGL autoload didn't fire the game (CPU healthy
+     at READY; environmental, NOT a regression).
+   - **Lorenz scpu: GARBAGE screen ("< 0JEEP" gibberish, static top + churning debug
+     overlay = the flicker-md5 false-positive). The suite never ran.** Differential
+     A/B nailed it: control `97392a1f` runs Lorenz-scpu CLEAN (actual "ldab - ok …"
+     test display), and `e5e899fc` (HEAD-lineage, cache present but NOT feeding the
+     CPU, `CACHE_READ_PATH=false`) ALSO runs CLEAN. Only `e0e83e5c` (cache feeding the
+     CPU) garbles → **the corruption is definitively in the read path FEEDING
+     `cache_di` to the CPU**, not a HEAD regression, not the autoload harness.
+   - **ROOT-CAUSE HYPOTHESIS (RTL-grounded, cpu_cache.vhd):** `cache_hit` is
+     COMBINATIONAL on the current address (`cacheable_rd and tag_match and byte_valid`,
+     :276), but `cache_di` is derived from `line_word`, a REGISTERED 1-cycle-late read
+     of the 8 data banks (:284-296). The `same_line` fast-path (:180-182) only covers
+     back-to-back same-line accesses. On a HIT to a newly-addressed (non-same_line)
+     line, `cache_di` still holds the PREVIOUS line's bytes for one cycle → if the
+     read-path override feeds `cache_di` in the same cycle `cache_hit` asserts, it
+     returns stale/wrong data. Boot's sequential/same-line reads (instr fetch, ZP)
+     mask it; LOAD's scattered access pattern exposes it = garbage. STA-closure
+     (iter-6 +31ns) can't catch this — it's a data-validity skew, not a timing path.
+   - **NEXT (iter-7b-fix, OFF-DEVICE):** build a targeted GHDL bench that drives
+     `cpu_cache` with a scattered read pattern (alternating lines / read-after-hit on a
+     new line) and asserts `cache_di` matches memory on the cycle the override would
+     sample it. Confirm the latency skew, then fix the read-path protocol so the
+     override samples `cache_di` the cycle AFTER `cache_hit` (or gate the override on a
+     registered `cache_hit_d1` aligned to `line_word`), and add a `same_line`-aware
+     0-latency path only where valid. Re-test on HW (Lorenz scpu/t65 100% + Doom) before
+     declaring the cache read path a usable >4MHz foundation. Until fixed, the cache
+     read path is HW-FALSIFIED-AS-BUGGY and gives no shippable speedup.
+
+   *(Original isolation plan, now superseded by the result above: build cadence-identical
+   except cache feeds cpuDi; if clean → CACHE_READ_PATH HW-clean. It booted clean but
+   the workload gate FAILED.)*
+2. **Do NOT re-attempt gating `rdy` — it is STRUCTURALLY fragile (root-caused this
+   tick from the RTL).** The CPU advances only when BOTH the arbiter pulses `CE`
+   (`enableCpu`) AND `rdy` is high — `EN <= RDY_IN AND CE` (cpu_65c816). The shipped
+   arbiter ALREADY encodes data-readiness in *when* it pulses CE: `cpu_cyc` fires only
+   when `sdram_busy='0'` (the local `sdram_busy_cnt` predictor floor, :3401/:3449-74).
+   That IS the working handshake. ANDing `data_ready` onto `rdy` adds a SECOND,
+   independent gate that must be PERFECTLY phase-aligned with that CE pulse — when
+   `sdram_data_valid_sync` (sdram_pm.v: level high at q==STATE_READ, dropped at next ce
+   edge, single-flop synced clk64→clk32) and the arbiter's `sdram_busy` predictor
+   disagree by even one clk32, the CPU misses its single CE enable window, the arbiter
+   moves on (never re-pulses CE for that access), and the CPU hangs = the $FCE5 wedge.
+   So a second rdy gate is redundant-and-dangerous for main slots.
+3. **CORRECT alt-slot design (iter-7c) = gate `enableCpu` (the CE pulse), NOT `rdy`.**
+   Keep main slots on the proven fixed `cpu_cyc_s` cadence untouched. For the ALT slot
+   only, replace the fixed-delay CE (`alt_fire_r2`→cpu_cyc fires 2 clk32 after a
+   blind-at-CPU2 decision) with a DATA-DRIVEN CE: the alt-slot advance fires when
+   `data_valid` confirms the alt access's datum is on the bus (or `rp_cache_hit`),
+   else it simply doesn't fire and the CPU waits for the next main slot. This is the
+   "stall until ready" the handshake wanted, applied to the CE pulse where the arbiter
+   already lives, instead of to `rdy` where it races the arbiter. Requires
+   distinguishing alt-slot CE from main-slot CE in the `cpu_cyc`/`enableCpu` logic and
+   making only the alt one `data_valid`-gated. GHDL-model the alt-slot CE against the
+   real sdram_pm `data_valid` phase BEFORE building. Until then, alt_fire stays OFF
+   (cadence-neutral) and the only HW-shippable artifact is the read-path cache itself
+   (item 1), which gives no speedup without a working alt-slot.
 
 **TURNKEY PLAN (vehicle already in the RTL) — gated on iter-7b above:**
 realize the 2× — current wiring shortens the grant but `cpu_cyc` still fires only

@@ -1572,7 +1572,7 @@ signal cobs_hw_reg   : unsigned(7 downto 0) := (others => '0');  -- window-compl
 -- top of the cpuDi mux + rp_cache_hit->sdram_hit_pred short grant) are wired as
 -- an INSEPARABLE pair — shortening the grant without the data override is the
 -- Doom BRK $00:000A stale-latch class. Read-only: write hits stay disabled.
-constant CACHE_READ_PATH : boolean := false;  -- committed default false — STA-probed 2026-05-30 (cache_di->cpuDi->P65C816 AddrGen.PCr via ALU: +31.07ns @ 2-cyc, -0.651ns @ 1-cyc). Build-1 (true) HW-tested 2026-05-31, see RDY_HANDSHAKE note.
+constant CACHE_READ_PATH : boolean := false;  -- committed default false. ITER-7b cache-only HW test (build e0e83e5c, true) BOOTS clean but CORRUPTS Lorenz-scpu serial LOAD (garbage screen) where control 97392a1f runs it clean → read-path cache has a coherency hazard the boot doesn't exercise (likely stale read-after-CPU-write during LOAD). HEAD+false build disambiguates HEAD-regression vs cache. STA +31.07ns @ 2-cyc.
 signal rp_cache_di   : unsigned(7 downto 0) := (others => '0'); -- inert default => override never fires
 signal rp_cache_hit  : std_logic := '0';                       -- inert default => hit_pred stays '0'
 signal rp_cacheable  : std_logic := '0';
