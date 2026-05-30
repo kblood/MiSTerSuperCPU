@@ -34,7 +34,17 @@ use IEEE.std_logic_textio.all;
 entity cpu_in_bridge_superram_tb is
 	generic (
 		RATIO        : positive := 2;
-		STOP_TIME_NS : positive := 50000
+		STOP_TIME_NS : positive := 50000;
+		-- iter-7 RDY-handshake safety proof (2026-05-31): when true, the mock
+		-- arbiter drives GARBAGE ($DD) onto bus_di for the entire ack_delay
+		-- stall window, putting the real value only on the ack cycle. This
+		-- models the no-stale-latch claim the RDY-handshake relies on: a read
+		-- held by rdy-low during a miss must latch the FRESH byte, never the
+		-- stale/garbage on the bus during the wait. If $AB still round-trips
+		-- with garbage on the bus throughout the stall, the CPU provably
+		-- consumes data only at rdy-release => speculative alt-slot firing is
+		-- safe by construction.
+		INJECT_GARBAGE_DURING_STALL : boolean := false
 	);
 end entity;
 
@@ -275,6 +285,12 @@ begin
 						bus_di        <= di_v;
 						pending_valid <= '0';
 					else
+						-- Mid-stall: data is NOT ready. Drive garbage when the
+						-- safety-proof generic is set, so a PASS proves the CPU
+						-- never latched the bus during the rdy-low wait.
+						if INJECT_GARBAGE_DURING_STALL then
+							bus_di <= x"DD";
+						end if;
 						ack_delay <= ack_delay - 1;
 					end if;
 				end if;

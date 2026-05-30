@@ -4,7 +4,8 @@
 [CmdletBinding()]
 param(
     [int]$StopTimeNs = 50000,
-    [int]$Ratio = 2
+    [int]$Ratio = 2,
+    [switch]$Garbage   # iter-7: inject $DD on the bus during the ack-delay stall
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,9 +45,10 @@ try {
     & $ghdl -e @ghdlFlags cpu_in_bridge_superram_tb
     if ($LASTEXITCODE -ne 0) { throw "elab failed" }
 
-    $genericArgs = @("-gRATIO=$Ratio", "-gSTOP_TIME_NS=$StopTimeNs")
-    $logPath = Join-Path $workDir "cpu_in_bridge_superram_tb_R${Ratio}.log"
-    Write-Host "Run: RATIO=$Ratio STOP_TIME_NS=$StopTimeNs"
+    $garbageVal = if ($Garbage) { 'true' } else { 'false' }
+    $genericArgs = @("-gRATIO=$Ratio", "-gSTOP_TIME_NS=$StopTimeNs", "-gINJECT_GARBAGE_DURING_STALL=$garbageVal")
+    $logPath = Join-Path $workDir "cpu_in_bridge_superram_tb_R${Ratio}_g${garbageVal}.log"
+    Write-Host "Run: RATIO=$Ratio STOP_TIME_NS=$StopTimeNs GARBAGE=$garbageVal"
     & $ghdl -r @ghdlFlags cpu_in_bridge_superram_tb @genericArgs 2>&1 | Tee-Object -FilePath $logPath
     Write-Host "log: $logPath"
 }
