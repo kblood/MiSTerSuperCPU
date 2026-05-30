@@ -1561,6 +1561,23 @@ signal cobs_win_hits : unsigned(8 downto 0) := (others => '0');  -- hits in curr
 signal cobs_hr_reg   : unsigned(7 downto 0) := (others => '0');  -- last window: hits-per-256 (sat 255)
 signal cobs_hw_reg   : unsigned(7 downto 0) := (others => '0');  -- window-completion count (liveness)
 
+-- ── more-turbo iter-6: READ-PATH (cache feeds the CPU) — GATED, ADDITIVE ──
+-- CACHE_READ_PATH=false (default) => the read-path generate block below emits
+-- ZERO hardware and rp_cache_* keep their inert defaults, so cpuDi + the
+-- arbiter hit predictor are bit-identical to today (the observer above is the
+-- only cache instance). Flip true ONLY to (a) run the c64_reduced_harness boot
+-- test with the cache feeding the CPU (functional M10K-latency/alignment proof,
+-- GHDL models the 1-clk cache_di latency), or (b) a probe synth to read STA on
+-- the cache_di->cpuDi path. The two consumers (cache_di->cpuDi override at the
+-- top of the cpuDi mux + rp_cache_hit->sdram_hit_pred short grant) are wired as
+-- an INSEPARABLE pair — shortening the grant without the data override is the
+-- Doom BRK $00:000A stale-latch class. Read-only: write hits stay disabled.
+constant CACHE_READ_PATH : boolean := false;
+signal rp_cache_di   : unsigned(7 downto 0) := (others => '0'); -- inert default => override never fires
+signal rp_cache_hit  : std_logic := '0';                       -- inert default => hit_pred stays '0'
+signal rp_cacheable  : std_logic := '0';
+signal rp_fill_we    : std_logic := '0';
+
 signal vSync_sig     : std_logic := '0';
 signal vSync_prev_r  : std_logic := '0';
 signal vicAddr1514  : unsigned(1 downto 0);
@@ -1929,7 +1946,9 @@ iof_fall_pulse_o <= iof_fall_pulse_r;
 -- probes them (e.g. detect-then-accelerate libraries) sees a real SuperCPU
 -- instead of open bus. Policy gates (scpu_regs_enabled) are unchanged.
 -- ----------------------------------------------------------------------
-cpuDi <= scpu_dos_ext_mode
+cpuDi <= rp_cache_di
+            when (CACHE_READ_PATH and rp_cache_hit = '1') else  -- iter-6 read-path HIT override (TOP priority; inseparable from sdram_hit_pred short grant). rp_cache_hit='0' when off => inert. cache excludes $Dxxx so SCPU regs below are never shadowed.
+         scpu_dos_ext_mode
             when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D0BC" and scpu_regs_enabled = '1') else
          x"40"
             when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D0B0" and scpu_regs_enabled = '1') else
@@ -3280,7 +3299,12 @@ scpu_fast_path <= '1' when supercpu_en = '1'
 -- hit_pred='0' makes the arbiter always use MISS budget (busy_cnt=011),
 -- bit-identical to Build B / pre-829ee06. Slight perf cost (~2-4 clk64
 -- per CPU access) but Doom runs.
-sdram_hit_pred <= '0';
+-- iter-6: when CACHE_READ_PATH, a read-path cache HIT shortens the grant
+-- (busy_cnt<="001", :3404) — INSEPARABLE from the cache_di->cpuDi override at
+-- :1932 (shortening without the data override = the BRK $00:000A stale-latch
+-- the comment above describes). rp_cache_hit is inert '0' when the read path is
+-- off, so this is bit-identical to `<= '0'` in the shipped (false) config.
+sdram_hit_pred <= rp_cache_hit when CACHE_READ_PATH else '0';
 
 -- Step 7b (2026-05-23): no extra combinational helper needed —
 -- alt_fire_r2 reuses scpu_fast_path directly (already SuperRAM-only).
@@ -4803,6 +4827,58 @@ end process;
 
 dbg_cache_hr <= std_logic_vector(cobs_hr_reg);
 dbg_cache_hw <= std_logic_vector(cobs_hw_reg);
+
+-- ====================================================================
+-- more-turbo iter-6: READ-PATH cache (feeds the CPU). GATED + ADDITIVE.
+-- Emitted ONLY when CACHE_READ_PATH=true. Distinct from the observer above:
+-- addressed on the CURRENT cpuAddr/addr_hi_816 (NOT the 1-clk taps), so
+-- rp_cache_hit/rp_cache_di are live DURING the access for the cpuDi override
+-- + grant-shorten. Fills with cpuDi (the exact byte the CPU latches — the mux
+-- at :1932 already resolves SuperRAM->ramDin / bank-$00->cpuDi_raw) on each
+-- cacheable read step (enableCpu_816 pulse). CPU writes invalidate via cpu_we;
+-- snoop tied off here (KERNAL boot has no DMA; the unit+system benches already
+-- proved snoop, real DMA-strobe wiring is a follow-up). Read-only (wb_enable
+-- '0'). When CACHE_READ_PATH=false this generate is empty and rp_cache_* keep
+-- their inert defaults => cpuDi + sdram_hit_pred bit-identical to today.
+-- ====================================================================
+rp_cacheable <= '1' when (addr_hi_816 = x"00" and cpuAddr(15 downto 12) /= x"D")
+                      or (addr_hi_816 > x"00" and addr_hi_816 < x"F0")
+                else '0';
+
+gen_read_path : if CACHE_READ_PATH generate
+	rp_fill_we <= enableCpu_816 and (vda_816 or vpa_816) and (not cpuWe) and rp_cacheable;
+
+	read_path_cache : entity work.cpu_cache
+		port map (
+			clk        => clk32,
+			reset      => cobs_reset,
+			enable     => supercpu_en,
+			cpu_addr   => cpuAddr,
+			cpu_bank   => addr_hi_816,
+			cpu_we     => cpuWe,
+			cpu_do     => cpuDo,
+			cache_di   => rp_cache_di,
+			cache_hit  => rp_cache_hit,
+			fill_data  => cpuDi,
+			fill_we    => rp_fill_we,
+			fill_addr  => cpuAddr,
+			fill_bank  => addr_hi_816,
+			wb_pending => open,
+			wb_addr    => open,
+			wb_data    => open,
+			wb_ack     => '0',
+			flush      => '0',
+			cpu_en     => enableCpu_816,
+			wb_enable  => '0',
+			snoop_we   => '0',
+			snoop_addr => (others => '0'),
+			snoop_bank => (others => '0'),
+			same_line  => open,
+			dbg_flush_active => open,
+			dbg_tag_match    => open
+		);
+end generate;
+
 -- vsync output: route through internal signal so the per-frame OR latch
 -- (above) can detect the rising edge.
 vsync           <= vSync_sig;
