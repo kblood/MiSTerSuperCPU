@@ -282,6 +282,27 @@ high enough to matter, wire cache_di into the cpuDi mux as a top-priority overri
 HIT path closes at the shorter cadence (the whole point) while the MISS path keeps
 the 4-clk32 budget; (5) HW: Lorenz scpu 100%, Doom no-regress, then measure MHz.
 
+**ITER-4 RESULT (2026-05-30): first NON-synthetic hit-rate = 94% on a real
+bank-$00 stream.** Built `sim/c64_reduced_harness/c64_cache_hitrate_tb.vhd` +
+`run_cache_hitrate.sh` (committed): taps the live `fpga64_sid_iec` CPU access
+stream (cpuAddr/addr_hi_816/cpuWe/cpuDi/enableCpu_816/vda/vpa) via VHDL-2008
+external names and drives the REAL `cpu_cache` RTL as a read-only observer (no RTL
+change, no CPU feedback). On the real KERNAL-execution window in `c64_reduced_top_v2`
+passthrough: **94.12% overall hit (98.63% ZP/stack)**, 4681 cacheable reads, final
+PC $00:FD83, addrs to $FFFD, 3873 non-ZP code fetches → not a stuck-CPU artifact.
+This is the first real-instruction-stream payoff evidence and supports the cache
+premise (high bank-$00 locality), unlike the synthetic patterns that mis-sold
+page-mode/SLOT3. GOTCHA fixed: the v2 top's `clk_cpu` input defaults to constant
+'0' — leave it unconnected (as the stock _tb_v2 does) and the CPU freezes at $0000;
+must drive `clk_cpu => clk` for passthrough. CAVEATS: KERNAL-init only (not
+steady-state BASIC/Doom), all bank-$00 (SuperRAM/Doom hit-rate — the big-working-set
+question — still unmeasured), no bank-switch flush modeled. **Next: capture a REAL
+HW access trace (instrument fpga64_sid_iec to dump CPU {bank,addr,we} over UART
+during a Doom/Lorenz run, one build) and replay it through this same observer to get
+the SuperRAM/steady-state hit-rate — the number that decides Doom payoff.** The
+engineering gate (revive read cache + variable-cadence arbiter + STA-close the HIT
+path at shorter cadence) is the parallel track once payoff is confirmed.
+
 --- (historical, the path that led here) ---
 **SIM-VALIDATED ✅ → RTL IMPLEMENTED → BUILT (timing-clean) → HW-FALSIFIED ⛔ (2026-05-30).**
 GHDL-first per the page-mode lesson:
