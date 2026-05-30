@@ -509,23 +509,36 @@ only the fresh byte at rdy-release, never the garbage (discriminating — an ear
 latch would store $DD → FAIL). So the no-stale-latch property the alt-slot relies
 on holds: a read held by rdy-low during a miss consumes data only when ready.
 
-**BUILD 1 IN FLIGHT (2026-05-31, bg task `b9n2v5lyg`, log `build_iter7_build1.log`):**
-isolation build — flags STAGED UNCOMMITTED in `fpga64_sid_iec.vhd`:
-`CACHE_READ_PATH:=true` (:1575) + `RDY_HANDSHAKE:=true` (:1594), **`alt_fire_r2`
-still OFF** (no speedup yet → cadence-neutral). Both flags marked "BUILD-1 STAGED …
-revert before commit". Flags-on config GHDL-verified: `run_harness_v2 = PASS`
-(elaborates + boots; harness `sdram_data_valid` defaults '1' so `data_ready` inert
-there — the real `sdram_pm` timing is the actual HW test). **Purpose:** isolate the
-#1 HW unknown — does gating the 816 `rdy` on `data_ready` (= `sdram_data_valid_sync`
-for SDRAM reads, `rp_cache_hit` for cache hits) preserve correct 4MHz operation
-against the REAL `sdram_pm`? **When build lands → HW gate (next tick):** check
-`/tmp/CORENAME` ownership (C64=mine) + write a deploy lock → deploy
-`/media/fat/_Test/C64.rbf` → (a) Doom autoload no-regress
-(`tools/deploy_and_probe_doom.py`), (b) Lorenz scpu + t65 100% (`tools/lorenz_run.py`)
-→ release lock. PASS ⇒ data_ready integration sound, green-light Build 2 (enable
-`alt_fire_r2` for the 2× speedup). FAIL/wedge ⇒ `sdram_data_valid_sync` doesn't
-track per-access against real `sdram_pm`; revert is just flipping the two flags
-back false (committed default). DO NOT commit the flag flips unless validated.
+**BUILD 1 HW-FALSIFIED (2026-05-31, build `12b93c5e`, 85% ALMs, STA core +2.631ns/TNS=0):**
+isolation build — `CACHE_READ_PATH:=true` (:1575) + `RDY_HANDSHAKE:=true` (:1594),
+**`alt_fire_r2` still OFF** (cadence-neutral). Deployed to `/media/fat/_Test/C64.rbf`
+under a deploy lock. **RESULT: boot WEDGED.** Screen garbled (not clean READY); UART
+showed **PC frozen at `$00FCE5` every frame** (`I:00FCE4 DI:78 SP:01FD`, frame
+counter advancing but PC never moving) = hard CPU stall in the early KERNAL reset
+sequence. **Verdict:** gating the live 816 `rdy` on `data_ready`
+(= `sdram_data_valid_sync` for SDRAM reads / `rp_cache_hit` for hits) stalls the CPU
+indefinitely — `sdram_data_valid_sync` does NOT track per-access read-readiness
+against the REAL `sdram_pm` (rdy never re-asserts → CPU hangs). This is exactly the
+#1 HW unknown the handoff flagged ("must confirm sdram_data_valid_sync
+deasserts/reasserts in step with the CPU latch … or the main-slot cadence could
+break"). The risk materialized.
+
+**CONFOUND (process miss, recorded):** Build 1 enabled BOTH `CACHE_READ_PATH` and
+`RDY_HANDSHAKE`. `CACHE_READ_PATH=true` had only ever been GHDL+STA-proven, **never
+HW-tested with the read path actually feeding the CPU** — so the wedge is NOT cleanly
+isolated to `RDY_HANDSHAKE`. The cleaner experiment would have been one new HW
+variable at a time. To clear `CACHE_READ_PATH`, the next build must be **cache-only**:
+`CACHE_READ_PATH:=true`, `RDY_HANDSHAKE:=false`, `alt_fire_r2` OFF — if that boots +
+Doom no-regress + Lorenz 100%, the read path is HW-clean and the wedge is pinned to
+`RDY_HANDSHAKE`'s `data_ready` gating, which then needs a corrected per-access
+read-valid source (not `sdram_data_valid_sync`).
+
+**RECOVERY DONE:** flags reverted to committed default `false` (working tree clean,
+only the documenting comments differ); MiSTer restored to control `97392a1f` (UART
+confirms healthy — PC cycling the KERNAL editor loop `$E5CF`→`$E5D4`, not frozen);
+deploy lock released (`/tmp/mister_session.lock` = NOLOCK, `CORENAME=C64`).
+DID NOT commit the flag flips. Build-1 rbf archived
+(`builds/…_12b93c5e-dirty.rbf`).
 
 **REMAINING = HW-gated (a sim can't reach these):** (1) the actual fpga64
 `data_ready` expression driving the 816 rdy in the REAL arbiter context — the
@@ -535,7 +548,24 @@ real `sdram_pm`; (3) `alt_fire_r2` interaction + cadence non-regression; (4)
 effective MHz. These need: `RDY_HANDSHAKE:=true` + enable `alt_fire_r2` → build →
 deploy → Doom no-regress + Lorenz scpu/t65 100% + MHz. Details below.
 
-**NEXT (build-bearing, iter-7) — TURNKEY PLAN (vehicle already in the RTL):**
+**IMMEDIATE NEXT TICK (iter-7b, after the Build-1 wedge):** before anything else,
+two off-the-critical-path steps de-confound and de-risk:
+1. **Cache-only HW isolation build** — `CACHE_READ_PATH:=true`, `RDY_HANDSHAKE:=false`,
+   `alt_fire_r2` OFF. This is cadence-identical to the shipped build except the
+   read-path cache feeds `cache_di→cpuDi` on hits (STA already +31ns at 2-cyc, clean).
+   If it boots + Doom no-regress + Lorenz 100% → `CACHE_READ_PATH` is HW-clean and the
+   Build-1 wedge is pinned to `RDY_HANDSHAKE`. If it ALSO wedges → the read-path
+   override itself is the problem (re-examine the cpuDi mux priority).
+2. **Fix the `data_ready` source** — `sdram_data_valid_sync` does not track per-access
+   readiness on real `sdram_pm` (Build-1 proof: rdy never re-asserts → $FCE5 hang).
+   Need a signal that pulses high exactly when the CPU's current SDRAM read datum is
+   on the bus. Candidates: derive from the arbiter's own busy_cnt reaching the
+   sample-cycle (the slot where dout_r is latched), NOT the controller-level valid
+   flag; or mirror the proven main-slot latch timing. GHDL-model against the real
+   sdram_pm cycle in a harness BEFORE the next rdy-gating HW build. Only after BOTH
+   pass does the alt_fire_r2 turnkey plan below become reachable.
+
+**TURNKEY PLAN (vehicle already in the RTL) — gated on iter-7b above:**
 realize the 2× — current wiring shortens the grant but `cpu_cyc` still fires only
 at the 4-apart main slots, because the alt-slot registers are commented OFF
 (`fpga64_sid_iec.vhd:3473-3504`: both `alt_fire_r`/`alt_fire_r2` are hard-tied

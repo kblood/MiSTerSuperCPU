@@ -1572,7 +1572,7 @@ signal cobs_hw_reg   : unsigned(7 downto 0) := (others => '0');  -- window-compl
 -- top of the cpuDi mux + rp_cache_hit->sdram_hit_pred short grant) are wired as
 -- an INSEPARABLE pair — shortening the grant without the data override is the
 -- Doom BRK $00:000A stale-latch class. Read-only: write hits stay disabled.
-constant CACHE_READ_PATH : boolean := false;  -- read-path generate gate; STA-probed 2026-05-30 (cache_di->cpuDi->P65C816 AddrGen.PCr via ALU: +31.07ns @ 2-cyc budget, -0.651ns @ 1-cyc — 2x honest, >2x is CPU-core-gated; see docs/session_handoff.md iter-6 STA verdict)
+constant CACHE_READ_PATH : boolean := false;  -- committed default false — STA-probed 2026-05-30 (cache_di->cpuDi->P65C816 AddrGen.PCr via ALU: +31.07ns @ 2-cyc, -0.651ns @ 1-cyc). Build-1 (true) HW-tested 2026-05-31, see RDY_HANDSHAKE note.
 signal rp_cache_di   : unsigned(7 downto 0) := (others => '0'); -- inert default => override never fires
 signal rp_cache_hit  : std_logic := '0';                       -- inert default => hit_pred stays '0'
 signal rp_cacheable  : std_logic := '0';
@@ -1591,7 +1591,7 @@ signal rp_fill_we    : std_logic := '0';
 -- `rdy <= baLoc and cpu816_rdy_to_cpu and '1'` = bit-identical to shipped.
 -- GHDL-prove the stall-on-miss behaviour (sim/scpu_async_bridge_tb/
 -- cpu_in_bridge_superram_tb) BEFORE flipping this true + enabling alt_fire_r2.
-constant RDY_HANDSHAKE : boolean := false;
+constant RDY_HANDSHAKE : boolean := false;  -- committed default false. Build-1 (true, +CACHE_READ_PATH true, alt_fire OFF) HW-FALSIFIED 2026-05-31: boot WEDGED, PC frozen $00FCE5 in KERNAL reset. Gating the live 816 rdy on data_ready/sdram_data_valid_sync stalls the CPU forever — sdram_data_valid_sync does NOT track per-access read-readiness against the real sdram_pm. NOTE: Build-1 enabled BOTH flags → wedge not isolated to RDY_HANDSHAKE alone; needs a cache-only (CACHE_READ_PATH=true, RDY_HANDSHAKE=false) HW build to clear CACHE_READ_PATH.
 signal data_ready    : std_logic := '1';  -- inert default => rdy unchanged
 
 signal vSync_sig     : std_logic := '0';
