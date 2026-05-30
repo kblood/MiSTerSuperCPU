@@ -2,6 +2,13 @@
 
 | Built (UTC)        | Branch              | SHA        | MD5 (short) | Subject                                    | Dirty |
 |--------------------|---------------------|------------|-------------|--------------------------------------------|-------|
+| 20260530 050832 | milestone-b-cdc-rew | 38c1d36592 | 00452c21    | sim(milestone-b): SuperRAM long store/load | yes   |
+| 20260529 230500 | milestone-b-cdc-rew | 079882a523 | fc4e8176    | sim(turbo): two-domain throughput+correctn | yes   |
+| 20260529 161117 | milestone-b-cdc-rew | 52d58d13f4 | 44c6f2f8    | test(scpu): SCPU-library compat harness +  | yes   |
+| 20260529 054221 | milestone-b-cdc-rew | b37bb8db86 | 97392a1f    | docs(loop): iter4 findings — asterix ben | yes   |
+| 20260529 004322 | milestone-b-cdc-rew | 32789a434d | ba9ec7b5    | perf(scpu): native-mode max-turbo (4x) by  | yes   |
+| 20260528 235709 | milestone-b-cdc-rew | c258e2910f | 99289ecb    | test(sim): GHDL CPU compat sweep + fix REP | yes   |
+| 20260528 232222 | milestone-b-cdc-rew | c258e2910f | 79cd45bd    | test(sim): GHDL CPU compat sweep + fix REP | yes   |
 | 20260528 165438 | milestone-b-cdc-rew | 744ee44bb5 | 0ce20bf9    | feat(scpu): serve EPROM-patched KERNAL/BAS | yes   |
 | 20260528 163353 | milestone-b-cdc-rew | 744ee44bb5 | 764613fc    | feat(scpu): serve EPROM-patched KERNAL/BAS | yes   |
 | 20260528 144911 | milestone-b-cdc-rew | 744ee44bb5 | 12867108    | feat(scpu): serve EPROM-patched KERNAL/BAS | yes   |

@@ -346,7 +346,16 @@ pll pll
 // the v2 wedge at $48B6 is caused specifically by the async CDC, not
 // Path B bridge code. Pair with SAME_CLOCK_PASSTHROUGH='1' in
 // fpga64_sid_iec.vhd to fully bypass MCP FSM at same-clock.
-wire clk_cpu = clk_sys;
+// Milestone B (2026-05-30): engage clk_cpu=clk64 (64MHz) across the MCP
+// async bridge. The historical clk64 wedge was the F.3' enable-skew, now
+// fixed inside scpu_async_bridge (cpu_enable derived on the same clk_cpu
+// edge as cpu_rdy). Sim-proven at RATIO=2 across handshake/RMW/CIA/IRQ +
+// system boot + SuperRAM long transitions (sim/scpu_async_bridge_tb,
+// sim/c64_reduced_harness/run_harness_mb.sh). This build measures STA
+// closure at 64MHz — the one fact sim cannot provide. Flip MILESTONE_B
+// back to 0 to restore the shipped clk_cpu=clk_sys passthrough build.
+localparam MILESTONE_B = 1;
+wire clk_cpu = MILESTONE_B ? clk64 : clk_sys;
 
 wire [63:0] reconfig_to_pll;
 wire [63:0] reconfig_from_pll;
@@ -1059,6 +1068,10 @@ wire scpu_fast_path;
 // bug. LKG sdram_pm doesn't have a `fast_path` input, so the port is
 // removed below. sdram_fast_path wire kept as a stub so fpga64_sid_iec's
 // scpu_fast_path_o output still has a sink (driven '0' since unused).
+// 2026-05-30: Build-1 turbo bisect (aafa4a4 Build-C controller + fast_path)
+// HW-FALSIFIED — the Build-C controller alone (arbiter unchanged) corrupts
+// the Doom REU->SuperRAM transfer (BRK $00:000A). Reverted to Build B stub.
+// See docs/turbo_build1_controller_falsified.md.
 wire sdram_fast_path = 1'b0;
 sdram_pm sdram
 (
@@ -1455,6 +1468,13 @@ reg       vsync_prev_for_bmcount = 1'b0;
 // ---------------------------------------------------------------------------
 `ifdef DBG_OVERLAY
 dbg_pool_t dbg_pool;
+
+// 2026-05-28: live IEC line states for the 1MHz LOAD"*",8,1 wedge probe.
+// drive_iec_data bit (3) is the decisive one: if it reads 1 (drive released
+// DATA) while the C64 spins at $ED5A, the 65816's $DD00 read is stale; if 0
+// (drive holding DATA), it's a write-sequence / drive-side stall.
+assign dbg_pool.iec_lines = {3'b000, drive_iec_clk, drive_iec_data,
+                             c64_iec_atn, c64_iec_clk, c64_iec_data};
 
 `ifdef DBG_CAP_REU
 cap_reu u_cap_reu (
@@ -1930,7 +1950,7 @@ assign dbg_pool.frame_count = '0;
 `endif
 `endif // DBG_OVERLAY
 
-fpga64_sid_iec fpga64
+fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64
 (
 	.clk32(clk_sys),
 	.clk_cpu(clk_cpu),
