@@ -53,6 +53,15 @@ port (
 	fill_addr : in  unsigned(15 downto 0); -- address of the byte being filled
 	fill_bank : in  unsigned(7 downto 0);  -- bank of the byte being filled
 
+	-- Snoop interface (DMA/REU writes that bypass cpu_we — read-path coherency)
+	-- An external (non-CPU) write to memory must invalidate any matching cached
+	-- byte, else the CPU read path returns stale data (e.g. Doom's loader REU
+	-- FETCH overwrites a bank-$00 buffer the CPU has cached). Defaulted so the
+	-- read-only observer instance and existing callers elaborate untouched.
+	snoop_we   : in  std_logic := '0';                       -- external write strobe (1-clk pulse)
+	snoop_addr : in  unsigned(15 downto 0) := (others => '0');-- address of the external write
+	snoop_bank : in  unsigned(7 downto 0)  := (others => '0');-- bank of the external write
+
 	-- Write buffer drain interface
 	wb_pending : out std_logic;            -- write buffer has entries to drain
 	wb_addr    : out unsigned(15 downto 0); -- next write address
@@ -134,6 +143,13 @@ architecture rtl of cpu_cache is
 	signal invalidate_wr : std_logic;  -- non-bank-$00 write: invalidate cached line
 	signal tag_match     : std_logic;
 	signal byte_valid    : std_logic;
+
+	-- ── Snoop (DMA/REU write) invalidation decode ───────────────────
+	signal snoop_line      : unsigned(8 downto 0);
+	signal snoop_off       : unsigned(2 downto 0);
+	signal snoop_tag       : unsigned(11 downto 0);
+	signal snoop_cacheable : std_logic;
+	signal snoop_inv       : std_logic;
 
 	-- ── Flush state machine ─────────────────────────────────────────
 	signal flush_active  : std_logic := '0';
@@ -229,6 +245,24 @@ begin
 	                      and cpu_en = '1'
 	                      and flush_active = '0'
 	                 else '0';
+
+	-- ── Snoop invalidation (DMA/REU writes bypass cpu_we) ───────────
+	-- Same cacheability test as the CPU path, but driven by the external
+	-- write strobe instead of cpu_we. NOT gated by cpu_en (DMA writes are
+	-- not CPU-step-aligned). Decoded combinationally; acted on in the
+	-- tag/valid process at top data priority.
+	snoop_line      <= snoop_addr(11 downto 3);
+	snoop_off       <= snoop_addr(2 downto 0);
+	snoop_tag       <= snoop_bank(7 downto 0) & snoop_addr(15 downto 12);
+	snoop_cacheable <= '1' when (snoop_bank = x"00"
+	                             and snoop_addr(15 downto 12) /= x"D")
+	                        or  (snoop_bank > x"00" and snoop_bank < x"F0")
+	                   else '0';
+	snoop_inv <= '1' when enable = '1'
+	                  and snoop_we = '1'
+	                  and snoop_cacheable = '1'
+	                  and flush_active = '0'
+	             else '0';
 
 	-- ── Tag check (combinational — MLAB async read) ─────────────────
 	-- Compare stored tag with expected, check per-byte valid bit
@@ -348,8 +382,21 @@ begin
 				end if;
 
 			else
+				-- ── Snoop invalidation (DMA/REU write) — TOP data priority ──
+				-- An external write to a cacheable line clears the matching
+				-- cached byte so the CPU read path can't return stale data.
+				-- Highest priority because dropping it = silent corruption,
+				-- whereas dropping a same-cycle fill (harmless) or cpu-write
+				-- (cacheable_wr is '0') just re-fetches later. DMA writes occur
+				-- in DMA slots, temporally disjoint from CPU fills/reads, so a
+				-- real collision does not occur — this ordering is the safety net.
+				if snoop_inv = '1' and tag_mem(to_integer(snoop_line)) = snoop_tag then
+					new_valid := valid_mem(to_integer(snoop_line));
+					new_valid(to_integer(snoop_off)) := '0';
+					valid_mem(to_integer(snoop_line)) <= new_valid;
+
 				-- ── CPU write path (write-through + write-allocate) ──
-				if cacheable_wr = '1' then
+				elsif cacheable_wr = '1' then
 					-- Capture write for BRAM update (1-cycle delayed write)
 					cpu_wr_pending <= '1';
 					cpu_wr_addr    <= line_index & byte_offset;

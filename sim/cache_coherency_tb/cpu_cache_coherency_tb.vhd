@@ -31,6 +31,9 @@ architecture sim of cpu_cache_coherency_tb is
     signal fill_we  : std_logic := '0';
     signal fill_addr: unsigned(15 downto 0) := (others => '0');
     signal fill_bank: unsigned(7 downto 0)  := (others => '0');
+    signal snoop_we  : std_logic := '0';
+    signal snoop_addr: unsigned(15 downto 0) := (others => '0');
+    signal snoop_bank: unsigned(7 downto 0)  := (others => '0');
     signal wb_pending : std_logic;
     signal wb_addr    : unsigned(15 downto 0);
     signal wb_data    : unsigned(7 downto 0);
@@ -76,12 +79,16 @@ begin
         fill_we => fill_we,
         fill_addr => fill_addr,
         fill_bank => fill_bank,
+        snoop_we   => snoop_we,
+        snoop_addr => snoop_addr,
+        snoop_bank => snoop_bank,
         wb_pending => wb_pending,
         wb_addr => wb_addr,
         wb_data => wb_data,
         wb_ack => wb_ack,
         flush => flush,
         cpu_en => cpu_en,
+        wb_enable => '0',  -- read-only / write-through-absorb DISABLED (the safe config under test)
         same_line => same_line,
         dbg_flush_active => dbg_flush_active,
         dbg_tag_match => dbg_tag_match
@@ -190,6 +197,59 @@ begin
              & std_logic'image(cache_hit)
              & " cache_di=" & integer'image(to_integer(cache_di))
              & " tag_match=" & std_logic'image(dbg_tag_match);
+
+        -- ========================================================
+        -- STEP 6: DMA/REU-write coherency (the read-path gating case).
+        -- A DMA/REU write bypasses cpu_we, so the CPU-write invalidation
+        -- (STEP 2-4) never sees it. The snoop port must catch it.
+        --   1. Fill $0300 with $AA (CPU read fill) -> cached, valid.
+        --   2. DMA write $55 to $0300 via the snoop port (NO cpu_we).
+        --   3. CPU re-reads $0300:
+        --        cache_hit=0  -> snoop invalidated -> CPU falls to fresh mem  GOOD
+        --        cache_hit=1 AND cache_di=$AA -> STALE DMA read (the gap)     BUG
+        -- ========================================================
+        cpu_addr <= x"0300"; cpu_bank <= x"00"; cpu_we <= '0'; cpu_en <= '0';
+        wait until rising_edge(clk);
+        fill_addr <= x"0300"; fill_bank <= x"00"; fill_data <= x"AA"; fill_we <= '1';
+        wait until rising_edge(clk);
+        fill_we <= '0';
+        wait until rising_edge(clk);
+        wait until rising_edge(clk);
+        cpu_addr <= x"0300"; cpu_we <= '0';
+        wait until rising_edge(clk);
+        wait until rising_edge(clk);
+        report "READ3 at $0300 (post-fill): cache_hit=" & std_logic'image(cache_hit)
+             & " cache_di=" & integer'image(to_integer(cache_di));
+        if cache_hit /= '1' or cache_di /= x"AA" then
+            report "FAIL: expected hit=$AA before DMA write" severity warning;
+            test_fail <= true;
+        end if;
+
+        -- DMA write of $55 to $0300 — snoop strobe only, cpu_we stays low.
+        snoop_addr <= x"0300"; snoop_bank <= x"00"; snoop_we <= '1';
+        wait until rising_edge(clk);
+        snoop_we <= '0';
+        wait until rising_edge(clk);
+        wait until rising_edge(clk);
+
+        cpu_addr <= x"0300"; cpu_we <= '0';
+        wait until rising_edge(clk);
+        wait until rising_edge(clk);
+        got := cache_di;
+        report "READ4 at $0300 (post-DMA-write): cache_hit=" & std_logic'image(cache_hit)
+             & " cache_di=" & integer'image(to_integer(got))
+             & " tag_match=" & std_logic'image(dbg_tag_match);
+        if cache_hit = '1' and got = x"AA" then
+            report "*** DMA-COHERENCY BUG: cache returned STALE $AA after DMA write of $55 ***"
+                severity failure;
+            test_fail <= true;
+        elsif cache_hit = '0' then
+            report "PASS: cache_hit=0 after DMA snoop write (snoop invalidate fired)";
+        else
+            report "UNEXPECTED post-DMA: cache_hit=" & std_logic'image(cache_hit)
+                 & " got=" & integer'image(to_integer(got)) severity warning;
+            test_fail <= true;
+        end if;
 
         if test_fail then
             report "=== TEST FAILED ===" severity failure;
