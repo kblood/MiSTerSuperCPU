@@ -319,6 +319,40 @@ begin
     end process;
 
     ------------------------------------------------------------------
+    -- Access-stream trace dumper. One line per CPU memory-access step
+    -- (read OR write, so the replay model can apply invalidate-on-write):
+    --     <we> <bank_hex2> <addr_hex4>
+    -- Consumed by tools/cache_replay.py for geometry sweeps + cross-check,
+    -- and the same format a future HW {bank,addr,we} UART trace will use.
+    -- Bounded so the file stays manageable.
+    ------------------------------------------------------------------
+    trace_dump : process(clk)
+        file f        : text;
+        variable L    : line;
+        variable opened : boolean := false;
+        variable n      : integer := 0;
+        constant TRACE_MAX : integer := 200000;
+    begin
+        if rising_edge(clk) then
+            if not opened then
+                file_open(f, "access_trace.txt", write_mode);
+                write(L, string'("# we bank addr  (CPU mem-access steps; reduced_harness KERNAL stream)"));
+                writeline(f, L);
+                opened := true;
+            end if;
+            if reset = '0' and tap_en = '1' and tap_valid = '1' and n < TRACE_MAX then
+                write(L, std_logic'image(tap_we)(2));  -- '0' or '1' char
+                write(L, string'(" "));
+                write(L, to_hstring(std_logic_vector(tap_bank)));
+                write(L, string'(" "));
+                write(L, to_hstring(std_logic_vector(tap_addr)));
+                writeline(f, L);
+                n := n + 1;
+            end if;
+        end if;
+    end process;
+
+    ------------------------------------------------------------------
     -- Stimulus: boot the core with real ROMs, load a PRG, then run a long
     -- execution window so the cache observer sees a substantial real stream.
     ------------------------------------------------------------------
