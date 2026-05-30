@@ -391,14 +391,31 @@ current ~4MHz ceiling. **VERDICT: GO** on the cache + variable-cadence-arbiter a
   state and the ones to design against.
 - Shared-MiSTer contention during the run: the CD32/CDTV agent loaded `CDTV-DotC-Audio`
   mid-measurement (replaced my C64); re-deployed once (user-authorized) and completed.
-**NEXT (the engineering arc, GHDL-first per the page-mode/SLOT3 lesson):** revive
-`cpu_cache` as a REAL read path (cache_di→cpuDi on hit, feeding the CPU) + a
-variable-cadence arbiter that shortens the grant on a hit (MISS path keeps the 4-clk32
-budget; HIT path needs ~1-2 clk32 and must STA-close `cache_di→cpuDi`). HW gates: Lorenz
-scpu 100%, Doom no-regress, then measure effective MHz. This is large + historically
-black-screen-prone (write-hit path stays disabled — read-only), so prototype/justify in
-GHDL before each build. Commits this measurement session: docs/memory only (no RTL change
-beyond the already-committed observer).
+**ITER-5 (2026-05-30): read-path COHERENCY de-risked, GHDL-first (no build).**
+Before wiring the cache as a real read path, closed the #2 historical-risk class
+(the #1 — write-hit incoherency — stays avoided by keeping the cache read-only):
+- **Throughput ceiling, grounded analytically** on the bench's validated
+  16-CPU-slot / 4MHz baseline: avg clk32/access = `4 − 3·h`. At measured h≈0.80 →
+  16/1.6 = **~10 MHz** (2.5×); floor h=0 → 4 MHz (no regress); ceiling h=1 → 16 MHz.
+  (The `turbo_throughput_tb` row-hit model is the WRONG shape for a BRAM cache and
+  its footer warns it PASSes where HW BRK'd, so I did NOT reuse it — the analytical
+  model is the honest ceiling. Real gate is STA, not throughput.)
+- **CPU-write coherency**: `cache_coherency_tb` READ2 still PASSes (cpu_we →
+  invalidate → hit=0).
+- **DMA/REU-write coherency GAP found + CLOSED**: `invalidate_wr` is gated on
+  `cpu_we`, so DMA/REU writes (Doom loader's REU FETCH into bank-$00 buffers the
+  CPU then re-reads) bypass invalidation → stale read → corruption. Added
+  `snoop_we/snoop_addr/snoop_bank` to `cpu_cache.vhd` (VHDL-defaulted → observer
+  instance + synth build untouched), top-data-priority invalidate. New STEP 6:
+  READ4 DMA-snoop-write → hit=0 PASS. Committed `8329f56` (GHDL-green).
+**NEXT (build-bearing iteration):** wire the read path — `cache_di`→`cpuDi` as a
+top-priority HIT override + revive the hit-shortens-grant arbiter path (MISS keeps
+4-clk32; HIT ~1-2 clk32) + wire `snoop_*` to the actual DMA/REU write strobe in
+`fpga64_sid_iec.vhd`. Then build: **STA must show the `cache_di→cpuDi` HIT path
+closes at the shorter cadence** (the only thing a build, not a sim, can answer).
+HW gates: Lorenz scpu 100%, Doom no-regress, then measure effective MHz. Write-hit
+path stays disabled (read-only). Per the page-mode/SLOT3 lesson, that build is the
+first point where a sim can no longer carry the risk.
 
 --- (historical, the path that led here) ---
 **SIM-VALIDATED ✅ → RTL IMPLEMENTED → BUILT (timing-clean) → HW-FALSIFIED ⛔ (2026-05-30).**
