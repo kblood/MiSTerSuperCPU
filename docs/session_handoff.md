@@ -441,9 +441,14 @@ wire the read path in `fpga64_sid_iec.vhd`, ideally behind a default-FALSE VHDL 
 (`CACHE_READ_PATH`) so synth stays bit-identical until proven: (1) a cache instance on the
 CURRENT `cpuAddr` driving `cache_hit→sdram_hit_pred` (the existing busy_cnt="001" short
 grant, :3404) AND atomically `cache_di→cpuDi` top-priority override (:1932) — the two are
-INSEPARABLE (decoupling = Doom BRK $00:000A stale-latch); (2) fill from the REAL returned
-SDRAM byte on MISS completion (trace `ramDin`/`sdram_data` return timing — NOT cpuDi like
-the observer); (3) `snoop_*`←the DMA/REU write strobe. This is large + fragile + in the
+INSEPARABLE (decoupling = Doom BRK $00:000A stale-latch); (2) fill from `cpuDi`
+itself at read completion — CORRECTION: the observer's fill-from-cpuDi IS right for
+content (the cpuDi mux at :1932 already resolves SuperRAM→`ramDin` and bank-$00→`cpuDi_raw`
+to the exact byte the CPU latches, so cpuDi = the correct value to cache; earlier "must
+capture SDRAM byte NOT cpuDi" was overcautious). Only the fill TIMING differs from the
+observer: fill at MISS completion, and address the cache on the CURRENT `cpuAddr` (not a
+delayed tap) so cache_hit/cache_di are live during the access; (3) `snoop_*`←the DMA/REU
+write strobe. This is large + fragile + in the
 hairiest file, so it warrants the user able to course-correct, not piecemeal unattended
 ticks. Then build with the constant TRUE → read **STA on `cache_di→cpuDi` at the shorter
 cadence** → HW gates Lorenz scpu 100% + Doom no-regress → effective MHz. Write-hit path
