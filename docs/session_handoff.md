@@ -38,28 +38,33 @@ issue, NOT an RTL functional bug — corroborated at the SYSTEM level (real
 arbiter + SDRAM), not just the isolated bridge bench. The F.3' enable-skew fix
 inside `scpu_async_bridge` is sound at 2:1.
 
-## IN FLIGHT — STA closure build at clk_cpu=64MHz (the one fact sim can't give)
-Wired Milestone B behind a reversible build switch in `c64.sv`:
+## STA CLOSED — 64MHz is FEASIBLE on this FPGA (committed ca4c4a3)
+Engaged Milestone B behind a reversible switch in `c64.sv`:
 - `localparam MILESTONE_B = 1; wire clk_cpu = MILESTONE_B ? clk64 : clk_sys;`
 - `fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64`
 - `C64.sdc` was ALREADY prepared (clk64↔clk32 multicycles + all bridge CDC
   false-paths keyed to `scpu_async_bridge_inst`) — no SDC edits needed.
-- Syntax-only build PASSED (0 errors) — mixed-language std_logic generic OK.
-- Full build running in background → `build_milestone_b.log`. **NOT committed**
-  (experimental; flip `MILESTONE_B=0` to revert).
+- Syntax check 0 errors; mixed-language std_logic generic override OK.
 
-### NEXT STEP (when build finishes)
-Read `C64_MiSTer/output_files/C64.sta.rpt` (and `.fit.summary`):
-- Grep for worst-case slack on the **clk64** domain (counter[1]). Setup slack
-  ≥ 0 ⇒ 64MHz closes ⇒ Milestone B is FEASIBLE on this FPGA (huge — de-risks the
-  eventual HW test the operator has deferred). Negative slack ⇒ which paths fail;
-  whether more SDC multicycles or an RTL pipeline stage can recover them.
-- If clean: commit the c64.sv switch as "Milestone B engaged, STA-closed,
-  HW-verification pending"; the archived RBF lands in `C64_MiSTer/builds/`.
-- If it fails timing: revert `MILESTONE_B=0`, document the failing paths, and the
-  next lever is either targeted SDC relaxation or a registered bridge boundary.
-- HW deploy/Doom/Lorenz re-verification remains GATED on operator lifting the
-  no-MiSTer constraint. Do NOT deploy this build.
+**Full build result (RBF `00452c21`, archived in `C64_MiSTer/builds/`):**
+- clk64 (PLL counter[1]): **setup slack +2.410ns, hold +0.245ns, TNS=0.000.**
+- ALL clock domains positive, TNS=0 everywhere, 0 errors.
+- 569 synchronizer chains, worst-case MTBF 1e9 years.
+- 66% ALMs (27,587/41,910) / 73% M10K (403/553) / 55% block-mem — in budget.
+⇒ **64MHz closes timing with 2.4ns to spare.** Milestone B is feasible here.
+Committed the switch (`ca4c4a3`) with HW-verification flagged as the last gate.
+
+### THE ONE REMAINING GATE — hardware verification (operator must lift no-MiSTer)
+Everything checkable without hardware is now green (sim-functional + STA). The
+deferred HW checks, to run when the operator re-enables MiSTer:
+1. Boot to READY (clk_cpu=clk64 historically wedged pre-F.3'-fix; sim says fixed).
+2. Lorenz 100% in BOTH t65 and scpu modes (must not regress).
+3. Doom autoload (REU→SuperRAM transfer + in-engine playloop) — the integration
+   stressor most likely to expose a sim-invisible CDC/latency hazard.
+4. Measure effective MHz vs the 4MHz baseline (the whole point — expect ~up to 20).
+If any regress: `MILESTONE_B=0` reverts in one line; then bisect against the
+sim benches (they're the oracle for what *should* work at 2:1).
+- Do NOT deploy `00452c21` until the operator lifts the constraint.
 
 ## Parallel/lower-priority backlog
 - VICE 3-speed triage matrix (default/4MHz/1MHz) to classify more 3rd-party SCPU
