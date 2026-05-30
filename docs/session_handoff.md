@@ -355,13 +355,22 @@ observer):** in-RTL windowed **HR=237 (92.6%)**, cumulative 3895/4169 = 93.4% �
 the bench's cross-validated 94.12%. (The cumulative gap of exactly 512 reads is
 `cobs_reset <= not reset_n` zeroing at the mid-run PRG-load reset, which the bench's
 tb-`reset` doesn't mirror; the *ratio* match within 0.7% confirms correct wiring, and
-HR is immune to reset.) RESULT: PASS. **Quartus build kicked (DEBUG flavor; bg task
-`bdjk4buel`); cost ~8 M10K (have ~150 free).** NEXT TICK: on green build, deploy to
-`/media/fat/_Test/C64.rbf` (shared-MiSTer ownership check first) and read `HR`/`HW`
-over UART during (a) a real Doom run [SuperRAM steady-state — the number that decides
-Doom payoff] and (b) Lorenz scpu / a BASIC loop [bank-$00 steady-state]. That gives
-the GO/NO-GO on the cache + variable-cadence-arbiter engineering arc. Observer-only,
-so it also confirms-by-non-regression that boot/Doom/Lorenz are unaffected.
+HR is immune to reset.) RESULT: PASS. **BUILD GREEN** (md5 `e5e899fc`, DEBUG flavor): Fitter Successful, Final timing
+models, **71% ALMs** (29,869 — +2.5k for the observer), **73% M10K** (403/553 — no
+overflow; the cache packed without adding M10K blocks), 55% block-mem bits. Build
+gotcha fixed en route: `cpu_cache.vhd` was DEAD/uncompiled → not in `C64.qsf` → first
+A&S died "library work does not contain primary unit cpu_cache"; added the VHDL_FILE
+line (commit `e7e3d3e`). Archived `C64_milestone-b-cdc-rewrite_e7e3d3eabf_...e5e899fc-dirty.rbf`.
+HW readout tool: `python tools/cache_hitrate_hw.py [secs]` (parses `HR`/`HW`, reports
+mean steady-state hit %, confirms liveness via HW advance).
+**DEPLOY DEFERRED (shared-MiSTer):** at 17:20 `/tmp/CORENAME=CannonFodder-CD32MVP`
+(the CD32 agent's core; lock empty but CORENAME ≠ C64) → backed off per cooperation
+protocol; polling for the MiSTer to free. NEXT TICK (when CORENAME=C64/empty): deploy
+to `/media/fat/_Test/C64.rbf`, then read `HR`/`HW` over UART during (a) a real Doom run
+[SuperRAM steady-state — the Doom-payoff number] and (b) Lorenz scpu / a BASIC loop
+[bank-$00 steady-state]. Mean HR = GO/NO-GO on the cache + variable-cadence-arbiter
+engineering arc. Observer-only, so the run also confirms-by-non-regression that
+boot/Doom/Lorenz are unaffected. Commits `26912d5`/`e7e3d3e`/`68e2f9f` (all unpushed).
 
 --- (historical, the path that led here) ---
 **SIM-VALIDATED ✅ → RTL IMPLEMENTED → BUILT (timing-clean) → HW-FALSIFIED ⛔ (2026-05-30).**
