@@ -41,6 +41,16 @@ use IEEE.numeric_std.all;
 -- -----------------------------------------------------------------------
 
 entity fpga64_sid_iec is
+generic(
+	-- Milestone B sim-first gate (2026-05-30): '0' = today's hardware
+	-- behavior (bridge in SAME_CLOCK_PASSTHROUGH, clk_cpu=clk_sys, the
+	-- HW-shipped config). '1' = engage the MCP async bridge so the CPU
+	-- runs in a separate clk_cpu (64MHz) domain across the CDC handshake.
+	-- Threaded to scpu_async_bridge.SAME_CLOCK_PASSTHROUGH below as its
+	-- inverse. Default '0' keeps the synthesised build bit-identical; only
+	-- the GHDL Milestone-B harness sets it to '1'.
+	SCPU_MCP_ACTIVE : std_logic := '0'
+);
 port(
 	clk32       : in  std_logic;
 	clk_cpu     : in  std_logic := '0';
@@ -754,8 +764,8 @@ type sysCycleDef is (
 
 signal sysCycle     : sysCycleDef := sysCycleDef'low;
 signal preCycle     : sysCycleDef := sysCycleDef'low;
-signal sysEnable    : std_logic;
-signal rfsh_cycle   : unsigned(1 downto 0);
+signal sysEnable    : std_logic := '0';            -- FPGA power-up = 0 (sim init; HW no-op)
+signal rfsh_cycle   : unsigned(1 downto 0) := "00"; -- FPGA power-up = 0 (sim init; HW no-op)
 
 signal dma_active   : std_logic;
 
@@ -3110,7 +3120,11 @@ generic map (
 	-- bypassing the F.3' CDC bridge that was wedging Doom's REU FETCH
 	-- chain. Tradeoff: loses observability of the kickstart's irq_n-stuck
 	-- mechanism — but kickstart isn't running anymore, so that's moot.
-	SAME_CLOCK_PASSTHROUGH => '1'
+	-- 2026-05-30: parameterised via the entity generic SCPU_MCP_ACTIVE
+	-- (default '0' ⇒ this stays '1' ⇒ bit-identical to the shipped HW
+	-- build). The Milestone-B GHDL harness sets SCPU_MCP_ACTIVE='1' so
+	-- this becomes '0' and the MCP path re-arms for clk_cpu=64MHz sim.
+	SAME_CLOCK_PASSTHROUGH => (not SCPU_MCP_ACTIVE)
 )
 port map (
 	clk_cpu        => clk_cpu,

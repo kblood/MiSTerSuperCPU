@@ -54,10 +54,18 @@ use work.c64_ram64k_pkg.all;  -- ram_t for the sim-only BRAM probe
 
 entity c64_reduced_top_v2 is
     generic (
-        SDRAM_BYTES : integer := 2 * 1024 * 1024
+        SDRAM_BYTES : integer := 2 * 1024 * 1024;
+        -- Milestone B (2026-05-30): '0' = passthrough (v2 default, single
+        -- clk32 domain). '1' = engage the MCP async bridge; the bench must
+        -- then drive clk_cpu at 64MHz. Threaded to the fpga64_sid_iec
+        -- SCPU_MCP_ACTIVE generic.
+        SCPU_MCP_ACTIVE : std_logic := '0'
     );
     port (
         clk32     : in  std_logic;
+        -- Milestone B: separate CPU clock (64MHz). Defaults to '0' so the
+        -- existing v2 tb (which leaves it unconnected) stays in passthrough.
+        clk_cpu   : in  std_logic := '0';
         reset     : in  std_logic;
 
         -- ioctl pseudo-interface (bench-driven PRG loader)
@@ -146,6 +154,16 @@ architecture rtl of c64_reduced_top_v2 is
     signal supercpu_cycle_s : std_logic;
     signal supercpu_bank_s : std_logic_vector(7 downto 0);
     signal cpu_has_bus_s : std_logic;
+
+    -- Milestone B (2026-05-30): connect the REAL CPU-execution dbg outputs of
+    -- fpga64_sid_iec so the bench can observe the 65C816 actually running.
+    -- dbg_cpu_pc_24 = {PBR,PC}; dbg_op_count = opcodes retired (the true
+    -- liveness metric). Previously the top left these open and drove dbg_*
+    -- from undriven internal signals → the CPU was invisible.
+    signal dut_pc24    : std_logic_vector(23 downto 0);
+    signal dut_opcount : std_logic_vector(23 downto 0);
+    signal dut_p816    : std_logic_vector(7 downto 0);
+    signal dut_dbr816  : std_logic_vector(7 downto 0);
 
     ------------------------------------------------------------------
     -- io_cycle / inj_meminit / bram_invalidate glue (from c64.sv)
@@ -394,8 +412,12 @@ begin
     -- DUT: the REAL fpga64_sid_iec
     ------------------------------------------------------------------
     dut : entity work.fpga64_sid_iec
+        generic map (
+            SCPU_MCP_ACTIVE => SCPU_MCP_ACTIVE
+        )
         port map (
             clk32        => clk32,
+            clk_cpu      => clk_cpu,
             reset_n      => reset_n,
             bios         => "00",  -- dol_C64 (has writable kernel_c64 dprom)
 
@@ -425,8 +447,11 @@ begin
             supercpu_bank  => supercpu_bank_s,
             cpu_has_bus    => cpu_has_bus_s,
 
-
-
+            -- Milestone B: real CPU-execution observability
+            dbg_cpu_pc_24  => dut_pc24,
+            dbg_op_count   => dut_opcount,
+            dbg_p          => dut_p816,
+            dbg_dbr        => dut_dbr816,
 
 
 
@@ -527,29 +552,23 @@ begin
     bram_probe_dout_s <= (others => '0');
 
     ------------------------------------------------------------------
-    -- Debug pass-through to bench
+    -- Debug pass-through to bench — now driven from the REAL fpga64_sid_iec
+    -- CPU-execution dbg ports (Milestone B, 2026-05-30). dbg_cpu_pc_24 is
+    -- {PBR,PC}; the low 16 bits are the PC/bus-address proxy.
     ------------------------------------------------------------------
-    dbg_pc      <= dbg_cpu_addr_s;  -- approximation; real PC via dbg_cpu_addr
-    dbg_pbr     <= dbg_cpu_pbr_s;
-    dbg_p       <= dbg_cpu_p_s;
-    dbg_ir      <= dbg_cpu_ir_s;
-    dbg_addr    <= dbg_cpu_addr_s;
-    dbg_data_in <= std_logic_vector(dbg_cpu_data_s);
-    dbg_we      <= dbg_cpu_we_s;
+    dbg_pc      <= unsigned(dut_pc24(15 downto 0));
+    dbg_pbr     <= unsigned(dut_pc24(23 downto 16));
+    dbg_p       <= unsigned(dut_p816);
+    dbg_ir      <= (others => '0');  -- IR not exported by fpga64_sid_iec
+    dbg_addr    <= unsigned(dut_pc24(15 downto 0));
+    dbg_data_in <= (others => '0');
+    dbg_we      <= '0';
+    dbg_diag_out <= unsigned(dut_dbr816);  -- expose DBR as a diag byte
 
-    -- enableCpu_816 pulse counter
-    en_count_proc : process(clk32)
-        variable cnt : unsigned(31 downto 0) := (others => '0');
-    begin
-        if rising_edge(clk32) then
-            if reset = '1' then
-                cnt := (others => '0');
-            elsif dbg_cpu_en_s = '1' then
-                cnt := cnt + 1;
-            end if;
-            dbg_en_count <= cnt;
-        end if;
-    end process;
+    -- "en_count" now carries opcodes-retired (dbg_op_count) — the true CPU
+    -- liveness metric. A frozen/wedged CPU leaves this at 0; a running KERNAL
+    -- increments it steadily. Resized 24→32 to fit the existing port width.
+    dbg_en_count <= resize(unsigned(dut_opcount), 32);
 
     status_inj_busy   <= inj_meminit;
     status_inj_end    <= inj_end_sig;
