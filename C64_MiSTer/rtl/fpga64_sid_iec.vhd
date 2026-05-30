@@ -1578,6 +1578,22 @@ signal rp_cache_hit  : std_logic := '0';                       -- inert default 
 signal rp_cacheable  : std_logic := '0';
 signal rp_fill_we    : std_logic := '0';
 
+-- iter-7 (2026-05-30): RDY-handshake gate for the cache-HIT alt-slot (the
+-- cadence-correctness half — the STA gate cleared the data-path-timing half).
+-- When RDY_HANDSHAKE, AND `data_ready` onto the 816 rdy port (:~3092) so a CPU
+-- READ that goes through SDRAM (cs_ram='1') stalls until either the read-path
+-- cache HITs (rp_cache_hit) or the SDRAM controller reports its dout fresh
+-- (sdram_data_valid_sync). Non-SDRAM reads (I/O/ROM/color, cs_ram='0') and
+-- writes (rdy_gated forces RDY=1 on writes inside cpu_65c816) are never stalled.
+-- This makes speculative alt_fire_r2 CE pulses safe: a miss just holds RDY low
+-- until data arrives, so the CPU never latches stale SDRAM (the documented
+-- alt-slot Doom-wedge class). DEFAULT FALSE => data_ready forced '1' =>
+-- `rdy <= baLoc and cpu816_rdy_to_cpu and '1'` = bit-identical to shipped.
+-- GHDL-prove the stall-on-miss behaviour (sim/scpu_async_bridge_tb/
+-- cpu_in_bridge_superram_tb) BEFORE flipping this true + enabling alt_fire_r2.
+constant RDY_HANDSHAKE : boolean := false;
+signal data_ready    : std_logic := '1';  -- inert default => rdy unchanged
+
 signal vSync_sig     : std_logic := '0';
 signal vSync_prev_r  : std_logic := '0';
 signal vicAddr1514  : unsigned(1 downto 0);
@@ -3089,7 +3105,7 @@ port map (
 	-- Pre-bridge code wired this directly to baLoc; bridging through the
 	-- bridge alone (with cpu_rdy_out <= '1' at BRIDGE_ACTIVE='0') broke
 	-- the badline stall and caused $AB-on-every-read memory corruption.
-	rdy => baLoc and cpu816_rdy_to_cpu,
+	rdy => baLoc and cpu816_rdy_to_cpu and data_ready,  -- iter-7: data_ready inert '1' unless RDY_HANDSHAKE (decl :~1581)
 
 	di => cpu816_di_to_cpu,
 	addr => cpu816_addr_raw,
@@ -3305,6 +3321,13 @@ scpu_fast_path <= '1' when supercpu_en = '1'
 -- the comment above describes). rp_cache_hit is inert '0' when the read path is
 -- off, so this is bit-identical to `<= '0'` in the shipped (false) config.
 sdram_hit_pred <= rp_cache_hit when CACHE_READ_PATH else '0';
+
+-- iter-7 RDY-handshake data-ready term (see decl near :1581). Ready immediately
+-- for non-SDRAM reads (cs_ram='0' => I/O/ROM/color, combinational) and whenever
+-- the cache HITs; otherwise wait for the SDRAM controller's per-access fresh-dout
+-- handshake. Inert '1' unless RDY_HANDSHAKE and supercpu_en (6510 path untouched).
+data_ready <= '1' when (not RDY_HANDSHAKE) or supercpu_en = '0' or cs_ram = '0'
+              else (rp_cache_hit or sdram_data_valid_sync);
 
 -- Step 7b (2026-05-23): no extra combinational helper needed —
 -- alt_fire_r2 reuses scpu_fast_path directly (already SuperRAM-only).
