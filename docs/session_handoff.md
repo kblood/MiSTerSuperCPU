@@ -332,6 +332,37 @@ integration (flipping it to feed the CPU + the variable-cadence arbiter is the l
 step). NEXT TICK: write the observer instantiation + counters + dbg wiring (off-device,
 GHDL-check via the reduced harness which already compiles cpu_cache), then build + HW.
 
+**ITER-4d (2026-05-30): in-HW observer WRITTEN + GHDL-VALIDATED; build in flight.**
+Added the read-only `cpu_cache` observer directly inside `fpga64_sid_iec.vhd`
+(`cache_observer` instance + `cobs_*` signals + `cobs_tap`/`cobs_count` processes).
+Structurally mirrors `c64_cache_hitrate_tb.vhd` exactly (1-clk uniform tap register,
+`cacheable` gate = cpu_cache.vhd:188, real `cpu_cache` fed read-only with `wb_enable='0'`).
+`cache_hit` drives ONLY the counters — never the CPU — so the block is behaviourally
+inert (cannot break boot/Doom/Lorenz/native). Two readouts:
+- **HR** (`dbg_cache_hr`) = HITs in the last completed **256-cacheable-read sliding
+  window**, saturating at 255 (HR/2.56 ≈ hit %). The sliding window is the key design
+  choice: it discards the cold-start compulsory misses that polluted the cumulative
+  number, so it tracks **steady state** — and it's reset-robust.
+- **HW** (`dbg_cache_hw`) = window-completion counter (wraps every 256 windows).
+  Advances between UART lines ⇒ the observer is seeing CPU read traffic (liveness;
+  distinguishes "0% hit" from "no cacheable reads yet").
+Surfaced through the full overlay path: `fpga64_sid_iec` ports → `c64.sv`
+(`scpu_dbg_cache_hr/hw` wires + `dbg_pool.cache_hr/hw`) → `debug_pkg.svh`
+(`cache_hr`/`cache_hw` struct fields) → `debug_uart_pool_fmt.sv` (`" HR:## HW:##"`
+appended at bytes 397-408, `LINE_LEN`→410, latched at vblank). **GHDL cross-check
+(run_cache_hitrate.sh, in-RTL observer tapped via external name vs the bench's own
+observer):** in-RTL windowed **HR=237 (92.6%)**, cumulative 3895/4169 = 93.4% — vs
+the bench's cross-validated 94.12%. (The cumulative gap of exactly 512 reads is
+`cobs_reset <= not reset_n` zeroing at the mid-run PRG-load reset, which the bench's
+tb-`reset` doesn't mirror; the *ratio* match within 0.7% confirms correct wiring, and
+HR is immune to reset.) RESULT: PASS. **Quartus build kicked (DEBUG flavor; bg task
+`bdjk4buel`); cost ~8 M10K (have ~150 free).** NEXT TICK: on green build, deploy to
+`/media/fat/_Test/C64.rbf` (shared-MiSTer ownership check first) and read `HR`/`HW`
+over UART during (a) a real Doom run [SuperRAM steady-state — the number that decides
+Doom payoff] and (b) Lorenz scpu / a BASIC loop [bank-$00 steady-state]. That gives
+the GO/NO-GO on the cache + variable-cadence-arbiter engineering arc. Observer-only,
+so it also confirms-by-non-regression that boot/Doom/Lorenz are unaffected.
+
 --- (historical, the path that led here) ---
 **SIM-VALIDATED ✅ → RTL IMPLEMENTED → BUILT (timing-clean) → HW-FALSIFIED ⛔ (2026-05-30).**
 GHDL-first per the page-mode lesson:

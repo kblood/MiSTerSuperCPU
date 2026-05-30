@@ -139,6 +139,7 @@ module debug_uart_pool_fmt
 	reg [15:0] lat_bridge_wait_dwell_max;
 	reg [7:0]  lat_bridge_activity_flags;
 	reg [7:0]  lat_bridge_gap_max;
+	reg [7:0]  lat_iec_lines;   // 2026-05-28: live IEC line states (LOAD wedge probe)
 	// mb-probe-003 (2026-05-26): CIA1 Timer A + ICR taps.
 	reg [15:0] lat_cia1_timer_a;
 	reg [15:0] lat_cia1_timer_a_latch;
@@ -177,6 +178,11 @@ module debug_uart_pool_fmt
 	// (bm3). Latched on vsync rising edge.
 	reg  [7:0] lat_bm1_writes;
 	reg  [7:0] lat_bm3_writes;
+	// more-turbo iter-4d (2026-05-30): read-only cpu_cache hit-rate observer.
+	// HR = hits in last completed 256-cacheable-read window (sat 255;
+	// HR/2.56 = approx %). HW = window-completion counter (liveness).
+	reg  [7:0] lat_cache_hr;
+	reg  [7:0] lat_cache_hw;
 
 	// -----------------------------------------------------------------
 	// Send FSM: drive tx_send for one cycle whenever tx is idle and the
@@ -198,9 +204,10 @@ module debug_uart_pool_fmt
 	// flags, max RQ-AK gap per frame.
 	// mb-probe-003 (2026-05-26): +22 bytes for " TA:#### TL:#### IC:##" —
 	// CIA1 Timer A current counter, reload latch, raw ICR pending bits.
-	// New tail uses bytes 369..390; newline at LINE_LEN-1 = 401, with
-	// padding bytes 391..400 as safety margin.
-	localparam LINE_LEN = 9'd402;
+	// New tail uses bytes 369..390; IE field at 391..396.
+	// more-turbo iter-4d (2026-05-30): append " HR:## HW:##" (12 bytes) at
+	// 397..408 for the read-only cpu_cache hit-rate observer; newline at 409.
+	localparam LINE_LEN = 9'd410;
 
 	reg [8:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -745,18 +752,32 @@ module debug_uart_pool_fmt
 			9'd389: line_byte = hex_nibble({3'b000, lat_cia1_icr[4]});
 			9'd390: line_byte = hex_nibble(lat_cia1_icr[3:0]);
 
-			// Padding to safety margin; newline at LINE_LEN-1 = 401.
+			// 2026-05-28: " IE:##" live IEC lines (1MHz LOAD wedge probe).
+			//   bit0=c64_data bit1=c64_clk bit2=c64_atn(1=released)
+			//   bit3=drive_data(1=released,0=pulling) bit4=drive_clk
 			9'd391: line_byte = " ";
-			9'd392: line_byte = " ";
-			9'd393: line_byte = " ";
-			9'd394: line_byte = " ";
-			9'd395: line_byte = " ";
-			9'd396: line_byte = " ";
+			9'd392: line_byte = "I";
+			9'd393: line_byte = "E";
+			9'd394: line_byte = ":";
+			9'd395: line_byte = hex_nibble(lat_iec_lines[7:4]);
+			9'd396: line_byte = hex_nibble(lat_iec_lines[3:0]);
+
+			// more-turbo iter-4d: " HR:## HW:##" read-only cpu_cache observer.
+			// HR = hits per last 256-cacheable-read window (sat $FF; /2.56 = %).
+			// HW = window-completion counter (advances => observer sees reads).
 			9'd397: line_byte = " ";
-			9'd398: line_byte = " ";
-			9'd399: line_byte = " ";
-			9'd400: line_byte = " ";
-			9'd401: line_byte = 8'h0A;
+			9'd398: line_byte = "H";
+			9'd399: line_byte = "R";
+			9'd400: line_byte = ":";
+			9'd401: line_byte = hex_nibble(lat_cache_hr[7:4]);
+			9'd402: line_byte = hex_nibble(lat_cache_hr[3:0]);
+			9'd403: line_byte = " ";
+			9'd404: line_byte = "H";
+			9'd405: line_byte = "W";
+			9'd406: line_byte = ":";
+			9'd407: line_byte = hex_nibble(lat_cache_hw[7:4]);
+			9'd408: line_byte = hex_nibble(lat_cache_hw[3:0]);
+			9'd409: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -871,6 +892,9 @@ module debug_uart_pool_fmt
 				// v347 doom bitmap-write probe (bm1/bm3 per-frame counters)
 				lat_bm1_writes <= pool.bm1_writes;
 				lat_bm3_writes <= pool.bm3_writes;
+				// more-turbo iter-4d: read-only cpu_cache hit-rate observer.
+				lat_cache_hr   <= pool.cache_hr;
+				lat_cache_hw   <= pool.cache_hw;
 				// Milestone B (2026-05-25): bridge-internal UART probes per
 				// docs/milestone_b_bridge_probe_design.md §B. Already
 				// 2-FF-synced to clk_sys in c64.sv; latch once per vblank
@@ -884,6 +908,8 @@ module debug_uart_pool_fmt
 				lat_bridge_wait_dwell_max  <= pool.bridge_wait_dwell_max;
 				lat_bridge_activity_flags  <= pool.bridge_activity_flags;
 				lat_bridge_gap_max         <= pool.bridge_gap_max;
+				// 2026-05-28: live IEC line states (1MHz LOAD wedge probe).
+				lat_iec_lines              <= pool.iec_lines;
 				// mb-probe-003: CIA1 internal taps (clk_sys-domain regs,
 				// no sync needed — captured at vblank for line consistency).
 				lat_cia1_timer_a           <= pool.cia1_timer_a;

@@ -101,6 +101,15 @@ architecture sim of c64_cache_hitrate_tb is
     signal acc_banknz   : integer := 0;  -- cacheable reads with bank /= $00
     signal max_addr     : unsigned(15 downto 0) := (others => '0');
 
+    -- iter-4d cross-check: the SAME observer now lives inside fpga64_sid_iec
+    -- (cobs_* / cache_observer). Tap its cumulative counters + the windowed
+    -- HR/HW bytes via external names and confirm the in-RTL block reproduces
+    -- this bench's standalone observer EXACTLY before any synthesis build.
+    signal rtl_reads : unsigned(31 downto 0) := (others => '0');
+    signal rtl_hits  : unsigned(31 downto 0) := (others => '0');
+    signal rtl_hr    : unsigned(7 downto 0)  := (others => '0');
+    signal rtl_hw    : unsigned(7 downto 0)  := (others => '0');
+
     ------------------------------------------------------------------
     -- Helpers (verbatim from _tb_v2)
     ------------------------------------------------------------------
@@ -319,6 +328,27 @@ begin
     end process;
 
     ------------------------------------------------------------------
+    -- iter-4d: tap the in-RTL observer (cobs_*) for an exact cross-check.
+    ------------------------------------------------------------------
+    rtl_tap : process(clk)
+        alias ext_rtl_reads is
+            << signal .c64_cache_hitrate_tb.dut.dut.cobs_reads_cum : unsigned(31 downto 0) >>;
+        alias ext_rtl_hits is
+            << signal .c64_cache_hitrate_tb.dut.dut.cobs_hits_cum : unsigned(31 downto 0) >>;
+        alias ext_rtl_hr is
+            << signal .c64_cache_hitrate_tb.dut.dut.cobs_hr_reg : unsigned(7 downto 0) >>;
+        alias ext_rtl_hw is
+            << signal .c64_cache_hitrate_tb.dut.dut.cobs_hw_reg : unsigned(7 downto 0) >>;
+    begin
+        if rising_edge(clk) then
+            rtl_reads <= ext_rtl_reads;
+            rtl_hits  <= ext_rtl_hits;
+            rtl_hr    <= ext_rtl_hr;
+            rtl_hw    <= ext_rtl_hw;
+        end if;
+    end process;
+
+    ------------------------------------------------------------------
     -- Access-stream trace dumper. One line per CPU memory-access step
     -- (read OR write, so the replay model can apply invalidate-on-write):
     --     <we> <bank_hex2> <addr_hex4>
@@ -407,6 +437,19 @@ begin
                & " max_bank0_addr=$" & hex4(std_logic_vector(max_addr))
                & " final_pc=$" & hex2(std_logic_vector(dbg_pbr))
                & ":" & hex4(std_logic_vector(dbg_pc));
+
+        -- iter-4d cross-check: in-RTL fpga64_sid_iec observer vs this bench's
+        -- standalone observer. Equal (within a 1-clk tap skew on rtl_*) proves
+        -- the synthesizable block is wired correctly. HR (hits per 256-read
+        -- window) is the value the UART overlay will surface on hardware.
+        report "CACHE_XCHECK rtl_cobs_reads=" & integer'image(to_integer(rtl_reads))
+               & " rtl_cobs_hits=" & integer'image(to_integer(rtl_hits))
+               & "  (bench reads=" & integer'image(acc_reads)
+               & " hits=" & integer'image(acc_hits) & ")";
+        report "CACHE_XCHECK rtl_window_HR=" & integer'image(to_integer(rtl_hr))
+               & " (=" & integer'image((to_integer(rtl_hr) * 10000 / 256) / 100)
+               & "." & integer'image((to_integer(rtl_hr) * 10000 / 256) mod 100)
+               & "% of last 256-read window)  rtl_window_HW=" & integer'image(to_integer(rtl_hw));
 
         sim_done <= true;
         report "c64_cache_hitrate_tb: DONE" severity note;

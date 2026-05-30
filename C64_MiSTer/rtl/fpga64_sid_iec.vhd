@@ -743,7 +743,21 @@ port(
 	-- not I/O, no DMA). c64.sv passes this through into sdram_pm's new
 	-- fast_path input. Drives '0' when 6510-only or during DMA, which keeps
 	-- the controller on its MISS-only path = bit-identical to Build B.
-	scpu_fast_path_o           : out std_logic
+	scpu_fast_path_o           : out std_logic;
+
+	-- more-turbo iter-4d (2026-05-30): read-only cpu_cache HIT-RATE OBSERVER.
+	-- A dead-RTL cpu_cache runs as a pure observer (cache_hit NOT fed to the
+	-- CPU) so it cannot affect Doom/Lorenz/native. dbg_cache_hr = HITs in the
+	-- last completed 256-cacheable-read window (saturating; HR/256 = hit rate,
+	-- HR/2.56 ~= percent). The sliding window discards the cold-start compulsory
+	-- misses that polluted the cumulative GHDL number, so it tracks STEADY
+	-- STATE. dbg_cache_hw = window-completion counter (wraps every 256 windows;
+	-- liveness — if it advances between UART lines the observer is seeing CPU
+	-- read traffic). Measures the real bank-$00 + SuperRAM locality that decides
+	-- whether reviving the cache + a hit-shortens-cycle arbiter can beat the
+	-- ~4MHz cpuDi-mux-bound ceiling (docs/session_handoff.md NEXT LEVER).
+	dbg_cache_hr               : out std_logic_vector(7 downto 0);
+	dbg_cache_hw               : out std_logic_vector(7 downto 0)
 );
 end fpga64_sid_iec;
 
@@ -1517,6 +1531,36 @@ signal lastVicDi    : unsigned(7 downto 0);
 -- the UART/overlay sees the previous frame's OR value.
 signal vic_di_or_r   : unsigned(7 downto 0) := (others => '0');
 signal vic_di_or_lat : unsigned(7 downto 0) := (others => '0');
+
+-- more-turbo iter-4d (2026-05-30): read-only cpu_cache HIT-RATE OBSERVER.
+-- Structurally mirrors sim/c64_reduced_harness/c64_cache_hitrate_tb.vhd (which
+-- was cross-validated against tools/cache_replay.py at 94.13%): a uniform 1-clk
+-- tap register, then a real cpu_cache fed read-only (cacheable_wr is hard '0'
+-- in the RTL; wb_enable='0' here). cache_hit is observed ONLY — never wired to
+-- the CPU — so this whole block is behaviourally inert (cannot break boot/Doom/
+-- Lorenz). The bench taps cobs_*_cum via external names to confirm the in-RTL
+-- observer reproduces the same hit count before any synthesis build.
+signal tap_addr_r    : unsigned(15 downto 0) := (others => '0');
+signal tap_bank_r    : unsigned(7 downto 0)  := (others => '0');
+signal tap_we_r      : std_logic := '0';
+signal tap_di_r      : unsigned(7 downto 0)  := (others => '0');
+signal tap_do_r      : unsigned(7 downto 0)  := (others => '0');
+signal tap_en_r      : std_logic := '0';
+signal tap_valid_r   : std_logic := '0';
+signal cobs_reset    : std_logic;
+signal cobs_di       : unsigned(7 downto 0);   -- cache_di (observed, unused)
+signal cobs_hit      : std_logic;              -- cache_hit (observed, NOT fed to CPU)
+signal cobs_cacheable: std_logic := '0';
+signal cobs_eval     : std_logic := '0';       -- this clk32: a cacheable READ step
+-- cumulative (exact GHDL cross-check vs c64_cache_hitrate_tb acc_reads/acc_hits)
+signal cobs_reads_cum: unsigned(31 downto 0) := (others => '0');
+signal cobs_hits_cum : unsigned(31 downto 0) := (others => '0');
+-- 256-read sliding window -> steady-state hit rate (drops cold compulsory misses)
+signal cobs_win_cnt  : unsigned(7 downto 0) := (others => '0');  -- 0..255, wraps each 256 reads
+signal cobs_win_hits : unsigned(8 downto 0) := (others => '0');  -- hits in current window (0..256)
+signal cobs_hr_reg   : unsigned(7 downto 0) := (others => '0');  -- last window: hits-per-256 (sat 255)
+signal cobs_hw_reg   : unsigned(7 downto 0) := (others => '0');  -- window-completion count (liveness)
+
 signal vSync_sig     : std_logic := '0';
 signal vSync_prev_r  : std_logic := '0';
 signal vicAddr1514  : unsigned(1 downto 0);
@@ -4663,6 +4707,102 @@ dbg_bridge_vec_fetch_count <= std_logic_vector(cpu816_dbg_vec_fetch_count);
 dbg_bridge_wait_dwell_max  <= std_logic_vector(cpu816_dbg_wait_dwell_max);
 dbg_bridge_activity_flags  <= std_logic_vector(cpu816_dbg_activity_flags);
 dbg_bridge_gap_max         <= std_logic_vector(cpu816_dbg_gap_max);
+
+-- ====================================================================
+-- more-turbo iter-4d (2026-05-30): read-only cpu_cache HIT-RATE OBSERVER
+-- (see the signal-declaration block + entity-port comment). Mirrors
+-- c64_cache_hitrate_tb.vhd exactly: 1-clk uniform tap register, cacheable
+-- gate identical to cpu_cache.vhd:188, real cpu_cache fed read-only, and a
+-- counter that maintains both cumulative (GHDL cross-check) and a 256-read
+-- sliding-window hit rate (UART readout). Observer-only: cobs_hit drives the
+-- counter, never the CPU.
+-- ====================================================================
+cobs_reset <= not reset_n;
+
+cobs_tap : process(clk32)
+begin
+	if rising_edge(clk32) then
+		tap_addr_r  <= cpuAddr;
+		tap_bank_r  <= addr_hi_816;
+		tap_we_r    <= cpuWe;
+		tap_di_r    <= cpuDi;
+		tap_do_r    <= cpuDo;
+		tap_en_r    <= enableCpu_816;
+		tap_valid_r <= vda_816 or vpa_816;
+	end if;
+end process;
+
+cobs_cacheable <= '1' when (tap_bank_r = x"00" and tap_addr_r(15 downto 12) /= x"D")
+                        or (tap_bank_r > x"00" and tap_bank_r < x"F0")
+                  else '0';
+cobs_eval <= tap_en_r and tap_valid_r and (not tap_we_r) and cobs_cacheable;
+
+cache_observer : entity work.cpu_cache
+	port map (
+		clk        => clk32,
+		reset      => cobs_reset,
+		enable     => '1',
+		cpu_addr   => tap_addr_r,
+		cpu_bank   => tap_bank_r,
+		cpu_we     => tap_we_r,
+		cpu_do     => tap_do_r,
+		cache_di   => cobs_di,
+		cache_hit  => cobs_hit,
+		fill_data  => tap_di_r,
+		fill_we    => cobs_eval,
+		fill_addr  => tap_addr_r,
+		fill_bank  => tap_bank_r,
+		wb_pending => open,
+		wb_addr    => open,
+		wb_data    => open,
+		wb_ack     => '0',
+		flush      => '0',
+		cpu_en     => tap_en_r,
+		wb_enable  => '0',
+		same_line  => open,
+		dbg_flush_active => open,
+		dbg_tag_match    => open
+	);
+
+cobs_count : process(clk32)
+	variable wh : unsigned(8 downto 0);
+begin
+	if rising_edge(clk32) then
+		if cobs_reset = '1' then
+			cobs_reads_cum <= (others => '0');
+			cobs_hits_cum  <= (others => '0');
+			cobs_win_cnt   <= (others => '0');
+			cobs_win_hits  <= (others => '0');
+			cobs_hr_reg    <= (others => '0');
+			cobs_hw_reg    <= (others => '0');
+		elsif cobs_eval = '1' then
+			cobs_reads_cum <= cobs_reads_cum + 1;
+			if cobs_hit = '1' then
+				cobs_hits_cum <= cobs_hits_cum + 1;
+				wh := cobs_win_hits + 1;
+			else
+				wh := cobs_win_hits;
+			end if;
+			if cobs_win_cnt = x"FF" then
+				-- 256th read closes the window: latch hits-per-256 (sat 255)
+				if wh(8) = '1' then
+					cobs_hr_reg <= x"FF";
+				else
+					cobs_hr_reg <= wh(7 downto 0);
+				end if;
+				cobs_hw_reg   <= cobs_hw_reg + 1;
+				cobs_win_cnt  <= (others => '0');
+				cobs_win_hits <= (others => '0');
+			else
+				cobs_win_cnt  <= cobs_win_cnt + 1;
+				cobs_win_hits <= wh;
+			end if;
+		end if;
+	end if;
+end process;
+
+dbg_cache_hr <= std_logic_vector(cobs_hr_reg);
+dbg_cache_hw <= std_logic_vector(cobs_hw_reg);
 -- vsync output: route through internal signal so the per-frame OR latch
 -- (above) can detect the rising edge.
 vsync           <= vSync_sig;

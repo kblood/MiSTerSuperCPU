@@ -658,6 +658,28 @@ typedef struct packed {
   logic [15:0] bridge_wait_dwell_max;
   logic [7:0]  bridge_activity_flags;
   logic [7:0]  bridge_gap_max;
+
+  // 2026-05-28: live IEC line states for the LOAD"*",8,1 1MHz wedge.
+  // Distinguishes "65816 read of $DD00 is stale (drive released DATA but
+  // C64 can't see it)" from "drive is holding DATA (write-sequence/
+  // drive-side stall)". Bit layout:
+  //   [0] c64_iec_data (C64 DATA-out line, 1=released/high)
+  //   [1] c64_iec_clk  (C64 CLK-out line)
+  //   [2] c64_iec_atn  (C64 ATN-out line, 1=released)
+  //   [3] drive_iec_data (drive DATA-out, 1=released; 0=drive pulling)
+  //   [4] drive_iec_clk  (drive CLK-out)
+  logic  [7:0] iec_lines;
+
+  // more-turbo iter-4d (2026-05-30): read-only cpu_cache hit-rate observer.
+  // cache_hr = HITs in last completed 256-cacheable-read window (sat 255;
+  //            cache_hr/2.56 = approx hit %). Sliding window => steady state,
+  //            immune to cold-start compulsory misses. GHDL-validated ~237
+  //            (92.6%) on the KERNAL stream vs the 94.12% cross-checked bench.
+  // cache_hw = window-completion counter (wraps every 256 windows). Advances
+  //            between UART lines => observer is seeing CPU read traffic
+  //            (liveness; distinguishes "0% hit" from "no cacheable reads").
+  logic  [7:0] cache_hr;
+  logic  [7:0] cache_hw;
 } dbg_pool_t;
 `endif
 

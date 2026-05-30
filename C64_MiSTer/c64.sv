@@ -1397,6 +1397,12 @@ wire  [7:0] scpu_dbg_brk_vec_hi;      // v309 doom wedge: native BRK vec hi
 wire  [7:0] scpu_dbg_mem_1d02;        // v341 doom bitmap probe: $00:$1D02 last R/W
 wire  [7:0] scpu_dbg_mem_1d04;        // v341 doom bitmap probe: $00:$1D04 last R/W
 wire  [7:0] scpu_dbg_vic_di_or;       // v346 per-frame sticky OR of vicDi
+// more-turbo iter-4d (2026-05-30): read-only cpu_cache hit-rate observer.
+// HR = HITs in last completed 256-cacheable-read window (sat 255; HR/2.56 = %).
+// HW = window-completion counter (wraps; advances => observer sees read traffic).
+// Both are clk32-domain (no CDC sync needed for the formatter).
+wire  [7:0] scpu_dbg_cache_hr;
+wire  [7:0] scpu_dbg_cache_hw;
 
 // Milestone B (2026-05-25): bridge-internal UART probes per
 // docs/milestone_b_bridge_probe_design.md §B. These come out of
@@ -1482,6 +1488,12 @@ dbg_pool_t dbg_pool;
 // (drive holding DATA), it's a write-sequence / drive-side stall.
 assign dbg_pool.iec_lines = {3'b000, drive_iec_clk, drive_iec_data,
                              c64_iec_atn, c64_iec_clk, c64_iec_data};
+
+// more-turbo iter-4d (2026-05-30): read-only cpu_cache hit-rate observer.
+// Both bytes are clk32-domain registered counters from fpga64_sid_iec; the
+// formatter latches them at vblank, so no extra CDC sync is required.
+assign dbg_pool.cache_hr = scpu_dbg_cache_hr;
+assign dbg_pool.cache_hw = scpu_dbg_cache_hw;
 
 `ifdef DBG_CAP_REU
 cap_reu u_cap_reu (
@@ -2379,7 +2391,10 @@ fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64
 	.dbg_bridge_activity_flags  (scpu_dbg_bridge_activity_flags),
 	.dbg_bridge_gap_max         (scpu_dbg_bridge_gap_max),
 	// Milestone A Option (b): SuperRAM-only HIT gate for sdram_pm.
-	.scpu_fast_path_o           (scpu_fast_path)
+	.scpu_fast_path_o           (scpu_fast_path),
+	// more-turbo iter-4d (2026-05-30): read-only cpu_cache hit-rate observer.
+	.dbg_cache_hr               (scpu_dbg_cache_hr),
+	.dbg_cache_hw               (scpu_dbg_cache_hw)
 );
 
 wire [7:0] mouse_x;
