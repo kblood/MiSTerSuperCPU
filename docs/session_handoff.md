@@ -531,16 +531,28 @@ stale-latch. Scaffolding already exists (`sdram_ready_sync` 2-FF :3391,
 `rdy_gated <= rdy or not localWe`, :92). In `fpga64_sid_iec.vhd` the 816's `rdy`
 port is `baLoc and cpu816_rdy_to_cpu` (:3092 — VIC badline stall AND bridge
 handshake; both load-bearing, preserve them). The RDY-handshake = AND a
-`data_ready` term onto that: `rdy => baLoc and cpu816_rdy_to_cpu and data_ready`,
-with `data_ready <= rp_cache_hit or sdram_ready_sync(1)` (or '1' when
-CACHE_READ_PATH=false / not supercpu_en, to stay bit-identical). HIT → RDY=1
-same cycle, CPU latches `cache_di`; MISS → RDY=0 until `sdram_ready_sync` rises,
-CPU stalls then latches `ramDin` — no stale. This makes speculative `alt_fire_r2`
+`data_ready` term onto that: `rdy => baLoc and cpu816_rdy_to_cpu and data_ready`.
+
+**SIGNAL CORRECTION + REFINEMENT (next-tick analysis, off-device):** use
+`sdram_data_valid`, NOT `sdram_ready`. Both are real input ports wired from
+`sdram_pm` in c64.sv (`.ready(sdram_ready)` :1110, `.data_valid(sdram_data_valid)`
+:1111 → fpga64 :2095/:2098 — verified, neither is a defaulted constant). But
+`sdram_ready` = "controller idle, safe to START a new access"; `sdram_data_valid`
+= "dout_r is FRESH" (set post-sample edge, cleared at next ce-edge, :198-203) =
+the actual per-access read-data-ready. It's synced single-flop to
+`sdram_data_valid_sync` (:3395), already in clk32. Also: a CPU read's `cpuDi` can
+come from I/O / ROM (dprom) / color RAM — combinational, NOT through `sdram_pm` —
+so gating those on `sdram_data_valid` would wrongly stall them. Correct term:
+`data_ready <= '1' when (cs_ram = '0') else (rp_cache_hit or sdram_data_valid_sync)`
+(and force '1' when CACHE_READ_PATH=false / not supercpu_en, to stay bit-identical).
+HIT → RDY=1 same cycle, latch `cache_di`; SDRAM MISS → RDY=0 until
+`sdram_data_valid_sync` rises, latch `ramDin`; non-SDRAM read → RDY=1 immediately.
+This makes speculative `alt_fire_r2`
 CE pulses safe (a miss just holds RDY low that cycle). ⚠️ RISK: in passthrough
 today `rdy` is NOT data-gated (the busy_cnt-gated main slots handle timing), so
-adding `data_ready` changes the shipped 4MHz cadence path — must confirm
-`sdram_ready_sync(1)` tracks per-access readiness exactly (it currently only feeds
-the busy_cnt early-clear) or the main-slot cadence/Lorenz/Doom could break. Keep
+adding `data_ready` changes the shipped 4MHz cadence path — must confirm in GHDL
+that `sdram_data_valid_sync` deasserts/reasserts per access exactly in step with
+when the CPU latches, or the main-slot cadence/Lorenz/Doom could break. Keep
 the change gated on `supercpu_en` + a flag so the 6510 path is provably untouched.
 
 **DE-RISK OFF-DEVICE FIRST:** extend a GHDL system
