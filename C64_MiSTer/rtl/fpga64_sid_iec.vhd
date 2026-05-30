@@ -1572,7 +1572,7 @@ signal cobs_hw_reg   : unsigned(7 downto 0) := (others => '0');  -- window-compl
 -- top of the cpuDi mux + rp_cache_hit->sdram_hit_pred short grant) are wired as
 -- an INSEPARABLE pair — shortening the grant without the data override is the
 -- Doom BRK $00:000A stale-latch class. Read-only: write hits stay disabled.
-constant CACHE_READ_PATH : boolean := false;
+constant CACHE_READ_PATH : boolean := false;  -- read-path generate gate; STA-probed 2026-05-30 (cache_di->cpuDi->P65C816 AddrGen.PCr via ALU: +31.07ns @ 2-cyc budget, -0.651ns @ 1-cyc — 2x honest, >2x is CPU-core-gated; see docs/session_handoff.md iter-6 STA verdict)
 signal rp_cache_di   : unsigned(7 downto 0) := (others => '0'); -- inert default => override never fires
 signal rp_cache_hit  : std_logic := '0';                       -- inert default => hit_pred stays '0'
 signal rp_cacheable  : std_logic := '0';

@@ -455,6 +455,55 @@ cadence** → HW gates Lorenz scpu 100% + Doom no-regress → effective MHz. Wri
 stays disabled (read-only). Functional coherency is now proven at BOTH unit (8329f56) and
 system (d99987e) level; only timing closure remains unproven.
 
+**ITER-6 (2026-05-30): read-path WIRED + STA GATE READ — DECISIVE, off-device.**
+Wired the full gated read path in `fpga64_sid_iec.vhd` behind `constant
+CACHE_READ_PATH` (default FALSE, currently committed false). On TRUE: a
+`cpu_cache` instance on the live `cpuAddr` drives `cache_hit→sdram_hit_pred`
+(:3283, the busy_cnt="001" short grant) AND `cache_di→cpuDi` top-priority
+override (:1932) — the inseparable pair; fill-from-`cpuDi`; `snoop_*` tied '0'
+(KERNAL boot has no DMA). GHDL-proven 3 ways in the passthrough harness:
+off=baseline, on=bit-identical boot, on+garbage-fill=derails (override
+non-vacuous). M10K 1-clk `cache_di` delivers correct data.
+
+Built with CACHE_READ_PATH=TRUE (probe build, md5 `03ec86cf`, 85% ALMs /
+411 M10K — fits). Global STA: all setup positive, **core-clock worst +3.028ns,
+TNS=0**. Then ran the **decisive masking test** via scripted `quartus_sta`
+(17.0) on the fitted netlist — `C64_MiSTer/cache_sta_probe.tcl`, isolating
+`*gen_read_path:read_path_cache*` → `*P65C816:cpu|*`:
+- **(A) as-built `-setup 2` budget (62.5ns): worst slack +31.068ns, 0/8 violated.**
+- **(B) forced `-setup 1` (31.25ns single-cycle): worst slack −0.651ns, 8/8 VIOLATED.**
+
+Worst single-cycle path = `read_path_cache|tag_mem → … → P65C816|AddrGen|PCr[7]`
+(PC reached through the full ALU adder chain). Cell breakdown
+(`C64_MiSTer/cache_1cyc_path.txt`): ~31.9ns = **~10ns** cache-internal
+tag-compare+byte-select (`Mux68~*`/`Equal10~*`) + **~2.7ns** my cpuDi override
+mux (`cpuDi[7]~308/309`, small — NOT the culprit) + **~11ns INSIDE P65C816**
+(`localDi→Mux21→ALU AddSub add0..add3→BCD_CO→AddrGen.PCr`).
+
+**VERDICT (airtight, off-device — no SLOT3/clk48 masking trap, because I
+explicitly tested the single-cycle budget):**
+- **~2× (≈8MHz), CPU firing every 2 clk32 with un-registered `cache_di` under
+  the existing `-setup 2 -to {*P65C816:cpu|*}` multicycle is STA-HONEST** — at
+  2-apart cadence setup-2 is the *correct* relationship (not masking), +31ns
+  margin. **First non-falsified, STA-honest >4MHz lever.**
+- **>2× (toward the 4−3h ≈10MHz analytical ceiling) needs consecutive (1-apart)
+  fires = single-cycle closure → FAILS by 0.65ns.** The miss is NOT in the cache
+  mux; it's the cache-internal hit-logic + the **CPU-internal `di→ALU→PC` path**
+  (same wall Milestone B hit). Registering `cache_di` to split the path re-adds a
+  latency cycle a non-pipelined CPU can't overlap → caps back at ~2× anyway.
+  Going further = pipelining the CPU's di-consume = CPU-core surgery.
+
+**NEXT (build-bearing, iter-7):** realize the 2× — the current wiring shortens
+the grant but `cpu_cyc` still only fires at the 4-apart main slots (CExt slots
+unchanged) so it is correct-but-not-faster. Add **cache-HIT alt-slots** firing
+the CPU every 2 clk32 (gated on `cache_hit` AND `supercpu_en`; on MISS the CPU
+keeps the normal 4-apart SDRAM grant — this is what makes it surgical vs SLOT3,
+which shortened the *SDRAM* grant and BRK'd). Keep the honest `-setup 2`
+multicycle (valid at 2-apart, +31ns proven). Then build → HW-gate Lorenz scpu
+100% + Lorenz t65 100% + Doom no-regress → measure effective MHz. The
+passthrough GHDL harness CANNOT exercise the accelerated grant cadence, so this
+is inherently a build+HW step (needs shared MiSTer + user).
+
 --- (historical, the path that led here) ---
 **SIM-VALIDATED ✅ → RTL IMPLEMENTED → BUILT (timing-clean) → HW-FALSIFIED ⛔ (2026-05-30).**
 GHDL-first per the page-mode lesson:
