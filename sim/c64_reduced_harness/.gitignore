@@ -9,3 +9,4 @@ build_staging/
 *.log
 build_staging_mb/
 work_mb/
+work_cache/
