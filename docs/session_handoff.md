@@ -408,14 +408,31 @@ Before wiring the cache as a real read path, closed the #2 historical-risk class
   `snoop_we/snoop_addr/snoop_bank` to `cpu_cache.vhd` (VHDL-defaulted → observer
   instance + synth build untouched), top-data-priority invalidate. New STEP 6:
   READ4 DMA-snoop-write → hit=0 PASS. Committed `8329f56` (GHDL-green).
-**NEXT (build-bearing iteration):** wire the read path — `cache_di`→`cpuDi` as a
-top-priority HIT override + revive the hit-shortens-grant arbiter path (MISS keeps
-4-clk32; HIT ~1-2 clk32) + wire `snoop_*` to the actual DMA/REU write strobe in
-`fpga64_sid_iec.vhd`. Then build: **STA must show the `cache_di→cpuDi` HIT path
-closes at the shorter cadence** (the only thing a build, not a sim, can answer).
-HW gates: Lorenz scpu 100%, Doom no-regress, then measure effective MHz. Write-hit
-path stays disabled (read-only). Per the page-mode/SLOT3 lesson, that build is the
-first point where a sim can no longer carry the risk.
+**ITER-5 architectural finding (read before the next iteration):** the
+hit-shortens-grant and the `cache_di→cpuDi` override are **INSEPARABLE**. The
+arbiter already has the machinery — `sdram_hit_pred` (fpga64_sid_iec.vhd:3283,
+forced `'0'`) preloads `sdram_busy_cnt<="001"` (:3404) for a short grant. But the
+prior Doom **BRK $00:000A** (:3273-3282) came from shortening the grant while the
+CPU still latched **SDRAM `dout`**. On a cache HIT the CPU must latch **`cache_di`**
+instead — so driving `sdram_hit_pred<=cache_hit` WITHOUT the atomic `cache_di→cpuDi`
+override at the top of the cpuDi mux (:1932) reproduces that exact stale-latch class.
+Second crux: the observer (:4740) feeds the cache **delayed taps** (tap_*_r, 1 clk)
+and fills from `cpuDi` — both WRONG for a real read path. The real path needs (a) a
+cache addressed on the CURRENT `cpuAddr` so `cache_hit`/`cache_di` are valid for the
+same-cycle override + grant decision, but `cache_di` is a registered M10K output
+(valid 1 clk AFTER address) → there is a real **same-cycle-availability timing
+question** (does cache_di arrive before the bridge's `enableCpu_816=cpu_cyc_s(1)`
+latch?), and (b) fill from the REAL returned SDRAM byte on MISS completion, not cpuDi.
+**NEXT (GHDL-first, per page-mode/SLOT3 — do NOT jump to a build):** extend
+`sim/c64_reduced_harness` (it already clocks the real `fpga64_sid_iec`; the observer
+was modeled on `c64_cache_hitrate_tb`) to wire `cache_di→cpuDi` + `cache_hit→hit_pred`
+for real and assert the CPU reads correct (non-stale) bytes across a boot + Doom-loader
+stream — i.e. prove the M10K-latency/override timing and coherency at SYSTEM level
+before any 40-min build. Only after that system proof: build → **STA on `cache_di→cpuDi`
+at the shorter cadence** (the one thing only a build answers) → HW gates Lorenz scpu
+100% + Doom no-regress → effective MHz. Write-hit path stays disabled (read-only).
+`snoop_*` ports exist (commit 8329f56) but still need wiring to the real DMA/REU write
+strobe in the system harness + build.
 
 --- (historical, the path that led here) ---
 **SIM-VALIDATED ✅ → RTL IMPLEMENTED → BUILT (timing-clean) → HW-FALSIFIED ⛔ (2026-05-30).**
