@@ -286,6 +286,11 @@ set_global_assignment -name VERILOG_FILE rtl/sdram.v
 set_global_assignment -name VERILOG_FILE rtl/sdram_pm.v
 set_global_assignment -name VHDL_FILE rtl/dprom.vhd
 set_global_assignment -name VHDL_FILE rtl/spram.vhd
+# more-turbo iter-4d (2026-05-30): cpu_cache was DEAD/uncompiled; now compiled
+# in as a read-only HIT-RATE OBSERVER instantiated by fpga64_sid_iec
+# (cache_observer). Self-contained (no sub-entities). cache_hit is NOT fed to
+# the CPU -> behaviourally inert.
+set_global_assignment -name VHDL_FILE rtl/cpu_cache.vhd
 set_global_assignment -name VERILOG_FILE rtl/cartridge.v
 set_global_assignment -name VERILOG_FILE rtl/reu.v
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/am29f040.sv
