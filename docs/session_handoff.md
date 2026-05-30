@@ -565,7 +565,17 @@ two off-the-critical-path steps de-confound and de-risk:
      CPU, `CACHE_READ_PATH=false`) ALSO runs CLEAN. Only `e0e83e5c` (cache feeding the
      CPU) garbles → **the corruption is definitively in the read path FEEDING
      `cache_di` to the CPU**, not a HEAD regression, not the autoload harness.
-   - **ROOT-CAUSE HYPOTHESIS (RTL-grounded, cpu_cache.vhd):** `cache_hit` is
+   - **ROOT CAUSE CONFIRMED off-device (GHDL bench `sim/cache_coherency_tb/
+     cpu_cache_latency_tb.vhd`, run `run_cache_latency.ps1`):** the bench fills two
+     distinct lines ($0100=$AA, $0200=$BB), settles on line A, then switches to line B
+     and samples `cache_hit`/`cache_di` SAME-CYCLE (mid-clock, no new edge) like the
+     combinational override. Result: `SAME-CYCLE B: $0200 hit=1 di=$AA same_line=0` —
+     hit asserts for $0200 but `cache_di` still holds line A's stale $AA; one edge later
+     `LATE B: $0200 hit=1 di=$BB` is correct. So the override feeds the CPU the PREVIOUS
+     line's byte on any cross-line (non-same_line) hit. The bench RED-FAILS (severity
+     failure) while the skew exists and goes GREEN when fixed = the iter-7b-fix
+     regression gate. (Mechanism below confirmed exactly:)
+   - **MECHANISM (RTL-grounded, cpu_cache.vhd):** `cache_hit` is
      COMBINATIONAL on the current address (`cacheable_rd and tag_match and byte_valid`,
      :276), but `cache_di` is derived from `line_word`, a REGISTERED 1-cycle-late read
      of the 8 data banks (:284-296). The `same_line` fast-path (:180-182) only covers
