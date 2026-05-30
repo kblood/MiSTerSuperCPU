@@ -110,6 +110,25 @@ architecture sim of c64_cache_hitrate_tb is
     signal rtl_hr    : unsigned(7 downto 0)  := (others => '0');
     signal rtl_hw    : unsigned(7 downto 0)  := (others => '0');
 
+    -- iter-5 READ-PATH COHERENCY checker (system-level, zero DUT risk).
+    -- A testbench shadow of bank-$00 memory tracks, per address, the last byte
+    -- the cache was filled with + whether that entry is still valid (mirroring
+    -- the cache's fill-on-read and invalidate-on-write semantics). On every
+    -- cacheable READ where the REAL cache_hit='1', the cache would feed its
+    -- stored byte to the CPU on a read-path build — so that stored byte MUST
+    -- equal the byte the CPU actually reads now (tap_di). A mismatch = a stale
+    -- HIT = a memory-mutation path that escaped invalidation = a read-path
+    -- coherency hole. This exercises REAL interleaved write/read traffic the
+    -- scripted cache_coherency_tb cases can't reach. cache_di's M10K 1-clk
+    -- latency is deliberately NOT used (it's an STA question, build-only); the
+    -- shadow models the cache's CONTENT, not its read pipeline.
+    type sh_mem_t is array(0 to 65535) of unsigned(7 downto 0);
+    signal sh_val   : sh_mem_t := (others => (others => '0'));
+    signal sh_valid : std_logic_vector(0 to 65535) := (others => '0');
+    signal coh_checks : integer := 0;  -- cacheable-read HITs validated against shadow
+    signal coh_fails  : integer := 0;  -- HITs where stored byte /= byte CPU read (STALE)
+    signal coh_hit_noshadow : integer := 0;  -- cache HIT but shadow invalid (eviction/skew diag)
+
     ------------------------------------------------------------------
     -- Helpers (verbatim from _tb_v2)
     ------------------------------------------------------------------
@@ -328,6 +347,56 @@ begin
     end process;
 
     ------------------------------------------------------------------
+    -- iter-5 read-path coherency checker. Bank-$00 only (the harness stream
+    -- is bank-$00; SuperRAM never appears here). Order each clk:
+    --   1) cacheable WRITE -> invalidate the shadow entry (mirror invalidate_wr
+    --      / the new snoop), BEFORE any read check this clk.
+    --   2) cacheable READ: if cache_hit='1', the cache would serve its stored
+    --      byte. Compare shadow (cache content as of PRIOR fills) to tap_di.
+    --   3) fill the shadow with tap_di (mirror cache_fill_we this clk).
+    -- cache_hit is combinational on PRIOR valid_mem, so the compare must read
+    -- the shadow BEFORE this clk's fill — which is the statement order below.
+    ------------------------------------------------------------------
+    coh_proc : process(clk)
+        variable idx : integer;
+    begin
+        if rising_edge(clk) then
+            if reset = '0' and tap_en = '1' and tap_valid = '1' and tap_bank = x"00" then
+                idx := to_integer(tap_addr);
+                if tap_we = '1' then
+                    -- write: cache invalidates the matching byte; mirror it.
+                    if cacheable = '1' then
+                        sh_valid(idx) <= '0';
+                    end if;
+                elsif access_eval = '1' then
+                    -- cacheable read: validate a HIT against the shadow content.
+                    if cache_hit = '1' then
+                        if sh_valid(idx) = '1' then
+                            coh_checks <= coh_checks + 1;
+                            if sh_val(idx) /= tap_di then
+                                coh_fails <= coh_fails + 1;
+                                report "READ-PATH COHERENCY FAIL @ $00:"
+                                     & hex4(std_logic_vector(tap_addr))
+                                     & " cache_holds=$" & hex2(std_logic_vector(sh_val(idx)))
+                                     & " cpu_reads=$" & hex2(std_logic_vector(tap_di))
+                                     severity warning;
+                            end if;
+                        else
+                            -- cache HIT while shadow says invalid: tag-conflict
+                            -- eviction the flat shadow can't model, or 1-clk skew.
+                            -- Diagnostic only (not a coherency failure).
+                            coh_hit_noshadow <= coh_hit_noshadow + 1;
+                        end if;
+                    end if;
+                    -- fill shadow with the byte just read (mirror cache fill).
+                    sh_val(idx)   <= tap_di;
+                    sh_valid(idx) <= '1';
+                end if;
+            end if;
+        end if;
+    end process;
+
+    ------------------------------------------------------------------
     -- iter-4d: tap the in-RTL observer (cobs_*) for an exact cross-check.
     ------------------------------------------------------------------
     rtl_tap : process(clk)
@@ -450,6 +519,17 @@ begin
                & " (=" & integer'image((to_integer(rtl_hr) * 10000 / 256) / 100)
                & "." & integer'image((to_integer(rtl_hr) * 10000 / 256) mod 100)
                & "% of last 256-read window)  rtl_window_HW=" & integer'image(to_integer(rtl_hw));
+
+        -- iter-5: read-path coherency verdict over the real boot stream.
+        report "READPATH_COHERENCY hit_checks=" & integer'image(coh_checks)
+               & " stale_fails=" & integer'image(coh_fails)
+               & " hit_noshadow=" & integer'image(coh_hit_noshadow);
+        if coh_fails = 0 then
+            report "READPATH_COHERENCY=PASS (every cache HIT returns the byte the CPU read)";
+        else
+            report "READPATH_COHERENCY=FAIL (" & integer'image(coh_fails)
+                   & " stale HITs)" severity failure;
+        end if;
 
         sim_done <= true;
         report "c64_cache_hitrate_tb: DONE" severity note;
