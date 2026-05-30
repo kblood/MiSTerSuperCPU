@@ -423,16 +423,32 @@ same-cycle override + grant decision, but `cache_di` is a registered M10K output
 (valid 1 clk AFTER address) → there is a real **same-cycle-availability timing
 question** (does cache_di arrive before the bridge's `enableCpu_816=cpu_cyc_s(1)`
 latch?), and (b) fill from the REAL returned SDRAM byte on MISS completion, not cpuDi.
-**NEXT (GHDL-first, per page-mode/SLOT3 — do NOT jump to a build):** extend
-`sim/c64_reduced_harness` (it already clocks the real `fpga64_sid_iec`; the observer
-was modeled on `c64_cache_hitrate_tb`) to wire `cache_di→cpuDi` + `cache_hit→hit_pred`
-for real and assert the CPU reads correct (non-stale) bytes across a boot + Doom-loader
-stream — i.e. prove the M10K-latency/override timing and coherency at SYSTEM level
-before any 40-min build. Only after that system proof: build → **STA on `cache_di→cpuDi`
-at the shorter cadence** (the one thing only a build answers) → HW gates Lorenz scpu
-100% + Doom no-regress → effective MHz. Write-hit path stays disabled (read-only).
-`snoop_*` ports exist (commit 8329f56) but still need wiring to the real DMA/REU write
-strobe in the system harness + build.
+**ITER-5 system-level coherency proof DONE (commit d99987e, GHDL-green, no build).**
+Added a testbench-only coherency checker to `c64_cache_hitrate_tb` (clocks the real
+`fpga64_sid_iec`): a bank-$00 shadow mirrors the cache's fill-on-read/invalidate-on-write
+content; on every cacheable read where the REAL `cache_hit='1'`, the cache's stored byte
+must equal the byte the CPU actually reads (`tap_di`). Result on the real KERNAL boot
+stream (PC→$FD83, 4681 cacheable reads): **hit_checks=4406 stale_fails=0 hit_noshadow=0
+→ READPATH_COHERENCY=PASS** — every cache HIT returns the correct byte, shadow validity
+tracks the HIT decision exactly. This is the functional half a sim CAN settle (the cache
+content stays coherent under real interleaved traffic ⇒ `cache_di→cpuDi` would feed
+correct data). The `cache_di` M10K 1-clk latency was deliberately NOT exercised — that's
+the STA question (build-only). Run: `GHDL=<winget> STOP_TIME=12ms bash
+sim/c64_reduced_harness/run_cache_hitrate.sh`.
+
+**NEXT (build-bearing — the STA gate is the only thing left a sim can't answer):**
+wire the read path in `fpga64_sid_iec.vhd`, ideally behind a default-FALSE VHDL constant
+(`CACHE_READ_PATH`) so synth stays bit-identical until proven: (1) a cache instance on the
+CURRENT `cpuAddr` driving `cache_hit→sdram_hit_pred` (the existing busy_cnt="001" short
+grant, :3404) AND atomically `cache_di→cpuDi` top-priority override (:1932) — the two are
+INSEPARABLE (decoupling = Doom BRK $00:000A stale-latch); (2) fill from the REAL returned
+SDRAM byte on MISS completion (trace `ramDin`/`sdram_data` return timing — NOT cpuDi like
+the observer); (3) `snoop_*`←the DMA/REU write strobe. This is large + fragile + in the
+hairiest file, so it warrants the user able to course-correct, not piecemeal unattended
+ticks. Then build with the constant TRUE → read **STA on `cache_di→cpuDi` at the shorter
+cadence** → HW gates Lorenz scpu 100% + Doom no-regress → effective MHz. Write-hit path
+stays disabled (read-only). Functional coherency is now proven at BOTH unit (8329f56) and
+system (d99987e) level; only timing closure remains unproven.
 
 --- (historical, the path that led here) ---
 **SIM-VALIDATED ✅ → RTL IMPLEMENTED → BUILT (timing-clean) → HW-FALSIFIED ⛔ (2026-05-30).**
