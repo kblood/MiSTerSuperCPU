@@ -303,6 +303,35 @@ the SuperRAM/steady-state hit-rate — the number that decides Doom payoff.** Th
 engineering gate (revive read cache + variable-cadence arbiter + STA-close the HIT
 path at shorter cadence) is the parallel track once payoff is confirmed.
 
+**ITER-4b (2026-05-30): replay model built + cross-validated; KERNAL stream is at
+its informational ceiling.** Added a bounded access-trace dumper to the bench
+(`<we> <bank> <addr>` per step) + `tools/cache_replay.py`, a Python model exactly
+mirroring cpu_cache.vhd (512×8 DM, per-byte valid, opportunistic fill,
+invalidate-on-write). **Cross-check: Python 94.13%/98.64% ≡ GHDL/RTL 94.12%/98.63%
+— observer independently validated.** But the geometry SWEEP is flat: 1KB→16KB,
+DM→4-way, 4B→16B lines ALL give the identical 94.13% → the 275 misses are entirely
+COMPULSORY (first-touch); the KERNAL-init working set is only ~275 distinct bytes,
+fits any cache, so geometry is irrelevant and the stream **cannot inform steady-state
+hit-rate or geometry**. Off-device KERNAL has hit its ceiling. CHECKED the asterix
+CPU bench as a cheaper proxy — also too small (`work_asterix_full/ours_trace.txt`:
+500k steps but only **90 distinct PCs** = a dispatcher loop, not gameplay → also
+compulsory-miss-dominated). **CONCLUSION: no available off-device trace has a working
+set large enough to inform steady-state hit-rate.** Off-device measurement is
+exhausted for this question.
+
+**ITER-4c PATH (decided): in-HW cache observer (sidesteps the trace-bandwidth wall).**
+Streaming every CPU access over UART is impossible (4M acc/s ≫ 115200 baud ≈ 11KB/s),
+and a BRAM-buffered burst just re-creates the small-window problem. So instead
+instantiate the read-only `cpu_cache` as an OBSERVER directly inside `fpga64_sid_iec`
+(cache_di/cache_hit NOT fed to the CPU → cannot break Doom/Lorenz), with two free-running
+counters (cacheable_reads, cache_hits) surfaced via the existing UART debug overlay.
+The cache runs at full HW speed and just accumulates; run real Doom + Lorenz, read the
+counters → the true steady-state SuperRAM+bank-$00 hit-rate. Cost ~8 M10K (have ~150
+free), one build, observer-only. This is also most of the wiring for the eventual real
+integration (flipping it to feed the CPU + the variable-cadence arbiter is the later
+step). NEXT TICK: write the observer instantiation + counters + dbg wiring (off-device,
+GHDL-check via the reduced harness which already compiles cpu_cache), then build + HW.
+
 --- (historical, the path that led here) ---
 **SIM-VALIDATED ✅ → RTL IMPLEMENTED → BUILT (timing-clean) → HW-FALSIFIED ⛔ (2026-05-30).**
 GHDL-first per the page-mode lesson:
