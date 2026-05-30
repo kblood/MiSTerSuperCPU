@@ -138,18 +138,38 @@ constraint cannot fix a functional/CDC bug. The CPU core itself is sound (sim-
 correct; at clk48 timing-clean; boots clean to READY) — the failure is the
 raised-clk_cpu + active-MCP-bridge INTEGRATION.
 
-### DECISION (FINAL, HW-settled): SLOT3 3-clk32 cadence HW-FALSIFIED — ~4MHz ceiling is consume-sync-bound
+### DECISION (FINAL, HW-settled): SLOT3 3-clk32 cadence HW-FALSIFIED — ~4MHz ceiling is cpuDi-MUX-propagation-bound (masked by the ≥4-clk32 multicycle)
 **See the "⛔ SLOT3 HW-FALSIFIED" section just above for the verdict.** The
 analysis path this session was: "pivot to C" → "C is a dead-end (§F: SDRAM-
 bound)" → "C-alone is viable, §F wrong, ~6MHz (sim-validated + RTL trace +
-Codex)" → **HW: 3-clk32 crashes (CPU latches stale data via the 2-FF consume
-sync); §F's effective-4-clk32 was right after all.** The raw controller is
-6-clk64, but the CPU-consume path (data-ready 2-FF sync) needs 4 clk32, so
-re-spacing grants alone cannot beat 4MHz. Salvage requires cutting consume-path
-latency (CDC-touching, not a quick tweak) — filed, not pursued. The sim section
-below is retained for the record but its "~6MHz" conclusion is HW-OVERTURNED for
-the consume reason. Sim bench kept (sim/turbo_throughput_tb G_SLOT3/G_NO_ROWTRACK
-correctly model the CONTROLLER side; the gap is the unmodeled consume sync).
+Codex)" → **HW: 3-clk32 crashes; §F's effective-4-clk32 was right after all.**
+
+**CORRECTED MECHANISM (2026-05-30, verified against RTL+SDC — supersedes the
+"2-FF consume sync" framing below, which was WRONG):** there is NO data sync to
+cut. `ramDin` is an unregistered `in` port; the SDRAM read data reaches the CPU
+through a **purely combinational two-stage mux**: `sdram_pm.dout` (clk64 reg) →
+`sdram_data` → `ramDin` → buslogic `dataToCpu` priority chain (~17 deep,
+fpga64_buslogic.vhd:276-459) → the `cpuDi` register-override mux (~15 deep,
+fpga64_sid_iec.vhd:1888+) → `P65C816.di`. C64.sdc:21-37 names this exact path —
+`sdram.dout_r[8] -> P65C816.P[1] missed by -4.652ns` at 1-cycle budget — and the
+`counter[1]→counter[2]` multicycle that fixes it is **explicitly justified on
+"enable pulses are >= 4 clk32 ticks apart."** SLOT3's 3-clk32 spacing INVALIDATES
+that justification → STA was MASKED (same class as the clk48 failure). The
+arithmetic is exact: dout_r ready ~79ns post-grant (q5); at 4-clk32 the CPU
+latches ~127ns later = 47.6ns available (mux delay ≈20.5ns, closes); at 3-clk32
+it latches ~95ns = only **~15.9ns (1 clk64) available → misses by ~4.6ns**,
+matching the documented −4.652ns. So the ceiling = grant period must hold
+(SDRAM read latency ≈79ns) + (deep cpuDi mux ≈20.5ns); SLOT3 shrank the period
+without shrinking either term.
+
+Salvage is NOT "cut a sync" — it's either (a) shorten the deep two-stage cpuDi
+mux to close in ~1 clk64 (high regression risk, two correctness-critical muxes,
+bounded ~6MHz), or (b) **attack the dominant 79ns SDRAM term with a BRAM cache**
+(a hit serves data ~16ns in → deep mux gets ample settle time even at a shorter
+cadence; this is WHY real SuperCPU uses a cache and is the flagged big lever).
+The sim section below is retained for the record but its "~6MHz" conclusion is
+HW-OVERTURNED. Sim bench kept (sim/turbo_throughput_tb G_SLOT3/G_NO_ROWTRACK
+correctly model the CONTROLLER side; the gap is the unmodeled deep-mux propagation).
 
 **Why §F is wrong:** §F concluded C-alone gives no win because "SDRAM cycle =
 8 clk64 = 4 clk32 already matches the CPU0/4/8/C slot spacing." But the ACTIVE
@@ -181,7 +201,7 @@ gain/risk, ~6-8MHz, no CDC; (2) BRAM cache/write-buffer — ~10-15MHz ceiling bu
 historically black-screens; (3) debug B bridge CDC — ~12-16MHz but HW-dead on
 two fronts.** Pursuing (1).
 
-### ⛔ SLOT3 HW-FALSIFIED (2026-05-30) — effective SDRAM consume = 4 clk32, NOT 3
+### ⛔ SLOT3 HW-FALSIFIED (2026-05-30) — deep cpuDi mux needs ≥4-clk32 settle (masked by multicycle), NOT a consume sync
 Build `1a88abb8` (SLOT3, timing-clean: clk32 +6.06ns, all TNS=0) deployed to
 `_Test`. **HW result: CPU hard-wedged at boot — PC frozen $000075 (crashed into
 zero page), SP runaway-decrementing, never reached READY (black screen + only the
@@ -189,24 +209,36 @@ debug overlay).** Control `97392a1f` redeployed under the identical harness boot
 clean (`SCPU64 ROM V0.07` / READY) — fair A/B. RTL reverted (`git checkout`
 fpga64_sid_iec.vhd; SLOT3 bench KEPT). MiSTer restored, lock released.
 
-**Root cause (the sim→HW gap):** the bench proved the *controller* never drops
-an access at 3-clk32 (0 stale) — and that's TRUE. But the CPU consumes read data
-through the **clk64→clk32 2-FF data-ready sync**, which adds ~2 clk32 of latency
-on the consume side. So even though the raw `sdram_pm.v` cycle is 6 clk64 = 3
-clk32, the synced `data_valid` doesn't reach the CPU until ~+4 clk32. Firing the
-next grant at +3 makes the CPU latch the PRIOR access's stale data → garbage
-fetch → ZP crash. **§F's "4-clk32" was right in EFFECT** (it implicitly included
-the consume/sync latency); my raw-controller analysis isolated only the
-controller cycle and missed the consume path. The bench's `stale_count` monitor
-only models controller-drop (new ce while ready=0), NOT consume-before-synced-
-data — the SAME class of gap that let the page-mode lever pass sim then BRK on HW.
+**Root cause (CORRECTED 2026-05-30 — the original "2-FF data sync" claim in this
+block was WRONG; verified against RTL):** the bench proved the *controller* never
+drops an access at 3-clk32 (0 stale) — TRUE. But the read data reaches the CPU
+through a **purely combinational two-stage mux** (NO data sync exists): clk64
+`sdram_pm.dout` → `sdram_data` → unregistered `ramDin` port → buslogic
+`dataToCpu` priority chain (~17 deep) → `cpuDi` override mux (~15 deep) →
+`P65C816.di`. That deep path takes ≈20.5ns. dout_r is ready ~79ns post-grant (q5);
+at 4-clk32 the CPU latches it ~127ns later (47.6ns of settle — closes); at 3-clk32
+it latches ~95ns later = only **~15.9ns (1 clk64) of settle → misses by ~4.6ns**,
+exactly the −4.652ns C64.sdc:21-37 names for `sdram.dout_r[8] -> P65C816.P[1]`.
+The `counter[1]→counter[2]` multicycle that hides this is **justified on "enable
+pulses ≥4 clk32 apart"** — SLOT3's 3-clk32 spacing invalidates that, so STA was
+MASKED (same class as the clk48 failure, NOT a sim-fidelity gap as first written).
+The garbage fetch from the not-yet-settled mux → ZP crash. **§F's "4-clk32" was
+right in EFFECT.** The bench's `stale_count` monitor only models controller-drop
+(new ce while ready=0); the real blocker is deep-mux propagation, which no
+abstract throughput bench models — it needs STA, not GHDL.
 
-**Is the lever salvageable?** Only by SHORTENING the data-ready consume path by
-≥1 clk32 (e.g. a faster/combinational dout-ready path, or 1-FF sync where
-metastability is tolerable) — that touches CDC safety and is NOT a quick tweak.
-The slot-respacing itself is correct and free; the bottleneck is purely the
-consume-side sync latency. Filed as a follow-up, NOT pursued now. The effective
-~4MHz ceiling stands; it is consume-sync-bound, not raw-SDRAM-bound.
+**Is the lever salvageable?** NOT by touching a sync (none exists). Two real
+paths: **(a)** shorten the deep two-stage `dataToCpu`+`cpuDi` mux to close in
+~1 clk64 — restructure the common-case RAM-read to a fast default with SCPU
+register overrides applied via a precomputed 2:1 select, collapsing the ~32-deep
+priority chain. High regression risk (two correctness-critical muxes), bounded
+~6MHz, and STA-provable. **(b)** A **BRAM cache** attacks the *dominant* 79ns
+SDRAM-latency term instead of the 20.5ns mux term: a hit delivers data ~16ns into
+the cycle, leaving the deep mux ample settle even at a shorter cadence — this is
+the real-SuperCPU mechanism and the flagged big lever (model hit-rate under
+INTERLEAVE first, per the page-mode lesson). The effective ~4MHz ceiling stands;
+it is **cpuDi-mux-propagation-bound** (= grant period must hold 79ns SDRAM +
+20.5ns mux), not raw-SDRAM-bound and not consume-sync-bound.
 
 --- (historical, the path that led here) ---
 **SIM-VALIDATED ✅ → RTL IMPLEMENTED → BUILT (timing-clean) → HW-FALSIFIED ⛔ (2026-05-30).**
