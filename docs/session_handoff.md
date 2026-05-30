@@ -138,20 +138,111 @@ constraint cannot fix a functional/CDC bug. The CPU core itself is sound (sim-
 correct; at clk48 timing-clean; boots clean to READY) — the failure is the
 raised-clk_cpu + active-MCP-bridge INTEGRATION.
 
-### DECISION: pivot to Milestone C (demand arbiter @ clk32)
-Two raised-clock attempts (clk64, clk48) now both HW-falsified at the system
-level despite a sound CPU core. The pattern says: raising clk_cpu + activating
-the CDC bridge has a non-timing integration hazard that's expensive to chase
-(the bench is sim-correct, so the hazard is something the bench doesn't model —
-clock-ratio-dependent metastability or a scenario gap). **Milestone C keeps the
-CPU on clk32 (proven-compatible, control passes Lorenz) with NO active CDC
-bridge, and recovers speed by granting more SDRAM bus slots via a demand
-arbiter.** That sidesteps the entire failing class. This is the higher-leverage
-next step toward compat+speed. (Milestone B is not dead-dead — a future revival
-would need to functionally debug the bridge CDC at raised clk, lower priority.)
+### DECISION (FINAL, HW-settled): SLOT3 3-clk32 cadence HW-FALSIFIED — ~4MHz ceiling is consume-sync-bound
+**See the "⛔ SLOT3 HW-FALSIFIED" section just above for the verdict.** The
+analysis path this session was: "pivot to C" → "C is a dead-end (§F: SDRAM-
+bound)" → "C-alone is viable, §F wrong, ~6MHz (sim-validated + RTL trace +
+Codex)" → **HW: 3-clk32 crashes (CPU latches stale data via the 2-FF consume
+sync); §F's effective-4-clk32 was right after all.** The raw controller is
+6-clk64, but the CPU-consume path (data-ready 2-FF sync) needs 4 clk32, so
+re-spacing grants alone cannot beat 4MHz. Salvage requires cutting consume-path
+latency (CDC-touching, not a quick tweak) — filed, not pursued. The sim section
+below is retained for the record but its "~6MHz" conclusion is HW-OVERTURNED for
+the consume reason. Sim bench kept (sim/turbo_throughput_tb G_SLOT3/G_NO_ROWTRACK
+correctly model the CONTROLLER side; the gap is the unmodeled consume sync).
+
+**Why §F is wrong:** §F concluded C-alone gives no win because "SDRAM cycle =
+8 clk64 = 4 clk32 already matches the CPU0/4/8/C slot spacing." But the ACTIVE
+`sdram_pm.v` early-exits at q=5 (`sdram_pm.v:88`) → the real cycle is **6 clk64
+= 3 clk32**, not 8/4. The active window is ACTIVE(q1)→READ-w/-auto-precharge
+(q2, A10=1 at `sdram_pm.v:198`)→sample(q5), then idle at q0 awaiting the next
+`ce`. 5 clk64 ≈ 78ns ≥ tRC, so **back-to-back accesses every 6 clk64 = 3 clk32
+are physically sustainable.**
+
+**Why the ceiling is stuck at 4MHz anyway:** `cpu_cyc` grants only CPU0/4/8/C =
+every 4 clk32 (`fpga64_sid_iec.vhd:3310`), and the SDRAM-busy predictor loads
+`"011"`=3 baking in the stale assumption (`:3333`/`:3362`). The existing
+`alt_fire` alt-slots sit at CPU2/6/A/E = **2 clk32** after the main slots —
+*too early* for the 3-clk32 cycle, so the predictor correctly blocks them →
+no gain. **The mechanism uses the wrong offset (2, should be 3).**
+
+**The lever:** re-space CPU grants to the real 3-clk32 cycle (CPU0/3/6/9/C/F)
++ fix the busy-predictor to clear at 3 clk32. Grants then land exactly when
+SDRAM completes → **~6MHz CPU-region-only, ~8MHz if EXT slots are harvested**
+(Codex estimate, corroborated). Crucially **interleave-IMMUNE**: Build B
+auto-precharges every access with NO row tracking, so every access is a uniform
+6-clk64 cycle regardless of bank — the conflict-miss mechanism that killed the
+page-mode lever (`project_goal_more_turbo`) does NOT apply. And it's entirely
+in the clk32 domain: **no CDC bridge, no raised clock → sidesteps the whole
+Milestone-B failure class.**
+
+Lever ranking (Codex + analysis): **(1) demand arbiter @ clk32 — best
+gain/risk, ~6-8MHz, no CDC; (2) BRAM cache/write-buffer — ~10-15MHz ceiling but
+historically black-screens; (3) debug B bridge CDC — ~12-16MHz but HW-dead on
+two fronts.** Pursuing (1).
+
+### ⛔ SLOT3 HW-FALSIFIED (2026-05-30) — effective SDRAM consume = 4 clk32, NOT 3
+Build `1a88abb8` (SLOT3, timing-clean: clk32 +6.06ns, all TNS=0) deployed to
+`_Test`. **HW result: CPU hard-wedged at boot — PC frozen $000075 (crashed into
+zero page), SP runaway-decrementing, never reached READY (black screen + only the
+debug overlay).** Control `97392a1f` redeployed under the identical harness boots
+clean (`SCPU64 ROM V0.07` / READY) — fair A/B. RTL reverted (`git checkout`
+fpga64_sid_iec.vhd; SLOT3 bench KEPT). MiSTer restored, lock released.
+
+**Root cause (the sim→HW gap):** the bench proved the *controller* never drops
+an access at 3-clk32 (0 stale) — and that's TRUE. But the CPU consumes read data
+through the **clk64→clk32 2-FF data-ready sync**, which adds ~2 clk32 of latency
+on the consume side. So even though the raw `sdram_pm.v` cycle is 6 clk64 = 3
+clk32, the synced `data_valid` doesn't reach the CPU until ~+4 clk32. Firing the
+next grant at +3 makes the CPU latch the PRIOR access's stale data → garbage
+fetch → ZP crash. **§F's "4-clk32" was right in EFFECT** (it implicitly included
+the consume/sync latency); my raw-controller analysis isolated only the
+controller cycle and missed the consume path. The bench's `stale_count` monitor
+only models controller-drop (new ce while ready=0), NOT consume-before-synced-
+data — the SAME class of gap that let the page-mode lever pass sim then BRK on HW.
+
+**Is the lever salvageable?** Only by SHORTENING the data-ready consume path by
+≥1 clk32 (e.g. a faster/combinational dout-ready path, or 1-FF sync where
+metastability is tolerable) — that touches CDC safety and is NOT a quick tweak.
+The slot-respacing itself is correct and free; the bottleneck is purely the
+consume-side sync latency. Filed as a follow-up, NOT pursued now. The effective
+~4MHz ceiling stands; it is consume-sync-bound, not raw-SDRAM-bound.
+
+--- (historical, the path that led here) ---
+**SIM-VALIDATED ✅ → RTL IMPLEMENTED → BUILT (timing-clean) → HW-FALSIFIED ⛔ (2026-05-30).**
+GHDL-first per the page-mode lesson:
+- Extended `sim/turbo_throughput_tb` with `G_SLOT3` (3-clk32 cadence,
+  CPU0/3/6/9/C/F, busy floor `"010"`) on `cpu_arb_model.vhd`, and `G_NO_ROWTRACK`
+  on the tb (drives `sdram_pm_lite.fast_path='0'` = the DEPLOYED uniform
+  controller — no row tracking, no conflict-MISS). **The first SLOT3 runs
+  FAILED with stale reads — but only because they ran against the lite model's
+  row-tracking/conflict-MISS (q=7, 8 clk64) path, which the SHIPPED sdram_pm.v
+  does NOT have.** Against the faithful deployed model (`G_NO_ROWTRACK=true`):
+  **6.0 MHz, STALE_READS=0, CORRECTNESS=PASS** across sequential, INTERLEAVE
+  (Doom-loader shape that killed page-mode), all-miss stride=256, and async
+  refresh=37. Reproduce: `sim/turbo_throughput_tb/run.sh` (new SLOT3 block).
+- Verified the shipped `sdram_pm.v` is uniform 6-clk64: q-block is unconditional
+  (ce→q1..5→0, early-exit q=5), auto-precharge every access (A10=1 @ `:198`),
+  NO hit/conflict/row-tracking (`grep` for q==7/conflict/precharge/fast_path =
+  empty; header says Build-A page-mode FSM was removed). The arbiter's
+  `sdram_hit_pred` is hard-forced `'0'` (`fpga64_sid_iec.vhd:3239`) so today it
+  always reserves 4 clk32 — the 2-clk64 slack SLOT3 harvests.
+- RTL change (mode-gated on `supercpu_en`, 6510 path untouched):
+  `fpga64_sid_iec.vhd` cpu_cyc now grants CPU0/3/6/9/C/F in SCPU mode (`:3322`),
+  and the MISS busy floor is `"010"` in SCPU mode (`:3380` area). Build kicked
+  (bg task `bdwwkij3n`, ~30-40 min).
+- **HW validation gate (next):** deploy to `/media/fat/_Test/C64.rbf`, then
+  (1) Lorenz scpu must stay 100% (the data-consume correctness oracle the
+  abstract bench can't fully model — stale reads WILL fail it), (2) Lorenz t65
+  must stay 100% (regression guard; 6510 path unchanged so expected clean),
+  (3) Doom autoload must not regress (REU→SuperRAM transfer is the exact
+  interleaved-store path; Build-1 BRK'd here when the controller was wrong).
+  If all three pass → measure effective MHz (speed-bench) and commit. If Lorenz
+  scpu regresses → the data-consume timing at 3-clk32 is the culprit; revert is
+  one-line (drop the `supercpu_en` SLOT3 branch + restore `"011"`).
 - Actions taken: working tree reverted to committed `84ddf8f` (MILESTONE_B=0 +
   original SDC); MiSTer restored to `97392a1f` + lock released; clk48 RBF
-  `abf8ff88` kept archived for the record.
+  `abf8ff88` kept archived for the record. Codex read: `tools/codex-out/speed-lever-priority.txt`.
 
 ## (SUPERSEDED by the falsification above) clk48 CPU-INTERNAL CLOSES (honest STA) — clk64 was truly -1.56ns
 Build `0d284387` (MILESTONE_B=2, clk_cpu=clk48=21.146ns) with the blanket

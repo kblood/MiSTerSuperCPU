@@ -38,7 +38,14 @@ entity cpu_arb_model is
     generic (
         G_ALT_SLOTS       : boolean := false;
         G_HIT_MODE        : integer := 0;
-        G_BUSY_FROM_READY : boolean := false
+        G_BUSY_FROM_READY : boolean := false;
+        -- G_SLOT3 (2026-05-30): re-space the MAIN CPU grants from the 4-clk32
+        -- cadence (CPU0/4/8/C) to a 3-clk32 cadence (CPU0/3/6/9/C/F), matching
+        -- the REAL sdram_pm cycle (6 clk64 = 3 clk32, ready returns at clk64
+        -- cyc 6). MISS busy floor drops from "011"(=4-clk32 effective) to
+        -- "010"(=3-clk32). No HIT/row-tracking — every access is a uniform
+        -- MISS, so this is interleave-IMMUNE (unlike the page-mode HIT lever).
+        G_SLOT3           : boolean := false
     );
     port (
         clk32        : in  std_logic;
@@ -68,6 +75,7 @@ architecture sim of cpu_arb_model is
     constant CYCLE_CPU0 : integer := 16;
     constant CYCLE_CPU1 : integer := 17;
     constant CYCLE_CPU2 : integer := 18;
+    constant CYCLE_CPU3 : integer := 19;
     constant CYCLE_CPU4 : integer := 20;
     constant CYCLE_CPU5 : integer := 21;
     constant CYCLE_CPU6 : integer := 22;
@@ -77,6 +85,7 @@ architecture sim of cpu_arb_model is
     constant CYCLE_CPUC : integer := 28;
     constant CYCLE_CPUD : integer := 29;
     constant CYCLE_CPUE : integer := 30;
+    constant CYCLE_CPUF : integer := 31;
 
     signal sysCycle : integer range 0 to 31 := 0;
 
@@ -131,14 +140,26 @@ begin
         sdram_hit_pred <= ctrl_hit_in;
     end generate;
 
-    -- cpu_cyc: main slots (CPU0/4/8/C) + optional alt slots, mirrors RTL §3296.
-    cpu_cyc_i <= '1' when (sdram_busy = '0' and (
-                    (sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
-                    (sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
-                    (sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
-                    (sysCycle = CYCLE_CPUC and (io_enable = '1' or cs_ram = '1'))
-                )) or (alt_fire_r = '1' and scpu_force_1mhz = '0')
-                   or (alt_fire_r2 = '1' and scpu_force_1mhz = '0') else '0';
+    -- cpu_cyc: main slots + optional alt slots, mirrors RTL §3296.
+    -- G_SLOT3=false : today's 4-clk32 cadence (CPU0/4/8/C) + alt slots.
+    -- G_SLOT3=true  : 3-clk32 cadence (CPU0/3/6/9/C/F), no alt slots
+    --                 (the 3-spacing IS the harvest; alt-at-+2 is subsumed).
+    gen_slot4 : if not G_SLOT3 generate
+        cpu_cyc_i <= '1' when (sdram_busy = '0' and (
+                        (sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
+                        (sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
+                        (sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
+                        (sysCycle = CYCLE_CPUC and (io_enable = '1' or cs_ram = '1'))
+                    )) or (alt_fire_r = '1' and scpu_force_1mhz = '0')
+                       or (alt_fire_r2 = '1' and scpu_force_1mhz = '0') else '0';
+    end generate;
+    gen_slot3 : if G_SLOT3 generate
+        cpu_cyc_i <= '1' when (sdram_busy = '0' and cs_ram = '1' and scpu_force_1mhz = '0' and (
+                        sysCycle = CYCLE_CPU0 or sysCycle = CYCLE_CPU3 or
+                        sysCycle = CYCLE_CPU6 or sysCycle = CYCLE_CPU9 or
+                        sysCycle = CYCLE_CPUC or sysCycle = CYCLE_CPUF
+                    )) else '0';
+    end generate;
 
     cpu_cyc      <= cpu_cyc_i;
     pred_hit_out <= sdram_hit_pred;
@@ -182,8 +203,13 @@ begin
                         sdram_busy_cnt <= "111";
                     elsif sdram_hit_pred = '1' then
                         sdram_busy_cnt <= "001";   -- HIT — short reservation
+                    elsif G_SLOT3 then
+                        sdram_busy_cnt <= "010";   -- MISS @ 3-clk32 cadence:
+                        -- fire + 2 decrements -> sdram_busy clears at the +3
+                        -- slot, which is exactly when the real sdram_pm cycle
+                        -- (6 clk64) returns ready. Predicts the true ready edge.
                     else
-                        sdram_busy_cnt <= "011";   -- MISS — worst-case floor
+                        sdram_busy_cnt <= "011";   -- MISS — worst-case floor (4-clk32)
                     end if;
 
                     -- update private predictor row (G_HIT_MODE=1 only)

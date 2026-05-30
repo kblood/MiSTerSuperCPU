@@ -52,6 +52,23 @@ echo "################ INTERLEAVED (REAL Doom-loader / ZP-heavy shape, 2026-05-3
 # a SEQUENTIAL-ONLY artifact; interleave is the realistic number.
 run "mode=2 alt ON, INTERLEAVE  (~no gain vs 4.0 baseline)" "-gG_ALT_SLOTS=true -gG_HIT_MODE=2 -gG_INTERLEAVE=true -gG_US=2000"
 run "mode=0 alt OFF, INTERLEAVE (= Build-1 HW config)     " "-gG_HIT_MODE=0 -gG_INTERLEAVE=true -gG_US=2000"
+
+echo "################ SLOT3: 3-clk32 GRANT CADENCE vs DEPLOYED uniform controller (2026-05-30) ################"
+# The DEPLOYED sdram_pm.v auto-precharges every access (no row tracking) ->
+# uniform 6-clk64 = 3-clk32 MISS cycle. Re-spacing CPU grants from 4 to 3 clk32
+# (CPU0/3/6/9/C/F, busy floor "010") lands each grant exactly on the controller's
+# ready edge. G_NO_ROWTRACK models the deployed controller (fast_path forced '0').
+# Unlike the page-mode HIT lever, this never relies on an open row, so INTERLEAVE
+# does NOT erode it. Expect 6.0 MHz, 0 stale across ALL shapes.
+run "SLOT3 + deployed, sequential                          " "-gG_SLOT3=true -gG_NO_ROWTRACK=true -gG_STRIDE=1   -gG_US=2000"
+run "SLOT3 + deployed, INTERLEAVE (killed page-mode)       " "-gG_SLOT3=true -gG_NO_ROWTRACK=true -gG_INTERLEAVE=true -gG_US=2000"
+run "SLOT3 + deployed, stride=256 all-miss                 " "-gG_SLOT3=true -gG_NO_ROWTRACK=true -gG_STRIDE=256 -gG_US=2000"
+run "SLOT3 + deployed, INTERLEAVE + async refresh=37       " "-gG_SLOT3=true -gG_NO_ROWTRACK=true -gG_INTERLEAVE=true -gG_REFRESH_PERIOD=37 -gG_US=2000"
+# CONTROL: SLOT3 against the ROW-TRACKING lite model (NOT deployed) -> conflict-MISS
+# at q=7 = 8 clk64 on every interleaved return -> +3 fires early -> STALE. This is
+# why testing against the wrong controller falsely falsified the lever; kept as a
+# guard so the distinction stays visible.
+run "SLOT3 + row-tracking model, INTERLEAVE (=STALE, control)" "-gG_SLOT3=true -gG_INTERLEAVE=true -gG_US=2000"
 # NOTE: both report CORRECTNESS=PASS, but Build-1 BRK'd on HW. The stale monitor
 # only catches premature NEXT-FIRE (new ce while ready=0); it does NOT model the
 # real CPU consuming dout_r at a FIXED enableCpu edge (ungated by data_valid),

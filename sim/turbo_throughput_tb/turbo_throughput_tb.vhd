@@ -31,6 +31,16 @@ entity turbo_throughput_tb is
         G_ALT_SLOTS       : boolean := false;
         G_HIT_MODE        : integer := 0;
         G_BUSY_FROM_READY : boolean := false;
+        G_SLOT3           : boolean := false;  -- 3-clk32 grant cadence (CPU0/3/6/9/C/F)
+        -- G_NO_ROWTRACK (2026-05-30): model the DEPLOYED sdram_pm.v, which has
+        -- NO fast_path port and auto-precharges every access (A10=1) -> never
+        -- tracks an open row -> EVERY access is the uniform non-conflict 6-clk64
+        -- MISS. Forces sdram_pm_lite.fast_path='0' unconditionally so no row is
+        -- ever held open and the conflict-MISS (q=7, 8 clk64) path can't fire.
+        -- This is the faithful controller for the G_SLOT3 lever; the legacy
+        -- lite default (fast_path<-scpu_fast) models the page-mode Build-C
+        -- row-tracking controller, which is NOT what ships.
+        G_NO_ROWTRACK     : boolean := false;
         G_STRIDE          : integer := 1;
         G_REFRESH_PERIOD  : integer := 0;   -- 0=off; else clk64 cycles between refresh pulses (async row-close stress)
         G_INTERLEAVE      : boolean := false; -- true=alternate SuperRAM(fast)/bank-$00 accesses (Doom-loader shape; forces conflict-MISS)
@@ -100,7 +110,14 @@ architecture sim of turbo_throughput_tb is
     signal refresh     : std_logic := '0';
     signal refresh_cnt : integer := 0;
 
+    -- fast_path into the SDRAM model: forced '0' (no row tracking = deployed
+    -- controller) when G_NO_ROWTRACK, else the legacy scpu_fast (row-tracking
+    -- Build-C lite model).
+    signal sdram_fast_path : std_logic;
+
 begin
+
+    sdram_fast_path <= '0' when G_NO_ROWTRACK else scpu_fast;
 
     --------------------------------------------------------------------
     -- Clocks: clk64 free-running, clk32 = clk64/2, phase-aligned.
@@ -159,7 +176,8 @@ begin
         generic map (
             G_ALT_SLOTS       => G_ALT_SLOTS,
             G_HIT_MODE        => G_HIT_MODE,
-            G_BUSY_FROM_READY => G_BUSY_FROM_READY
+            G_BUSY_FROM_READY => G_BUSY_FROM_READY,
+            G_SLOT3           => G_SLOT3
         )
         port map (
             clk32            => clk32,
@@ -185,7 +203,7 @@ begin
             we         => '0',
             ce         => cpu_cyc,
             refresh    => refresh,
-            fast_path  => scpu_fast,
+            fast_path  => sdram_fast_path,
             ready      => sdram_ready,
             data_valid => sdram_data_valid,
             dbg_hit_path => dbg_hit_path,
@@ -308,6 +326,7 @@ begin
 
         write(l, string'("==> turbo_throughput_tb")); writeline(output, l);
         write(l, string'("    G_ALT_SLOTS="));       write(l, G_ALT_SLOTS);
+        write(l, string'("  G_SLOT3="));             write(l, G_SLOT3);
         write(l, string'("  G_HIT_MODE="));          write(l, G_HIT_MODE);
         write(l, string'("  G_BUSY_FROM_READY="));   write(l, G_BUSY_FROM_READY);
         write(l, string'("  G_STRIDE="));            write(l, G_STRIDE);
