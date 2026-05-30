@@ -498,10 +498,24 @@ wired behind a default-false `RDY_HANDSHAKE` constant (`fpga64_sid_iec.vhd:~1581
 commit `c6b5280`): `data_ready` term ANDed onto the 816 `rdy` port (:3108), using
 the corrected `sdram_data_valid_sync` + `cs_ram` form. Inert when false →
 `c64_reduced_harness run_harness_v2 = PASS 84/0`, bit-identical boot (analyzes +
-no regression). REMAINING before any build: (1) GHDL-prove stall-on-miss with
-`RDY_HANDSHAKE:=true` + a SuperRAM hit/miss stream (`cpu_in_bridge_superram_tb`
-is the foundation — real CPU + bridge); (2) then enable `alt_fire_r2`; (3) build →
-HW-gate. Details below.
+no regression).
+
+**SAFETY PRINCIPLE PROVEN off-device (commit `f8168dc`):** added
+`INJECT_GARBAGE_DURING_STALL` to `cpu_in_bridge_superram_tb` — the mock arbiter
+drives `$DD` on the data bus for the ENTIRE ack-delay stall window, real value only
+at ack. Differential (RATIO=2): control PASS ($AB round-trip), garbage=true STILL
+PASS ($AB). With garbage on the bus every stall cycle the real cpu_65c816 latched
+only the fresh byte at rdy-release, never the garbage (discriminating — an early
+latch would store $DD → FAIL). So the no-stale-latch property the alt-slot relies
+on holds: a read held by rdy-low during a miss consumes data only when ready.
+
+**REMAINING = HW-gated (a sim can't reach these):** (1) the actual fpga64
+`data_ready` expression driving the 816 rdy in the REAL arbiter context — the
+above bench drives rdy from the bridge, not my `data_ready` term; (2) whether
+`sdram_data_valid_sync` deasserts/reasserts in step with the CPU latch against the
+real `sdram_pm`; (3) `alt_fire_r2` interaction + cadence non-regression; (4)
+effective MHz. These need: `RDY_HANDSHAKE:=true` + enable `alt_fire_r2` → build →
+deploy → Doom no-regress + Lorenz scpu/t65 100% + MHz. Details below.
 
 **NEXT (build-bearing, iter-7) — TURNKEY PLAN (vehicle already in the RTL):**
 realize the 2× — current wiring shortens the grant but `cpu_cyc` still fires only
