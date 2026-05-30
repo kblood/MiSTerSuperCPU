@@ -372,6 +372,34 @@ to `/media/fat/_Test/C64.rbf`, then read `HR`/`HW` over UART during (a) a real D
 engineering arc. Observer-only, so the run also confirms-by-non-regression that
 boot/Doom/Lorenz are unaffected. Commits `26912d5`/`e7e3d3e`/`68e2f9f` (all unpushed).
 
+**HW MEASUREMENT DONE (2026-05-30, user freed the MiSTer) → GO for the cache lever.**
+Deployed `e5e899fc`, read the UART `HR`/`HW` observer across three workloads
+(`tools/cache_hitrate_hw.py` / inline capture). HW advancing in all = liveness OK;
+Doom reached its `$2C` main loop normally = observer is non-regressing:
+| Workload | PC region | HR mean | hit % |
+|---|---|---|---|
+| KERNAL idle loop (degenerate tight loop) | $00:E5xx | 255/256 | 99.6% |
+| Bank-$00 BASIC compute (FP interpreter) | $00:B8–BA | 204.5/256 | **~80%** |
+| Doom gameplay (SuperRAM banks $2B/$2C) | $2B/$2C | 212.7/256 | **~83%** |
+Both representative workloads land **~80–83%** steady-state — comfortably above the
+threshold where a read cache pays off (the real CMD SuperCPU ships one for exactly
+this). So ~80% of cacheable reads could be served from the SHORT cache path (~1 clk64)
+instead of the 79ns SDRAM read + ~20.5ns deep `dataToCpu`+`cpuDi` mux that bind the
+current ~4MHz ceiling. **VERDICT: GO** on the cache + variable-cadence-arbiter arc.
+- NOTE on the idle-loop 99.6% vs compute 80%: the idle KERNAL loop re-reads a tiny
+  byte set so it trivially hits; the 80–83% numbers are the REAL varied-code steady
+  state and the ones to design against.
+- Shared-MiSTer contention during the run: the CD32/CDTV agent loaded `CDTV-DotC-Audio`
+  mid-measurement (replaced my C64); re-deployed once (user-authorized) and completed.
+**NEXT (the engineering arc, GHDL-first per the page-mode/SLOT3 lesson):** revive
+`cpu_cache` as a REAL read path (cache_di→cpuDi on hit, feeding the CPU) + a
+variable-cadence arbiter that shortens the grant on a hit (MISS path keeps the 4-clk32
+budget; HIT path needs ~1-2 clk32 and must STA-close `cache_di→cpuDi`). HW gates: Lorenz
+scpu 100%, Doom no-regress, then measure effective MHz. This is large + historically
+black-screen-prone (write-hit path stays disabled — read-only), so prototype/justify in
+GHDL before each build. Commits this measurement session: docs/memory only (no RTL change
+beyond the already-committed observer).
+
 --- (historical, the path that led here) ---
 **SIM-VALIDATED ✅ → RTL IMPLEMENTED → BUILT (timing-clean) → HW-FALSIFIED ⛔ (2026-05-30).**
 GHDL-first per the page-mode lesson:
