@@ -240,6 +240,48 @@ INTERLEAVE first, per the page-mode lesson). The effective ~4MHz ceiling stands;
 it is **cpuDi-mux-propagation-bound** (= grant period must hold 79ns SDRAM +
 20.5ns mux), not raw-SDRAM-bound and not consume-sync-bound.
 
+### ✅ NEXT LEVER QUALIFIED (2026-05-30): read-only BRAM cache — survives the interleave objection that killed page-mode & SLOT3
+Read `C64_MiSTer/rtl/cpu_cache.vhd` (the DEAD/uncompiled real-SCPU cache). It is a
+COMPLETE 4KB direct-mapped read cache (512 lines × 8 bytes; tag = bank&addr[15:12];
+per-byte valid; opportunistic fill from every SDRAM read; write-through w/ 16-entry
+WB). Qualification findings:
+- **Read hits are sound and SHORT-PATH.** `cache_di` (registered M10K output, valid
+  1 clk after addr) feeds the `cpuDi` mux as a *separate high-priority override* —
+  it BYPASSES the ~17-deep buslogic `dataToCpu` chain. So a hit attacks BOTH the
+  79ns SDRAM term AND the 20.5ns deep-mux term (cache_di→cpuDi is ~1-2 levels) →
+  doubly synergistic with a faster cadence ON HITS.
+- **The historical black-screen was WRITE-HIT-specific, NOT read.** `cacheable_wr
+  <= '0'` (cpu_cache.vhd:220): v159/v161 enabled write hits and both black-screened
+  because `cache_hit=1` suppresses enableCpu/cpu_cyc for a cycle, racing
+  `wb_drain_active`'s hijack of ramAddr/ramDout/ramWE in the CPUA-CPUD window →
+  KERNAL loses RAM-init writes. **Read-only caching (writes take the normal SDRAM
+  path + invalidate the matching line) sidesteps this entire failure** — and is the
+  current `cacheable_wr='0'` state, so no new write-path risk.
+- **Interleave-TOLERANT (the key differentiator).** Page-mode/SLOT3 died because
+  interleaving bank-$00 with SuperRAM forced conflict-misses / row-closes. A cache
+  has no open-row to lose: bank-$00 and SuperRAM map to DIFFERENT lines and coexist.
+  Direct-mapped collision needs two hot addrs sharing addr[11:3] w/ different tags —
+  not the common shape. So the objection that killed the last two levers does NOT
+  apply here.
+- **Payoff requires a variable-cadence arbiter on hits.** The cache alone gives NO
+  throughput gain (a hit just delivers correct data faster *within* the fixed
+  4-clk32 slot). To convert "hit ⇒ data ready ~16ns in via short path" into speed,
+  the arbiter must release the CPU early on a hit (grant next cycle at ~+2/+3) and
+  fall back to +4 on a miss. `cache_hit` is combinational on the current address, so
+  the arbiter CAN know in-cycle. The dead `cache_hit→suppress enableCpu/cpu_cyc`
+  cancel logic in fpga64_sid_iec.vhd is exactly this mechanism (also disabled).
+- Resources fine: 4KB = 8 M10K + MLAB; budget has ~150 free M10K.
+
+**NEXT ITERATION (GHDL-first, the disciplined order):** (1) revive `cpu_cache.vhd`
+into a GHDL harness READ-ONLY (cacheable_wr stays '0'); (2) the recurring sim-
+fidelity trap says synthetic patterns mislead — so capture a REAL bank-$00/SuperRAM
+address trace (RTL instrument + one build, or replay a Lorenz/Doom UART-derived
+trace) and measure hit-rate on it, NOT synthetic interleave; (3) only if hit-rate is
+high enough to matter, wire cache_di into the cpuDi mux as a top-priority override
++ revive the hit-shortens-cycle arbiter path; (4) STA must show the cache_di→cpuDi
+HIT path closes at the shorter cadence (the whole point) while the MISS path keeps
+the 4-clk32 budget; (5) HW: Lorenz scpu 100%, Doom no-regress, then measure MHz.
+
 --- (historical, the path that led here) ---
 **SIM-VALIDATED ✅ → RTL IMPLEMENTED → BUILT (timing-clean) → HW-FALSIFIED ⛔ (2026-05-30).**
 GHDL-first per the page-mode lesson:
