@@ -523,7 +523,27 @@ latch) on a real data-ready = `rp_cache_hit OR sdram_ready_sync` instead of the 
 arrives — the alt-slot becomes safe by construction (a miss just gives the speed back
 on that access, keeps it on hits), and Doom's REU→SuperRAM interleaved stores can't
 stale-latch. Scaffolding already exists (`sdram_ready_sync` 2-FF :3391, 
-`sdram_data_valid_sync` :3395). **DE-RISK OFF-DEVICE FIRST:** extend a GHDL system
+`sdram_data_valid_sync` :3395).
+
+**MECHANISM (found this tick — the clean vehicle is the CPU's NATIVE RDY, not
+`cpu_cyc_s` surgery):** `cpu_65c816.vhd` exposes `RDY_IN` and internally does
+`EN <= RDY_IN AND CE` (halts on read cycles; writes force RDY=1 via
+`rdy_gated <= rdy or not localWe`, :92). In `fpga64_sid_iec.vhd` the 816's `rdy`
+port is `baLoc and cpu816_rdy_to_cpu` (:3092 — VIC badline stall AND bridge
+handshake; both load-bearing, preserve them). The RDY-handshake = AND a
+`data_ready` term onto that: `rdy => baLoc and cpu816_rdy_to_cpu and data_ready`,
+with `data_ready <= rp_cache_hit or sdram_ready_sync(1)` (or '1' when
+CACHE_READ_PATH=false / not supercpu_en, to stay bit-identical). HIT → RDY=1
+same cycle, CPU latches `cache_di`; MISS → RDY=0 until `sdram_ready_sync` rises,
+CPU stalls then latches `ramDin` — no stale. This makes speculative `alt_fire_r2`
+CE pulses safe (a miss just holds RDY low that cycle). ⚠️ RISK: in passthrough
+today `rdy` is NOT data-gated (the busy_cnt-gated main slots handle timing), so
+adding `data_ready` changes the shipped 4MHz cadence path — must confirm
+`sdram_ready_sync(1)` tracks per-access readiness exactly (it currently only feeds
+the busy_cnt early-clear) or the main-slot cadence/Lorenz/Doom could break. Keep
+the change gated on `supercpu_en` + a flag so the 6510 path is provably untouched.
+
+**DE-RISK OFF-DEVICE FIRST:** extend a GHDL system
 bench (`c64_reduced_harness` or `cpu_in_bridge_superram_tb`) with a SuperRAM
 hit/miss access stream to prove the handshake stalls correctly on misses and never
 stale-latches — the passthrough boot harness can't (bank-$00, `scpu_fast_path=0`).
