@@ -38,7 +38,55 @@ issue, NOT an RTL functional bug — corroborated at the SYSTEM level (real
 arbiter + SDRAM), not just the isolated bridge bench. The F.3' enable-skew fix
 inside `scpu_async_bridge` is sound at 2:1.
 
-## STA CLOSED — 64MHz is FEASIBLE on this FPGA (committed ca4c4a3)
+## ⛔ HW VERDICT (2026-05-30): MILESTONE B HW-FALSIFIED — clk64 wedges; reverted to MILESTONE_B=0
+The operator lifted the no-MiSTer constraint and I HW-tested build `00452c21`
+(MILESTONE_B=1, clk_cpu=clk64 + MCP). Results:
+- **Boot to READY at 64MHz: PASS** ✅ (first-ever clean clk64 boot — `SCPU64 ROM
+  V0.07`, 38911 BASIC BYTES FREE, READY). The handshake/boot path works on silicon.
+- **Lorenz scpu at 64MHz: FAILS (intermittent wedge).** 1 pre-reboot run showed
+  ~15 instruction-group tests "ok" then the daemon wedged; 3 post-reboot runs ALL
+  failed (1 autostart-miss, 2 hard CPU wedges at ~30s/~62s — overlay frozen =
+  CPU halted). The 32MHz control build `97392a1f` runs Lorenz scpu CLEAN
+  (continuous progress, all "ok") under the identical harness → fair A/B.
+- **ROOT CAUSE (airtight, RTL+SDC+empirical):** `scpu_async_bridge` SUSTAINS
+  `cpu_enable_reg<='1'` across consecutive clk_cpu edges in CPU_IDLE (F.3' v2,
+  scpu_async_bridge.vhd:552-557,665 — intentional, so multi-cycle 65816 ops get
+  enough EN=1 cycles). At clk_cpu=64MHz that makes the P65C816 advance on
+  consecutive 64MHz edges, which **INVALIDATES** `set_multicycle_path -setup 2 -to
+  *P65C816:cpu|*` in C64.sdc (valid ONLY when enable is the sparse arbiter pulse,
+  i.e. in passthrough — which is why the control is clean). STA therefore MASKED
+  real setup violations on the CPU's deep internal combinational paths (ALU/BCD/
+  AddrGen/MCode) which do NOT close at 64MHz single-cycle (15.6ns). The "+2.41ns
+  clk64 slack" was measured against the wrong (2×-relaxed) budget. Boot survives
+  because KERNAL exercises fewer/shorter internal paths; Lorenz's intensive
+  ALU/addressing coverage hits the failing paths → data-dependent wedge.
+- **This OVERTURNS the earlier "STA-clean ⇒ feasible" conclusion.** clk64 is NOT
+  viable with this CPU core under the sustain-enable scheme.
+- **ACTION TAKEN:** reverted `c64.sv` to `MILESTONE_B=0` (safe passthrough default,
+  bit-identical to shipped). MiSTer restored to `97392a1f` + released.
+
+### Doom autoload this session: environmental, NOT a B regression
+Both `00452c21` (MB) and `97392a1f` (control) wedge IDENTICALLY at `$EABE` with a
+garbage screen → the REU/MGL Doom harness is broken for all builds today (REU
+content/timing). Separate pre-existing issue; B exonerated. The Lorenz autoload
+(disk MGL) works, so start_strk is fine.
+
+### PATH FORWARD (the >4MHz question, now better understood)
+The sustain-enable scheme requires the CPU's internal paths to close single-cycle
+at clk_cpu. They close at 32MHz, not 64MHz. Options, in rough order of leverage:
+1. **Quantify true 64MHz CPU slack** — rebuild MILESTONE_B=1 with the
+   `-to *P65C816:cpu|*` multicycle REMOVED → STA shows the real (negative) clk64
+   slack on CPU-internal paths. Cheap, no MiSTer, confirms+sizes the gap. (Teed up.)
+2. **Try clk_cpu=clk48** (PLL already emits clk48). 20.8ns may close where 15.6ns
+   doesn't → 1.5× internal cycle rate with sustain-enable, modest but real, and
+   HW-safe to A/B against Lorenz.
+3. **Demand arbiter (Milestone C) at clk32** — keep CPU at 32MHz (where it closes)
+   and grant more bus slots. This is a DIFFERENT speed mechanism that does NOT need
+   clk_cpu=64MHz at all; the earlier "C is gated on B" framing is weakened — C may
+   be pursuable directly on the stable 32MHz CPU.
+4. Pipeline/retime the P65C816 core to close at 64MHz (largest effort).
+
+## STA CLOSED — 64MHz is FEASIBLE on this FPGA (committed ca4c4a3) [SUPERSEDED — see HW verdict above]
 Engaged Milestone B behind a reversible switch in `c64.sv`:
 - `localparam MILESTONE_B = 1; wire clk_cpu = MILESTONE_B ? clk64 : clk_sys;`
 - `fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64`

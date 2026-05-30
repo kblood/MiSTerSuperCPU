@@ -346,15 +346,22 @@ pll pll
 // the v2 wedge at $48B6 is caused specifically by the async CDC, not
 // Path B bridge code. Pair with SAME_CLOCK_PASSTHROUGH='1' in
 // fpga64_sid_iec.vhd to fully bypass MCP FSM at same-clock.
-// Milestone B (2026-05-30): engage clk_cpu=clk64 (64MHz) across the MCP
-// async bridge. The historical clk64 wedge was the F.3' enable-skew, now
-// fixed inside scpu_async_bridge (cpu_enable derived on the same clk_cpu
-// edge as cpu_rdy). Sim-proven at RATIO=2 across handshake/RMW/CIA/IRQ +
-// system boot + SuperRAM long transitions (sim/scpu_async_bridge_tb,
-// sim/c64_reduced_harness/run_harness_mb.sh). This build measures STA
-// closure at 64MHz — the one fact sim cannot provide. Flip MILESTONE_B
-// back to 0 to restore the shipped clk_cpu=clk_sys passthrough build.
-localparam MILESTONE_B = 1;
+// Milestone B (clk_cpu=clk64 + MCP bridge) — HW-FALSIFIED 2026-05-30, kept OFF.
+// Sim (RATIO=2: handshake/RMW/CIA/IRQ + system boot + SuperRAM) all PASS, and a
+// full build STA-"closed" (clk64 setup +2.41ns). BUT on silicon it BOOTS yet
+// intermittently WEDGES under Lorenz scpu (3/3 post-reboot runs failed; the
+// 32MHz control is clean). Root cause: scpu_async_bridge SUSTAINS cpu_enable_reg
+// across consecutive clk_cpu edges in CPU_IDLE (F.3' v2, for multi-cycle ops),
+// so the P65C816 advances on consecutive 64MHz edges — which INVALIDATES the
+// `set_multicycle_path -setup 2 -to *P65C816:cpu|*` constraint in C64.sdc (that
+// constraint is only valid when enable is the sparse arbiter pulse, i.e. in
+// passthrough). STA therefore MASKED real setup violations on the CPU's deep
+// internal combinational paths, which do NOT close at 64MHz single-cycle.
+// => clk64 is not viable with this core under sustain-enable. Path forward:
+// quantify true 64MHz CPU slack (rebuild w/o that multicycle), try clk_cpu=clk48,
+// or pursue the demand arbiter (Milestone C) at clk32 instead. Leave at 0.
+// Full case: docs/session_handoff.md + memory project_milestone_b_*.
+localparam MILESTONE_B = 0;
 wire clk_cpu = MILESTONE_B ? clk64 : clk_sys;
 
 wire [63:0] reconfig_to_pll;
