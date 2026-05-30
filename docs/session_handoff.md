@@ -585,15 +585,28 @@ two off-the-critical-path steps de-confound and de-risk:
      returns stale/wrong data. Boot's sequential/same-line reads (instr fetch, ZP)
      mask it; LOAD's scattered access pattern exposes it = garbage. STA-closure
      (iter-6 +31ns) can't catch this — it's a data-validity skew, not a timing path.
-   - **NEXT (iter-7b-fix, OFF-DEVICE):** build a targeted GHDL bench that drives
-     `cpu_cache` with a scattered read pattern (alternating lines / read-after-hit on a
-     new line) and asserts `cache_di` matches memory on the cycle the override would
-     sample it. Confirm the latency skew, then fix the read-path protocol so the
-     override samples `cache_di` the cycle AFTER `cache_hit` (or gate the override on a
-     registered `cache_hit_d1` aligned to `line_word`), and add a `same_line`-aware
-     0-latency path only where valid. Re-test on HW (Lorenz scpu/t65 100% + Doom) before
-     declaring the cache read path a usable >4MHz foundation. Until fixed, the cache
-     read path is HW-FALSIFIED-AS-BUGGY and gives no shippable speedup.
+   - **NEXT (iter-7b-fix) — the fix is COUPLED (cache + arbiter), HW-gated:** the bench
+     above already exists and RED-confirms the skew. The fix is NOT cache-only:
+     * Cache side: expose a "data-valid-THIS-cycle" qualifier. `line_word` holds the
+       CURRENT line only when `same_line_i=1` (current addr's line == previous access's
+       line, :180 — because line_word was registered from prev_line last edge). So a
+       safe same-cycle hit = `cache_hit AND same_line_i`. On the FIRST access to a new
+       line, `same_line_i=0` → data is NOT ready this cycle (ready next cycle, when
+       prev_line catches up). Either expose `cache_hit_ready <= cache_hit and same_line_i`
+       OR register a `cache_hit_d1`/`cache_di_d1` aligned to line_word and feed THAT.
+     * Arbiter side (the coupled part the bench can't test): the override + short-grant
+       (`sdram_hit_pred`/`busy_cnt<="001"`) must NOT advance the CPU on the stale first
+       cycle. A cross-line hit must cost ONE extra clk32 (line_word settle) before the
+       CPU samples cpuDi — i.e. the "fast" hit is 2-clk32 for a fresh line, ~1 for a
+       same-line follow-on. Wiring `enableCpu`/cpu_cyc to consume only on the
+       data-ready cycle is the same CE-gating lever as iter-7c (gate the CE pulse, not
+       rdy). This re-couples to the alt-slot design — likely solve both together.
+     * GHDL-extend `c64_reduced_harness`/a system bench to model the arbiter advance +
+       cache together (the unit bench only proves the cache-side timing), THEN build →
+       HW-gate Lorenz scpu/t65 100% + Doom no-regress + MHz. Until fixed, the cache read
+       path is HW-FALSIFIED-AS-BUGGY and gives no shippable speedup.
+     * REGRESSION GATE: `sim/cache_coherency_tb/run_cache_latency.ps1` must go GREEN
+       (currently RED-fails on the skew) as the cache-side proof of the fix.
 
    *(Original isolation plan, now superseded by the result above: build cadence-identical
    except cache feeds cpuDi; if clean → CACHE_READ_PATH HW-clean. It booted clean but
