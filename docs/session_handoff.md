@@ -493,6 +493,16 @@ explicitly tested the single-cycle budget):**
   latency cycle a non-pipelined CPU can't overlap → caps back at ~2× anyway.
   Going further = pipelining the CPU's di-consume = CPU-core surgery.
 
+**STATUS (iter-7 prep landed this tick, off-device):** the RDY-handshake RTL is
+wired behind a default-false `RDY_HANDSHAKE` constant (`fpga64_sid_iec.vhd:~1581`,
+commit `c6b5280`): `data_ready` term ANDed onto the 816 `rdy` port (:3108), using
+the corrected `sdram_data_valid_sync` + `cs_ram` form. Inert when false →
+`c64_reduced_harness run_harness_v2 = PASS 84/0`, bit-identical boot (analyzes +
+no regression). REMAINING before any build: (1) GHDL-prove stall-on-miss with
+`RDY_HANDSHAKE:=true` + a SuperRAM hit/miss stream (`cpu_in_bridge_superram_tb`
+is the foundation — real CPU + bridge); (2) then enable `alt_fire_r2`; (3) build →
+HW-gate. Details below.
+
 **NEXT (build-bearing, iter-7) — TURNKEY PLAN (vehicle already in the RTL):**
 realize the 2× — current wiring shortens the grant but `cpu_cyc` still fires only
 at the 4-apart main slots, because the alt-slot registers are commented OFF
