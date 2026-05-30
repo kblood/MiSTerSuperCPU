@@ -509,6 +509,24 @@ only the fresh byte at rdy-release, never the garbage (discriminating — an ear
 latch would store $DD → FAIL). So the no-stale-latch property the alt-slot relies
 on holds: a read held by rdy-low during a miss consumes data only when ready.
 
+**BUILD 1 IN FLIGHT (2026-05-31, bg task `b9n2v5lyg`, log `build_iter7_build1.log`):**
+isolation build — flags STAGED UNCOMMITTED in `fpga64_sid_iec.vhd`:
+`CACHE_READ_PATH:=true` (:1575) + `RDY_HANDSHAKE:=true` (:1594), **`alt_fire_r2`
+still OFF** (no speedup yet → cadence-neutral). Both flags marked "BUILD-1 STAGED …
+revert before commit". Flags-on config GHDL-verified: `run_harness_v2 = PASS`
+(elaborates + boots; harness `sdram_data_valid` defaults '1' so `data_ready` inert
+there — the real `sdram_pm` timing is the actual HW test). **Purpose:** isolate the
+#1 HW unknown — does gating the 816 `rdy` on `data_ready` (= `sdram_data_valid_sync`
+for SDRAM reads, `rp_cache_hit` for cache hits) preserve correct 4MHz operation
+against the REAL `sdram_pm`? **When build lands → HW gate (next tick):** check
+`/tmp/CORENAME` ownership (C64=mine) + write a deploy lock → deploy
+`/media/fat/_Test/C64.rbf` → (a) Doom autoload no-regress
+(`tools/deploy_and_probe_doom.py`), (b) Lorenz scpu + t65 100% (`tools/lorenz_run.py`)
+→ release lock. PASS ⇒ data_ready integration sound, green-light Build 2 (enable
+`alt_fire_r2` for the 2× speedup). FAIL/wedge ⇒ `sdram_data_valid_sync` doesn't
+track per-access against real `sdram_pm`; revert is just flipping the two flags
+back false (committed default). DO NOT commit the flag flips unless validated.
+
 **REMAINING = HW-gated (a sim can't reach these):** (1) the actual fpga64
 `data_ready` expression driving the 816 rdy in the REAL arbiter context — the
 above bench drives rdy from the bridge, not my `data_ready` term; (2) whether
