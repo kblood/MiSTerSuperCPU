@@ -493,16 +493,47 @@ explicitly tested the single-cycle budget):**
   latency cycle a non-pipelined CPU can't overlap → caps back at ~2× anyway.
   Going further = pipelining the CPU's di-consume = CPU-core surgery.
 
-**NEXT (build-bearing, iter-7):** realize the 2× — the current wiring shortens
-the grant but `cpu_cyc` still only fires at the 4-apart main slots (CExt slots
-unchanged) so it is correct-but-not-faster. Add **cache-HIT alt-slots** firing
-the CPU every 2 clk32 (gated on `cache_hit` AND `supercpu_en`; on MISS the CPU
-keeps the normal 4-apart SDRAM grant — this is what makes it surgical vs SLOT3,
-which shortened the *SDRAM* grant and BRK'd). Keep the honest `-setup 2`
-multicycle (valid at 2-apart, +31ns proven). Then build → HW-gate Lorenz scpu
-100% + Lorenz t65 100% + Doom no-regress → measure effective MHz. The
-passthrough GHDL harness CANNOT exercise the accelerated grant cadence, so this
-is inherently a build+HW step (needs shared MiSTer + user).
+**NEXT (build-bearing, iter-7) — TURNKEY PLAN (vehicle already in the RTL):**
+realize the 2× — current wiring shortens the grant but `cpu_cyc` still fires only
+at the 4-apart main slots, because the alt-slot registers are commented OFF
+(`fpga64_sid_iec.vhd:3473-3504`: both `alt_fire_r`/`alt_fire_r2` are hard-tied
+`<= '0'`; the `--if` predicates are commented). The Step-7b `alt_fire_r2` block
+(samples CPU2/6/A/E → fires CPU3/7/B/F, gated `scpu_fast_path AND cs_ram AND
+sdram_busy_cnt <= "001"`) is the *apparent* vehicle, and `busy_cnt="001"` is loaded
+ONLY on a cache HIT (`sdram_hit_pred=rp_cache_hit`, :3427-28).
+
+**⚠️ CORRECTION (2026-05-30, same tick): re-enabling `alt_fire_r2` is NOT a turnkey
+safe edit — it will reproduce the historical Doom wedge.** The decision to fast-fire
+at CPU3 is registered at CPU2, BEFORE the upcoming access's address (and thus its
+cache hit/miss) is known — `enableCpu = cpu_cyc_s(1)` commits the CPU advance on a
+fixed 2-clk32 delay, it does not wait for data. So the predicate (whether the loose
+`busy_cnt<=001` OR a `rp_cache_hit` tap at CPU2) only reflects the JUST-COMPLETED
+access, never the upcoming one. If the alt-slot access itself MISSES (~17% of the
+time at Doom's measured ~83% SuperRAM hit rate), `busy_cnt` reloads "011" but the CPU
+already committed to fire → latches before SDRAM is ready → stale-latch BRK. This is
+exactly the documented alt-slot Doom-wedge (:3316-3323, :3490-3495). The cache makes
+the *data PATH* close (STA +31ns) and supplies HIT data, but it does NOT make
+speculative alt-slot firing miss-safe — necessary, not sufficient.
+
+**The correct iter-7 = land the RDY-handshake the code itself flags as unbuilt**
+(:3393-3394: *"single-flop sync of sdram_data_valid. Consumer (RDY-handshake gate
+replacing cpu_cyc_s) lands in Phase 6b"*). Gate `enableCpu` (the CPU advance / data
+latch) on a real data-ready = `rp_cache_hit OR sdram_ready_sync` instead of the fixed
+`cpu_cyc_s(1)` delay. Then a miss at ANY slot (main or alt) STALLS the CPU until data
+arrives — the alt-slot becomes safe by construction (a miss just gives the speed back
+on that access, keeps it on hits), and Doom's REU→SuperRAM interleaved stores can't
+stale-latch. Scaffolding already exists (`sdram_ready_sync` 2-FF :3391, 
+`sdram_data_valid_sync` :3395). **DE-RISK OFF-DEVICE FIRST:** extend a GHDL system
+bench (`c64_reduced_harness` or `cpu_in_bridge_superram_tb`) with a SuperRAM
+hit/miss access stream to prove the handshake stalls correctly on misses and never
+stale-latches — the passthrough boot harness can't (bank-$00, `scpu_fast_path=0`).
+ONLY after the handshake is sim-proven miss-safe: set `CACHE_READ_PATH:=true`,
+enable `alt_fire_r2`, build → HW-gate Doom no-regress (`tools/deploy_and_probe_doom.py`)
++ Lorenz scpu/t65 100% (`tools/lorenz_run.py`) + measure MHz. The STA gate (this
+tick) already cleared the data-path-timing half; the RDY-handshake clears the
+cadence-control-correctness half. Both are required; only the first is done.
+MiSTer ownership at this tick: `/tmp/CORENAME=C64` (mine/free), no lock — but the
+next step is off-device (handshake design+sim), so no lock taken.
 
 --- (historical, the path that led here) ---
 **SIM-VALIDATED ✅ → RTL IMPLEMENTED → BUILT (timing-clean) → HW-FALSIFIED ⛔ (2026-05-30).**
