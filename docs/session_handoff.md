@@ -1,4 +1,67 @@
-# Session handoff — 2026-05-31: cache read path (fill-on-hit-fixed) HW-FALSIFIED at boot; next = system-level GHDL bench
+# Session handoff — 2026-05-31: iter-7d REGISTERED the cache-HIT override (the masked-single-cycle fix) — GHDL-clean, probe build + setup-1 STA in flight
+
+## ▶ ITER-7d (2026-05-31, off-device): register the cpuDi cache-HIT override so the masked single-cycle consume becomes a genuine 2-cycle path. RTL DONE + GHDL-clean; probe build running for the setup-1 STA gate.
+The iter-7c reframe (below) concluded the boot corruption is a **masked
+single-cycle timing violation** on `cache_di→cpuDi→P65C816`, not a functional
+bug — only a setup-1 STA probe can gate a fix. iter-7d implements the prescribed
+fix and addresses two flaws a Codex falsification pass caught.
+
+**RTL change (all in `fpga64_sid_iec.vhd`, behind `CACHE_READ_PATH`, default false):**
+1. **Registered override.** New `rp_cache_hit_d1`/`rp_cache_di_d1` (1-clk32 FFs in
+   `gen_read_path`). The cpuDi override now consumes the *registered* hit+data
+   (`cpuDi <= rp_cache_di_d1 when (CACHE_READ_PATH and rp_cache_hit_d1='1') else
+   cpuDi_nocache`). This splits BOTH masked single-cycle paths — the data
+   (`line_word→cache_di byte-select`) AND the select (`tag_mem→tag_match→mux`) —
+   with a pipeline register, so the cache instance internals now feed only the d1
+   FFs (a short intra-clk32 hop), not the CPU.
+2. **`cpuDi_nocache` split.** Factored the entire non-override mux (SCPU regs →
+   `ramDin`/`cpuDi_raw`) into a new `cpuDi_nocache` signal; `cpuDi` is just the
+   2:1 override on top (depth-neutral). **The cache now fills from `cpuDi_nocache`,
+   NOT `cpuDi`** — severing Codex's fill-feedback hazard (a registered-override
+   spurious-assert during a miss can no longer write the cache's own output back
+   into the miss line). `rp_fill_we` stays gated on the *combinational* hit
+   (accurate current-access miss classifier).
+3. `sdram_hit_pred` left on the **combinational** hit (unchanged) — it's inert for
+   cadence with alt_fire OFF, and keeping it combinational sidesteps Codex's Q2
+   short-grant-wrong-access concern. (Revisit when wiring the variable-cadence 2×.)
+
+**Codex falsification (docs/iter7d_codex_brief.md, tools/codex-out/iter7d-falsify.txt):**
+- Q1 (off-by-one): a single register is co-phased-correct only from `[N+2,N+3)`,
+  with a transient stale-di/asserted-hit window at `[N+1,N+2)`. HARMLESS here —
+  the CPU latches at the 4-apart main slot (~N+4), well after the settle; alt_fire
+  is OFF so nothing latches in the transient window.
+- Q3 (the important catch): `fill_data => cpuDi` is a feedback corruption path under
+  a registered select. **Fixed** by filling from `cpuDi_nocache`.
+
+**GHDL (sim/c64_reduced_harness/run_cache_hitrate.sh, real fpga64+P65C816):**
+- CACHE_READ_PATH=false: boot `final_pc=$00:FD83`, READPATH_COHERENCY=PASS — the
+  `cpuDi_nocache` refactor is behaviorally bit-identical when off.
+- CACHE_READ_PATH=true (registered override): boot `final_pc=$00:FD83`, coherency
+  PASS — the registered path doesn't break execution. (As established, GHDL CANNOT
+  reproduce the HW timing bug — boots clean either way. The gate is STA.)
+
+**IN FLIGHT — the off-device gate:** probe build with `CACHE_READ_PATH:=true`
+(`build_iter7d.log`), then `quartus_sta -t C64_MiSTer/cache_sta_probe.tcl`
+(updated: from-set now unions the `cpu_cache` instance regs WITH the new
+`rp_cache_*_d1` FFs, since the path launch moved to the registers). **GO/NO-GO:
+the forced `-setup 1` (31.25ns) budget on `{rp_cache_*_d1 + read_path_cache} →
+P65C816:cpu` must be POSITIVE** (iter-6 measured −0.651ns at setup-1 on the
+UN-registered path; registering should flip it positive by removing the
+~10ns cache-internal + cpuDi-mux delay from the single-cycle window). If positive
+⇒ the masked violation is gone ⇒ strong predictor the HW boot corruption is fixed
+⇒ next is the HW gate (Lorenz scpu/t65 100% + Doom no-regress at the existing
+4-apart cadence; this build is correctness-only, no speed change yet). If still
+negative ⇒ read which path the worst slack now traverses (expected: the CPU-
+internal `di→ALU→PCr` ~11ns wall, the same Milestone-B limit — meaning even
+registered 2× needs CPU-core pipelining).
+
+**Remember to revert `CACHE_READ_PATH:=false` before committing** (RBF ships
+bit-identical). The registered-override RTL + `cpuDi_nocache` split are the
+keepers regardless of the STA verdict.
+
+---
+
+# (prior) Session handoff — 2026-05-31: cache read path (fill-on-hit-fixed) HW-FALSIFIED at boot; next = system-level GHDL bench
 
 ## ⛔ ITER-7c HW RESULT (2026-05-31): fill-on-hit fix HW-FALSIFIED — build 0228d2b6 CORRUPTS the boot screen
 Deployed build `0228d2b6` (= HEAD `497071b` fill-on-hit fix + `CACHE_READ_PATH:=true`,

@@ -1465,6 +1465,7 @@ signal scpu_native_vec : native_vec_array := (
 signal scpu_nmi_vec_lo : std_logic_vector(7 downto 0) := x"00";
 signal scpu_nmi_vec_hi : std_logic_vector(7 downto 0) := x"FF";
 signal cpuDi_raw         : unsigned(7 downto 0);                        -- raw bus data; SuperCPU regs mux ahead of this
+signal cpuDi_nocache     : unsigned(7 downto 0);                        -- iter-7d: cpuDi WITHOUT the read-path cache override (SCPU regs + ramDin/cpuDi_raw). The exact byte the CPU reads on a cache MISS; the read-path cache fills from THIS (never cpuDi) so a registered-override spurious assert can't feed cache output back into a miss fill (Codex iter-7d Q3).
 signal io_data_i    : unsigned(7 downto 0);
 signal ioe_i        : std_logic;
 signal iof_i        : std_logic;
@@ -1572,11 +1573,25 @@ signal cobs_hw_reg   : unsigned(7 downto 0) := (others => '0');  -- window-compl
 -- top of the cpuDi mux + rp_cache_hit->sdram_hit_pred short grant) are wired as
 -- an INSEPARABLE pair — shortening the grant without the data override is the
 -- Doom BRK $00:000A stale-latch class. Read-only: write hits stay disabled.
-constant CACHE_READ_PATH : boolean := false;  -- committed default false. ITER-7c HW-FALSIFIED 2026-05-31 (build 0228d2b6 = 497071b + this flag true): fill-on-miss-only CORRUPTS the boot screen (garbled "< 0JEEP"; CPU reaches READY editor loop but screen RAM is garbage + keyboard dead). Decisive A/B: control 97392a1f boots CLEAN (SCPU64 ROM V0.07 / READY) under the identical harness. This is WORSE than e0e83e5c (which booted clean and corrupted only on LOAD) — the ONLY RTL delta is the fill-on-hit gate (:4880 rp_fill_we and not rp_cache_hit), so suppressing fill-on-hit EXPOSED the cross-line cache_di 1-cycle latency skew it had been masking: a cross-line HIT now serves registered (1-cycle-stale) cache_di straight to the CPU with no re-fill to self-correct. OVERTURNS the iter-7c "latency skew masked by the 4-apart cadence" negative result. NEXT = system-level GHDL bench (real cpu_65c816 through the read path with a cross-line stream) to reproduce + fix the consumer (align the override to a registered cache_hit_d1/cache_di_d1, or CE-defer the consume one clk32 on a fresh-line hit). ITER-7b cache-only HW (e0e83e5c) booted clean but corrupted Lorenz LOAD. STA +31.07ns @ 2-cyc.
+constant CACHE_READ_PATH : boolean := false;  -- committed default false (RBF bit-identical when off). ITER-7d 2026-05-31: the cpuDi override now consumes the REGISTERED rp_cache_hit_d1/rp_cache_di_d1 (below) + fills from cpuDi_nocache, converting the masked single-cycle consume into a genuine 2-cycle path. Scripted setup-1 STA on the fitted probe build 3514fc7d (cache_sta_probe.tcl, cache_1cyc_path_iter7d.txt): forced -setup 1 worst slack = +7.797ns (0 viol) on rp_cache_hit_d1 -> P65C816|AddrGen|PCr — vs iter-6's -0.651ns FAIL on the un-registered path. So the masked-timing violation behind the iter-7c boot corruption (build 0228d2b6 garbled boot) is ELIMINATED off-device. REMAINING GATE = HW (needs MiSTer): flip true, build, confirm boot clean + Lorenz scpu/t65 100% + Doom no-regress at the existing 4-apart cadence (this is correctness-only — no speed change yet; the variable-cadence 2x arbiter is the follow-up). Until HW-confirmed, ships false. HISTORY: iter-7c (this flag true, pre-register) HW-FALSIFIED — fill-on-miss-only corrupted boot ("< 0JEEP"), control 97392a1f clean; iter-7b cache-only (e0e83e5c) booted clean but corrupted Lorenz LOAD.
 signal rp_cache_di   : unsigned(7 downto 0) := (others => '0'); -- inert default => override never fires
 signal rp_cache_hit  : std_logic := '0';                       -- inert default => hit_pred stays '0'
 signal rp_cacheable  : std_logic := '0';
 signal rp_fill_we    : std_logic := '0';
+-- iter-7d (2026-05-31): REGISTERED cache-HIT override. The cpuDi override now
+-- consumes these 1-clk32-delayed copies instead of the combinational
+-- rp_cache_hit/rp_cache_di, so the masked single-cycle path
+-- line_word->cache_di(byte-select)->cpuDi->P65C816 and tag_mem->tag_match->cpuDi
+-- (select) are BOTH split by a pipeline register => the forced setup-1 STA probe
+-- should go positive (iter-7c HW corruption was that masked single-cycle consume).
+-- Edge phase (cross-line hit, addr presented at edge N): rp_cache_di correct only
+-- from [N+1,N+2) (line_word settles at N+1); the register samples it into
+-- rp_cache_di_d1 valid from [N+2,N+3). The CPU latches at the 4-apart main slot
+-- (~N+4) so the settled value is captured; the transient stale window [N+1,N+2)
+-- is never latched (alt_fire OFF => strictly 4-apart). Inert '0' defaults keep
+-- CACHE_READ_PATH=false bit-identical. See docs/iter7d_codex_brief.md.
+signal rp_cache_di_d1  : unsigned(7 downto 0) := (others => '0');
+signal rp_cache_hit_d1 : std_logic := '0';
 
 -- iter-7 (2026-05-30): RDY-handshake gate for the cache-HIT alt-slot (the
 -- cadence-correctness half — the STA gate cleared the data-path-timing half).
@@ -1962,8 +1977,18 @@ iof_fall_pulse_o <= iof_fall_pulse_r;
 -- probes them (e.g. detect-then-accelerate libraries) sees a real SuperCPU
 -- instead of open bus. Policy gates (scpu_regs_enabled) are unchanged.
 -- ----------------------------------------------------------------------
-cpuDi <= rp_cache_di
-            when (CACHE_READ_PATH and rp_cache_hit = '1') else  -- iter-6 read-path HIT override (TOP priority; inseparable from sdram_hit_pred short grant). rp_cache_hit='0' when off => inert. cache excludes $Dxxx so SCPU regs below are never shadowed.
+-- iter-7d: read-path HIT override now uses the REGISTERED hit/di (rp_cache_*_d1)
+-- so the masked single-cycle cache->P65C816 path is split by a pipeline register
+-- (see decl ~:1581). The non-override base is factored into cpuDi_nocache below;
+-- the cache fills from cpuDi_nocache (NOT cpuDi) so this override can never feed
+-- back into a fill. CACHE_READ_PATH=false => the term is constant-false => cpuDi
+-- collapses to cpuDi_nocache (bit-identical to shipped). rp_cache_hit_d1='0' when
+-- off => inert. cache excludes $Dxxx so SCPU regs below are never shadowed.
+cpuDi <= rp_cache_di_d1
+            when (CACHE_READ_PATH and rp_cache_hit_d1 = '1') else
+         cpuDi_nocache;
+
+cpuDi_nocache <=
          scpu_dos_ext_mode
             when (supercpu_en = '1' and addr_hi_816 = x"00" and cpuAddr_816 = x"D0BC" and scpu_regs_enabled = '1') else
          x"40"
@@ -4880,6 +4905,20 @@ gen_read_path : if CACHE_READ_PATH generate
 	rp_fill_we <= enableCpu_816 and (vda_816 or vpa_816) and (not cpuWe)
 	              and rp_cacheable and (not rp_cache_hit);
 
+	-- iter-7d: register the cache HIT override one clk32. rp_cache_hit/rp_cache_di
+	-- are combinational on the live cpuAddr; rp_cache_di is only valid the cycle
+	-- AFTER line_word settles (cross-line). Sampling both into _d1 here lets the
+	-- cpuDi override (re-rooted above) consume registered signals so the masked
+	-- single-cycle path is genuinely split. Lives in gen_read_path so the FFs are
+	-- absent when CACHE_READ_PATH=false (rp_cache_*_d1 keep their inert '0' defaults).
+	process(clk32)
+	begin
+		if rising_edge(clk32) then
+			rp_cache_hit_d1 <= rp_cache_hit;
+			rp_cache_di_d1  <= rp_cache_di;
+		end if;
+	end process;
+
 	read_path_cache : entity work.cpu_cache
 		port map (
 			clk        => clk32,
@@ -4891,7 +4930,7 @@ gen_read_path : if CACHE_READ_PATH generate
 			cpu_do     => cpuDo,
 			cache_di   => rp_cache_di,
 			cache_hit  => rp_cache_hit,
-			fill_data  => cpuDi,
+			fill_data  => cpuDi_nocache,  -- iter-7d: fill from the pre-override base (NOT cpuDi). On a miss cpuDi_nocache = the exact byte the CPU reads (SCPU regs / ramDin / cpuDi_raw); using cpuDi here would feed the registered override's output back into the cache on any stale-hit cycle (Codex Q3).
 			fill_we    => rp_fill_we,
 			fill_addr  => cpuAddr,
 			fill_bank  => addr_hi_816,
