@@ -1,6 +1,45 @@
-# Session handoff — 2026-05-30: Milestone B validated in GHDL sim; STA build in flight
+# Session handoff — 2026-05-31: cache read path (fill-on-hit-fixed) HW-FALSIFIED at boot; next = system-level GHDL bench
 
-## ⚡🔎 ITER-7c (2026-05-31): e0e83e5c CACHE-CORRUPTION MECHANISM FOUND + FIXED (off-device), HW-VALIDATION BUILD NEXT
+## ⛔ ITER-7c HW RESULT (2026-05-31): fill-on-hit fix HW-FALSIFIED — build 0228d2b6 CORRUPTS the boot screen
+Deployed build `0228d2b6` (= HEAD `497071b` fill-on-hit fix + `CACHE_READ_PATH:=true`,
+RDY_HANDSHAKE=false, alt_fire OFF; Fitter 86% ALM / 411 M10K, TNS=0, core setup +2.453ns).
+- **HW: boot screen GARBLED** — scattered PETSCII + the exact `< 0JEEP` gibberish from the
+  e0e83e5c LOAD corruption, NO `SCPU64 ROM V0.07` banner, NO `READY.`. Screen RAM is garbage
+  while the CPU reaches the KERNAL editor idle loop (`PC:00E5D1↔E5D6`, `J:EA7B EA31 EA5E` IRQ
+  loop = "alive at READY"). Typed `PRINT 2+2` → no echo, no result, keyboard dead. Stable
+  across 3 reloads + a 16s settle = NOT a transitional/flicker artifact.
+- **Decisive A/B (same harness, same minute):** control `97392a1f` boots **CLEAN** —
+  `**** C=64 SCPU64 ROM V0.07 ****` / `38911 BASIC BYTES FREE` / `READY.`. So the corruption
+  is the cache read path, NOT environmental.
+- **KEY FINDING — the fill-on-hit fix made boot WORSE, and that pinpoints the real bug.**
+  `e0e83e5c` (fill on EVERY read) **booted clean**, corrupting only on LOAD. `0228d2b6`
+  (= e0e83e5c + fill-on-MISS-only, the ONLY RTL delta) **corrupts at boot**. Mechanism:
+  fill-on-hit was *accidentally masking* the cross-line `cache_di` 1-cycle latency skew —
+  on a hit it re-served/re-filled the just-fetched value, papering over the stale registered
+  `cache_di`. Removing fill-on-hit EXPOSED the skew: a cross-line HIT now feeds the registered
+  (1-cycle-stale) `cache_di` straight to the CPU with no re-fill self-correct → boot has enough
+  cross-line hits (ZP/code interleave) to corrupt screen RAM.
+- **OVERTURNS iter-7c's "latency skew is masked by the 4-apart main-slot cadence" negative
+  result** (handoff lines ~5-11). On HW the cross-line hit DOES serve stale `cache_di` to the
+  CPU — the di-latch timing does NOT let `line_word` settle before the consume. The cache
+  read path is NOT a usable >4MHz foundation as currently wired.
+- **RECOVERY DONE:** probe flag reverted to committed default `CACHE_READ_PATH:=false`
+  (working tree = comment-only diff vs `497071b`, RBF bit-identical); control `97392a1f`
+  redeployed to `_Test` + confirmed clean (CORENAME=C64, PC cycling editor loop); MiSTer lock
+  released (`/tmp/mister_session.lock=NOLOCK`). Build `0228d2b6` archived. Did NOT commit code
+  (no RTL fix yet) — only the documenting comment + handoff/memory.
+- **NEXT (per the loop instruction — escalate to system-level GHDL):** the unit benches
+  (`cpu_cache_fillonhit_tb`, `cpu_cache_latency_tb`) PROVE the cache is a correct 1-cycle BRAM
+  and that fill-on-hit suppression is right *in isolation* — they CANNOT resolve how the CPU's
+  address-present vs `di`-latch edges align with `line_word` on a cross-line hit (that's the
+  consumer bug). Build a **system-level bench** that drives the REAL `cpu_65c816` through the
+  wired read path (override + short-grant) with a deliberate cross-line / SuperRAM access
+  stream, and assert the CPU latches the correct byte. Candidate fixes to prove there before
+  any rebuild: (a) align the cpuDi override to a REGISTERED `cache_hit_d1`/`cache_di_d1` so
+  hit+data are co-phased; (b) CE-defer the CPU consume one clk32 on a fresh-line (non-same_line)
+  hit. Only after the system bench is green → CACHE_READ_PATH:=true rebuild → HW re-gate.
+
+## ⚡🔎 ITER-7c (2026-05-31, off-device, SUPERSEDED BY HW ABOVE): e0e83e5c CACHE-CORRUPTION MECHANISM FOUND + FIXED, HW-VALIDATION BUILD NEXT
 **Supersedes my own iter-7b "latency-skew is the mechanism" claim — that was WRONG (masked).**
 - **Negative result (proven this tick):** the cross-line consume-latency skew is
   MASKED by the normal cadence. `enableCpu <= cpu_cyc_s(1)` (fpga64_sid_iec.vhd:3530)
