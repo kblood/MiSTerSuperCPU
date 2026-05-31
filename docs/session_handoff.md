@@ -39,6 +39,41 @@ RDY_HANDSHAKE=false, alt_fire OFF; Fitter 86% ALM / 411 M10K, TNS=0, core setup 
   hit+data are co-phased; (b) CE-defer the CPU consume one clk32 on a fresh-line (non-same_line)
   hit. Only after the system bench is green → CACHE_READ_PATH:=true rebuild → HW re-gate.
 
+### ⚙️ REFRAME (2026-05-31, same tick): GHDL CANNOT reproduce it — this is a MASKED single-cycle TIMING violation, not a functional bug. The "system GHDL bench" branch is the wrong tool.
+Ran the cheap experiment the loop's "escalate" branch implied: flipped `CACHE_READ_PATH:=true`
+in `c64_reduced_harness` (real `fpga64_sid_iec`, real `cpu_65c816`, `supercpu_en=1` at
+`c64_reduced_top_v2.vhd:444`, read-path override non-vacuous per iter-6) and ran the 12ms boot.
+- **GHDL boot = CLEAN, `final_pc=$00:FD83`, IDENTICAL to the `false` baseline** (hit 94.12%,
+  READPATH_COHERENCY=PASS). So the harness does NOT reproduce the HW boot corruption even with
+  the read path fully feeding the CPU — confirming iter-6's "on = bit-identical boot."
+- **WHY (decisive):** trace the edges of a cross-line HIT — Edge N: `cpuAddr`→new line L,
+  `cache_hit` asserts (combinational), but `line_word` (registered, cpu_cache.vhd:284-296) still
+  holds the PREVIOUS line ⇒ `cache_di` STALE. Edge N+1: `line_word←L`, `cache_di` valid. The CPU
+  latches `cpuDi` (combinational from `cache_di`) at `enableCpu_816`. On a cross-line hit that
+  latch is effectively **single-cycle** vs when `cache_di` becomes valid. In GHDL `line_word`
+  settles in a delta-cycle so the value is functionally correct → clean. On SILICON the
+  `cache_di→cpuDi→P65C816` path is real, and **iter-6's STA probe already measured it: setup-2
+  budget = +31.068ns clean, forced setup-1 = −0.651ns FAIL** (`cache_1cyc_path.txt`). The
+  `set_multicycle_path -setup 2 -to *P65C816:cpu|*` relaxes the analysis to 2 cycles, so STA
+  **MASKED** the single-cycle cross-line consume → boot corrupts. **Identical masking class as
+  clk64 / SLOT3 / clk48** (a multicycle justified on a cadence assumption the actual access
+  violates).
+- **CONSEQUENCE: a functional GHDL bench cannot prove a fix** (no timing) — only **STA at
+  setup-1 on `cache_di→cpuDi→P65C816`** can. The earlier "extend a system bench, assert correct
+  byte" plan is the wrong tool for a masked-timing bug. (A bench can still SANITY-check a
+  registered-override doesn't break execution, but it can't be the gate.)
+- **THE FIX is build+STA-gated, and iter-6 already bounded it to ~2×:** make the cross-line
+  consume a GENUINE 2-cycle path so setup-2 is HONEST (not masked): register the override
+  (`cache_hit_d1`/`cache_di_d1`, latched the cycle AFTER `line_word` settles) AND extend the hit
+  grant so the CPU latches at edge N+2, not N+1. iter-6: "registering cache_di re-adds a latency
+  cycle a non-pipelined CPU can't overlap → caps at ~2× anyway" — which is exactly the 2×/8MHz
+  target, so the cap is acceptable. **GATE = a setup-1 STA probe on the registered path must be
+  POSITIVE** (i.e. the consume is no longer single-cycle on cross-line hits), reusing
+  `C64_MiSTer/cache_sta_probe.tcl`. Only then rebuild + HW re-gate Lorenz/Doom.
+- This means the next iteration is **RTL (register the override + extend the hit grant) → fitted
+  build → scripted setup-1 STA probe → HW** — NOT a GHDL bench. Large + in the hairiest file →
+  warrants the user able to course-correct.
+
 ## ⚡🔎 ITER-7c (2026-05-31, off-device, SUPERSEDED BY HW ABOVE): e0e83e5c CACHE-CORRUPTION MECHANISM FOUND + FIXED, HW-VALIDATION BUILD NEXT
 **Supersedes my own iter-7b "latency-skew is the mechanism" claim — that was WRONG (masked).**
 - **Negative result (proven this tick):** the cross-line consume-latency skew is
