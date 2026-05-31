@@ -1,5 +1,36 @@
 # Session handoff — 2026-05-30: Milestone B validated in GHDL sim; STA build in flight
 
+## ⚡🔎 ITER-7c (2026-05-31): e0e83e5c CACHE-CORRUPTION MECHANISM FOUND + FIXED (off-device), HW-VALIDATION BUILD NEXT
+**Supersedes my own iter-7b "latency-skew is the mechanism" claim — that was WRONG (masked).**
+- **Negative result (proven this tick):** the cross-line consume-latency skew is
+  MASKED by the normal cadence. `enableCpu <= cpu_cyc_s(1)` (fpga64_sid_iec.vhd:3530)
+  latches CPU di 2 clk32 after `cpu_cyc`, and with `alt_fire_r`/`alt_fire_r2`
+  hard-tied `'0'` (:3496-3527) `cpu_cyc` only fires at 4-clk32-apart main slots
+  (CYCLE_CPU0/4/8/C). The address is stable + line_word settled by di-latch. So the
+  `"001"→"010"` grant-width "fix" is DOUBLY wrong (latency isn't the mechanism, and
+  grant width is inert with alt_fire off). Ruled out.
+- **ACTUAL mechanism (reproduced + fix validated in GHDL):** `rp_fill_we`
+  (fpga64_sid_iec.vhd:4872) was NOT gated on `rp_cache_hit` → the cache re-fills on
+  EVERY cacheable read incl. hits. `fill_data => cpuDi` (:4885), and on a hit
+  `cpuDi <= rp_cache_di` (:1965) = the cache's OWN output. On a CROSS-LINE hit,
+  `line_word` (registered, cpu_cache.vhd:284-296) still holds the PREVIOUS line's
+  byte for one cycle → the fill-back writes that STALE byte into the NEW line's
+  data bank = permanent self-inflicted CONTENT corruption. NOT masked (fires
+  whenever enableCpu_816 pulses on a cross-line access = the common case).
+- **Bench:** `sim/cache_coherency_tb/cpu_cache_fillonhit_tb.vhd` (+ `run_cache_fillonhit.ps1`).
+  FILL_ON_HIT=true → line B reads back $AA (stale A leaked); FILL_ON_HIT=false
+  (models the fix) → line B reads $BB (clean). Decisive.
+- **FIX (applied, fpga64_sid_iec.vhd:4872):** `rp_fill_we <= ... and (not rp_cache_hit)`
+  — only fill on a MISS (textbook cache behaviour). Lives inside
+  `gen_read_path : if CACHE_READ_PATH generate`; with the committed default
+  `CACHE_READ_PATH:=false` the signal is dead → shipped RBF bit-identical.
+- **NEXT (build-bearing):** flip `CACHE_READ_PATH:=true` LOCALLY (uncommitted),
+  build, HW-test: Lorenz scpu must run CLEAN (was garbled in e0e83e5c) + Doom
+  no-regress + Lorenz t65 100%. If clean → the read-path cache (≈2×/8MHz, iter-6
+  STA-honest) is finally HW-valid; then wire the alt-slot fire for the 2× cadence.
+
+
+
 ## NORTH STAR & THIS SESSION'S CONSTRAINT
 Goal: fully-compatible SuperCPU at 20MHz+ turbo. Operator sequencing: **compat
 first, then more turbo** — but the remaining big compat wins are SPEED-BOUND

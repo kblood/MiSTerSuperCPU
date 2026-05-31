@@ -4869,7 +4869,16 @@ rp_cacheable <= '1' when (addr_hi_816 = x"00" and cpuAddr(15 downto 12) /= x"D")
                 else '0';
 
 gen_read_path : if CACHE_READ_PATH generate
-	rp_fill_we <= enableCpu_816 and (vda_816 or vpa_816) and (not cpuWe) and rp_cacheable;
+	-- iter-7c FIX: gate fill on a MISS only (not rp_cache_hit). Filling on a hit
+	-- re-writes the line from cpuDi, which on a hit IS rp_cache_di (the cache's own
+	-- output). On a CROSS-LINE hit, line_word (registered, cpu_cache.vhd:284-296)
+	-- still holds the PREVIOUS line's byte for one cycle, so the fill-back writes
+	-- that stale byte into the NEW line's data bank = permanent self-corruption.
+	-- Reproduced + fix validated off-device: sim/cache_coherency_tb/
+	-- cpu_cache_fillonhit_tb.vhd ($AA leaks into line B with fill-on-hit; clean
+	-- when gated). Textbook cache behaviour anyway: never re-fill a hit.
+	rp_fill_we <= enableCpu_816 and (vda_816 or vpa_816) and (not cpuWe)
+	              and rp_cacheable and (not rp_cache_hit);
 
 	read_path_cache : entity work.cpu_cache
 		port map (
