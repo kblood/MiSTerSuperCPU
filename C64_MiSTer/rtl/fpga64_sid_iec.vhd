@@ -1573,7 +1573,7 @@ signal cobs_hw_reg   : unsigned(7 downto 0) := (others => '0');  -- window-compl
 -- top of the cpuDi mux + rp_cache_hit->sdram_hit_pred short grant) are wired as
 -- an INSEPARABLE pair — shortening the grant without the data override is the
 -- Doom BRK $00:000A stale-latch class. Read-only: write hits stay disabled.
-constant CACHE_READ_PATH : boolean := false;  -- committed default false (RBF bit-identical when off). ITER-7d 2026-05-31: the cpuDi override now consumes the REGISTERED rp_cache_hit_d1/rp_cache_di_d1 (below) + fills from cpuDi_nocache, converting the masked single-cycle consume into a genuine 2-cycle path. Scripted setup-1 STA on the fitted probe build 3514fc7d (cache_sta_probe.tcl, cache_1cyc_path_iter7d.txt): forced -setup 1 worst slack = +7.797ns (0 viol) on rp_cache_hit_d1 -> P65C816|AddrGen|PCr — vs iter-6's -0.651ns FAIL on the un-registered path. So the masked-timing violation behind the iter-7c boot corruption (build 0228d2b6 garbled boot) is ELIMINATED off-device. REMAINING GATE = HW (needs MiSTer): flip true, build, confirm boot clean + Lorenz scpu/t65 100% + Doom no-regress at the existing 4-apart cadence (this is correctness-only — no speed change yet; the variable-cadence 2x arbiter is the follow-up). Until HW-confirmed, ships false. HISTORY: iter-7c (this flag true, pre-register) HW-FALSIFIED — fill-on-miss-only corrupted boot ("< 0JEEP"), control 97392a1f clean; iter-7b cache-only (e0e83e5c) booted clean but corrupted Lorenz LOAD.
+constant CACHE_READ_PATH : boolean := false;  -- committed default false (RBF bit-identical when off). ITER-7e 2026-05-31 HW-CONFIRMED: with fix B (rp_cacheable excludes ROM-shadowable bank-$00 $8/9/A/B/E/F + non-RAM $D), probe build e9c36c3e (this flag TRUE) BOOTS CLEAN (SCPU64 V0.07/READY) + Lorenz scpu PASS (serial LOAD = the e0e83e5c corruption case, now clean) + Lorenz t65 PASS (no regression). FIRST clean HW boot of the cache read path feeding the CPU. Ships false until the variable-cadence 2x arbiter (the actual speedup; this is correctness-only at 4-apart). ITER-7d 2026-05-31: the cpuDi override now consumes the REGISTERED rp_cache_hit_d1/rp_cache_di_d1 (below) + fills from cpuDi_nocache, converting the masked single-cycle consume into a genuine 2-cycle path. Scripted setup-1 STA on the fitted probe build 3514fc7d (cache_sta_probe.tcl, cache_1cyc_path_iter7d.txt): forced -setup 1 worst slack = +7.797ns (0 viol) on rp_cache_hit_d1 -> P65C816|AddrGen|PCr — vs iter-6's -0.651ns FAIL on the un-registered path. So the masked-timing violation behind the iter-7c boot corruption (build 0228d2b6 garbled boot) is ELIMINATED off-device. REMAINING GATE = HW (needs MiSTer): flip true, build, confirm boot clean + Lorenz scpu/t65 100% + Doom no-regress at the existing 4-apart cadence (this is correctness-only — no speed change yet; the variable-cadence 2x arbiter is the follow-up). Until HW-confirmed, ships false. HISTORY: iter-7c (this flag true, pre-register) HW-FALSIFIED — fill-on-miss-only corrupted boot ("< 0JEEP"), control 97392a1f clean; iter-7b cache-only (e0e83e5c) booted clean but corrupted Lorenz LOAD.
 signal rp_cache_di   : unsigned(7 downto 0) := (others => '0'); -- inert default => override never fires
 signal rp_cache_hit  : std_logic := '0';                       -- inert default => hit_pred stays '0'
 signal rp_cacheable  : std_logic := '0';
@@ -4889,8 +4889,28 @@ dbg_cache_hw <= std_logic_vector(cobs_hw_reg);
 -- '0'). When CACHE_READ_PATH=false this generate is empty and rp_cache_* keep
 -- their inert defaults => cpuDi + sdram_hit_pred bit-identical to today.
 -- ====================================================================
-rp_cacheable <= '1' when (addr_hi_816 = x"00" and cpuAddr(15 downto 12) /= x"D")
-                      or (addr_hi_816 > x"00" and addr_hi_816 < x"F0")
+-- iter-7e (2026-05-31) BANK-SWITCH COHERENCY: exclude bank-$00 ROM-shadowable
+-- ranges from the read-path cache. The cache tag (cpu_bank & addr[15:12]) does
+-- NOT encode ROM/RAM visibility (cpuIO/$01 = bankSwitch, :1837), so a byte
+-- cached while ROM is visible at $8000-$BFFF (cart/BASIC) or $E000-$FFFF
+-- (KERNAL) is returned STALE after the CPU switches $01 to read RAM at the same
+-- address — the read-path cache instance wires flush=>'0' (:4941), so the
+-- bank-switch flush the design intended (cpu_cache.vhd:200-201) never fires.
+-- This was the iter-7c/7d boot-corruption root cause (HW-falsified `0228d2b6`,
+-- `3514fc7d`): fill-on-every-read masked it by continuously refreshing each byte
+-- with the currently-visible value; fill-on-miss-only holds the first-seen byte
+-- forever -> stale -> garbled boot. Writes are invalidated (invalidate_wr) and
+-- ROM never changes, so the ONLY staleness mechanism for a cached bank-$00 byte
+-- is ROM/RAM bank switching => excluding the shadowable ranges is coherent by
+-- construction. SuperRAM (banks $02+) has no ROM shadow (unaffected — the
+-- speed-critical Doom workload keeps full caching); always-RAM bank-$00
+-- ($0000-$7FFF, $C000-$CFFF) stays cached + invalidate_wr-coherent. Gating only
+-- the fill transitively suppresses the hit + override (an unfilled line never
+-- validates -> never hits), so cpu_cache.vhd (and the observer) stay untouched.
+rp_cacheable <= '1' when (addr_hi_816 = x"00"
+                          and (cpuAddr(15 downto 12) <= x"7"          -- $0000-$7FFF always-RAM
+                               or cpuAddr(15 downto 12) = x"C"))       -- $C000-$CFFF always-RAM
+                      or (addr_hi_816 > x"00" and addr_hi_816 < x"F0") -- SuperRAM (no ROM shadow)
                 else '0';
 
 gen_read_path : if CACHE_READ_PATH generate

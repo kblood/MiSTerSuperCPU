@@ -1,3 +1,105 @@
+# Session handoff — 2026-05-31: iter-7e — iter-7d HW-FALSIFIED (registered override boots CORRUPT, identical to iter-7c) → root cause is NOT the consume path; it's the read-path cache's `flush => '0'` (missing bank-switch / coherency invalidation), MASKED by fill-on-every-read
+
+## ⛔ ITER-7e HW VERDICT (2026-05-31): iter-7d probe build `3514fc7d` (registered override, CACHE_READ_PATH:=true) BOOTS CORRUPT — overturns the iter-7c "masked single-cycle timing" reframe
+Deployed the iter-7d probe build `3514fc7d` (md5 confirmed; registered `rp_cache_hit_d1`/`rp_cache_di_d1`
+override + `cpuDi_nocache` split, the build whose forced setup-1 STA was **+7.797ns** 0-viol).
+- **HW: boot screen GARBLED** — scattered PETSCII + the exact `< 0vEEP` / `8P08F-]-0|RX#` gibberish
+  signature from iter-7c (`0228d2b6`) / iter-7b (`e0e83e5c`-LOAD). NO `SCPU64 ROM V0.07` banner, NO `READY.`.
+  CPU alive in the KERNAL editor idle loop (PC E5CF↔E5D6, J:EA31 EA7B). Stable across a 12s settle +
+  re-screenshot = NOT transitional. Screenshots: `tools/iter7d_boot.png`, `tools/iter7d_boot_settle.png`.
+- **Decisive A/B (same harness, same minute):** control `97392a1f` boots CLEAN —
+  `**** C=64 SCPU64 ROM V0.07 ****` / `38911 BASIC BYTES FREE` / `READY.` (`tools/iter7d_control_ab.png`).
+  So the corruption is the read path, not environmental.
+- **The corruption is BYTE-IDENTICAL to the un-registered iter-7c build.** That is the key clue:
+  registering the override provably does NOT change the byte the CPU latches at the 4-apart cadence
+  (the `_d1` FFs free-run every clk32, the cache is addressed on the live `cpuAddr` which is held stable
+  ~4 clk32, so `rp_cache_di` fully settles and `rp_cache_di_d1 == rp_cache_di` by the CPU's latch edge).
+  **The registration was a no-op for the data the CPU sees.**
+- **THIS OVERTURNS the iter-7c reframe (commit `5bbed4b`): the boot corruption is NOT a masked
+  single-cycle timing violation on the consume path.** iter-6 already measured that the consume path
+  closes at the ACTUAL `-setup 2` multicycle (+31.068ns); the setup-1 −0.651ns was only relevant for a
+  faster (1-apart) cadence that is NOT in use at 4-apart. iter-7d "fixed" a hypothetical that never fired.
+  Same disproof shape as clk48: STA honest-and-positive, HW still fails ⇒ **functional, not timing.**
+
+## 🎯 ROOT CAUSE (iter-7e, high-confidence, from RTL inspection + the 3-build comparison): the read-path cache instance wires `flush => '0'` — no bank-switch / coherency invalidation. fill-on-every-read MASKED it; fill-on-miss-only EXPOSES it.
+Three-build comparison isolates the variable precisely:
+| Build | fill policy | override | boot | other |
+|---|---|---|---|---|
+| `e0e83e5c` | **every read** (from `cpuDi`) | comb | **CLEAN** | LOAD corrupt |
+| `0228d2b6` | miss-only (from `cpuDi`) | comb | **CORRUPT** | — |
+| `3514fc7d` | miss-only (from `cpuDi_nocache`) | **registered** | **CORRUPT** (identical) | — |
+
+- (2)→(3): registration changed nothing ⇒ the consume/override path is **not** the bug at 4-apart.
+- (1)→(2): the ONLY RTL delta is `and (not rp_cache_hit)` on `rp_fill_we`. On hits fill-every just
+  re-writes the same byte (no-op); on misses both fill identically. A redundant no-op fill can't itself
+  corrupt — **unless fill-every is continuously SELF-CORRECTING valid-but-stale cache bytes** that
+  fill-miss-only leaves stale. That = a missing **invalidation/flush**.
+- **The objective RTL fact (fpga64_sid_iec.vhd:4941):** the `read_path_cache` instance has
+  `flush => '0'` AND `snoop_we => '0'`. The cache tag is `cpu_bank & cpu_addr(15:12)` — it does NOT
+  encode ROM/RAM visibility (`cpuIO(2:0)` = `bankSwitch`, :1837). cpu_cache.vhd:200-201 EXPLICITLY
+  documents the intended design: *"Bank-switch flush (cpuIO(2:0) changes) ensures coherency on ROM/RAM
+  visibility transitions."* **It was never wired** — the read-path instance ties flush off. So a byte
+  cached as ROM at e.g. $E000/$Axxx is returned even after the CPU switches `$01` to read RAM at the same
+  address → stale. fill-on-every-read masks it (each read refills with the currently-visible byte);
+  fill-on-miss-only holds the first-seen byte forever → stale reads → the CPU computes/writes garbage →
+  garbled screen, no banner.
+- **Why GHDL can't reproduce it (DECIDED this tick):** the reduced harness boot is **stuck at
+  `final_pc=$FD83` forever** — it loops in KERNAL RAMTAS (the `simple_sdram_model` doesn't satisfy the
+  RAM-sizing test), so it NEVER reaches BASIC cold-start where the bank-switch corruption lives. Confirmed
+  empirically: ran `CACHE_READ_PATH=true` at `STOP_TIME=80ms` AND a `false` run with the TB window bumped
+  to **1.5M cycles** (`iter7e_true_80ms.log`, `iter7e_coh_1p5M.log`) — both still end at `$FD83`,
+  `READPATH_COHERENCY=PASS`, `hit_checks=33650 stale_fails=0`. The PASS only covers early KERNAL. So
+  natural-boot GHDL reproduction is **impossible in this harness** — but the fix doesn't need it: writes
+  are invalidated (`invalidate_wr`) and ROM never changes, so the ONLY staleness mechanism for a cached
+  bank-$00 byte is ROM/RAM bank switching ⇒ excluding the shadowable ranges is **correct by construction.**
+
+## FIX (iter-7e, DECIDED + IMPLEMENTED + BUILDING): option (B) — exclude bank-$00 ROM-shadowable ranges from the read path
+Chose (B) over (A)/(C): bulletproof (combinational, no flush-FSM thrash), preserves the speed-critical
+workloads (SuperRAM/Doom + bank-$00 ZP/low-RAM), and **read-path-only** so the shipped RBF stays
+bit-identical when the flag is off.
+- **Implementation (fpga64_sid_iec.vhd:4892, `rp_cacheable`):** narrowed the bank-$00 cacheable set to
+  always-RAM nibbles **$0-$7 ($0000-$7FFF) and $C ($C000-$CFFF)**; excluded $8/$9/$A/$B (cart/BASIC) and
+  $E/$F (KERNAL). SuperRAM (banks $02-$EF) unchanged. `rp_cacheable` only gates `rp_fill_we`, so an
+  excluded line never fills → never validates → never hits → the override transitively falls back to
+  `cpuDi_nocache` (correct). **`cpu_cache.vhd` (and the observer) are UNTOUCHED** → observer HR counter +
+  shipped RBF bit-identical. (Confirmed: GHDL `CACHE_READ_PATH=true` no-regression run still boots to
+  `$FD83`, `COHERENCY=PASS`; the 94.12% HR is the observer's separate number, unchanged.)
+- **BUILD DONE + BOOT CLEAN ✅ (the make-or-break PASSED):** build `e9c36c3e`
+  (`builds/..._5ab17f6425_..._e9c36c3e-dirty.rbf`, HEAD `5ab17f6` + fix B + `CACHE_READ_PATH:=true`,
+  snoop `'0'`, alt_fire OFF; 0 errors, worst-case setup **+0.290ns**, hold +0.239ns, TNS=0, MTBF 1e9 yr).
+  Deployed to `_Test`. **BOOT IS CLEAN** — `**** C=64 SCPU64 ROM V0.07 ****` / `38911 BASIC BYTES FREE` /
+  `READY.` (`tools/iter7e_fixB_boot.png`), stable across a re-screenshot. **This is the FIRST clean boot of
+  the cache read path feeding the CPU** (all of iter-7b/7c/7d corrupted). ⇒ the bank-switch root cause was
+  correct and fix B resolves the boot corruption. CPU healthy in the editor loop. (Keyboard sanity check
+  deferred — `mtype.py` SFTP upload glitched; Lorenz uses MGL autoload, no keyboard needed.)
+- **Lorenz scpu PASS ✅** (`tools/lorenz_run/scpu/final.png`, `0160s.png`): the real suite LOADED from
+  disk (serial LOAD = the exact e0e83e5c corruption case) and runs CLEAN — `basic commands - ok / ldab - ok
+  / ldaz - ok / ... / staa - ok / staax - ok`, progressing cleanly over time (visually confirmed, not the
+  flicker-md5 trap). e0e83e5c garbled here immediately; fix B runs it clean ⇒ the read path is HW-correct
+  for scpu serial LOAD + program execution. (Only reached `staax` in 5 min at 4MHz — a full-length 100%
+  completion run is a cheap follow-up, but the early-tests-clean vs e0e83e5c-garbage contrast is decisive.)
+- **Lorenz t65 RUNNING** (`tools/lorenz_run/iter7e_t65.log`) — no-regression check; the read path is gated
+  `enable => supercpu_en` so t65 should be bit-identical to control. Doom is a SEPARATE follow-up: its REU
+  FETCH writes bank-$00 buffers via DMA (bypasses `cpu_we`/`invalidate_wr`, see snoop note below) → don't
+  gate until `snoop_we` is wired.
+- **DEFERRED:** (A) bank-switch flush to recover KERNAL/BASIC-ROM hit-rate; (snoop) DMA-write invalidate
+  for Doom. Both are follow-ups once the read path is HW-proven correct for the non-DMA case.
+- **Snoop wiring (worked out this tick, for the Doom follow-up):** during DMA, `cpuAddr/cpuDo/cpuWe` are
+  muxed to the DMA values (fpga64_sid_iec.vhd:3600-3602), so `cpuWe` DOES carry DMA writes — but the
+  cache's `invalidate_wr` also requires `cpu_en`, wired to `enableCpu_816 = enableCpu and not dma_active`
+  (:3089) = **0 during DMA** ⇒ DMA writes bypass invalidation (the gap). Fix: in the read_path instance,
+  wire `snoop_we => dma_active and cpuWe`, `snoop_addr => cpuAddr` (=dma_addr during DMA),
+  `snoop_bank => x"00"` (REU FETCH targets bank-$00 motherboard RAM). The `snoop_*` ports + top-priority
+  invalidate already exist (iter-5, commit `8329f56`); only this wiring is needed. Gate Doom AFTER adding it.
+
+## RECOVERY (iter-7e): MiSTer restored + lock released
+- Control `97392a1f` re-deployed to `_Test`, confirmed CLEAN (SCPU64 V0.07 / READY); `CORENAME=C64`.
+- `/tmp/mister_session.lock = NOLOCK`.
+- `CACHE_READ_PATH` is currently flipped to `true` LOCALLY for the GHDL repro — **must be reverted to
+  `false` before any commit** (RBF ships bit-identical). No code committed this iteration yet.
+
+---
+
 # Session handoff — 2026-05-31: iter-7d REGISTERED the cache-HIT override (the masked-single-cycle fix) — GHDL-clean, probe build + setup-1 STA in flight
 
 ## ▶ ITER-7d (2026-05-31, off-device): register the cpuDi cache-HIT override so the masked single-cycle consume becomes a genuine 2-cycle path. RTL DONE + GHDL-clean; probe build running for the setup-1 STA gate.
