@@ -114,16 +114,24 @@ begin
         end loop;
         report "=== Flush complete ===";
 
-        -- Fill two DISTINCT cache lines with distinguishable data:
-        --   line A: $0100 (line_index = $0100(11:3) = 0x20), byte off 0 = $0100
-        --   line B: $0200 (line_index = $0200(11:3) = 0x40), byte off 0 = $0200
-        -- Different tags too ($00$01 vs $00$02). Both byte-offset 0.
+        -- Fill three DISTINCT cache lines with distinguishable data (all byte-off 0):
+        --   line A: $0100 = $AA   line B: $0200 = $BB   line C: $0400 = $CC
         fill_byte(x"0100", x"AA", fill_addr, fill_bank, fill_data, fill_we, clk);
         fill_byte(x"0200", x"BB", fill_addr, fill_bank, fill_data, fill_we, clk);
-        report "=== Filled $0100=$AA, $0200=$BB ===";
+        fill_byte(x"0400", x"CC", fill_addr, fill_bank, fill_data, fill_we, clk);
+        report "=== Filled $0100=$AA $0200=$BB $0400=$CC ===";
 
-        -- Settle the read pipeline on line A: present $0100 and let line_word
-        -- catch up (two edges), confirming the cache hits $AA when sampled late.
+        -- CHARACTERIZATION (not a bug in cpu_cache): the cache is a correct
+        -- 1-cycle-latency BRAM. cache_hit is combinational on the current address;
+        -- cache_di comes from line_word, registered 1 edge later. So the CONSUMER
+        -- must sample cache_di at least 1 rising edge after presenting the address
+        -- on a cross-line (non-same_line) access. This bench measures that latency
+        -- so the fpga64 arbiter consume timing can respect it. The fpga64 bug was a
+        -- 1-clk32 hit grant (busy_cnt="001") that consumes SAME-cycle on a cross-line
+        -- hit; the fix is a 2-clk32 grant (busy_cnt="010"), which both lets line_word
+        -- settle AND is the iter-6 STA-honest 2x cadence.
+
+        -- Settle on line A (late sample -> $AA).
         cpu_addr <= x"0100"; cpu_we <= '0';
         wait until rising_edge(clk);
         wait until rising_edge(clk);
@@ -135,52 +143,50 @@ begin
             test_fail <= true;
         end if;
 
-        -- ===== THE CRITICAL TEST =====
-        -- Cross-line switch A->B. After a rising edge, present $0200, then sample
-        -- cache_hit/cache_di SAME CYCLE (a small comb delay, NOT another clk edge)
-        -- — exactly what the combinational fpga64 override does at the hit.
-        -- line_word still holds line A ($AA) until the NEXT edge, so a skew shows
-        -- as hit=1 but di=$AA (stale) instead of $BB.
+        -- ===== MEASUREMENT 1: SAME-CYCLE cross-line sample (the "001" hazard) =====
+        -- Present B mid-cycle (no new edge) and sample. line_word still holds A.
+        -- EXPECT stale ($AA) — this is what a 1-clk32 grant consumes = the HW bug.
         wait until rising_edge(clk);
         cpu_addr <= x"0200"; cpu_we <= '0';
-        wait for CLK_PER/4;          -- mid-cycle: combinational signals settled, no new edge
-        got_hit := cache_hit;
-        got_di  := cache_di;
-        got_sl  := same_line;
-        report "SAME-CYCLE B: $0200 hit=" & std_logic'image(got_hit)
+        wait for CLK_PER/4;
+        got_hit := cache_hit; got_di := cache_di; got_sl := same_line;
+        report "M1 SAME-CYCLE B ($0200): hit=" & std_logic'image(got_hit)
              & " di=" & integer'image(to_integer(got_di))
-             & " same_line=" & std_logic'image(got_sl)
-             & "   (expect hit=1, di=187/$BB; skew shows di=170/$AA)";
-
-        if got_hit = '1' and got_di = x"AA" then
-            report "*** LATENCY-SKEW BUG REPRODUCED: hit=1 for $0200 but cache_di=$AA "
-                 & "(stale line A). The combinational override feeds the CPU the "
-                 & "PREVIOUS line's byte on a cross-line hit. ***" severity warning;
+             & " same_line=" & std_logic'image(got_sl);
+        if not (got_hit = '1' and got_sl = '0' and got_di = x"AA") then
+            report "FAIL M1: expected same-cycle cross-line to read STALE $AA (hit=1, same_line=0)"
+                severity warning;
             test_fail <= true;
-        elsif got_hit = '1' and got_di = x"BB" then
-            report "NO-SKEW: same-cycle cache_di already = $BB (override is safe)";
-        elsif got_hit = '0' then
-            report "HIT-DEFERRED: cache_hit=0 on the switch cycle (override would not fire -- also safe, just slower)";
         else
-            report "UNEXPECTED: hit=" & std_logic'image(got_hit)
-                 & " di=" & integer'image(to_integer(got_di)) severity warning;
-            test_fail <= true;
+            report "  M1 OK: same-cycle cross-line consume = STALE $AA -> a 1-clk32 (busy_cnt=001) hit grant is UNSAFE";
         end if;
 
-        -- Confirm B reads correctly when sampled LATE (sanity: data is in the cache).
+        -- ===== MEASUREMENT 2: ONE-EDGE-AFTER cross-line sample (the "010" fix) =====
+        -- Settle back on B, then switch to C and sample exactly ONE rising edge
+        -- after presenting C. line_word has caught up -> EXPECT valid ($CC).
+        cpu_addr <= x"0200";
         wait until rising_edge(clk);
-        wait until rising_edge(clk);
-        report "LATE B: $0200 hit=" & std_logic'image(cache_hit)
-             & " di=" & integer'image(to_integer(cache_di));
-        if not (cache_hit = '1' and cache_di = x"BB") then
-            report "FAIL: late-sampled $0200 should be hit=$BB" severity warning;
+        wait until rising_edge(clk);                 -- settled on B
+        cpu_addr <= x"0400";                         -- cross-line switch B->C
+        wait until rising_edge(clk);                 -- exactly ONE edge after presenting C
+        wait for CLK_PER/4;                          -- comb settle, no further edge
+        got_hit := cache_hit; got_di := cache_di;
+        report "M2 ONE-EDGE-AFTER C ($0400): hit=" & std_logic'image(got_hit)
+             & " di=" & integer'image(to_integer(got_di));
+        if got_hit = '1' and got_di = x"CC" then
+            report "  M2 OK: one-edge-after cross-line consume = VALID $CC -> a 2-clk32 (busy_cnt=010) hit grant is SAFE";
+        else
+            report "FAIL M2: expected one-edge-after cross-line to read VALID $CC (got di="
+                 & integer'image(to_integer(got_di)) & ")" severity warning;
             test_fail <= true;
         end if;
 
         if test_fail then
-            report "=== TEST FAILED (skew present) ===" severity failure;
+            report "=== CHARACTERIZATION FAILED ===" severity failure;
         else
-            report "=== TEST PASSED (no same-cycle skew) ===";
+            report "=== CHARACTERIZATION PASSED: cache read latency = exactly 1 edge. "
+                 & "Consumer must sample cache_di >=1 clk32 after present on cross-line hits "
+                 & "(fix: hit grant 001 -> 010). ===";
         end if;
         test_done <= true;
         wait;

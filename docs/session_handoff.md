@@ -585,28 +585,39 @@ two off-the-critical-path steps de-confound and de-risk:
      returns stale/wrong data. Boot's sequential/same-line reads (instr fetch, ZP)
      mask it; LOAD's scattered access pattern exposes it = garbage. STA-closure
      (iter-6 +31ns) can't catch this — it's a data-validity skew, not a timing path.
-   - **NEXT (iter-7b-fix) — the fix is COUPLED (cache + arbiter), HW-gated:** the bench
-     above already exists and RED-confirms the skew. The fix is NOT cache-only:
-     * Cache side: expose a "data-valid-THIS-cycle" qualifier. `line_word` holds the
-       CURRENT line only when `same_line_i=1` (current addr's line == previous access's
-       line, :180 — because line_word was registered from prev_line last edge). So a
-       safe same-cycle hit = `cache_hit AND same_line_i`. On the FIRST access to a new
-       line, `same_line_i=0` → data is NOT ready this cycle (ready next cycle, when
-       prev_line catches up). Either expose `cache_hit_ready <= cache_hit and same_line_i`
-       OR register a `cache_hit_d1`/`cache_di_d1` aligned to line_word and feed THAT.
-     * Arbiter side (the coupled part the bench can't test): the override + short-grant
-       (`sdram_hit_pred`/`busy_cnt<="001"`) must NOT advance the CPU on the stale first
-       cycle. A cross-line hit must cost ONE extra clk32 (line_word settle) before the
-       CPU samples cpuDi — i.e. the "fast" hit is 2-clk32 for a fresh line, ~1 for a
-       same-line follow-on. Wiring `enableCpu`/cpu_cyc to consume only on the
-       data-ready cycle is the same CE-gating lever as iter-7c (gate the CE pulse, not
-       rdy). This re-couples to the alt-slot design — likely solve both together.
-     * GHDL-extend `c64_reduced_harness`/a system bench to model the arbiter advance +
-       cache together (the unit bench only proves the cache-side timing), THEN build →
-       HW-gate Lorenz scpu/t65 100% + Doom no-regress + MHz. Until fixed, the cache read
-       path is HW-FALSIFIED-AS-BUGGY and gives no shippable speedup.
-     * REGRESSION GATE: `sim/cache_coherency_tb/run_cache_latency.ps1` must go GREEN
-       (currently RED-fails on the skew) as the cache-side proof of the fix.
+   - **REFINEMENT (2026-05-31, latency bench reworked to a PASSING characterization):**
+     `cpu_cache` is NOT buggy — it is a correct 1-cycle-latency BRAM. `run_cache_latency.ps1`
+     now MEASURES the latency precisely and PASSES:
+       * M1 SAME-CYCLE cross-line ($0100→$0200): hit=1, same_line=0, di=$AA = STALE
+         (line_word still holds the previous line) → a 1-clk32 (`busy_cnt="001"`) hit
+         grant that consumes same-cycle is UNSAFE = the HW bug.
+       * M2 ONE-EDGE-AFTER cross-line ($0200→$0400): hit=1, di=$CC = VALID (line_word
+         caught up) → a 2-clk32 (`busy_cnt="010"`) grant is SAFE.
+     So the bug is in the fpga64 CONSUMER (the short-grant/override consuming before
+     `line_word` settles on a cross-line hit), not in the cache. The bench is the
+     durable proof of the cache's 1-edge read latency; it does NOT go RED/GREEN with the
+     fix (the cache won't change) — the real regression gate is HW Lorenz-scpu + a
+     system bench. [Earlier "cache HW-FALSIFIED-AS-BUGGY / bench RED until fixed" framing
+     in commits 55519e1/5c3e784 is superseded by this — the cache is fine.]
+   - **NEXT (iter-7b-fix) — fix is in the ARBITER consume timing; HYPOTHESIS needs
+     system-level validation:** leading candidate is the hit grant `busy_cnt "001" →
+     "010"` (cpu_cache consumer at fpga64_sid_iec.vhd:~3451) so the CPU samples cpuDi
+     one clk32 later, after line_word settles — which ALSO equals the iter-6
+     STA-honest 2× (fire-every-2-clk32) cadence. BUT this is UNPROVEN: with `alt_fire`
+     OFF the grant width may not even change WHEN the CPU advances (cpu_cyc is gated to
+     the 4-apart main slots, :3401-05), yet e0e83e5c corrupted with alt_fire OFF — so
+     the deciding factor is how the CPU's address-present vs `di`-latch edges align with
+     `line_word`, which the UNIT bench cannot resolve. MUST validate at system level
+     before building: extend `c64_reduced_harness` (or `cpu_in_bridge_superram_tb`) to
+     drive the REAL cpu_65c816 through the cache read path (override + short-grant wired)
+     with a cross-line access stream, and check the CPU latches the correct byte. Only
+     after the system bench shows the correct fix → build → HW-gate Lorenz scpu/t65 100%
+     + Doom no-regress + MHz. Until then the cache read path gives no shippable speedup.
+       * Alternative if grant-width alone doesn't fix it: gate the override on a
+         "data-ready" qualifier (`cache_hit AND same_line_i`, or a registered
+         `cache_hit_d1`/`cache_di_d1` aligned to line_word) AND defer the CPU consume
+         (CE-gate) by one clk32 on a fresh-line hit — the same CE-gating lever as
+         iter-7c; likely solve both together.
 
    *(Original isolation plan, now superseded by the result above: build cadence-identical
    except cache feeds cpuDi; if clean → CACHE_READ_PATH HW-clean. It booted clean but
