@@ -1,4 +1,315 @@
-# Session handoff — 2026-05-31: iter-7e — iter-7d HW-FALSIFIED (registered override boots CORRUPT, identical to iter-7c) → root cause is NOT the consume path; it's the read-path cache's `flush => '0'` (missing bank-switch / coherency invalidation), MASKED by fill-on-every-read
+# Session handoff — 2026-06-01: COMPAT ITER-9 — SuperCPU Kicks! ROOT CAUSE PROVEN = a runtime SPEED-detection failure (VICE `+speedswitch` 1MHz reproduces the HW fallback exactly). SPEED-BOUND, not register/render. $D0B3/4/5=$80 lead FALSIFIED. Demo SHELVED until effective MHz>4. PIVOT next to WriteSmart decode / title sweep.
+
+## ✅ COMPAT ITER-9 RESULT (2026-06-01, control `97392a1f`) — the SuperCPU-Kicks detection is a SPEED test
+**Airtight differential proof (only clock speed varied in VICE):**
+
+| Config | Effective speed | PC settles | Result |
+|---|---|---|---|
+| VICE default | ~20MHz | `$8147` (fire-gate / DMAgic intro) | **PASS** → loader menu |
+| VICE `+speedswitch` | 1MHz | `$81F7` | **FALLBACK scroller** |
+| MiSTer control `97392a1f` | 4MHz | `$81B0-$8360` loop | **FALLBACK scroller** |
+
+VICE forced to 1MHz lands in the SAME `$81xx` region our 4MHz HW is stuck in and
+shows the SAME fallback scroller. ⇒ the demo's SuperCPU detection is a **runtime
+speed check** with a threshold >4MHz. It is **SPEED-BOUND** — no RTL register/decode
+change can fix it; only effective CPU speed past the threshold (the HW-walled lever).
+Consistent with the title being a 20MHz speed showcase. **SHELVE this demo** until a
+>4MHz speed lever lands.
+
+**FALSIFIED / ruled out this session (do NOT re-chase):**
+- **$D0B3/$D0B4/$D0B5=$80 candidate mismatch — FALSIFIED.** Scanned `vice_depack.bin`
+  ($0800-$B701): the demo reads NO `$D0Bx` whatsoever. The prior handoff's top lead is dead.
+- NOT a CIA-timer speed loop (watchpoints on `$DC04-07`/`$DD04-07` loads = a memory copy `$01AE`).
+- NOT individual SCPU register readback (only one sequential `$D0xx` page-copy; "$D070=text"
+  watch values were RAM reads with I/O banked out — red herring).
+- NOT SIMM size (VICE passes `-simmsize 0`); NOT `$D27C-F` extent (VICE==RTL `00 02 00 f6`).
+  VICE fire-gate regs: `$D070-$D07F`=`$FF`, `$D080-$D08F`=`$00`.
+
+**Caveat:** `vice_depack.bin` is the SUCCESS-path image; the fail path decrunches
+different code into the same `$81xx` addresses, so its static disasm doesn't match the
+fail path. VICE `cpuhistory` is compiled-out in the GTK3 Windows build (command exists,
+buffer empty) → no clean detection trace obtainable. The exact detect instruction is
+academic now (the cause is speed, not a readable register).
+
+**Artifacts (`tools/scpukicks_vice/`):** `trace_watch.py`, `dump_regs.py`, `disasm.py`,
+`hw_detect_run.py`, `vref_speedswitch_off.png`, `dr_postrun_{a,b}.png`, `vice_regdump.txt`.
+Full detail: memory `scpu-kicks-rendering-bug`.
+
+## ➡️ NEXT (compat iter-10) — pivot off SuperCPU-Kicks (speed-bound) to a FIXABLE compat target
+- SuperCPU-Kicks is done/shelved (speed-bound). Highest-leverage remaining compat work:
+  - **(A) Broaden the SCPU title sweep** — find a 3rd-party SCPU title that fails for a
+    NON-speed reason (register decode, memory map, IEC/serial). A title that runs at 1MHz
+    on real SCPU but fails on us = a genuinely fixable bug. Avoid speed-showcase demos.
+  - **(B) WriteSmart register decode** ($D074-$D077/$D0B3) — note prior-iter closed this as a
+    firmware non-gap (9 writes/0 reads, our write-through == optim mode-0); only revisit if a
+    swept title actually reads them.
+- Constraint: Lorenz must stay 100% in BOTH t65 and scpu for any RTL change.
+- State: control `97392a1f` deployed + booting; lock NOLOCK; no RTL change, no commit this
+  session (investigation only). All >4MHz speed levers remain HW-dead (see prior handoff below).
+
+---
+
+# (prior) Session handoff — 2026-06-01: COMPAT ITER-8 — SuperCPU Kicks! HW re-characterized = a DETECTION failure (drops to fallback scroller), NOT the previously-claimed render corruption. VICE oracle established; SIMM-size + $D27x extent RULED OUT. Exact detection compare still uncaptured.
+
+## ✅ COMPAT ITER-8 RESULT (2026-06-01, control `97392a1f`, scpu mode) — overturns the 2026-05-29 "render bug" framing
+- **HW capture done** via `tools/scpukicks_vice/hw_capture.py`: MGL-mount `SCPU1.D64` (abs path) → `load"*",8,1` → ~80s IEC load (clean READY) → `poke33094,255` (fire-gate `$8146` CMP `#$EF`→`#$FF` bypass) → `run`.
+- **Result: the demo does NOT render a corrupt/flickering menu. It fails its SuperCPU detection and drops to the
+  "we still have a dream / required: scpu with 1mb ram" FALLBACK scroller** (those exact strings are scratched
+  dir entries on the disk). Screens: `tools/scpukicks_vice/hw_menu.png` (the demo's always-on "THIS DEMO REQUIRES
+  A SUPERCPU WITH 1 MB" status line — written by $7854 init, overwritten on success), `hw_menu_b.png`/
+  `hw_effects_*.png` (the fallback scroller). My fire-gate patch was MOOT — detection runs before the gate; the
+  demo took the fallback and never reached $8142.
+- **VICE xscpu64 = clean golden oracle**: reaches the loader-select **menu** (F1 JiffyDOS / F3 FD-2000 / F5 1541
+  Speeder + credits) → `tools/scpukicks_vice/vref_menu_clean.png`. (At autostart it rests at the $8142 fire-gate
+  showing the DMAgic intro `vref_simm0.png`.)
+- **RULED OUT this session:**
+  - SuperRAM SIMM size — VICE reaches the menu even with `-simmsize 0` (no SuperRAM). Not a size probe.
+  - $D27C-$D27F SuperRAM-extent registers — VICE kickstart = `00 02 00 f6`; our RTL hardcodes the IDENTICAL
+    `00/02/00/F6` (fpga64_sid_iec.vhd ~:2026). Match.
+  - x64sc as oracle — plain 6502 CRASHES on the demo's 65816 native detection (black screen). Must use xscpu64.
+  - The `LDA $D0B2` watchpoint hits were the **SuperCPU KICKSTART firmware** boot ($8140 reset code), NOT the
+    demo's detection. Red herring.
+- **STILL UNCAPTURED: the demo's exact detection-and-branch compare.** VICE autostart is one-shot + warp + the
+  demo self-modifies the $814x region → ~10 live-capture attempts failed (`reset 0` only re-runs firmware). VICE
+  $D0B0-$D0BF at the passing fire-gate = `40 00 00 80 80 80 00 00`; our RTL gives $D0B0=$40 but CANNOT produce
+  $D0B3/$D0B4/$D0B5=$80 (formulas cap them low) — a candidate mismatch, NOT confirmed as the decision register.
+
+## ➡️ NEXT (compat iter-9) — capture the detection compare, then fix
+- **Primary: MiSTer-side capture.** Run the demo on HW and UART/overlay PC-trace where it branches to the
+  fallback (the demo fails ON the MiSTer, so the failing path executes there). Disassemble that branch + the
+  register/probe it reads, compare to our RTL ($D0Bx read mux ~fpga64_sid_iec.vhd:1991-2011, gated on
+  `scpu_regs_enabled`), fix the mismatch. Constraint: Lorenz must stay 100% in t65 AND scpu.
+- **Alt: off-device.** Inject a `BRK`/breakpoint into `tools/scpukicks_vice/boot_dma.prg` right after the $0810
+  decruncher exit and trace in VICE (beats the autostart-one-shot), OR relaunch xscpu64 with the correct
+  true-drive flag for a wide watchpoint window on `$D070-$D0FF` loads during the slow load.
+- Artifacts: `tools/scpukicks_vice/` (hw_*.png, vref_*.png, boot_dma.prg extracted via c1541, vice_depack.bin,
+  hw_capture.py). Full detail: memory `scpu-kicks-rendering-bug`.
+- Backlog (unchanged): WriteSmart decode $D074-$D077/$D0B3; broaden the SCPU title sweep.
+- State: control `97392a1f` deployed + booting; MiSTer lock = NOLOCK; no RTL change, no commit this session
+  (investigation only). All >4MHz speed levers remain HW-dead (see prior handoff below).
+
+---
+
+# (prior) Session handoff — 2026-05-31: iter-7g — same_line-gated 2× alt fire HW-FALSIFIED → SPEED LEVER EXHAUSTED. ALL cadence-shortening/raised-clock >4MHz levers now HW-dead. BRAM cache shipped (`12309a0`) = CORRECTNESS only. PIVOT to COMPAT.
+
+## ⛔⛔ ITER-7g HW VERDICT (2026-05-31): the same_line-gated `alt_fire_r2` STILL wedges SuperRAM → the 2× cadence is a DEAD lever; the wall is the P65C816 core, not the cache
+- Built `7139db68` (`ALT_FIRE_2X:=true` + `CACHE_READ_PATH:=true`, same_line gate + DMA snoop wired;
+  **timing CLEAN setup +0.361ns, hold +0.193ns, TNS=0**). **Boots CLEAN** (`SCPU64 V0.07/READY`,
+  `tools/iter7g_boot.png`).
+- **`superram_bench` WEDGED**: COUNT `$-----` static across 3+ captures vs control `97392a1f` COUNT
+  `$000335` clean A/B (`tools/test_cart/out/superram_bench_n{0,2}.png` vs `_ctrl1.png`). UART **PC frozen
+  `000002`, `J:FF4C FF4C` loop = hard crash into bank-$00 page-0** — same signature as iter-7f / clk48 / SLOT3.
+- **WHY same_line didn't save it:** same_line fixes the `line_word`-registered-1-late DATA latency, but the
+  wedge is the **iter-6 CPU-core single-cycle TIMING wall**: at 2-apart the CPU enable fires every 2 clk32,
+  so the deep combinational consume `cache_di → cpuDi → P65C816.di → ALU → AddrGen|PCr` (~11ns INSIDE the 816)
+  collapses from the 62.5ns setup-2 budget toward 31.25ns where iter-6 measured −0.651ns FAIL. iter-7d's
+  registered override (`rp_cache_hit_d1`/`rp_cache_di_d1`) is a NO-OP at the alt cadence (the _d1 capture
+  races the next access). **A data-validity gate cannot fix a timing violation on the consume path.** Build
+  closed timing ⇒ FUNCTIONAL, same disproof shape as clk48/SLOT3.
+- **DURABLE CONCLUSION — speed lever exhausted.** ALL cadence-shortening / raised-clock >4MHz attempts are now
+  comprehensively HW-dead: Milestone B (clk64+clk48), page-mode SDRAM, SLOT3 (3-clk32), BRAM-cache 2× alt-fire
+  (RDY-handshake / bare iter-7f / same_line iter-7g). They share ONE root cause: the deep combinational
+  `dataToCpu`+`cpuDi`+`P65C816 di→ALU→PC` path (~20.5ns, ~11ns in-core) closes only at the ≥4-clk32 multicycle.
+  **The ONLY remaining >4MHz path is register-retiming / pipelining INSIDE the P65C816 di→ALU→PC** — deep,
+  multi-session, high-risk CPU-core surgery; NOT to be started on impulse. The BRAM cache's real payoff is
+  CORRECTNESS + coherency infrastructure (shipped `12309a0`), not speed.
+- **Recovery DONE:** `git checkout HEAD -- fpga64_sid_iec.vhd` (reverted iter-7f/7g alt-fire scaffolding — a
+  falsified trap, not kept; tree = `12309a0`, ships bit-identical). Control `97392a1f` redeployed + booting,
+  lock NOLOCK. NO new commit (iter-7g is falsified, not a fix).
+
+## ➡️ PIVOT TO COMPAT (next iteration) — speed is walled at 4MHz without 816-core surgery; highest-leverage work is now compatibility
+- **(1) SuperCPU-Kicks! rendering/flicker bug** — the strongest candidate: a REAL VICE-confirmed defect (the
+  demo renders corrupted/flickering on HW but CLEAN in VICE xscpu64 = differential oracle available). See
+  memory `scpu-kicks-rendering-bug` / the compat-iter8 finding. Tractable because VICE gives a golden reference.
+- **(2) WriteSmart register decode** ($D074-$D077 / $D0B3) — unimplemented SCPU registers; real-HW software
+  may poke them.
+- **(3) SCPU library compatibility sweep** — broaden the 3rd-party title coverage beyond SuperCPU-Kicks.
+- Constraint reminder: Lorenz must stay 100% in BOTH t65 and scpu modes for any change.
+
+## 🔬 COMPAT ITER-8 PROGRESS (2026-06-01) — SuperCPU Kicks demo characterized; VICE oracle established; device yielded mid-test
+- **HW repro path established (control `97392a1f`):** MGL mount `SCPU1.D64` (ABSOLUTE path —
+  `/media/usb0/Games/C64/tools/SCPUKICK/SCPU1.D64`; relative path → core falls back to MENU) +
+  `mtype 'load"*",8,1' enter` (RETURN is the arg `enter`, NOT `\n`) → ~70s standard-IEC load → READY →
+  `mtype run enter`. Boot file `scpu kicks !/dma` (114 blocks) loads + runs cleanly on HW.
+  Note: MiSTer `/tmp` is 100% full → put mtype.py at `/media/fat/_Test/mtype.py`.
+- **Demo flow CORRECTED (disassembly via VICE monitor) — supersedes the stale "DMAgic stall" note:**
+  RUN → **fire-gate** `$8142: LDA $DC01 / CMP #$EF / BNE` (waits joystick-1 fire $EF) → native setup
+  (XCE $815f, $D011=$7B/$D016=$C8) → draws **loader-select menu** (F1 JiffyDOS / F3 FD-2000 / **F5 1541
+  Software Speeder**) → F5 loads parts A/B/C → effects. NOT DMAgic-dependent.
+- **VICE xscpu64 = VALID golden oracle (NEW):** `xscpu64 -warp -autostart SCPU1.D64 -remotemonitor
+  -remotemonitoraddress ip4://127.0.0.1:6510` renders the menu **cleanly** →
+  `tools/scpukicks_vice/vref_menu_clean.png`. Headless shot = monitor `screenshot "path" 2` (format 2=PNG;
+  default BMP writes nothing usable); driver `tools/vice_shot.py`. Fire-gate is matrix-based (can't satisfy
+  via monitor) → `r PC = 8149` to pass it; real EFFECTS need fire+F5 input (GUI or HW), not PC-forcing.
+- **⚠️ DEVICE YIELDED:** right after I issued `RUN` on HW, the CD32 agent loaded `Universe-CD32MVP`
+  (CORENAME flipped C64→Universe-CD32MVP). Per the cooperation protocol I backed off, released my lock
+  (NOLOCK), and moved to off-device VICE work. The MiSTer-side menu/effects capture + VICE diff is the
+  **next step when the device frees**.
+- **NEXT (needs MiSTer):** load demo → pass fire-gate (fire/space) → F5 → capture HW rendering of menu +
+  effects → diff vs VICE golden. If VICE clean & HW corrupt ⇒ bug is FPGA VIC/timing infra (per CLAUDE.md
+  differential-oracle methodology). Full detail in memory `reference_scpu_kicks_demo.md`.
+
+---
+## (historical) ITER-7f verdict — superseded by iter-7g above
+
+## ⛔ ITER-7f HW VERDICT (2026-05-31): the HIT-gated `alt_fire_r2` (2× cadence) CORRUPTS SuperRAM execution → FUNCTIONAL cross-line latency, not timing
+- Built `f1d6bcfd` (`ALT_FIRE_2X:=true` + `CACHE_READ_PATH:=true`; **timing CLEAN, setup +0.476ns, TNS=0** —
+  the 2-apart fires close under the existing -setup 2 multicycle exactly as iter-6 predicted). Boots CLEAN
+  (`SCPU64 V0.07/READY`, `tools/iter7f_boot.png`) — alt fire is SuperRAM-only so boot (bank-$00) is unaffected.
+- **`superram_bench` (the clean alt-fire gate: bank-$20 loop code+counter, NO DMA) WEDGED**: COUNT `$eee?00`,
+  PASS `$----`, **static across 3 captures 3s apart** (`tools/iter7f_bench_{a,c}.png`), overlay PC stuck ~$FF4x.
+  The header printed (payload copied to $20:8000 + JML'd in) but the timed inner loop produces garbage and hangs.
+- **DECISIVE ISOLATION (3-way, same bench, same session):**
+  | build | cache | alt fire | superram_bench | COUNT |
+  |---|---|---|---|---|
+  | `97392a1f` control | off | off | CLEAN | `$0335` (821) |
+  | `e9c36c3e` iter-7e | **on** | off | **CLEAN** | `$02E0` (736) |
+  | `f1d6bcfd` iter-7f | on | **on** | **WEDGED** | `$eee?00` garbage |
+  - (control→e9c36c3e): the SuperRAM cache override @4-apart is **HW-CORRECT** — FIRST HW proof (iter-7e's
+    gate was boot+Lorenz = bank-$00 only; the SuperRAM cache path feeding the CPU had never run a real
+    SuperRAM workload on silicon until now). Strengthens `12309a0`.
+  - (e9c36c3e→f1d6bcfd): the ONLY new variable is `ALT_FIRE_2X` ⇒ **the alt fire is the corruptor**, not the cache.
+- **Mechanism (cross-line cache latency, exposed at 2-apart):** `cpu_cache.line_word` is registered 1 clk32
+  late, so `rp_cache_di`/`rp_cache_di_d1` for a CROSS-LINE access don't settle until ~2 clk32 after the
+  address changes. At 4-apart the address is held ~4 clk32 (settles → e9c36c3e clean); at 2-apart (alt fire)
+  only ~2 clk32 → a cross-line hit feeds the PREVIOUS line's byte → stale latch → wedge. The bench loop
+  crosses lines constantly (code `$20:8000` vs counter `$20:0003`). Same wall as the iter-7b/7c latency
+  characterization (`cpu_cache_latency_tb`: M1 same-cycle cross-line = STALE). Build closed timing ⇒ this is
+  FUNCTIONAL (data validity), not the STA timing iter-6 measured. Same disproof shape as clk48/SLOT3:
+  STA-honest, HW fails ⇒ functional.
+- **Recovery DONE:** both flags → false (RTL bit-identical, ships unchanged), control `97392a1f` redeployed +
+  booting, lock NOLOCK. NO new commit (no RTL fix yet; the alt-fire edits + ALT_FIRE_2X constant stay in the
+  tree at default-false — bit-identical — pending the same_line fix or removal).
+
+## 🚀 ITER-7g (BUILDING `build_iter7g_sameline_snoop.log`): same_line-gated alt fire + DMA snoop = the complete shot at a shippable speed win
+Implemented + building (both flags true, elaboration PASS). Two coupled fixes for the two iter-7f blockers:
+- **same_line gate** (the cross-line corruption fix): added `signal rp_same_line`, wired the cache's
+  `same_line` output (was `open`) to it, and added `and rp_same_line = '1'` to the `alt_fire_r2` condition.
+  Now the 2× fires ONLY when the upcoming SuperRAM access is in the SAME cache line as the previous one
+  (`line_word` already settled = safe). Cross-line accesses → `same_line='0'` → no alt fire → 4-apart (the
+  line-load access is safe at 4-apart, as e9c36c3e proved). iter-7f's wedge is EVIDENCE the fire decision
+  sees the upcoming address (it stale-latched on cross-line), so same_line (same address basis) suppresses
+  exactly those. Expected ~1.4-1.6× (within-line code fetches get 2×; data/line-crossings stay 4-apart).
+- **DMA snoop** (the Doom-regression fix): wired `snoop_we => dma_active and cpuWe`, `snoop_addr => cpuAddr`
+  (= dma_addr during DMA), `snoop_bank => x"00"` (REU targets bank-$00 RAM). Drives cpu_cache's `snoop_inv`
+  (top-priority valid-bit invalidation, cache_coherency_tb STEP-6-proven). Now REU FETCH writes invalidate
+  the cached lines the loader re-reads → no stale buffer bytes → Doom transfer should complete. fix B covers
+  bank-switch coherency so `flush=>'0'` stays.
+- **HW GATE (probe build, both flags true):** (1) boot clean; (2) **`superram_bench` COUNT > control $0335**
+  = the alt fire now safely speeds up within-line SuperRAM (the make-or-break — iter-7f wedged here);
+  (3) **Doom autoload no-regress** = validates the snoop (iter-7f/e9c36c3e wedged at the eeee loader screen);
+  (4) Lorenz scpu/t65 100%. If all green: revert flags→false, commit, this is the FIRST shippable speed win.
+  If superram_bench still wedges → same_line timing-alignment is wrong (the CPU2 sample doesn't see the
+  upcoming address cleanly) → the BRAM cache can't do 2× without a cpu_cache redesign → pivot to compat.
+  If bench speeds up but Doom wedges → snoop wiring wrong (check dma_we pulse vs cpuWe-during-DMA).
+
+## 🎯 (superseded by the iter-7g build above) original NEXT HYPOTHESIS: `same_line`-gated alt fire (DE-RISK OFF-DEVICE FIRST)
+`cpu_cache` already exposes a `same_line` output (cpu_cache.vhd:180, currently wired `open` at the
+read_path_cache instance). Gating `alt_fire_r2` additionally on `same_line='1'` would fire the 2× cadence
+ONLY for within-line consecutive accesses (line_word already settled = SAFE), and fall back to 4-apart on any
+cross-line access. Expected payoff is modest (sequential code fetches are ~75% same-line for 8-byte lines, but
+data accesses cross lines) — maybe ~1.4-1.6× ≈ 6MHz, not full 2×. **DE-RISK BEFORE BUILDING:** extend
+`cpu_cache_latency_tb` (or a new focused bench) with a synthetic cross-line SuperRAM access stream and verify
+`same_line` goes '0' on exactly the cross-line cycles (so the gate suppresses the unsafe fires) AND the
+timing-alignment of `same_line` vs the CPU2 alt-fire sample edge is correct. This is a cpu_cache-unit property
+(NOT the boot-blocked full harness, which is stuck at $FD83), so it CAN be validated in GHDL — unlike the alt
+fire itself. Only build if the bench confirms same_line cleanly suppresses cross-line 2× fires.
+
+## ⚠️ STATE OF THE CACHE-AS-SPEED-LEVER (honest)
+- SuperRAM cache @4-apart: HW-correct BUT (a) cadence-neutral = NO speedup, (b) breaks Doom (snoop gap,
+  unwired), (c) `e9c36c3e` bench COUNT 736 < control 821 hints it may even be slightly SLOWER (needs
+  back-to-back re-measure — could be run variance). So enabling the cache @4-apart is currently all-cost.
+- The ONLY path to speed from the cache is firing >4-apart on hits (alt fire), now HW-blocked by cross-line
+  latency. same_line-gating is the remaining sub-lever; if it too underperforms, the BRAM read cache cannot
+  deliver the 2× without a deeper `cpu_cache` redesign (faster/combinational cross-line path). At that point
+  ALL clk32-or-faster speed levers (clk64, clk48, SLOT3, page-mode, cache+alt-fire) are HW-dead and the
+  honest north-star pivot is COMPAT work (WriteSmart decode, title sweep) or a cpu_cache redesign.
+
+---
+
+# (prior) Session handoff — 2026-05-31: iter-7f BUILD — cache read-path CORRECTNESS LANDED (fix B, HW-validated + committed `12309a0`); BUILDING the 2× variable-cadence arbiter (HIT-gated `alt_fire_r2`)
+
+## ✅ ITER-7e RESULT (committed `12309a0`): fix B = FIRST clean HW boot of the cache read path feeding the CPU
+- **Root cause of iter-7c/7d boot corruption** (HW-falsified `0228d2b6`, `3514fc7d`): the read-path cache
+  tag (`cpu_bank & addr[15:12]`) does NOT encode ROM/RAM visibility (`$01`/bankSwitch) and the instance
+  wires `flush=>'0'`, so a byte cached while ROM is visible at $8-$B/$E-$F is returned STALE after `$01`
+  switches to RAM. fill-on-every masked it; fill-on-miss-only exposed it → garbled boot. Registering the
+  override (iter-7d) fixed the masked single-cycle TIMING but not this FUNCTIONAL staleness.
+- **Fix B** (`rp_cacheable`, fpga64_sid_iec.vhd ~:4910): narrow to coherent-by-construction ranges only —
+  bank-$00 `$0000-$7FFF` + `$C000-$CFFF` (always-RAM, invalidate_wr-coherent) and SuperRAM banks `$02-$EF`
+  (no ROM shadow → full Doom-workload caching preserved). Excludes ROM-shadowable `$8/9/A/B/E/F` + non-RAM
+  `$D`. Gating only `rp_fill_we` transitively kills hit+override on excluded lines, so `cpu_cache.vhd` +
+  observer + shipped RBF stay bit-identical.
+- **HW gate (probe build `e9c36c3e`, CACHE_READ_PATH:=true+fixB) — ALL GREEN:**
+  - BOOTS CLEAN (`SCPU64 V0.07` / `READY`) — `tools/iter7e_fixB_boot.png`.
+  - Lorenz **scpu PASS** — serial LOAD (the exact e0e83e5c corruption case) + execution clean across
+    load/store ×A/X/Y ×all addressing modes incl. indexed-indirect (`tools/iter7e_scpu_final.png`).
+  - Lorenz **t65 PASS** — no regression (`tools/lorenz_run/t65/final.png`).
+- Committed `12309a0` (flag reverted to false → ships bit-identical; unpushed). This is **correctness-only
+  at the existing 4-apart cadence — NO speedup yet** (cache ships disabled; delivers zero shippable speed
+  until the arbiter converts it).
+
+## 🚀 ITER-7f (BUILDING `build_iter7f_2x.log`): the 2× variable-cadence arbiter = HIT-gated `alt_fire_r2`
+The cache is now correct but useless without firing the CPU more often on hits. **This build is the only
+path to convert iter-7e's correctness into actual >4MHz speed.**
+- **Design** (fpga64_sid_iec.vhd): new `constant ALT_FIRE_2X` (default false; SEPARATE from CACHE_READ_PATH
+  so the probe isolates the 2× cadence as the SINGLE new variable on top of HW-proven 4-apart correctness).
+  Re-enabled the dormant `alt_fire_r2` (was hard-`<='0'` since 2026-05-23) with a **HIT gate**:
+  `if ALT_FIRE_2X and (CPU2/6/A/E) and scpu_fast_path and cs_ram and rp_cache_hit and scpu_force_1mhz='0'`.
+  Fires the CPU at the alt slot (2 clk32 after the main slot) = **8MHz on SuperRAM hits** (Doom/Wolf3D
+  workload, ~83% hit → ~1.8× ≈ 7MHz effective); bank-$00 KERNAL/BASIC/ZP stay 4MHz (scpu_fast_path gate)
+  so serial timing is untouched.
+- **Safe-by-construction rationale:** on a HIT the byte is already in BRAM (`rp_cache_di_d1` via the cpuDi
+  override), no SDRAM cycle needed; `rp_fill_we` is miss-gated so no fill collision. On a MISS
+  `rp_cache_hit='0'` → no alt fire → CPU waits for the next 4-apart main slot where the SDRAM read has
+  time. This is the documented FIX for the bare alt_fire_r2 that wedged bank-$20 (it fired on misses too).
+- **STA basis:** iter-6 proved 2-apart fires are HONEST under the existing `-setup 2` multicycle (consume
+  +31ns; registered override +7.797ns at setup-1). The 2× cadence does NOT need a tighter multicycle.
+- **WHY a HW build (no off-device gate):** the reduced harness CANNOT model this — its boot is genuinely
+  stuck at `$FD83` (RAMTAS readback fails on harness ROM-shadow routing; confirmed after 200k cycles the
+  CPU never advances), so no post-boot SuperRAM workload runs in GHDL. The alt-slot fire-vs-address timing
+  is only observable on silicon. The now-correct cache removes the confound that doomed every prior
+  alt_fire/raised-cadence attempt (clk64/clk48/SLOT3/page-mode/RDY-handshake) → cleanest shot yet.
+- **HW GATE when build done** (probe build, BOTH flags true): (1) boot clean (SCPU64/READY) — alt fire must
+  not corrupt the SuperRAM path; (2) **Doom autoload no-regress** = the real SuperRAM workload that
+  actually exercises the 2× cadence (this is the make-or-break — earlier alt_fire wedged Doom/bank-$20);
+  (3) Lorenz scpu/t65 100% (Lorenz is bank-$00 so unaffected by the SuperRAM-only alt fire, but confirm);
+  (4) measure effective MHz (UART/cycle count) to quantify the speedup. If green: revert both flags→false,
+  commit, then this becomes the first shippable speed win (enable via the flags in a follow-up once Doom
+  + a broader title sweep confirm). If Doom wedges: the alt-slot timing hazard is confirmed on the correct
+  cache → try `rp_cache_hit_d1` (registered) gate or an extra busy_cnt tick, OR accept that the off-device
+  harness MUST be fixed (boot past RAMTAS) before further blind builds.
+- Recovery if falsified: flags→false (RTL bit-identical), restore control `97392a1f`, release lock.
+
+### iter-7f mid-build findings (HW, while Quartus runs `build_iter7f_2x.log`)
+- **DOOM A/B (decisive): enabling the iter-7e cache (CACHE_READ_PATH=true, 4-apart) REGRESSES Doom.**
+  Same `doom_autoload_probe.py` harness, same session: control `97392a1f` reaches the **Doom engine main
+  loop** (t180→t220 PC advances `00:0233`→`2C:0C80`, black render screen — running); the deployed
+  cache-on build `e9c36c3e` **wedges at the loader's static `eeee` transfer screen** (t120≡t220, never
+  reaches the engine). Harness is healthy today (control proves it) ⇒ the wedge is the **DMA-snoop gap**:
+  the loader's REU FETCH writes bank-$00 buffers, the cache has `snoop_we=>'0'` so those writes don't
+  invalidate cached lines, the CPU re-reads stale buffer bytes → transfer corrupts. Screenshots in
+  `tools/doom_autoload/single_prg/` (control t180/t220 = engine; the earlier e9c36c3e t120/t220 = eeee).
+  **Consequence:** the committed milestone `12309a0` ships FALSE so Doom is unaffected in the shipped RBF,
+  BUT the cache can NEVER ship ENABLED with REU/DMA workloads until snoop is wired. And iter-7f (cache on +
+  alt fire, NO snoop) will ALSO wedge Doom — so Doom is NOT the iter-7f gate.
+- **iter-7f alt-fire gate = `superram_bench` (clean, no DMA, no snoop needed).** The bench
+  (`tools/test_cart/deploy_superram_bench.py`, CRT via MGL) runs the inner loop CODE + counter from bank
+  $20 SuperRAM (= `scpu_fast_path`, the ONLY thing the alt fire accelerates) and counts inner iterations
+  per fixed Timer-A window. Literally labelled "STEP 7B ALT-FIRE TEST" on screen.
+  **Control `97392a1f` baseline (no alt fire): COUNT = `$0335` (821), PASS = `$02B5` (693)**
+  (`tools/test_cart/out/superram_bench_t10s.png`). iter-7f target: COUNT notably > $335 (toward ~2× for
+  the cache-resident loop, less the non-cacheable long ICR-poll). This isolates + QUANTIFIES the alt fire
+  with zero Doom/snoop confound. NOTE: boot + Lorenz do NOT exercise the alt fire (both bank-$00; alt fire
+  is SuperRAM-only) — they only confirm no bank-$00 regression.
+- **NEXT build after iter-7f (iter-7g) = cache + snoop + alt fire** = the full Doom-faster win. Snoop edit
+  staged: read_path_cache instance (fpga64_sid_iec.vhd:4999-5001) `snoop_we => dma_active and cpuWe`,
+  `snoop_addr => cpuAddr`, `snoop_bank => x"00"` (REU targets bank $00). fix B already covers the
+  bank-switch flush case so `flush=>'0'` stays.
+
+---
+
+# (prior) Session handoff — 2026-05-31: iter-7e — iter-7d HW-FALSIFIED (registered override boots CORRUPT, identical to iter-7c) → root cause is NOT the consume path; it's the read-path cache's `flush => '0'` (missing bank-switch / coherency invalidation), MASKED by fill-on-every-read
 
 ## ⛔ ITER-7e HW VERDICT (2026-05-31): iter-7d probe build `3514fc7d` (registered override, CACHE_READ_PATH:=true) BOOTS CORRUPT — overturns the iter-7c "masked single-cycle timing" reframe
 Deployed the iter-7d probe build `3514fc7d` (md5 confirmed; registered `rp_cache_hit_d1`/`rp_cache_di_d1`
