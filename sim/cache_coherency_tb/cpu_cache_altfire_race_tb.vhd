@@ -42,6 +42,25 @@
 --       CONSUMED access). Otherwise STALL (skip, let margin rebuild to 4). This is
 --       the correct invariant for the whole cadence (covers alt slots AND post-alt
 --       main slots). Must be 0 failures AND latch_count > control (proves speedup).
+--       BUT mode 2 decides on an ORACLE (STREAM(acc_idx) vs prev_cons_addr) —
+--       a peek the real RTL cannot do at the latch cycle.
+--   5 = REALIZABLE FIX (mode 2's policy via a 1-clk-enable, E-1 registered
+--       decision — the realizability proof per session_handoff.md step 2).
+--       The fast-path same-line decision is NOT an oracle: it is the cache's LIVE
+--       `same_line` output, sampled ONE clk32 before the latch (sl_d1) and
+--       registered, exactly as a 1-clk enable (cpu_cyc_s(0)) would deliver it.
+--       Phasing proof: a 2-apart fast latch at cycle E has its previous latch at
+--       E-2; at edge E-1 cpu_addr has already advanced to access(E) (set at the
+--       E-2 latch) while cpu_cache.prev_line still holds access(E-1)=prev-consumed,
+--       so same_line(E-1) == "access(E) same-line as prev-consumed" == mode 2's
+--       condition. Latch iff (csl>=4 full margin, the normal 2-clk-enable path)
+--       OR (sl_d1='1', the 1-clk-enable fast path); else STALL. A spurious sl_d1
+--       during a stall is harmless: that candidate has csl>=4 and the full-margin
+--       path dominates. Must MATCH mode 2 EXACTLY (0 failures, same latch_count) —
+--       that equality is the proof the realizable decision phase implements the
+--       policy that the oracle proved correct. iter-7g failed precisely because it
+--       kept the 2-clk enable (decision at E-2, before access(E)'s addr existed on
+--       the bus) and only changed the gate; mode 5 moves the decision to E-1.
 
 library ieee;
 use ieee.std_logic_1164.all;
@@ -79,6 +98,9 @@ architecture sim of cpu_cache_altfire_race_tb is
     -- iter-7d registered override (mirror of fpga64_sid_iec.vhd:4936-4939)
     signal rp_cache_di_d1  : unsigned(7 downto 0) := (others => '0');
     signal rp_cache_hit_d1 : std_logic := '0';
+    -- mode 5: the cache's live same_line, registered 1 clk32 (E-1 decision via a
+    -- 1-clk enable). This is the realizable replacement for mode 2's oracle.
+    signal sl_d1           : std_logic := '0';
     -- cpuDi override mux (mirror of fpga64_sid_iec.vhd:1987)
     signal cpuDi    : unsigned(7 downto 0);
 
@@ -172,6 +194,7 @@ begin
         if rising_edge(clk) then
             rp_cache_hit_d1 <= cache_hit;
             rp_cache_di_d1  <= cache_di;
+            sl_d1           <= same_line;  -- E-1 sample for the 1-clk-enable fast path
         end if;
     end process;
     cpuDi <= rp_cache_di_d1 when rp_cache_hit_d1 = '1' else x"EE"; -- $EE = miss marker
@@ -262,13 +285,26 @@ begin
                         do_latch := (alt_armed = '1');
                         if do_latch then kind := "alt "; end if;
                     end if;
-                else -- GATE_MODE = 2 : unified gap + same-line-vs-prev-consumed
+                elsif GATE_MODE = 2 then -- unified gap + same-line-vs-prev-consumed (ORACLE)
                     if (c mod 2) = 0 then
                         if cycles_since_latch >= 4 then
                             safe := true;  kind := "full";
                         elsif STREAM(acc_idx).bank = prev_cons_bank
                           and STREAM(acc_idx).addr(15 downto 3) = prev_cons_addr(15 downto 3) then
                             safe := true;  kind := "sl2 ";  -- same-line 2-apart
+                        else
+                            safe := false; kind := "STAL"; -- stall to rebuild margin
+                        end if;
+                        do_latch := safe;
+                    end if;
+                else -- GATE_MODE = 5 : REALIZABLE — same policy, but the fast-path
+                     -- decision is the cache's LIVE same_line sampled at E-1 (sl_d1),
+                     -- NOT the oracle. Must match mode 2 exactly.
+                    if (c mod 2) = 0 then
+                        if cycles_since_latch >= 4 then
+                            safe := true;  kind := "full"; -- normal 2-clk-enable path
+                        elsif sl_d1 = '1' then
+                            safe := true;  kind := "sl2 "; -- 1-clk-enable fast path
                         else
                             safe := false; kind := "STAL"; -- stall to rebuild margin
                         end if;

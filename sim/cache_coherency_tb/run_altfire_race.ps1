@@ -35,8 +35,9 @@ try {
     $modeName = @{ 3 = 'CONTROL (no alt, 4-apart)';
                    0 = 'iter-7g BUG (gate is a no-op)';
                    1 = 'TIMING-FIXED (decision 1clk later)';
-                   2 = 'UNIFIED FIX (gap + same-line, stall)' }
-    foreach ($m in 3,0,1,2) {
+                   2 = 'UNIFIED FIX (gap + same-line, ORACLE)';
+                   5 = 'REALIZABLE (E-1 same_line, 1-clk enable)' }
+    foreach ($m in 3,0,1,2,5) {
         Write-Host ""
         Write-Host "================ GATE_MODE=$m : $($modeName[$m]) ================"
         $logPath = Join-Path $workDir "altfire_mode$m.log"
