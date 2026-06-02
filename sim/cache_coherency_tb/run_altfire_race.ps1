@@ -36,12 +36,27 @@ try {
                    0 = 'iter-7g BUG (gate is a no-op)';
                    1 = 'TIMING-FIXED (decision 1clk later)';
                    2 = 'UNIFIED FIX (gap + same-line, ORACLE)';
-                   5 = 'REALIZABLE (E-1 same_line, 1-clk enable)' }
-    foreach ($m in 3,0,1,2,5) {
+                   5 = 'REALIZABLE (E-1 same_line, 1-clk enable)';
+                   6 = 'REALIZABLE + HIT-GATED (Codex point 4 fix)' }
+    # ── Warm-cache policy proof (PREFILL=true): all lines valid ──
+    Write-Host "######## PREFILL=true (warm cache — gating-policy proof) ########"
+    foreach ($m in 3,0,1,2,5,6) {
         Write-Host ""
         Write-Host "================ GATE_MODE=$m : $($modeName[$m]) ================"
         $logPath = Join-Path $workDir "altfire_mode$m.log"
-        & $ghdl -r @ghdlFlags cpu_cache_altfire_race_tb "-gGATE_MODE=$m" --stop-time=$StopTime 2>&1 |
+        & $ghdl -r @ghdlFlags cpu_cache_altfire_race_tb "-gGATE_MODE=$m" "-gPREFILL=true" --stop-time=$StopTime 2>&1 |
+            Tee-Object -FilePath $logPath
+    }
+    # ── Cold-cache proof (PREFILL=false): per-byte fill-on-miss ──
+    # Exposes Codex point 4: same_line-only fast (mode 5) consumes stale cold bytes;
+    # hit-gated fast (mode 6) is clean. Mode 6 must be 0 failures.
+    Write-Host ""
+    Write-Host "######## PREFILL=false (cold cache — Codex point 4) ########"
+    foreach ($m in 5,6) {
+        Write-Host ""
+        Write-Host "============ GATE_MODE=$m (PREFILL=false) : $($modeName[$m]) ============"
+        $logPath = Join-Path $workDir "altfire_mode${m}_cold.log"
+        & $ghdl -r @ghdlFlags cpu_cache_altfire_race_tb "-gGATE_MODE=$m" "-gPREFILL=false" --stop-time=$StopTime 2>&1 |
             Tee-Object -FilePath $logPath
     }
     Write-Host ""

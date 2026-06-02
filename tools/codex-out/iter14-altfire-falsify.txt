@@ -1,0 +1,17 @@
+**Verdict: do-not-build.**
+
+The uniform scheduler is falsified as written.
+
+1. **fast↔baseline transition:** unsafe. `cpu_cyc` still runs at `fpga64_sid_iec.vhd:3426` and keeps shifting at `:3554` while fast mode muxes around `enableCpu <= cpu_cyc_s(1)` at `:3555`. A fast fire at CPU5 can leave a CPU4-origin baseline pulse pending for CPU7; if `scpu_fast_path` drops after the CPU advances, that stale `cpu_cyc_s(1)` leaks through `enableCpu_816` at `:3089`. OR-ing is worse because it defeats the gap gate.
+
+2. **csl / bus gap:** CPUF→next CPU3 is safe by sysCycle order `:768-776`; the gap is far above 4 clk32. But csl must be reset/seeded on reset and path-mode changes, and only on accepted CPU steps.
+
+3. **I/O / CIA:** the intended exclusion is real: `scpu_fast_path` requires bank nonzero and `cs_io='0'` at `:3314-3317`; CIA/I/O cadence still lives in CPUC `cpu_cyc` at `:3426-3430`, with throttle at `:3379` and CIA2 reload at `:3417-3419`. Boundary leakage from item 1 can still produce an illegal 2-apart bank-$00/I/O step.
+
+4. **stale-read bug:** `cpu_cache.same_line` is not a hit. It is only line/tag equality at `cpu_cache.vhd:180`; valid-byte hit is separate at `:269-276`. Fills are per byte, not per line, at `:435-451`, and fpga64 fills only on accepted read misses at `fpga64_sid_iec.vhd:4925-4926`. So a cold line can do: CPU3 full-margin read fills byte 0, CPU5 sees same-line for byte 1, fires, but `rp_cache_hit_d1=0` (`:4937`) and no `ramCE`/`cpu_cyc` request exists (`:3304`, `:3426`). The CPU takes stale `ramDin`/`cpuDi_nocache`. The bench prefilled whole lines, masking this.
+
+5. **STA / 1-clk hold:** not the primary failure if `fire` is registered. But the fast 2-apart path must require both `rp_same_line_d1` and `rp_cache_hit_d1`; otherwise the data mux at `:1987-1989` will not be on the cache value.
+
+6. **VIC / badline RDY:** CE while RDY low is swallowed by the core (`rdy` wired at `:3133`; P65C816 `EN <= RDY_IN and CE` at `P65C816.vhd:102`). If csl resets on a generated pulse instead of an accepted step, same-line phasing no longer matches “previous consumed.”
+
+Minimum fixes before build: single registered scheduler, no mux leak from `cpu_cyc_s`; fast 2-apart only on `rp_same_line_d1 and rp_cache_hit_d1`; full-margin non-main slots must also require cache hit or a matching prelaunched request; csl updates only on accepted CPU advancement.

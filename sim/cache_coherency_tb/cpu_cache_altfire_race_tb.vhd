@@ -61,13 +61,36 @@
 --       policy that the oracle proved correct. iter-7g failed precisely because it
 --       kept the 2-clk enable (decision at E-2, before access(E)'s addr existed on
 --       the bus) and only changed the gate; mode 5 moves the decision to E-1.
+--   6 = REALIZABLE + HIT-GATED (iter-14, Codex point 4 fix). Identical to mode 5
+--       EXCEPT the fast 2-apart fire additionally requires rp_cache_hit_d1='1'
+--       (the registered byte-valid HIT, = cache_hit for access(E) sampled at E-1).
+--       same_line is line/tag equality ONLY (cpu_cache.vhd:180) — NOT a valid-byte
+--       hit (:269-276). With PREFILL=false the per-byte fill model makes a line
+--       partially valid, so mode 5 fast-fires on a same-line-but-invalid byte and
+--       consumes stale (caught as hitv/='1'); mode 6 falls that byte to a full-
+--       margin consume (which fills it), so it is always correct. Run mode 5 vs 6
+--       with PREFILL=false: 5 FAILS (cold same-line bytes), 6 PASSES.
 
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity cpu_cache_altfire_race_tb is
-    generic ( GATE_MODE : integer := 0 );
+    generic (
+        GATE_MODE : integer := 0;
+        -- PREFILL=true (modes 0-5 default): all three lines prefilled with all 8
+        -- bytes valid before the cadence starts — models a fully-warm cache and
+        -- proves the GATING POLICY in isolation.
+        -- PREFILL=false (iter-14 / Codex point 4): cache starts EMPTY; each byte is
+        -- filled on its first accepted MISS consume (faithful to rp_fill_we =
+        -- enableCpu_816 AND miss, fpga64_sid_iec.vhd:4925). This exposes the
+        -- cold-line stale bug: `same_line` is line/tag equality only — a line can
+        -- have byte0 valid (filled) while byte1 is still INVALID, so same_line='1'
+        -- but cache_hit='0'. A fast 2-apart fire on that byte consumes STALE data
+        -- (SDRAM not ready at 2-apart). Gating the fast path on same_line ALONE
+        -- (mode 5) FAILS here; gating on same_line AND cache_hit (mode 6) is safe.
+        PREFILL   : boolean := true
+    );
 end entity;
 
 architecture sim of cpu_cache_altfire_race_tb is
@@ -83,10 +106,21 @@ architecture sim of cpu_cache_altfire_race_tb is
     signal cache_hit: std_logic;
     signal same_line: std_logic;
 
-    signal fill_data: unsigned(7 downto 0) := (others => '0');
-    signal fill_we  : std_logic := '0';
-    signal fill_addr: unsigned(15 downto 0) := (others => '0');
-    signal fill_bank: unsigned(7 downto 0)  := (others => '0');
+    -- cache-facing fill signals (combined from setup-prefill + seq-per-access).
+    signal fill_data: unsigned(7 downto 0);
+    signal fill_we  : std_logic;
+    signal fill_addr: unsigned(15 downto 0);
+    signal fill_bank: unsigned(7 downto 0);
+    -- setup (prefill) fill driver
+    signal su_fill_data: unsigned(7 downto 0) := (others => '0');
+    signal su_fill_we  : std_logic := '0';
+    signal su_fill_addr: unsigned(15 downto 0) := (others => '0');
+    signal su_fill_bank: unsigned(7 downto 0)  := (others => '0');
+    -- sequencer (per-access fill-on-miss, PREFILL=false) fill driver
+    signal sq_fill_data: unsigned(7 downto 0) := (others => '0');
+    signal sq_fill_we  : std_logic := '0';
+    signal sq_fill_addr: unsigned(15 downto 0) := (others => '0');
+    signal sq_fill_bank: unsigned(7 downto 0)  := (others => '0');
 
     signal wb_pending : std_logic;
     signal wb_addr    : unsigned(15 downto 0);
@@ -199,6 +233,13 @@ begin
     end process;
     cpuDi <= rp_cache_di_d1 when rp_cache_hit_d1 = '1' else x"EE"; -- $EE = miss marker
 
+    -- Combine the two fill drivers (setup prefill | seq per-access). seq wins when
+    -- it is actively filling (the two never overlap in practice).
+    fill_we   <= su_fill_we or sq_fill_we;
+    fill_addr <= sq_fill_addr when sq_fill_we = '1' else su_fill_addr;
+    fill_bank <= sq_fill_bank when sq_fill_we = '1' else su_fill_bank;
+    fill_data <= sq_fill_data when sq_fill_we = '1' else su_fill_data;
+
     -- ── Setup: reset, flush, prefill the three lines ────────────────────
     setup: process
     begin
@@ -211,23 +252,28 @@ begin
         for i in 0 to 600 loop
             wait until rising_edge(clk);
         end loop;
-        -- Prefill L0/L1/L2 (8 bytes each).
-        for off in 0 to 7 loop
-            fill_byte(to_unsigned(16#1000# + off, 16), x"02",
-                      to_unsigned(16#A0# + off, 8),
-                      fill_addr, fill_bank, fill_data, fill_we, clk);
-        end loop;
-        for off in 0 to 7 loop
-            fill_byte(to_unsigned(16#1008# + off, 16), x"02",
-                      to_unsigned(16#B0# + off, 8),
-                      fill_addr, fill_bank, fill_data, fill_we, clk);
-        end loop;
-        for off in 0 to 7 loop
-            fill_byte(to_unsigned(16#1010# + off, 16), x"02",
-                      to_unsigned(16#C0# + off, 8),
-                      fill_addr, fill_bank, fill_data, fill_we, clk);
-        end loop;
-        report "=== Prefill complete (GATE_MODE=" & integer'image(GATE_MODE) & ") ===";
+        -- Prefill L0/L1/L2 (8 bytes each) — only when PREFILL=true. When false the
+        -- cache starts empty and the sequencer fills each byte on its first miss
+        -- consume (faithful per-byte fill-on-miss), exposing the cold-line bug.
+        if PREFILL then
+            for off in 0 to 7 loop
+                fill_byte(to_unsigned(16#1000# + off, 16), x"02",
+                          to_unsigned(16#A0# + off, 8),
+                          su_fill_addr, su_fill_bank, su_fill_data, su_fill_we, clk);
+            end loop;
+            for off in 0 to 7 loop
+                fill_byte(to_unsigned(16#1008# + off, 16), x"02",
+                          to_unsigned(16#B0# + off, 8),
+                          su_fill_addr, su_fill_bank, su_fill_data, su_fill_we, clk);
+            end loop;
+            for off in 0 to 7 loop
+                fill_byte(to_unsigned(16#1010# + off, 16), x"02",
+                          to_unsigned(16#C0# + off, 8),
+                          su_fill_addr, su_fill_bank, su_fill_data, su_fill_we, clk);
+            end loop;
+        end if;
+        report "=== Prefill " & boolean'image(PREFILL)
+             & " complete (GATE_MODE=" & integer'image(GATE_MODE) & ") ===";
         -- let the pipeline settle on STREAM(0) before starting the cadence
         for i in 0 to 8 loop
             wait until rising_edge(clk);
@@ -253,6 +299,7 @@ begin
             c := sysCycle;
             do_latch := false;
             kind := "----";
+            sq_fill_we <= '0';  -- default: 1-cycle fill pulse only on a miss consume
 
             if start_run = '1' and running = '0' and not test_done then
                 running <= '1';
@@ -297,14 +344,29 @@ begin
                         end if;
                         do_latch := safe;
                     end if;
-                else -- GATE_MODE = 5 : REALIZABLE — same policy, but the fast-path
+                elsif GATE_MODE = 5 then -- REALIZABLE — same policy, but the fast-path
                      -- decision is the cache's LIVE same_line sampled at E-1 (sl_d1),
-                     -- NOT the oracle. Must match mode 2 exactly.
+                     -- NOT the oracle. Must match mode 2 exactly (PREFILL=true).
                     if (c mod 2) = 0 then
                         if cycles_since_latch >= 4 then
                             safe := true;  kind := "full"; -- normal 2-clk-enable path
                         elsif sl_d1 = '1' then
                             safe := true;  kind := "sl2 "; -- 1-clk-enable fast path
+                        else
+                            safe := false; kind := "STAL"; -- stall to rebuild margin
+                        end if;
+                        do_latch := safe;
+                    end if;
+                else -- GATE_MODE = 6 : REALIZABLE + HIT-GATED (Codex point 4 fix).
+                     -- Fast path requires sl_d1 AND rp_cache_hit_d1 (the registered
+                     -- byte-valid hit for access(E)). A same-line-but-invalid byte
+                     -- falls to a full-margin consume (which fills it) instead of a
+                     -- stale 2-apart fire.
+                    if (c mod 2) = 0 then
+                        if cycles_since_latch >= 4 then
+                            safe := true;  kind := "full"; -- full margin (hit or fillable miss)
+                        elsif sl_d1 = '1' and rp_cache_hit_d1 = '1' then
+                            safe := true;  kind := "sl2 "; -- fast path ONLY on a real hit
                         else
                             safe := false; kind := "STAL"; -- stall to rebuild margin
                         end if;
@@ -325,12 +387,43 @@ begin
                      & " exp=" & to_hstring(std_logic_vector(expv))
                      & " got=" & to_hstring(std_logic_vector(got))
                      & " hit=" & std_logic'image(hitv);
-                if got /= expv or hitv /= '1' then
-                    report "  *** STALE/MISS consume: idx=" & integer'image(acc_idx)
-                         & " exp=" & to_hstring(std_logic_vector(expv))
-                         & " got=" & to_hstring(std_logic_vector(got))
-                         severity warning;
-                    fail_count <= fail_count + 1;
+                if PREFILL then
+                    -- Warm-cache policy proof: every consume must hit + match.
+                    if got /= expv or hitv /= '1' then
+                        report "  *** STALE/MISS consume: idx=" & integer'image(acc_idx)
+                             & " exp=" & to_hstring(std_logic_vector(expv))
+                             & " got=" & to_hstring(std_logic_vector(got))
+                             severity warning;
+                        fail_count <= fail_count + 1;
+                    end if;
+                else
+                    -- Cold-cache (per-byte fill-on-miss) model:
+                    --   hit            : cache data must match.
+                    --   full-margin miss: OK — SDRAM has time to deliver; byte is filled.
+                    --   FAST miss      : STALE — the 2-apart fire raced the SDRAM read
+                    --                    (cpuDi_nocache not ready). THIS is Codex point 4.
+                    if hitv = '1' then
+                        if got /= expv then
+                            report "  *** HIT wrong byte: idx=" & integer'image(acc_idx)
+                                 & " exp=" & to_hstring(std_logic_vector(expv))
+                                 & " got=" & to_hstring(std_logic_vector(got))
+                                 severity warning;
+                            fail_count <= fail_count + 1;
+                        end if;
+                    elsif cycles_since_latch < 4 then
+                        report "  *** FAST-MISS stale (same_line but byte invalid): idx="
+                             & integer'image(acc_idx) & " csl="
+                             & integer'image(cycles_since_latch)
+                             severity warning;
+                        fail_count <= fail_count + 1;
+                    end if;
+                    -- Fill the consumed byte on ANY miss (faithful rp_fill_we = enable AND miss).
+                    if hitv = '0' then
+                        sq_fill_we   <= '1';
+                        sq_fill_addr <= STREAM(acc_idx).addr;
+                        sq_fill_bank <= STREAM(acc_idx).bank;
+                        sq_fill_data <= STREAM(acc_idx).exp;
+                    end if;
                 end if;
 
                 latch_count <= latch_count + 1;
