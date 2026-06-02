@@ -47,10 +47,13 @@ enableCpu <= fire   -- registered; fast path = 1-clk enable
 
 ## NEXT STEP (off-device first — local probe available)
 1. Implement the scheduler behind `ALT_FIRE_SAMELINE` + the same_line wiring.
-2. **Boot-validate off-device via `sim/c64_reduced_harness`** (run_harness.ps1). The
-   warm/cold cache bench does NOT cover I/O / throttle / badline; the reduced harness
-   boot does (it carried the iter-7e cache validation — see its iter7e_*.log). This is
-   the gate that catches a boot-wedge before any build.
+2. **Off-device sanity via `sim/c64_reduced_harness`** (run_harness.ps1) — LIMITED:
+   per iter-7e it stalls at `final_pc=$FD83` (RAMTAS loop; simple_sdram_model RAM-sizing)
+   and never reaches BASIC. So it CAN catch a gross scheduler wedge (CPU stops advancing
+   in the $FD83 loop) but CANNOT validate the I/O/throttle/badline subsumption — that
+   (the riskiest part of the single-scheduler) is HW-only. Plan accordingly: build the
+   scheduler maximally gated/baseline-identical-when-off, lean on the $FD83 sanity +
+   STA, and treat the HW boot+Lorenz as the real subsumption gate.
 3. Build (local, ~30-40 min) → **STA** (Codex point 5: the new enable FF + 1-clk fast
    path setup/hold; iter-12 showed rp_cache_hit_d1→ALU closes setup-1 +7.884 — data side
    fits; MEASURE the FF with cache_path_probe.tcl).
