@@ -153,3 +153,62 @@ Rules from the other findings:
 2. Build (local, ~30-40 min) → **STA** (finding 5: the new enable FF + the 1-clk fast path).
 3. **HW gate** (needs a free MiSTer): boot clean + Lorenz scpu/t65 100% + Doom + Wolf3D
    no-regress + `superram_bench` COUNT > control (proves speedup) + measure effective MHz.
+
+---
+
+# iter-15 CORRECTION — the fast gate uses LIVE same_line/cache_hit, NOT _d1
+
+The CORRECTED-DESIGN pseudocode above gates the fast 2-apart fire on the REGISTERED
+`rp_same_line_d1 AND rp_cache_hit_d1`. **That is wrong for the realizable RTL** and would
+HW-falsify. Both an independent Codex review (`tools/codex-out/iter15-phasing.txt`) and a
+new faithful integration bench prove it.
+
+## Why _d1 is wrong here (one extra register the policy bench never modeled)
+The policy bench (`cpu_cache_altfire_race_tb`, GATE_MODE 6) models the consume as a SINGLE
+clocked event: decision-edge == consume-edge, with the decision reading `sl_d1` (same_line
+registered once). That is a COMBINATIONAL enable. The realizable RTL instead does
+`enableCpu <= fire` (REGISTERED) — the 816 consumes one clk32 AFTER the enable-high slot.
+That extra register shifts the decision phase by one slot:
+
+  prev enable-high CPU3 → consume edge CPU3→CPU4 → fast address live during CPU4 →
+  fire evaluated during CPU4 → enable-high CPU5 → consume edge CPU5→CPU6.
+
+The "useful" same_line (fast access vs prev-consumed) is `same_line(CPU4)` = the LIVE value
+at the even fire-eval slot. `rp_same_line_d1(CPU4)` = `same_line(CPU3)` = the trivially-'1'
+sample (address stable across CPU3) = the mode-0 no-op bug. So: **gate on LIVE
+`rp_same_line` + LIVE `rp_cache_hit` at the fire-eval slot; keep `_d1` ONLY for the cpuDi
+data** (the 816 latches cpuDi at the consume edge, so the data side is correctly registered).
+This live-gate / registered-data asymmetry is the crux.
+
+## Proof: sim/cache_coherency_tb/cpu_cache_sched_phasing_tb.vhd (run_sched_phasing.ps1)
+Faithful registered `enableCpu <= fire` scheduler + REAL cpu_cache + the `_d1` override +
+a modeled-816 consumer (advances cpu_addr 1 clk after the enable-high slot). Full 32-slot
+period; fire-eval at even CPU slots CPU2..CPUE; en_gap-gated (main en_gap>=3, fast en_gap>=1).
+Sweep results (all 16-access stream, mixed same/cross line):
+- CONTROL (mains only) warm/cold: PASS 0 / PASS 0  → bench model validated.
+- **LIVE** gate warm: **PASS 0, span 98 clk32** (vs control 124 = ~21% fewer).
+- **LIVE** gate cold (PREFILL=false, per-byte fill-on-miss): **PASS 0** — the live
+  `rp_cache_hit` term falls cold same-line bytes to a full-margin 4-apart consume (which
+  fills), so no stale fast fire. span 108.
+- **D1** gate warm: **FAIL 6** (cross-line stale, e.g. exp=B0 got=A0).
+- **D1** gate cold: **FAIL 3** (FAST-MISS + HIT-wrong).
+
+## Settled RTL gate (supersedes the CORRECTED-DESIGN pseudocode's _d1)
+```
+fire = is_even_cpu_fire_eval_slot                 -- CPU2/4/6/8/A/C/E
+       AND base_permit                            -- per-slot baseline permits (slow) / sdram_busy=0 (fast)
+       AND ( en_gap >= 3                           -- full-margin main (new spacing >= 4)
+           OR ( en_gap >= 1 AND scpu_fast_path
+                AND rp_same_line  AND rp_cache_hit ) )   -- LIVE, not _d1
+enableCpu <= fire        -- registered; reset en_gap to 0 on accepted advancement
+```
+Transition (Codex D): a raw fast/slow MUX leaks a stale `cpu_cyc_s(1)` main 2-apart after a
+fast (brief finding 1). Fix = the single scheduler owns enableCpu in SuperCPU mode: in slow
+mode (scpu_fast_path=0) it emits ONLY mains, at the baseline-aligned fire-eval slots
+{CPU2,6,A,E} carrying the exact baseline permits (turbo_m bit / io_enable@CPUF-for-CPUC /
+not scpu_force_1mhz / cs_ram / sdram_busy=0), so it is bit-faithful to baseline I/O/throttle;
+in fast mode it fires mains at ANY even slot (permit reduces to sdram_busy=0 since SuperRAM
+is cs_ram=1, no I/O, no throttle) + the fast clause. en_gap carries across the transition so
+the first post-transition consume is gap-gated (no 1-apart ever; all enables land on odd
+slots, min 2-apart only via the same-line+hit fast path). NOTE: reset en_gap on ACCEPTED
+816 advancement (mask baLoc/RDY squash), not on a generated pulse, or same-line phasing desyncs.

@@ -1,0 +1,30 @@
+**Verdict:** your B claim is correct. With `enableCpu <= fire` registered, gating `fire` on `_d1` at the even fire-eval slot is one clk32 too old. Use live `rp_same_line` + live `rp_cache_hit` for the gate; keep `_d1` for `cpuDi`.
+
+**A. RTL facts verified**
+Fact 1: yes. `cpu_cyc` is combinational at `fpga64_sid_iec.vhd:3426-3431`; `cpu_cyc_s <= cpu_cyc_s(0) & cpu_cyc` and `enableCpu <= cpu_cyc_s(1)` are registered at `:3554-3555`. So CPU0/4/8/C fires become enable-high at CPU3/7/B/F.
+
+Fact 2: yes. `same_line` is combinational from live `line_index/expected_tag` vs registered `prev_line/prev_tag` at `cpu_cache.vhd:180-182`. `tag_match`, `byte_valid`, `cache_hit` are combinational at `:269-276`. `line_word` and `prev_line/prev_tag` register every clk at `:283-294`. `cache_di` byte-selects registered `line_word` with live `byte_offset` at `:300-310`. fpga64 then registers `rp_cache_hit/rp_cache_di` at `fpga64_sid_iec.vhd:4937-4938`, and `cpuDi` uses `_d1` at `:1987-1989`.
+
+**B. Main answer**
+You are not miscounting. The bench’s `_d1` decision is at the consume edge. Your RTL decision is one slot before the consume-enable slot.
+
+Fast trace, previous enable-high CPU3, target enable-high CPU5:
+
+- CPU3: previous access is on `cpuAddr`; `enableCpu=1`; CPU consumes at edge CPU3->CPU4.
+- CPU4: new fast address is now live. `prev_line` was updated from the CPU3 address. Therefore live `rp_same_line(CPU4)` is exactly “new fast access same line as previous consumed access.” Live `rp_cache_hit(CPU4)` is the byte-valid hit for that new access.
+- Edge CPU4->CPU5: register `enableCpu <= fire(CPU4)` and `rp_cache_*_d1 <= rp_cache_*(CPU4)`.
+- CPU5: `enableCpu=1`; `cpuDi=rp_cache_di_d1`, reflecting the CPU4 access; CPU consumes at edge CPU5->CPU6.
+
+If `fire(CPU4)` uses `rp_same_line_d1`, it reads `same_line(CPU3)`, not `same_line(CPU4)`. That is the stale/trivial sample. So the brief’s corrected pseudocode is wrong for this registered-fire realization.
+
+**C. Gap**
+Your thresholds are right if `en_gap` is “slots since last enable-high/accepted step”: reset to 0 in the enable-high slot, increment otherwise, saturate.
+
+- Last enable CPU3: CPU4 has `en_gap=1`; fast fire CPU4 gives enable CPU5, spacing 2.
+- CPU6 has `en_gap=3`; main fire CPU6 gives enable CPU7, spacing 4.
+- No 1-apart unless you allow fire evaluation in the enable-high slot itself. Keep candidates only CPU2/4/6/8/A/C/E and reset on accepted CPU advancement, not on a squashed pulse.
+
+**D. Transition**
+Yes, a raw mux can leak stale `cpu_cyc_s(1)` pulses across the boundary, causing an illegal extra/too-soon step.
+
+Concrete fix: make the scheduler own `enableCpu` for all SuperCPU 816 operation. When not fast-eligible, disable only the fast clause; still emit slow/main pulses through the same `en_gap>=3` gate and normal slow slot mask. Use `cpu_cyc_s(1)` only outside SuperCPU scheduler mode, or after a rejoin guard waits for `en_gap>=3` on a legal slow slot. This preserves settled I/O phase while preventing boundary double-fire.
