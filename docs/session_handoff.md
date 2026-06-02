@@ -20,28 +20,35 @@ iter-9), Doom (PASS), Wolf3D (PASS). No Metal Dust or other commercial SCPU titl
 on the device. ⇒ the compat "broaden the sweep" lever has no remaining material. The only failing
 title (SCPU-Kicks) is speed-bound. Both demanding real SCPU titles (Doom + Wolf3D) PASS.
 
-## 🔬 SPEED LEVER CHARACTERIZED (off-device STA analysis, 2026-06-02)
+## 🔬 SPEED LEVER CHARACTERIZED + an over-hasty framing CORRECTED (off-device STA + RTL, 2026-06-02)
 The exhausted-compat conclusion circles the north-star back to SPEED (the 4MHz-vs-20MHz gap AND the
-speed-bound SCPU-Kicks are the only remaining gaps). The one surviving >4MHz lever (pipelining
-inside the P65C816 `di→ALU→PC`, deferred by iter-7g as "deep, multi-session, not on impulse") is now
-characterized concretely from `C64_MiSTer/cache_1cyc_path.txt`:
-- In-core `localDi → PCr` = ~15.7ns; DOMINATED by `cpu|ALU|AddSub|add0..add3` = the **4-stage BCD
-  adder cascade (~8.2ns)**, because the PC-relative branch-offset add (always binary) is routed
-  through the shared BCD-capable ALU (confirmed RTL: AddrGen fed by ALU result, P65C816.vhd:207/269).
-- **Concrete future lever:** give AddrGen its own lean dedicated binary PC adder so the branch path
-  skips the BCD ALU cascade (~8ns saved). NECESSARY-NOT-SUFFICIENT: the functional bridge hazard
-  (clk48/SLOT3/alt-fire all failed functionally) + the SDRAM-read term still apply; and at the
-  shipped 4-apart cadence the SDRAM read (~79ns) is the binding constraint, not this path (the BRAM
-  cache attacks that). Full detail: memory `project_speed_lever_bcd_adder_pc_path`.
+speed-bound SCPU-Kicks are the only remaining gaps). The one surviving >4MHz lever (shortening the
+in-core `di→ALU→…` path so the CPU closes timing at a 2-apart cadence, deferred by iter-7g as
+"deep, multi-session, not on impulse") characterized from `C64_MiSTer/cache_1cyc_path.txt`:
+- In-core worst path ~15.7ns, DOMINATED by `cpu|ALU|AddSub|add0..add3` (~8.2ns).
+- **⚠️ CORRECTION (commit `8f17b2f`/`0e6f993` message overstated this):** that ~8.2ns is the ALU's
+  SHARED 16-bit ripple-carry BCD adder (`AddSubBCD.vhd` = 4 cascaded `BCDAdder` nibble stages,
+  carry CO0→CO1→CO2→CO3, `ALU.vhd:87`), used for EVERY add/sub/compare — NOT a PC-specific adder.
+  `AddrGen.vhd:54-55` ALREADY has dedicated binary PC adders (`PCr + PCOffset`, `PCr + sext(DR)`),
+  and no `NextPC` case consumes the ALU result. So "give AddrGen a binary PC adder" is a NON-FIX
+  (already present); the STA path's `→PCr` endpoint is a Quartus-retimed/indirect artifact.
+- **Real lever:** speed up `AddSubBCD` — a carry-lookahead / FPGA-hard-carry-chain binary fast-path
+  with BCD as a separate muxed (slower) correction, so the majority binary adds skip the BCD ripple.
+  This is ALU-core surgery touching ALL arithmetic → Lorenz-100% gated (heavy ADC/SBC/BCD/CMP).
+  NECESSARY-NOT-SUFFICIENT: the functional bridge hazard (clk48/SLOT3/alt-fire all failed
+  functionally) + the SDRAM-read ~79ns term still apply; at the shipped 4-apart cadence the SDRAM
+  read is the binding constraint, not this path (the BRAM cache attacks that). Full detail +
+  correction: memory `project_speed_lever_bcd_adder_pc_path`.
 
 ## ➡️ NEXT (iter-11) — the high-leverage move is now SPEED, not compat
 - Compat sweep is materially done (both available demanding titles PASS; no more SCPU titles
   on-device; SCPU-Kicks is speed-bound). WriteSmart decode stays a firmware non-gap (no swept title
   reads $D074-$D077/$D0B3).
-- The remaining north-star lever is the characterized **dedicated-binary-PC-adder** in AddrGen.
-  GHDL-FIRST: prototype it in `sim/p65c816_tb`, prove Lorenz-equivalent behaviour + measure the
-  branch-path delay drop in a fitted STA probe BEFORE touching the shipped path. This is the
-  hairiest-core-file surgery the iter-7g verdict deferred — do it deliberately, not at session tail.
+- The remaining north-star lever is **`AddSubBCD` adder optimization** (binary fast-path). GHDL-FIRST:
+  prototype in `sim/p65c816_tb`, prove Lorenz-equivalent behaviour (ADC/SBC/BCD/CMP) + measure the
+  adder-delay drop in a fitted STA probe BEFORE touching the shipped path. ALU-core surgery → do it
+  deliberately, not at session tail. First confirm whether `di→ALU→PCr` is a false path (cheap SDC
+  waiver) — but `di→ALU→A` is real and equally slow, so the adder itself is the true limiter.
 - State: control `97392a1f` deployed + booting (CORENAME=C64); MiSTer lock RELEASED (NOLOCK after
   this session); no RTL change, no commit this session (investigation/validation only).
 
