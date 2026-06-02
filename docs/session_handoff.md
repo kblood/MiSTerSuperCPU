@@ -1,4 +1,53 @@
-# Session handoff — 2026-06-01: COMPAT ITER-9 — SuperCPU Kicks! ROOT CAUSE PROVEN = a runtime SPEED-detection failure (VICE `+speedswitch` 1MHz reproduces the HW fallback exactly). SPEED-BOUND, not register/render. $D0B3/4/5=$80 lead FALSIFIED. Demo SHELVED until effective MHz>4. PIVOT next to WriteSmart decode / title sweep.
+# Session handoff — 2026-06-02: COMPAT ITER-10 — Wolfenstein 3D = full compat PASS (live 3D gameplay) + on-device SCPU title pool EXHAUSTED + the one remaining >4MHz speed lever CHARACTERIZED (BCD adder on the branch PC path). No RTL change; investigation/validation only.
+
+## ✅ COMPAT ITER-10 RESULT (2026-06-02, control `97392a1f`, scpu mode)
+**Wolfenstein 3D runs to full live 3D gameplay — clean, no corruption.** The handoff had no
+current-build Wolf3D result before this. Launch = same pattern as Doom: `wolf3d.reu` (16MB) via
+MGL (~50s) → `loader.prg` autorun (REU FETCH → SuperRAM long-stores → engine).
+- t120: id Software **setup menu** crisp (AVAILABLE MEMORY bank table = SuperRAM detected; MOUSE/
+  JOYSTICK/ADLIB/SOUND BLASTER/SOUND SOURCE list).
+- t180: "Press a key"; SPACE → grey **"Working..."** decompress (~3-4 min @4MHz — the v356 script
+  waits 280s here; I first pressed keys too fast and mistook the grey screen for a wedge — it's
+  the working phase, the CPU stays alive in the loader loop $2C6Exx/$0003xx).
+- Then **full 3D engine** (attract/demo): raycast walls/floor/objects + LIVES/HEALTH/AMMO/BJ-face/
+  weapon HUD. Scenes + HUD values change across captures = LIVE (not frozen). PC across SuperRAM
+  banks $20/$27/$2C/$EB, VW advancing, B6:F0 (no stuck IRQ). Screens: `tools/wolf3d_iter10/`
+  (`wait_t180.png`, `wait_t270.png`, `live_final.png` = a room with "Demo" wall text).
+- The v356 "REU IRQ stuck wedge" fix (in 97392a1f, post-v356) HELD.
+
+**On-device SCPU title pool is EXHAUSTED** (searched 2026-06-02): only SuperCPU-Kicks (speed-bound,
+iter-9), Doom (PASS), Wolf3D (PASS). No Metal Dust or other commercial SCPU titles present anywhere
+on the device. ⇒ the compat "broaden the sweep" lever has no remaining material. The only failing
+title (SCPU-Kicks) is speed-bound. Both demanding real SCPU titles (Doom + Wolf3D) PASS.
+
+## 🔬 SPEED LEVER CHARACTERIZED (off-device STA analysis, 2026-06-02)
+The exhausted-compat conclusion circles the north-star back to SPEED (the 4MHz-vs-20MHz gap AND the
+speed-bound SCPU-Kicks are the only remaining gaps). The one surviving >4MHz lever (pipelining
+inside the P65C816 `di→ALU→PC`, deferred by iter-7g as "deep, multi-session, not on impulse") is now
+characterized concretely from `C64_MiSTer/cache_1cyc_path.txt`:
+- In-core `localDi → PCr` = ~15.7ns; DOMINATED by `cpu|ALU|AddSub|add0..add3` = the **4-stage BCD
+  adder cascade (~8.2ns)**, because the PC-relative branch-offset add (always binary) is routed
+  through the shared BCD-capable ALU (confirmed RTL: AddrGen fed by ALU result, P65C816.vhd:207/269).
+- **Concrete future lever:** give AddrGen its own lean dedicated binary PC adder so the branch path
+  skips the BCD ALU cascade (~8ns saved). NECESSARY-NOT-SUFFICIENT: the functional bridge hazard
+  (clk48/SLOT3/alt-fire all failed functionally) + the SDRAM-read term still apply; and at the
+  shipped 4-apart cadence the SDRAM read (~79ns) is the binding constraint, not this path (the BRAM
+  cache attacks that). Full detail: memory `project_speed_lever_bcd_adder_pc_path`.
+
+## ➡️ NEXT (iter-11) — the high-leverage move is now SPEED, not compat
+- Compat sweep is materially done (both available demanding titles PASS; no more SCPU titles
+  on-device; SCPU-Kicks is speed-bound). WriteSmart decode stays a firmware non-gap (no swept title
+  reads $D074-$D077/$D0B3).
+- The remaining north-star lever is the characterized **dedicated-binary-PC-adder** in AddrGen.
+  GHDL-FIRST: prototype it in `sim/p65c816_tb`, prove Lorenz-equivalent behaviour + measure the
+  branch-path delay drop in a fitted STA probe BEFORE touching the shipped path. This is the
+  hairiest-core-file surgery the iter-7g verdict deferred — do it deliberately, not at session tail.
+- State: control `97392a1f` deployed + booting (CORENAME=C64); MiSTer lock RELEASED (NOLOCK after
+  this session); no RTL change, no commit this session (investigation/validation only).
+
+---
+
+# (prior) Session handoff — 2026-06-01: COMPAT ITER-9 — SuperCPU Kicks! ROOT CAUSE PROVEN = a runtime SPEED-detection failure (VICE `+speedswitch` 1MHz reproduces the HW fallback exactly). SPEED-BOUND, not register/render. $D0B3/4/5=$80 lead FALSIFIED. Demo SHELVED until effective MHz>4. PIVOT next to WriteSmart decode / title sweep.
 
 ## ✅ COMPAT ITER-9 RESULT (2026-06-01, control `97392a1f`) — the SuperCPU-Kicks detection is a SPEED test
 **Airtight differential proof (only clock speed varied in VICE):**
