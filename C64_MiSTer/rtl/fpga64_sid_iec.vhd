@@ -1474,6 +1474,14 @@ signal io_enable    : std_logic;
 signal cpu_cyc      : std_logic;
 signal cpu_cyc_s    : std_logic_vector(1 downto 0);
 signal turbo_m      : std_logic_vector(2 downto 0);
+-- iter-15 (2026-06-02): same-line 2x alt-fire single gap-gated enable scheduler.
+-- en_gap = clk32 since the last generated enableCpu pulse (bench `cycles_since_latch`
+-- convention: reset to 0 on fire, +1 otherwise, saturating). Gates the fast 2-apart
+-- consume (en_gap>=1 + LIVE same-line + LIVE hit) vs the full-margin main (en_gap>=3 =
+-- the proven 4-apart cadence/SDRAM window). See docs/iter14_altfire_rtl_brief.md
+-- "iter-15 CORRECTION" + the proof bench cpu_cache_sched_phasing_tb. Inert when
+-- ALT_FIRE_SAMELINE=false (enableCpu stays = cpu_cyc_s(1), RBF bit-identical).
+signal en_gap       : unsigned(5 downto 0) := (others => '1');
 
 signal reset        : std_logic := '1';
 
@@ -1573,10 +1581,16 @@ signal cobs_hw_reg   : unsigned(7 downto 0) := (others => '0');  -- window-compl
 -- top of the cpuDi mux + rp_cache_hit->sdram_hit_pred short grant) are wired as
 -- an INSEPARABLE pair — shortening the grant without the data override is the
 -- Doom BRK $00:000A stale-latch class. Read-only: write hits stay disabled.
-constant CACHE_READ_PATH : boolean := false;  -- committed default false (RBF bit-identical when off). ITER-7e 2026-05-31 HW-CONFIRMED: with fix B (rp_cacheable excludes ROM-shadowable bank-$00 $8/9/A/B/E/F + non-RAM $D), probe build e9c36c3e (this flag TRUE) BOOTS CLEAN (SCPU64 V0.07/READY) + Lorenz scpu PASS (serial LOAD = the e0e83e5c corruption case, now clean) + Lorenz t65 PASS (no regression). FIRST clean HW boot of the cache read path feeding the CPU. Ships false until the variable-cadence 2x arbiter (the actual speedup; this is correctness-only at 4-apart). ITER-7d 2026-05-31: the cpuDi override now consumes the REGISTERED rp_cache_hit_d1/rp_cache_di_d1 (below) + fills from cpuDi_nocache, converting the masked single-cycle consume into a genuine 2-cycle path. Scripted setup-1 STA on the fitted probe build 3514fc7d (cache_sta_probe.tcl, cache_1cyc_path_iter7d.txt): forced -setup 1 worst slack = +7.797ns (0 viol) on rp_cache_hit_d1 -> P65C816|AddrGen|PCr — vs iter-6's -0.651ns FAIL on the un-registered path. So the masked-timing violation behind the iter-7c boot corruption (build 0228d2b6 garbled boot) is ELIMINATED off-device. REMAINING GATE = HW (needs MiSTer): flip true, build, confirm boot clean + Lorenz scpu/t65 100% + Doom no-regress at the existing 4-apart cadence (this is correctness-only — no speed change yet; the variable-cadence 2x arbiter is the follow-up). Until HW-confirmed, ships false. HISTORY: iter-7c (this flag true, pre-register) HW-FALSIFIED — fill-on-miss-only corrupted boot ("< 0JEEP"), control 97392a1f clean; iter-7b cache-only (e0e83e5c) booted clean but corrupted Lorenz LOAD.
+constant CACHE_READ_PATH : boolean := true;  -- iter-15: flipped TRUE to feed the cache + the same-line 2x scheduler (ALT_FIRE_SAMELINE). HW-proven clean at 4-apart (iter-7e e9c36c3e). [orig default false] (RBF bit-identical when off). ITER-7e 2026-05-31 HW-CONFIRMED: with fix B (rp_cacheable excludes ROM-shadowable bank-$00 $8/9/A/B/E/F + non-RAM $D), probe build e9c36c3e (this flag TRUE) BOOTS CLEAN (SCPU64 V0.07/READY) + Lorenz scpu PASS (serial LOAD = the e0e83e5c corruption case, now clean) + Lorenz t65 PASS (no regression). FIRST clean HW boot of the cache read path feeding the CPU. Ships false until the variable-cadence 2x arbiter (the actual speedup; this is correctness-only at 4-apart). ITER-7d 2026-05-31: the cpuDi override now consumes the REGISTERED rp_cache_hit_d1/rp_cache_di_d1 (below) + fills from cpuDi_nocache, converting the masked single-cycle consume into a genuine 2-cycle path. Scripted setup-1 STA on the fitted probe build 3514fc7d (cache_sta_probe.tcl, cache_1cyc_path_iter7d.txt): forced -setup 1 worst slack = +7.797ns (0 viol) on rp_cache_hit_d1 -> P65C816|AddrGen|PCr — vs iter-6's -0.651ns FAIL on the un-registered path. So the masked-timing violation behind the iter-7c boot corruption (build 0228d2b6 garbled boot) is ELIMINATED off-device. REMAINING GATE = HW (needs MiSTer): flip true, build, confirm boot clean + Lorenz scpu/t65 100% + Doom no-regress at the existing 4-apart cadence (this is correctness-only — no speed change yet; the variable-cadence 2x arbiter is the follow-up). Until HW-confirmed, ships false. HISTORY: iter-7c (this flag true, pre-register) HW-FALSIFIED — fill-on-miss-only corrupted boot ("< 0JEEP"), control 97392a1f clean; iter-7b cache-only (e0e83e5c) booted clean but corrupted Lorenz LOAD.
 signal rp_cache_di   : unsigned(7 downto 0) := (others => '0'); -- inert default => override never fires
 signal rp_cache_hit  : std_logic := '0';                       -- inert default => hit_pred stays '0'
 signal rp_cacheable  : std_logic := '0';
+-- iter-15: the cache's LIVE same_line (line/tag equality vs the previous clk32's
+-- address). Wired from read_path_cache.same_line (was `open`). The fast 2-apart fire
+-- gate reads this LIVE (NOT registered _d1) at the even fire-eval slot — proven by
+-- cpu_cache_sched_phasing_tb (LIVE=PASS, _d1=FAIL) + Codex. Inert '0' when the read
+-- path is absent (CACHE_READ_PATH=false) => fast path can never fire.
+signal rp_same_line  : std_logic := '0';
 signal rp_fill_we    : std_logic := '0';
 -- iter-7d (2026-05-31): REGISTERED cache-HIT override. The cpuDi override now
 -- consumes these 1-clk32-delayed copies instead of the combinational
@@ -1592,6 +1606,20 @@ signal rp_fill_we    : std_logic := '0';
 -- CACHE_READ_PATH=false bit-identical. See docs/iter7d_codex_brief.md.
 signal rp_cache_di_d1  : unsigned(7 downto 0) := (others => '0');
 signal rp_cache_hit_d1 : std_logic := '0';
+
+-- iter-15 (2026-06-02): enable the same-line 2x alt-fire single gap-gated scheduler.
+-- Requires CACHE_READ_PATH=true (the read path supplies rp_same_line/rp_cache_hit).
+-- When false, enableCpu <= cpu_cyc_s(1) exactly as shipped (RBF bit-identical). When
+-- true AND supercpu_en, a single registered scheduler owns enableCpu: SLOW mode (bank
+-- $00 / I/O / throttle, scpu_fast_path=0) emits the baseline cpu_cyc_s(1) main pulse
+-- guarded by en_gap>=3 (bit-identical to baseline in steady slow, the guard only
+-- suppresses a too-soon main right after a fast); FAST mode (SuperRAM, scpu_fast_path=1,
+-- not throttled, not dma) runs a uniform even-CPU-slot gap scheduler: main at en_gap>=3
+-- (4-apart = proven SDRAM window), fast 2-apart at en_gap>=1 + LIVE rp_same_line +
+-- LIVE rp_cache_hit + baLoc + cpu816_rdy (stall-safe). Off-device proof:
+-- cpu_cache_sched_phasing_tb (LIVE gate PASS warm+cold, _d1 FAIL). HW-GATED until
+-- boot+Lorenz+Doom+Wolf3D+speed confirmed.
+constant ALT_FIRE_SAMELINE : boolean := true;
 
 -- iter-7 (2026-05-30): RDY-handshake gate for the cache-HIT alt-slot (the
 -- cadence-correctness half — the STA gate cleared the data-path-timing half).
@@ -3552,7 +3580,46 @@ begin
 		--end if;
 
 		cpu_cyc_s <= cpu_cyc_s(0) & cpu_cyc;
-		enableCpu <= cpu_cyc_s(1);
+
+		-- ── iter-15: same-line 2x alt-fire single gap-gated enable scheduler ──
+		-- Replaces the shipped `enableCpu <= cpu_cyc_s(1)`. When ALT_FIRE_SAMELINE or
+		-- CACHE_READ_PATH is false, or in 6510 mode, this collapses to the baseline
+		-- pulse (RBF bit-identical). Otherwise ONE registered scheduler owns enableCpu
+		-- with TWO fire sources:
+		--   MAIN (both modes): the baseline cpu_cyc_s(1) pulse guarded by en_gap>=3.
+		--     cpu_cyc_s(1) carries ALL baseline permits (turbo_m / cs_ram / io_enable@CPUC
+		--     / not scpu_force_1mhz) AND ties the consume to the real SDRAM prefetch slot
+		--     (cpu_cyc @ CPU0/4/8/C → cpu_cyc_s(1) @ CPU2/6/A/E → enable CPU3/7/B/F). So a
+		--     MISS main always gets the proven 4-apart SDRAM window. The en_gap>=3 guard
+		--     suppresses a too-soon main right after a fast (steady slow keeps en_gap>=3 =
+		--     baseline bit-identical; Codex iter-15 review: do NOT fire off-prefetch mains).
+		--   FAST (fast mode only: SuperRAM exec, not throttled, not dma): a 2-apart consume
+		--     at an even CPU slot, gated en_gap>=1 + LIVE rp_same_line + LIVE rp_cache_hit
+		--     (NOT _d1 — proven by cpu_cache_sched_phasing_tb) + baLoc + cpu816_rdy_to_cpu
+		--     (so the pulse is a real CPU advance — no en_gap desync on a VIC-badline stall).
+		--     A fast fire is ALWAYS a cache HIT (rp_cache_hit) so it needs no SDRAM — that
+		--     is why it may land off the prefetch cadence. Writes/misses (rp_cache_hit=0)
+		--     fall to the MAIN path = 4-apart = safe.
+		-- en_gap: clk32 since the last fire; reset on fire, saturating +1 otherwise.
+		if not (ALT_FIRE_SAMELINE and CACHE_READ_PATH) or supercpu_en = '0' then
+			enableCpu <= cpu_cyc_s(1);
+			if cpu_cyc_s(1) = '1' then en_gap <= (others => '0');
+			elsif en_gap < 63 then en_gap <= en_gap + 1; end if;
+		elsif ( cpu_cyc_s(1) = '1' and en_gap >= 3 )                 -- MAIN (baseline cadence)
+		      or ( scpu_fast_path = '1' and scpu_force_1mhz = '0' and dma_active = '0'
+		           and en_gap >= 1 and rp_same_line = '1' and rp_cache_hit = '1'
+		           and baLoc = '1' and cpu816_rdy_to_cpu = '1'
+		           and ( sysCycle = CYCLE_CPU2 or sysCycle = CYCLE_CPU4
+		                 or sysCycle = CYCLE_CPU6 or sysCycle = CYCLE_CPU8
+		                 or sysCycle = CYCLE_CPUA or sysCycle = CYCLE_CPUC
+		                 or sysCycle = CYCLE_CPUE ) ) then            -- FAST (2-apart cache hit)
+			enableCpu <= '1';
+			en_gap    <= (others => '0');
+		else
+			enableCpu <= '0';
+			if en_gap < 63 then en_gap <= en_gap + 1; end if;
+		end if;
+
 		io_enable <= io_enable and not enableCpu;
 
 		if sysCycle = CYCLE_EXT0 then
@@ -4964,7 +5031,7 @@ gen_read_path : if CACHE_READ_PATH generate
 			snoop_we   => '0',
 			snoop_addr => (others => '0'),
 			snoop_bank => (others => '0'),
-			same_line  => open,
+			same_line  => rp_same_line,   -- iter-15: LIVE same-line for the fast-fire gate
 			dbg_flush_active => open,
 			dbg_tag_match    => open
 		);

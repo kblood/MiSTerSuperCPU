@@ -150,7 +150,17 @@ architecture sim of cpu_cache_sched_phasing_tb is
     begin
         -- even CPU slots CPU2..CPUE = 18,20,22,24,26,28,30 (CPU0=16 excluded so the
         -- first enable of a phase lands at CPU3, matching the baseline pipeline).
+        -- The FAST 2-apart clause may fire at any of these (cache hit, no SDRAM).
         return c = 18 or c = 20 or c = 22 or c = 24 or c = 26 or c = 28 or c = 30;
+    end function;
+
+    function is_main_slot(c : integer) return boolean is
+    begin
+        -- MAIN (full-margin) fires ONLY at the baseline cpu_cyc_s(1) prefetch slots
+        -- CPU2/6/A/E = 18,22,26,30 (cpu_cyc @ CPU0/4/8/C, +2 shift). iter-15 Codex fix:
+        -- a miss-main MUST land on the real SDRAM prefetch cadence; off-prefetch mains
+        -- (e.g. CPU8 after a fast at CPU4) would consume before the SDRAM read completes.
+        return c = 18 or c = 22 or c = 26 or c = 30;
     end function;
 begin
     clk_gen: process
@@ -319,7 +329,7 @@ begin
             -- en_gap bookkeeping: reset to 0 the slot enable is high, else +1.
             fire := false;
             fire_fast := false;
-            if running = '1' and not test_done and is_fire_eval(c) then
+            if running = '1' and not test_done then
                 -- gate inputs: LIVE (this fire-eval slot) vs registered _d1.
                 if GATE_INPUT = 0 then
                     gate_sl  := same_line;
@@ -329,11 +339,12 @@ begin
                     gate_hit := rp_cache_hit_d1;
                 end if;
 
-                if en_gap >= 3 then
+                -- MAIN: full margin AND on the baseline prefetch slot (Codex iter-15 fix).
+                if en_gap >= 3 and is_main_slot(c) then
                     fire := true;                       -- full-margin main (new spacing>=4)
-                elsif ALLOW_FAST = 1 and en_gap >= 1
+                elsif ALLOW_FAST = 1 and en_gap >= 1 and is_fire_eval(c)
                       and gate_sl = '1' and gate_hit = '1' then
-                    fire := true; fire_fast := true;    -- fast 2-apart (new spacing>=2)
+                    fire := true; fire_fast := true;    -- fast 2-apart cache hit (any even slot)
                 end if;
             end if;
 

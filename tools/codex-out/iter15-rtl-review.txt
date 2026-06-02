@@ -1,0 +1,15 @@
+**Blocking finding:** FAST-mode “main” fires are not tied to the unchanged SDRAM prefetch cadence. The diff allows `en_gap>=3` at **CPU2/4/6/8/A/C/E** (`tools/codex-out/iter15-rtl.diff:88-94`), but actual `cpu_cyc` still only prefetches at CPU0/4/8/C (`C64_MiSTer/rtl/fpga64_sid_iec.vhd:3454-3460`). After a legal fast hit at CPU4, a cross-line/miss next access can full-main fire at CPU8 via `en_gap>=3`; that consumes at CPU9/A while the SDRAM request for that address only began at CPU8. Baseline would wait for `cpu_cyc_s(1)` at CPUA, then consume later. This is a stale-consume/cadence bug. Do not spend the FPGA build on this as-is.
+
+Fix direction: in FAST mode, make the full-margin main arm require the real delayed prefetch slot, e.g. `en_gap >= 3 and cpu_cyc_s(1)='1'`, while keeping the 2-apart clause as the only non-`cpu_cyc_s(1)` path. Or make the scheduler also own `cpu_cyc`/prefetch for those new main slots.
+
+Other checks:
+
+Boot wedge: no. `en_gap` initializes to 63 (`diff:16`), and SLOW mode fires on `cpu_cyc_s(1) and en_gap>=3` (`diff:102-107`). Even after reset weirdness, `en_gap` increments while idle, so no deadlock.
+
+Slow-mode bit identity: steady slow is fine. The SLOW branch is baseline pulse plus guard (`diff:102-107`); after any slow fire the next 4-apart slow slot sees `en_gap>=3`. `scpu_force_1mhz` and badline stalls only lengthen gaps.
+
+Fast/slow transition: no consecutive-clk double-step. The single scheduler suppresses the stale post-fast slow main via the same `en_gap>=3` guard (`diff:102-103`). The issue is not transition double-step; it is FAST full-main alignment.
+
+Squashed slow main: looks nonfatal by itself. Bank-$00 slow cannot become fast without an accepted advance; throttle/DMA recovery has large gaps. But the generated-pulse `en_gap` reset is weaker than accepted-advance accounting once FAST mains can occur off-prefetch.
+
+`io_enable`: unchanged clear (`diff:111`) is not the blocker. Extra fast clears can defer an I/O access to the next EXT0 period, but that matches “one CPU advance already consumed this 1MHz period” behavior.
