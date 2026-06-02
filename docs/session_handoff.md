@@ -1,103 +1,69 @@
-# Session handoff — 2026-06-02 (iter-13)
+# Session handoff — 2026-06-02 (iter-14)
 
 ## HEADLINE
-The iter-7g 2× alt-fire functional consume-race is now **REPRODUCED OFF-DEVICE**
-(GHDL) and a **correct + faster gating policy is proven**. The new bench
-`sim/cache_coherency_tb/cpu_cache_altfire_race_tb.vhd` (committed `01ec2ad`) is a
-faithful cycle-exact model of the fpga64 consume phasing. It answers the iter-12
-open question and goes one step further: it shows the obvious "fix the same_line
-timing" idea is INSUFFICIENT, and identifies the correct gap-based invariant.
-RTL realization (with its own decision-before-address timing hazard) + STA + HW
-gate remain. MiSTer was CONTENDED (ao486 lock) → all work off-device by design.
+The same-line 2× alt-fire speed lever advanced from "policy realizable" to a
+**falsified-and-corrected, build-ready design**. Three off-device results, all
+committed; the next step is the first RTL realization (a single gap-gated enable
+scheduler), validated by the `c64_reduced_harness` boot test, then build → STA → HW.
+MiSTer was contended/stale-locked (ao486, CORENAME=MENU) → all work off-device by design.
 
-## iter-13 — the bench and its four modes (commit 01ec2ad)
-Faithful phasing (RTL-traced): `cpu_cache.cache_di` reflects addr(E-1) (registered
-`line_word`), the iter-7d override `rp_cache_di_d1` adds 1 more clk32 ⇒ cpuDi(E)
-reflects **addr(E-2)** ⇒ a latch consuming the access on cpuAddr(E) is SAFE iff
-addr(E-2) is the same cache line as addr(E). cpuAddr advances 1 clk32 after each
-latch (the 816 steps). Latch cadence: main @ sysCycle 2/6/10/14 (4-apart = 4MHz),
-alt @ 4/8/12/0 (2 after a main = 8MHz).
+## What landed this session (commits)
+1. `ade5aac` — **mode 5** (handoff step 2 closed): the realizable E-1 1-clk-enable
+   decision (cache's LIVE `same_line` registered once = `sl_d1`) reproduces the mode-2
+   ORACLE gating policy **byte-for-byte** (0 stale, 2.93 clk32/access, identical
+   per-latch schedule). Proves the decision phase is realizable, not just the policy.
+2. (Codex falsification, `tools/codex-out/iter14-altfire-falsify.txt`) — **verdict
+   do-not-build.** Found the bug the bench masked: `same_line` is line/tag equality
+   ONLY (cpu_cache.vhd:180), NOT a valid-byte hit (:269-276); fills are per-byte on
+   accepted misses. A cold line can be `same_line=1` but `cache_hit=0` → a fast 2-apart
+   fire consumes stale `cpuDi_nocache`.
+3. `88e0aa3` — **mode 6 + PREFILL=false** reproduces Codex point 4 AND proves the fix:
+   - PREFILL=false, mode 5 (same_line only): **FAIL 7** (FAST-MISS stale, csl=2).
+   - PREFILL=false, mode 6 (`sl_d1 AND rp_cache_hit_d1`): **PASS 0**, 3.86 clk32/access.
+   - PREFILL=true (warm): modes 2/5/6 all PASS at 2.93 (hit-gate is free when warm).
+   Steady-state (warm loops, e.g. Doom) = 8MHz on same-line runs; cold first-touch stays
+   4-apart and correct. **mode 6 is the corrected realizable design.**
 
-| mode | gate policy | failures | clk32/access | meaning |
-|------|-------------|----------|--------------|---------|
-| 3 CONTROL | no alt (pure 4-apart) | **0** | 4.00 | validates the bench phasing |
-| 0 iter-7g BUG | same_line @ main-latch cycle | **7** | 2.00 | gate is a NO-OP → reproduces wedge |
-| 1 TIMING-FIXED | same_line sampled 1 clk32 later | **2** | 2.66 | necessary but INSUFFICIENT |
-| 2 UNIFIED FIX | csl≥4 OR same-line-as-prev-consumed, else STALL | **0** | 2.93 | correct AND ~37% faster |
+Bench: `sim/cache_coherency_tb/cpu_cache_altfire_race_tb.vhd` (+ `run_altfire_race.ps1`,
+sweeps modes 3/0/1/2/5/6 warm, then 5/6 cold). Generics: `GATE_MODE`, `PREFILL`.
 
-Run: `powershell sim/cache_coherency_tb/run_altfire_race.ps1` (sweeps all 4 modes;
-logs in `work_altfire/`).
+## The corrected RTL design (full spec: docs/iter14_altfire_rtl_brief.md "CORRECTED DESIGN")
+Architecture conclusion from Codex points 1+4: "fixed 4-apart mains + inserted fast
+pulses" CANNOT work (post-fast main slot becomes an ungated 2-apart consume; mode 1
+= 2 residual fails). The RTL must be a **single registered gap-gated scheduler** that
+owns `enableCpu` in SuperCPU mode (does NOT tap `cpu_cyc_s` for the 816 enable when
+active), behind `constant ALT_FIRE_SAMELINE` (baseline-identical when false):
+```
+fire = cpu_consume_slot AND base_permit       -- keep cs_ram / io@CPUC / not throttle / not dma / baLoc
+       AND ( csl >= 4                          -- full margin = proven 4-apart cadence (also bank-$00/I/O/miss)
+           OR ( csl >= 2 AND scpu_fast_path AND rp_same_line_d1 AND rp_cache_hit_d1 ) )  -- fast 2-apart
+enableCpu <= fire   -- registered; fast path = 1-clk enable
+```
+- csl resets to 1 ONLY on accepted `fire`; +1 else; runs across the EXT/DMA/VIC gap.
+- Wire `read_path_cache.same_line => rp_same_line` (today `open`), register once in
+  `gen_read_path` → `rp_same_line_d1`. Set `CACHE_READ_PATH=true` (HW-proven clean at
+  4-apart, iter-7e `e9c36c3e`).
+- Names confirmed collision-free: rp_same_line, rp_same_line_d1, ALT_FIRE_SAMELINE, etc.
 
-### Findings
-1. **Open question answered.** In mode 0, `same_line` sampled at the main-latch
-   cycle is ALWAYS '1' (the address is stable for the whole slot, so current line
-   == previous line). So the iter-7g same_line gate never suppresses anything →
-   alt fires unconditionally → every cross-line consume returns the PREVIOUS
-   line's byte (idx=2: $1008 expected B0, got A0). That IS the wedge.
-2. **Timing-of-decision fix alone is insufficient (NEW, beyond iter-12's plan).**
-   Sampling same_line 1 clk32 later (after cpuAddr advances to the alt access)
-   correctly suppresses alt on genuine cross-line — BUT a fired alt slot advances
-   the address one step early, compressing the FOLLOWING **main** slot to 2-apart
-   margin (cycles_since_latch=2); if that access is cross-line it is STILL stale
-   (mode 1: idx=2, idx=15). The handoff's "consume combinational rp_cache_di on
-   the alt slot" idea does not cover this post-alt main slot.
-3. **The correct invariant is GAP-BASED and uniform.** Treat every even cycle as a
-   latch candidate; latch iff (cycles_since_last_latch ≥ 4 = full pipeline margin)
-   OR (current access same-line as the **previously CONSUMED** access); otherwise
-   STALL one slot to rebuild 4-apart margin. This covers alt slots AND post-alt
-   main slots. Proven 0-fail and faster than 4-apart control (2.93 vs 4.00
-   clk32/access ≈ +37% on a mixed stream; → 2.0 = 8MHz on pure same-line runs).
-
-## NEXT STEP (off-device first, then HW gate) — RTL realization of mode 2
-The bench decides AT the latch cycle (combinationally on the live addr). Real RTL
-can't: `cpu_cyc → enableCpu` is 2 clk32 (`enableCpu <= cpu_cyc_s(1)`), so a latch
-at cycle E is decided at E-2 when the to-be-consumed access's address is NOT yet on
-cpuAddr (it appears at E-1, after the E-2 latch advances the 816) — the SAME root
-timing that makes the same_line gate leak. **Sharp conclusion (airtight):** a
-shortened (2-apart) latch CANNOT be safely decided at E-2 with the existing 2-clk
-enable, because the safe condition needs access(E) same-line as the prev-consumed
-access, and access(E)'s line is unknown at E-2. iter-7g failed precisely because it
-kept the 2-clk enable and only changed the gate.
-
-**The realizable fix = move the fast-path decision to E-1 via a 1-clk enable.** At
-E-1 the live `same_line` signal EXACTLY equals the mode-2 condition (live addr =
-access(E) just appeared; cpu_cache's registered `prev_line` = access(E-1) =
-prev-consumed) ⇒ `same_line(E-1)` = "access(E) same-line as prev-consumed". So:
-1. **Design:** generate the shortened-slot enable from a decision registered at E-1
-   (i.e. use `cpu_cyc_s(0)` / a 1-clk enable on the same-line fast path) gated on
-   live `same_line OR full-margin`; otherwise fall to the normal 4-apart `cpu_cyc_s(1)`
-   path (= STALL one slot, rebuilding margin). This applies the gate to EVERY 2-apart
-   latch (alt AND post-alt main), which mode 2 proved is required. On the fast path
-   consume the COMBINATIONAL `rp_cache_di` (valid immediately within a line), not the
-   `_d1` register (which is built for the 4-apart latch).
-2. **Extend this bench** to model the cpu_cyc→enable pipeline and the E-1 registered
-   decision explicitly (a "mode 5"), confirming the 1-clk-enable fast path implements
-   mode 2's policy with 0 fails. The current mode 2 proves the POLICY; mode 5 must
-   prove the REALIZABLE decision phase implements it. Watch the new hold/0-margin
-   risk of the 1-clk enable.
-3. **STA-check** the chosen consume path closes at setup-2 (combinational
-   `rp_cache_di → cpuDi → ALU` adds ~10ns cache-internal mux — iter-12 showed it
-   closes at setup-1 +7.884 / setup-2 +39.6, so it fits; MEASURE on the fitted
-   netlist with `cache_path_probe.tcl`).
-4. **HW gate** (needs MiSTer): boot clean + Lorenz scpu/t65 100% + Doom + Wolf3D
-   no-regress + `superram_bench` COUNT > control $0335 (proves speedup) + measure
-   effective MHz. Also wire the DMA snoop for the Doom REU coherency gap (iter-7f).
+## NEXT STEP (off-device first — local probe available)
+1. Implement the scheduler behind `ALT_FIRE_SAMELINE` + the same_line wiring.
+2. **Boot-validate off-device via `sim/c64_reduced_harness`** (run_harness.ps1). The
+   warm/cold cache bench does NOT cover I/O / throttle / badline; the reduced harness
+   boot does (it carried the iter-7e cache validation — see its iter7e_*.log). This is
+   the gate that catches a boot-wedge before any build.
+3. Build (local, ~30-40 min) → **STA** (Codex point 5: the new enable FF + 1-clk fast
+   path setup/hold; iter-12 showed rp_cache_hit_d1→ALU closes setup-1 +7.884 — data side
+   fits; MEASURE the FF with cache_path_probe.tcl).
+4. **HW gate** (needs a free MiSTer): boot clean + Lorenz scpu/t65 100% + Doom + Wolf3D
+   no-regress + `superram_bench` COUNT > control $0335 (proves speedup) + effective MHz.
 
 ## Device / cooperation
-- Control build `97392a1f` is the healthy reference (Lorenz scpu/t65 PASS, Doom +
-  Wolf3D PASS). NOT deployed.
-- **Shared MiSTer CONTENDED:** `ao486` agent lock at last check. All HW gating of
-  any future alt-fire build waits for the device to free up.
+- Control build `97392a1f` = healthy reference (Lorenz scpu/t65, Doom, Wolf3D PASS). NOT deployed.
+- MiSTer at last check: CORENAME=MENU, ao486 lock from 07:41 (stale >30 min). Re-check
+  ownership before any HW action.
 
-## Artifacts
-- `sim/cache_coherency_tb/cpu_cache_altfire_race_tb.vhd` + `run_altfire_race.ps1`
-  (committed `01ec2ad`) — the iter-13 reproduction + fix-policy bench.
-- iter-12 STA probes still in `C64_MiSTer/` (untracked): `cache_path_probe.tcl`,
-  `internal_path_probe.tcl`, `cadence_sweep.tcl`, `alu_sta_probe.tcl` + their
-  `*_path.txt` evidence.
-
-## RTL state: CLEAN. No shipped RTL change this session (the bench is a new sim
-artifact; cpu_cache.vhd and fpga64_sid_iec.vhd untouched). Speed lever is the
-live thread: the 2× alt-fire is NO LONGER timing-dead AND no longer just a
-"reproduce it" TODO — the fix policy is proven; only a realizable RTL decision
-path + STA + HW gate remain.
+## RTL state: CLEAN. No shipped RTL change this session — three sim/doc commits only
+(`cpu_cache.vhd` and `fpga64_sid_iec.vhd` untouched). The speed lever is the live thread:
+2× alt-fire is no longer just "policy proven" — it has a falsified-and-corrected,
+spec-complete design (mode 6 hit-gate + single scheduler). Only the scheduler RTL +
+reduced-harness boot + STA + HW gate remain.

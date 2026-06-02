@@ -90,3 +90,66 @@ Question for Codex: is the proposed uniform gap-gated enable the right realizati
 is there a less-invasive form that still gates EVERY 2-apart consume (mode 5 proved the
 post-fast main slot MUST be gated, so a pure additive alt-pulse is insufficient)? Find
 the boot-wedge before we spend a 30-40 min build + a contended-MiSTer HW gate.
+
+---
+
+# CORRECTED DESIGN (post-Codex-falsification, iter-14)
+
+Codex verdict on the draft above: **do-not-build**. Two findings changed the design;
+both are now resolved off-device (bench commit `88e0aa3`, GATE_MODE=6 + PREFILL=false).
+
+## Finding 4 (the subtle one) — FIXED + proven off-device
+`same_line` (cpu_cache.vhd:180) is **line/tag equality only**, NOT a valid-byte hit
+(:269-276). Fills are per-byte on accepted misses (fpga64:4925). So a cold line can be
+`same_line=1` while the requested byte is invalid (`cache_hit=0`); a fast 2-apart fire
+there consumes stale `cpuDi_nocache` (SDRAM not ready at 2-apart). Bench mode 5 with
+PREFILL=false reproduces this (7 FAST-MISS stale, csl=2). **Fix:** the fast 2-apart
+fire requires `rp_same_line_d1 AND rp_cache_hit_d1` (mode 6 → 0 fails cold AND warm;
+warm rate unchanged at 2.93 clk32/access; cold 3.86 = fills 4-apart then hits 2-apart).
+
+## Finding 1 + the post-fast-main collision — drives the architecture
+A "fixed 4-apart mains (cpu_cyc_s) + inserted fast pulses" structure is unsafe: a fast
+fire at a between-slot advances the address, making the NEXT fixed main a 2-apart consume
+that is stale if cross-line (mode 1 = 2 residual fails). Muxing `enableCpu` between
+`cpu_cyc_s(1)` and the fast generator also leaks a pending `cpu_cyc_s(1)` pulse across a
+`scpu_fast_path` toggle, and OR-ing defeats the gap gate. ⇒ **single registered
+scheduler owns enableCpu in SuperCPU mode; cpu_cyc_s is NOT tapped for the 816 enable
+when the scheduler is active.**
+
+## The scheduler (the thing to build, behind ALT_FIRE_SAMELINE; baseline-identical when off)
+Confine candidates to CPU consume slots, gap-gate uniformly, mask with the existing
+baseline permissions (so I/O/throttle/badline keep working):
+```
+fire = cpu_consume_slot                         -- slot-aware (NOT a free counter; keeps CPUC I/O + turbo alignment)
+       AND base_permit                          -- the existing cs_ram / io_enable@CPUC / not scpu_force_1mhz / not dma gating
+       AND ( csl >= 4                            -- full margin: the proven 4-apart cadence (also the bank-$00 / I/O / miss path)
+           OR ( csl >= 2                         -- fast 2-apart, ONLY when ALL hold:
+                AND scpu_fast_path                --   SuperRAM bank (≠$00), cs_io=0  [fpga64:3314-3317]
+                AND rp_same_line_d1               --   E-1 same-line as prev-consumed  [mode 5]
+                AND rp_cache_hit_d1 ) )           --   byte actually valid in cache    [mode 6 / finding 4]
+enableCpu <= fire    -- registered; the fast path is effectively a 1-clk enable
+```
+Rules from the other findings:
+- **(2) csl** resets to 1 ONLY on an accepted `fire`; +1 otherwise; reset value on
+  `reset`. Free-runs across the EXT/DMA/VIC gap (CPUF→next CPU3 ≫ 4 clk32, so the first
+  in-phase consume is always full-margin). `base_permit` already blocks non-CPU slots.
+- **(5) STA / 1-clk hold:** `fire` is registered (no comb enable). Fast path requires
+  `rp_cache_hit_d1` so the cpuDi mux (:1987) is on the cache value. MEASURE the new FF's
+  setup/hold on the fitted netlist (cache_path_probe.tcl); iter-12 showed
+  rp_cache_hit_d1→ALU closes setup-1 +7.884 so the data side fits.
+- **(6) RDY/badline:** 816 `EN = RDY_IN and CE` (P65C816.vhd:102) swallows CE-while-RDY-low,
+  but csl must reset on ACCEPTED advancement, not on a generated pulse that RDY squashes —
+  else same-line phasing desyncs from "previously consumed". So either reset csl on the
+  CPU's actual step-ack, or AND `baLoc` into the fire/csl-reset (no fire while baLoc low).
+- Wire `read_path_cache.same_line => rp_same_line` (today `open`) and register once in
+  `gen_read_path` → `rp_same_line_d1`. Set `CACHE_READ_PATH=true` (HW-proven clean at
+  4-apart, iter-7e `e9c36c3e`).
+
+## Remaining gates before this is real
+1. **Off-device boot validation** of the scheduler via `sim/c64_reduced_harness` (the
+   scheduler subsumes baseline gating; the warm/cold cache bench does NOT cover I/O /
+   throttle / badline — the reduced harness boot is the right vehicle). This is the next
+   local probe.
+2. Build (local, ~30-40 min) → **STA** (finding 5: the new enable FF + the 1-clk fast path).
+3. **HW gate** (needs a free MiSTer): boot clean + Lorenz scpu/t65 100% + Doom + Wolf3D
+   no-regress + `superram_bench` COUNT > control (proves speedup) + measure effective MHz.
