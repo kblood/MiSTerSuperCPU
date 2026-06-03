@@ -1,72 +1,197 @@
-# Session handoff — 2026-06-02 (iter-14)
+# Session Handoff
 
-## HEADLINE
-The same-line 2× alt-fire speed lever advanced from "policy realizable" to a
-**falsified-and-corrected, build-ready design**. Three off-device results, all
-committed; the next step is the first RTL realization (a single gap-gated enable
-scheduler), validated by the `c64_reduced_harness` boot test, then build → STA → HW.
-MiSTer was contended/stale-locked (ao486, CORENAME=MENU) → all work off-device by design.
+## ✅ iter-16 (2026-06-03): BUG 2 ROOT CAUSE FOUND — fill-tuple skew (address-ahead-of-data).
 
-## What landed this session (commits)
-1. `ade5aac` — **mode 5** (handoff step 2 closed): the realizable E-1 1-clk-enable
-   decision (cache's LIVE `same_line` registered once = `sl_d1`) reproduces the mode-2
-   ORACLE gating policy **byte-for-byte** (0 stale, 2.93 clk32/access, identical
-   per-latch schedule). Proves the decision phase is realizable, not just the policy.
-2. (Codex falsification, `tools/codex-out/iter14-altfire-falsify.txt`) — **verdict
-   do-not-build.** Found the bug the bench masked: `same_line` is line/tag equality
-   ONLY (cpu_cache.vhd:180), NOT a valid-byte hit (:269-276); fills are per-byte on
-   accepted misses. A cold line can be `same_line=1` but `cache_hit=0` → a fast 2-apart
-   fire consumes stale `cpuDi_nocache`.
-3. `88e0aa3` — **mode 6 + PREFILL=false** reproduces Codex point 4 AND proves the fix:
-   - PREFILL=false, mode 5 (same_line only): **FAIL 7** (FAST-MISS stale, csl=2).
-   - PREFILL=false, mode 6 (`sl_d1 AND rp_cache_hit_d1`): **PASS 0**, 3.86 clk32/access.
-   - PREFILL=true (warm): modes 2/5/6 all PASS at 2.93 (hit-gate is free when warm).
-   Steady-state (warm loops, e.g. Doom) = 8MHz on same-line runs; cold first-touch stays
-   4-apart and correct. **mode 6 is the corrected realizable design.**
+**Bottom line:** Bug 2 (SuperRAM bank-$20 read staleness that blocks the iter-15 3× speedup)
+is a **fill-tuple skew**, not a write-race / tag-alias / missed-invalidate. The cache fill is
+tagged with the LIVE `cpuAddr` while the fill DATA (`cpuDi_nocache` = pipeline-delayed `dout`)
+belongs to the PREVIOUS access — so the just-read byte is stored under the NEXT address's line.
+A later read of that line HITs and returns the stale "previous byte" → garbage operand → wild
+JML → bank-$00 runaway. Cadence-independent because the address-ahead-of-data asymmetry exists
+at any CPU cadence.
 
-Bench: `sim/cache_coherency_tb/cpu_cache_altfire_race_tb.vhd` (+ `run_altfire_race.ps1`,
-sweeps modes 3/0/1/2/5/6 warm, then 5/6 cold). Generics: `GATE_MODE`, `PREFILL`.
+**Three converging proofs (no HW needed — done off-device while MiSTer held by ao486):**
+1. **GHDL** `sim/cache_coherency_tb/cpu_cache_bank20_replay_tb.vhd` (+ `run_bank20_replay.ps1`):
+   - Scenario A — Doom-like bank-$20 pattern (colliding direct-mapped lines, invalidating
+     writes, same/cross-line reads) at faithful 4-apart SETTLED timing with ALIGNED fills →
+     **0 stale**. The cache LOGIC is coherent; Bug 2 is NOT in cpu_cache.vhd.
+   - Scenario B — inject a 1-cycle `fill_data`-vs-`fill_addr` skew → **every re-read HIT
+     returns the PREVIOUS address's byte** (consumed=$37 vs golden=$5F, …) = exact Doom signature.
+2. **Codex** (independent oracle) `tools/codex-out/bug2-superram-read-staleness.txt`: same
+   fill-tuple-skew pick. Supplied the fact I'd assumed away — `RDY_HANDSHAKE=false`
+   (fpga64_sid_iec.vhd:1637) + `data_ready` forced '1' (:3382) ⇒ neither the CPU consume nor
+   `rp_fill_we` (:5000) is gated on real SDRAM-data-return; the fill tags delayed `dout` with
+   LIVE `cpuAddr`/`addr_hi_816` (:5028-5031), not a transaction-matched token.
+3. **`sdram_pm.v`** confirms the lag direction: read launches at the `ce`-edge (q→1), `dout_r`
+   latches at q=5 (`STATE_READ`, :159-160) ≈ 5 clk64 later. `dout` LAGS while `cpuAddr`
+   ADVANCES at the consume edge ⇒ fill_addr is ahead of fill_data.
 
-## The corrected RTL design (full spec: docs/iter14_altfire_rtl_brief.md "CORRECTED DESIGN")
-Architecture conclusion from Codex points 1+4: "fixed 4-apart mains + inserted fast
-pulses" CANNOT work (post-fast main slot becomes an ungated 2-apart consume; mode 1
-= 2 residual fails). The RTL must be a **single registered gap-gated scheduler** that
-owns `enableCpu` in SuperCPU mode (does NOT tap `cpu_cyc_s` for the 816 enable when
-active), behind `constant ALT_FIRE_SAMELINE` (baseline-identical when false):
-```
-fire = cpu_consume_slot AND base_permit       -- keep cs_ram / io@CPUC / not throttle / not dma / baLoc
-       AND ( csl >= 4                          -- full margin = proven 4-apart cadence (also bank-$00/I/O/miss)
-           OR ( csl >= 2 AND scpu_fast_path AND rp_same_line_d1 AND rp_cache_hit_d1 ) )  -- fast 2-apart
-enableCpu <= fire   -- registered; fast path = 1-clk enable
-```
-- csl resets to 1 ONLY on accepted `fire`; +1 else; runs across the EXT/DMA/VIC gap.
-- Wire `read_path_cache.same_line => rp_same_line` (today `open`), register once in
-  `gen_read_path` → `rp_same_line_d1`. Set `CACHE_READ_PATH=true` (HW-proven clean at
-  4-apart, iter-7e `e9c36c3e`).
-- Names confirmed collision-free: rp_same_line, rp_same_line_d1, ALT_FIRE_SAMELINE, etc.
+**FIX DESIGN (next, GHDL-first):** transaction-matched fill — tag the fill with the address
+whose data is actually in `dout`. Either (a) capture `{addr_hi_816,cpuAddr}` at SDRAM
+read-LAUNCH and present it as fill_addr/bank when that read's data is valid (handshake on
+sdram_pm `data_valid`), or (b) delay fill_addr/fill_bank by the #clk32 that `dout` lags
+`cpuAddr`. Steps: build a faithful pipeline bench (emergent skew, not injected) → implement
+the RTL fix → re-run `cpu_cache_bank20_replay_tb` (must stay 0 stale) + the emergent bench
+(must flip to 0) → queue an HW Doom build when MiSTer frees up. Speedup stays OFF until HW Doom
+confirms. Detail in memory `project_cache_invalidate_cpuen_hole.md` (root-cause section).
 
-## NEXT STEP (off-device first — local probe available)
-1. Implement the scheduler behind `ALT_FIRE_SAMELINE` + the same_line wiring.
-2. **Off-device sanity via `sim/c64_reduced_harness`** (run_harness.ps1) — LIMITED:
-   per iter-7e it stalls at `final_pc=$FD83` (RAMTAS loop; simple_sdram_model RAM-sizing)
-   and never reaches BASIC. So it CAN catch a gross scheduler wedge (CPU stops advancing
-   in the $FD83 loop) but CANNOT validate the I/O/throttle/badline subsumption — that
-   (the riskiest part of the single-scheduler) is HW-only. Plan accordingly: build the
-   scheduler maximally gated/baseline-identical-when-off, lean on the $FD83 sanity +
-   STA, and treat the HW boot+Lorenz as the real subsumption gate.
-3. Build (local, ~30-40 min) → **STA** (Codex point 5: the new enable FF + 1-clk fast
-   path setup/hold; iter-12 showed rp_cache_hit_d1→ALU closes setup-1 +7.884 — data side
-   fits; MEASURE the FF with cache_path_probe.tcl).
-4. **HW gate** (needs a free MiSTer): boot clean + Lorenz scpu/t65 100% + Doom + Wolf3D
-   no-regress + `superram_bench` COUNT > control $0335 (proves speedup) + effective MHz.
+**Also this session:** removed a stale, self-contradicting iter-12 "does-not-revive-the-lever"
+claim from MEMORY.md (iter-15 already shipped the lever HW-proven 3.0×). The compaction summary
+was anchored at iter-11; the project is actually at iter-15b/iter-16 — no RTL damage, only the
+memory note was corrected.
 
-## Device / cooperation
-- Control build `97392a1f` = healthy reference (Lorenz scpu/t65, Doom, Wolf3D PASS). NOT deployed.
-- MiSTer at last check: CORENAME=MENU, ao486 lock from 07:41 (stale >30 min). Re-check
-  ownership before any HW action.
+---
 
-## RTL state: CLEAN. No shipped RTL change this session — three sim/doc commits only
-(`cpu_cache.vhd` and `fpga64_sid_iec.vhd` untouched). The speed lever is the live thread:
-2× alt-fire is no longer just "policy proven" — it has a falsified-and-corrected,
-spec-complete design (mode 6 hit-gate + single scheduler). Only the scheduler RTL +
-reduced-harness boot + STA + HW gate remain.
+## 🏁 PRIOR STATE (2026-06-02, end): TWO cache bugs found; speedup REVERTED to OFF to restore Doom.
+
+**Bottom line:** the iter-15 cache-read-path 3× SuperRAM speedup regresses Doom via TWO
+independent bugs. Bug 1 (invalidate-miss) is fixed + GHDL-proven. Bug 2 (SuperRAM bank-$20
+read staleness) is HW-confirmed but NOT yet fixed. Per "compatible is the floor", I reverted
+`CACHE_READ_PATH := false` (+ ALT_FIRE_SAMELINE false) on HEAD — Doom-safe, bit-identical to
+the shipped baseline. The invalidate fix + DMA snoop + SuperRAM-only narrowing stay in source
+(correct + inert when the path is off; ready for re-enable once bug 2 is fixed).
+
+**Bug 2 evidence (the new, decisive data):** continuous full UART trace
+`tools/doom_autoload/doomtrace_38118b68.txt` (3993 lines, captured from MGL fire — the stock
+`doom_autoload_probe.py` only grabs 5 s at the end, which is why earlier sessions only saw the
+post-crash runaway). On build `38118b68` (cache ON, SuperRAM-only, **alt-fire OFF**): the loader
+populates bank $20 and the CPU REACHES bank $20 (145× `PC:20xxxx`), but with `V:AB AB AB AB`
+(uninitialized regs), spins a tight `$2000AE-F1` loop, bounces to bank $00 (`$0009xx`→`$000D68`),
+then JMPs wild ($2B/$80/$2C) → bank-$00 runaway (SP draining). cache-OFF baseline reaches Init
+Playloop on the same SDRAM image ⇒ bank $20 has real data ⇒ the cache read path serves stale
+bytes on bank-$20 reads. **Cadence-INDEPENDENT** (alt was OFF) ⇒ disabling alt-fire can't save
+it; the speedup intrinsically needs CACHE_READ_PATH=true. (Caveat: the `W5` instr-window debug
+field is frozen at loader bytes in the trace — unreliable for "is the fetch real code".)
+
+**Build status:** iter-15b revert build (CACHE_READ_PATH=false) in flight. When done: deploy,
+re-run the continuous doomtrace to confirm Doom runs on the SAME source with only the constant
+flipped (the clean A/B), spot-check Lorenz scpu+t65 no-wedge, then commit the revert.
+
+**NEXT ITER (GHDL-FIRST — do NOT burn HW builds speculating):** reproduce the bank-$20
+loader-write→Doom-read staleness in `sim/cache_coherency_tb`. The loader copy loop is
+`LDA $0500,Y (bank $00) / STA [$FB],Y (bank $20)` — no bank-$20 reads during transfer, so a
+naive functional bench (fill pulls fresh SDRAM on Doom's first read) will NOT reproduce it →
+the bug is a timing race or a hidden read. Suspects: (a) fill caching a stale/early SDRAM read
+(write-through→read ordering at a late-written line); (b) tag-aliasing within bank $20
+(line_index=addr(11:3), tag=bank&addr(15:12) — stale valid bit from addr A served for addr B);
+(c) a long-store invalidate phase the `cpu_we`-window fix still misses. Resolve in sim, prove,
+THEN re-enable. See memory `project_cache_invalidate_cpuen_hole.md` (updated).
+
+---
+
+## ⚠️ CORRECTION (2026-06-02, later): iter-15 REGRESSES DOOM — confirmed by clean A/B. The "Doom = environmental" claim below is FALSE.
+
+The operator pushed back ("But Doom does not seem to be working on this core?") and was
+right. Decisive A/B on the SAME harness/REU image, run back-to-back today:
+- **Baseline `95db2dda`** ("restore Doom MGL autoload", CACHE_READ_PATH=**false**, cache OFF):
+  Doom reaches **engine init** — W_Init WADfiles ./doom1.wad, Shareware!, R_Init DOOM
+  refresh daemon, InitTextures/Flats/Sprites/Colormaps, **"Init Playloop state."** ⇒ the
+  REU harness is HEALTHY today (doom.reu loaded fresh, transferred to SuperRAM, launched).
+- **iter-15 `0deb093` (cache ON, alt ON)** and **iter-15b snoop-fix `cb53ed8c` (cache ON +
+  DMA snoop + alt ON)**: Doom CRASHES. Snoop changed the failure from an early "eeee"
+  loader wedge → a **late runaway** (PBR=$00, PC sweeping $8000-$CFFF at constant ~$C45
+  stride, SP draining 4/sample, never enters bank-$20 Doom). The snoop was *progress*
+  (fixed the bank-$00/REU staleness so the loader completes) but a residual coherency hole
+  remains AFTER Doom launches — most likely SuperRAM coherency × the alt-fire FAST path's
+  registered `_d1` data (a write-invalidate then immediate 2-apart read consuming the
+  1-cycle-stale registered hit).
+
+**Conclusion: the cache read path (required for the speedup) breaks Doom.** iter-15 as
+committed is a real Doom regression. The speedup (3.0× SuperRAM, Lorenz-clean) is genuine
+but NOT shippable until Doom coherency is fixed.
+
+**ROOT CAUSE FOUND + FIXED (GHDL-proven).** The residual hole is the CPU-write
+invalidation `invalidate_wr` in `cpu_cache.vhd`: it was gated on `cpu_en='1'`, so it
+**missed** any write whose `cpu_we` strobe didn't coincide with the enable pulse the cache
+samples on the clk32 edge — exactly the Doom-loader's turbo/alt-fire long-stores. The miss
+left stale (pre-transfer garbage) bytes cached → CPU later fetched garbage code → the
+runaway. Reproduced in the new bench `sim/cache_coherency_tb/cpu_cache_doom_coherency_tb.vhd`
+(S2: `cpu_en=0` write returns STALE $AA; S1 aligned control passes). **Fix:** drop the
+`cpu_en` gate; fire on the entire `cpu_we` window and exclude DMA writes via `snoop_we='0'`
+(`snoop_we = dma_active and cpuWe`, so `not snoop_we` = "a CPU write, not DMA"; DMA is
+handled by the snoop with the correct bank-$00 tag). Post-fix: doom bench S2 invalidates
+(`hit=0`), original coherency bench still `TEST PASSED`. The hole is alt-fire-INDEPENDENT
+(a pure invalidate miss), which is why cache-on crashed Doom even at 4-apart.
+
+**In flight:** candidate build `b3yl243b4` = invalidate fix + DMA snoop + **ALT_FIRE=true**
+(full speedup + Doom fix together). HW gate when done: (1) Doom autoload probe MUST reach
+the menu/playloop (the fix's decisive test); (2) superram_bench COUNT ~2225 (3× speedup must
+survive); (3) Lorenz scpu + t65 no-wedge. If all green: commit iter-15b, then it's a
+Doom-safe speedup. (The earlier alt-off partition build was killed — the hole is
+alt-independent so it was moot.)
+
+**Push status:** `0deb093` is UNPUSHED and MUST NOT be pushed as a Doom-safe speedup until
+this is resolved. MiSTer currently has baseline `95db2dda` deployed (Doom-works).
+
+---
+
+## (SUPERSEDED by the correction above) HEADLINE (2026-06-02): iter-15 same-line 2× alt-fire — HW-PROVEN 3.0× SuperRAM speedup. COMMITTED.
+
+The fork's **first** >4MHz-class speed lever to survive the silicon gate. Commit
+`0deb093` on `milestone-b-cdc-rewrite` (unpushed). Build `6fe98f79` (DEBUG flavor).
+
+### What shipped
+A single registered gap-gated enable scheduler in `fpga64_sid_iec.vhd` (~3604-3621)
+that owns `enableCpu`, behind `ALT_FIRE_SAMELINE := true` && `CACHE_READ_PATH := true`
+(both now true). It fires the CPU **2-apart on same-line SuperRAM cache hits** (8MHz)
+while keeping the proven **4-apart** cadence for misses/writes/bank-$00/throttle.
+- Collapses to `enableCpu <= cpu_cyc_s(1)` (RBF bit-identical) when off or in 6510 mode.
+- MAIN = `cpu_cyc_s(1)='1' and en_gap>=3` (ties every miss-main to the real SDRAM
+  prefetch slot CPU0/4/8/C → cpu_cyc_s(1) @ CPU2/6/A/E).
+- FAST = `scpu_fast_path and not scpu_force_1mhz and not dma_active and en_gap>=1 and
+  rp_same_line and rp_cache_hit and baLoc and cpu816_rdy_to_cpu and sysCycle∈even`.
+  **LIVE gate, registered (`_d1`) data** — asymmetric, see below.
+
+### Two corrections to the iter-14 brief that produced the final RTL
+1. **LIVE gate, not `_d1`.** With registered `enableCpu<=fire`, the fast gate is
+   evaluated at the even fire-eval slot where LIVE `rp_same_line`/`rp_cache_hit` is
+   correct; only the DATA side keeps `rp_cache_di_d1`/`rp_cache_hit_d1` (latched at
+   consume). Proven by `sim/cache_coherency_tb/cpu_cache_sched_phasing_tb.vhd`
+   (LIVE PASS warm+cold, D1 FAIL 6/3 stale) and confirmed independently by Codex.
+2. **Codex BLOCKING fix.** Tie ALL mains to `cpu_cyc_s(1)` (the delayed prefetch
+   slot); the FAST cache-hit clause is the only off-cadence path. An off-prefetch
+   miss-main would consume stale (the cache bench can't catch this — it models cache,
+   not SDRAM). `tools/codex-out/iter15-rtl-review.txt`.
+
+### HW gate (MiSTer 192.168.50.130, DEBUG rbf at /media/fat/_Test/C64.rbf — currently loaded, boots clean)
+- **Boot**: clean SCPU64 ROM V0.07 / 38911 BASIC BYTES FREE / READY.
+- **Lorenz scpu**: NO WEDGE, 16 distinct progress checkpoints over 8 min, all `- ok`.
+  THE decisive test — clk64/clk48/SLOT3/page-mode/iter-7g all hard-halted here ~30-62s.
+- **Lorenz t65**: NO WEDGE, all `- ok` (slow-path collapse = no 6510 regression).
+- **STA**: TNS=0 all domains (CPU domain `emu|pll counter[0]` setup +2.410 / hold +0.255).
+- **superram_bench A/B** (identical tree, only `ALT_FIRE_SAMELINE` flipped; control
+  RBF md5-deduped to known-good baseline `f74736f6`): alt-fire **OFF COUNT=736**
+  ($02E0), **ON COUNT=2225** ($08AE) → **3.0×**. >2× because the SuperRAM baseline
+  runs below 4MHz (the ~1MHz throttle) and same-line hits bypass it.
+- **Doom**: ENVIRONMENTAL-BLOCKED, not a regression. UART = the documented WP:00FD83
+  REU-FETCH-wait stall; doom.reu was clobbered from SDRAM by the shared-MiSTer CD32/
+  ao486 agent's all-day core cycling. CPU is alive (F-counter advancing). Wolf3D
+  untested (same REU-harness dependency).
+
+### Why it won where the raised-clock/cadence levers all died
+Stays in the proven clk32 passthrough domain — NO raised clock, NO active CDC bridge
+(those failed on a functional/CDC hazard, not pure timing). It only re-spaces the
+`enable` pulse to 2-apart on cache HITS, where data comes from the registered `_d1`
+latch (reg→reg, closes honestly at clk32) — NOT the deep ~20.5ns cpuDi/SDRAM mux that
+bounds miss cadence. Sidesteps BOTH the masked-timing class AND the CDC class.
+
+### State
+- Source: `ALT_FIRE_SAMELINE=true`, `CACHE_READ_PATH=true` (winning config). Committed `0deb093`.
+- MiSTer: iter-15 build deployed at `_Test/C64.rbf`, boots clean. The control build
+  (`output_files/C64.rbf`, alt-fire off) was the temporary A/B and has been overwritten
+  by the iter-15 redeploy.
+- Push: GATED (user go-ahead required) — `0deb093` is unpushed.
+
+### NEXT levers (the lever is banked; build on it)
+1. Widen FAST eligibility to write-hits (currently `rp_cache_hit` excludes writes →
+   they fall to 4-apart). GHDL-prove the write-hit coherency first.
+2. Doom/Wolf3D no-regress once the REU image is reloadable (pure no-regress; did NOT
+   block the commit — needs a fresh doom.reu load, SDRAM was clobbered by the shared agent).
+3. Push cache line size / associativity so more of a real workload is same-line
+   (raises the fraction running at 8MHz).
+4. Miss cadence (still 4-apart, cpuDi-mux + SDRAM-79ns bound) — the next ceiling;
+   only a deeper SDRAM-term attack (page mode on MISS, or prefetch) goes beyond this.
+
+### Memory updated
+`memory/project_alt_fire_2x_timing_viable.md` (iter-15 section + frontmatter),
+MEMORY.md line 7 (HW-PROVEN) + line 9 (EXHAUSTED header annotated OVERTURNED).

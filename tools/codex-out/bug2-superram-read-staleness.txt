@@ -1,0 +1,19 @@
+Pick (1): real fill tuple skew, but not inside `cpuDi_nocache` itself. It is at the boundary where a delayed SDRAM response is combined with live CPU address signals.
+
+The suspicious path is:
+
+- SuperRAM request address is launched as `{1, supercpu_bank, c64_addr}` in `c64.sv:1105` and `c64.sv:1143-1146`.
+- SDRAM data is a delayed registered response: `dout = ... dout_r` and `dout_r <= sd_data` only at `STATE_READ` in `sdram_pm.v:139` and `sdram_pm.v:159-163`.
+- The cache fill samples `fill_data => cpuDi_nocache` but tags it with live `fill_addr => cpuAddr`, `fill_bank => addr_hi_816` in `fpga64_sid_iec.vhd:5028-5031`.
+- `rp_fill_we` is driven by `enableCpu_816`, not by a transaction-matched SDRAM-return token: `fpga64_sid_iec.vhd:5000`.
+- The claimed data-valid gate is effectively off: `RDY_HANDSHAKE=false` at `fpga64_sid_iec.vhd:1637`, and `data_ready` is forced true by `not RDY_HANDSHAKE` at `fpga64_sid_iec.vhd:3382`.
+
+So the cache is filling with “current live address” plus “whatever delayed `ramDin` currently represents.” That fits your previous-byte signature better than missed invalidate. Bank $00 did not expose it because it is not this SuperRAM delayed response path.
+
+I would not pick missed invalidate: `invalidate_wr` now watches the full `cpu_we` window at `cpu_cache.vhd:268-272`, and if `cpuAddr/addr_hi_816/cpuWe` were wrong for the long-store target, the SDRAM write path should also be suspect. But cache-off proves SDRAM contents are right. I would not pick M10K read-during-write: the registered hit path explicitly waits past the transient window, `fpga64_sid_iec.vhd:1601-1605`.
+
+Falsifiable test: add a one-entry scoreboard captured on the SuperRAM SDRAM read launch, then compare it at `rp_fill_we`. Assert:
+
+`rp_fill_we -> captured_bank_addr == {addr_hi_816,cpuAddr}` and `cpuDi_nocache == returned_byte_for_captured_bank_addr`.
+
+Even better, temporarily drive `fill_addr/fill_bank` from that captured request tuple instead of live `cpuAddr/addr_hi_816`. If Doom passes, this is confirmed. If the assertion never fires and Doom still fails, this hypothesis is falsified.
