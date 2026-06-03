@@ -1581,7 +1581,7 @@ signal cobs_hw_reg   : unsigned(7 downto 0) := (others => '0');  -- window-compl
 -- top of the cpuDi mux + rp_cache_hit->sdram_hit_pred short grant) are wired as
 -- an INSEPARABLE pair — shortening the grant without the data override is the
 -- Doom BRK $00:000A stale-latch class. Read-only: write hits stay disabled.
-constant CACHE_READ_PATH : boolean := true;  -- iter-15: flipped TRUE to feed the cache + the same-line 2x scheduler (ALT_FIRE_SAMELINE). HW-proven clean at 4-apart (iter-7e e9c36c3e). [orig default false] (RBF bit-identical when off). ITER-7e 2026-05-31 HW-CONFIRMED: with fix B (rp_cacheable excludes ROM-shadowable bank-$00 $8/9/A/B/E/F + non-RAM $D), probe build e9c36c3e (this flag TRUE) BOOTS CLEAN (SCPU64 V0.07/READY) + Lorenz scpu PASS (serial LOAD = the e0e83e5c corruption case, now clean) + Lorenz t65 PASS (no regression). FIRST clean HW boot of the cache read path feeding the CPU. Ships false until the variable-cadence 2x arbiter (the actual speedup; this is correctness-only at 4-apart). ITER-7d 2026-05-31: the cpuDi override now consumes the REGISTERED rp_cache_hit_d1/rp_cache_di_d1 (below) + fills from cpuDi_nocache, converting the masked single-cycle consume into a genuine 2-cycle path. Scripted setup-1 STA on the fitted probe build 3514fc7d (cache_sta_probe.tcl, cache_1cyc_path_iter7d.txt): forced -setup 1 worst slack = +7.797ns (0 viol) on rp_cache_hit_d1 -> P65C816|AddrGen|PCr — vs iter-6's -0.651ns FAIL on the un-registered path. So the masked-timing violation behind the iter-7c boot corruption (build 0228d2b6 garbled boot) is ELIMINATED off-device. REMAINING GATE = HW (needs MiSTer): flip true, build, confirm boot clean + Lorenz scpu/t65 100% + Doom no-regress at the existing 4-apart cadence (this is correctness-only — no speed change yet; the variable-cadence 2x arbiter is the follow-up). Until HW-confirmed, ships false. HISTORY: iter-7c (this flag true, pre-register) HW-FALSIFIED — fill-on-miss-only corrupted boot ("< 0JEEP"), control 97392a1f clean; iter-7b cache-only (e0e83e5c) booted clean but corrupted Lorenz LOAD.
+constant CACHE_READ_PATH : boolean := false;  -- iter-16 2026-06-03 HW RESULT: the transaction-matched fill fix (FILL_TXMATCH, build af834bf9) had ZERO effect on Doom — it crashes at the IDENTICAL instruction (last good PC:2003AB fetching real bytes 8D 7A D0 A9, then a stale operand sends PC wild to $80007F -> bank $4D/$2B runaway -> bank-$00 wedge), byte-for-byte the same as the unfixed cache-on build 38118b68. => the fill-tuple SKEW is NOT Bug 2's HW cause: in the deployed SAME_CLOCK_PASSTHROUGH config the bridge holds cpuAddr stable through the access, so capture-at-issue == live cpuAddr at the fill edge = a no-op. Bug 2's corruptor is elsewhere on the read path (prime remaining suspect: the iter-7d registered _d1 hit/di override serving a cross-line-stale byte). REVERTED FALSE to keep the shipped baseline Doom-safe; re-investigate GHDL-first before the next build. The FILL_TXMATCH capture RTL stays in source (correct-in-principle, inert while this gate is false). [Earlier note, still valid for the cache-OFF A/B:] Was REVERTED FALSE 2026-06-02 to restore Doom. HW-FALSIFIED for Doom: full UART trace (doomtrace_38118b68) shows the loader DOES populate bank $20 + Doom DOES launch (PC:2000B6, first fetches = real code 8D 7A D0 A9), but the SuperRAM cache then serves STALE bytes on bank-$20 reads => Doom reads a garbage operand, JMPs wild to bank $2B/$4D, crashes to bank-$00 runaway (SP draining). Confirmed cadence-INDEPENDENT (alt-fire OFF in build 38118b68 still corrupts) so the iter-15 3x speedup, which intrinsically needs this path, is unshippable until a GHDL-proven SuperRAM write->read coherency fix lands. cache-OFF baseline (95db2dda) reaches Init Playloop on the SAME SDRAM image => bank $20 has real data => the read path is the corruptor. Re-enable ONLY after sim/cache_coherency_tb reproduces the bank-$20 loader-write->Doom-read staleness + proves the fix. [orig default false] (RBF bit-identical to shipped when off). iter-15: was flipped TRUE to feed the cache + the same-line 2x scheduler (ALT_FIRE_SAMELINE). HW-proven clean at 4-apart (iter-7e e9c36c3e) for BOOT/Lorenz but NOT Doom. [orig default false] (RBF bit-identical when off). ITER-7e 2026-05-31 HW-CONFIRMED: with fix B (rp_cacheable excludes ROM-shadowable bank-$00 $8/9/A/B/E/F + non-RAM $D), probe build e9c36c3e (this flag TRUE) BOOTS CLEAN (SCPU64 V0.07/READY) + Lorenz scpu PASS (serial LOAD = the e0e83e5c corruption case, now clean) + Lorenz t65 PASS (no regression). FIRST clean HW boot of the cache read path feeding the CPU. Ships false until the variable-cadence 2x arbiter (the actual speedup; this is correctness-only at 4-apart). ITER-7d 2026-05-31: the cpuDi override now consumes the REGISTERED rp_cache_hit_d1/rp_cache_di_d1 (below) + fills from cpuDi_nocache, converting the masked single-cycle consume into a genuine 2-cycle path. Scripted setup-1 STA on the fitted probe build 3514fc7d (cache_sta_probe.tcl, cache_1cyc_path_iter7d.txt): forced -setup 1 worst slack = +7.797ns (0 viol) on rp_cache_hit_d1 -> P65C816|AddrGen|PCr — vs iter-6's -0.651ns FAIL on the un-registered path. So the masked-timing violation behind the iter-7c boot corruption (build 0228d2b6 garbled boot) is ELIMINATED off-device. REMAINING GATE = HW (needs MiSTer): flip true, build, confirm boot clean + Lorenz scpu/t65 100% + Doom no-regress at the existing 4-apart cadence (this is correctness-only — no speed change yet; the variable-cadence 2x arbiter is the follow-up). Until HW-confirmed, ships false. HISTORY: iter-7c (this flag true, pre-register) HW-FALSIFIED — fill-on-miss-only corrupted boot ("< 0JEEP"), control 97392a1f clean; iter-7b cache-only (e0e83e5c) booted clean but corrupted Lorenz LOAD.
 signal rp_cache_di   : unsigned(7 downto 0) := (others => '0'); -- inert default => override never fires
 signal rp_cache_hit  : std_logic := '0';                       -- inert default => hit_pred stays '0'
 signal rp_cacheable  : std_logic := '0';
@@ -1607,6 +1607,26 @@ signal rp_fill_we    : std_logic := '0';
 signal rp_cache_di_d1  : unsigned(7 downto 0) := (others => '0');
 signal rp_cache_hit_d1 : std_logic := '0';
 
+-- iter-16 (2026-06-03): TRANSACTION-MATCHED FILL TUPLE (Bug 2 fix).
+-- The read-path cache fill data (fill_data => cpuDi_nocache) is the SDRAM read
+-- result for the address the CPU ISSUED a few clk32 ago, but fill_addr/fill_bank
+-- were wired to the LIVE cpuAddr/addr_hi_816. In passthrough the P65C816 core
+-- drives its NEXT fetch address combinationally while `enable` is high, so at the
+-- rp_fill_we (=enableCpu_816) fill edge the live cpuAddr has already advanced past
+-- the address whose data is on cpuDi_nocache => the fill stores the just-read byte
+-- under a LATER address's line => a later read of that line HITs and returns the
+-- stale "previous byte" (the Doom bank-$20 runaway, project_cache_invalidate_cpuen
+-- _hole). FIX: capture {addr_hi_816,cpuAddr} at SDRAM read-ISSUE (the cpu_cyc CPU
+-- SuperRAM read slot, where cpuAddr = the address actually driven to SDRAM, proven
+-- correct because cache-OFF consumes that data right) and tag the fill with the
+-- captured tuple. Robust to the exact pipeline latency / combinational advance.
+-- GHDL-proven: cpu_cache_superram_pipe_tb (live tag = 63/64 stale; matched = 0).
+-- Inert when CACHE_READ_PATH=false (regs unused, fill_addr falls back to cpuAddr).
+signal rp_fill_addr_r  : unsigned(15 downto 0) := (others => '0');
+signal rp_fill_bank_r  : unsigned(7 downto 0)  := (others => '0');
+signal rp_fill_addr_sel : unsigned(15 downto 0) := (others => '0'); -- FILL_TXMATCH mux
+signal rp_fill_bank_sel : unsigned(7 downto 0)  := (others => '0');
+
 -- iter-15 (2026-06-02): enable the same-line 2x alt-fire single gap-gated scheduler.
 -- Requires CACHE_READ_PATH=true (the read path supplies rp_same_line/rp_cache_hit).
 -- When false, enableCpu <= cpu_cyc_s(1) exactly as shipped (RBF bit-identical). When
@@ -1619,7 +1639,13 @@ signal rp_cache_hit_d1 : std_logic := '0';
 -- LIVE rp_cache_hit + baLoc + cpu816_rdy (stall-safe). Off-device proof:
 -- cpu_cache_sched_phasing_tb (LIVE gate PASS warm+cold, _d1 FAIL). HW-GATED until
 -- boot+Lorenz+Doom+Wolf3D+speed confirmed.
-constant ALT_FIRE_SAMELINE : boolean := true;
+constant ALT_FIRE_SAMELINE : boolean := false;  -- iter-15b PARTITION (2026-06-02): SuperRAM-only caching did NOT fix the $0D67/$AB loader freeze (bank-$00 caching ruled OUT). Remaining suspects with bank $00 uncached: (A) alt-fire 2x cadence disrupting the loader's SuperRAM transfer, or (B) SuperRAM cache DATA staleness. This build = cache-on (SuperRAM-only) + alt OFF (4-apart). If Doom runs -> (A) alt-fire; if it still wedges at $0D67 -> (B) SuperRAM data. Revert to true once partitioned. iter-16: (B) ROOT-CAUSED as the fill-tuple skew; FILL_TXMATCH below is the fix — keep alt OFF for the first fix build to isolate read-coherency from the speedup.
+
+-- iter-16 (2026-06-03): transaction-matched fill tuple — the Bug 2 fix. See the
+-- rp_fill_addr_r/rp_fill_bank_r decl above. When true (and CACHE_READ_PATH), the
+-- cache fill is tagged with the address captured at SDRAM read-issue instead of the
+-- live (combinationally-advanced) cpuAddr. Only meaningful when CACHE_READ_PATH=true.
+constant FILL_TXMATCH : boolean := true;
 
 -- iter-7 (2026-05-30): RDY-handshake gate for the cache-HIT alt-slot (the
 -- cadence-correctness half — the STA gate cleared the data-path-timing half).
@@ -4974,10 +5000,18 @@ dbg_cache_hw <= std_logic_vector(cobs_hw_reg);
 -- ($0000-$7FFF, $C000-$CFFF) stays cached + invalidate_wr-coherent. Gating only
 -- the fill transitively suppresses the hit + override (an unfilled line never
 -- validates -> never hits), so cpu_cache.vhd (and the observer) stay untouched.
-rp_cacheable <= '1' when (addr_hi_816 = x"00"
-                          and (cpuAddr(15 downto 12) <= x"7"          -- $0000-$7FFF always-RAM
-                               or cpuAddr(15 downto 12) = x"C"))       -- $C000-$CFFF always-RAM
-                      or (addr_hi_816 > x"00" and addr_hi_816 < x"F0") -- SuperRAM (no ROM shadow)
+-- iter-15b (2026-06-02): SuperRAM-ONLY fill gate (banks $02-$EF), matching the
+-- narrowed cacheable_addr in cpu_cache.vhd. The earlier bank-$00 always-RAM
+-- caching was claimed "coherent by construction" (writes via invalidate_wr +
+-- ROM-shadow ranges excluded), but it crashed Doom THREE ways even after the
+-- invalidate_wr cpu_en-gate fix (eeee wedge, bank-$00 runaway, $0D67
+-- poll-freeze) — a third bank-$00 staleness path (the cpuIO bank-switch flush
+-- not firing reliably under Doom's $01-port banking) survived. Caching bank $00
+-- buys ~zero speed (the 2x alt-fire fires only on SuperRAM scpu_fast_path), so
+-- drop it: bank $00/$01 run in proven 4-apart passthrough. SuperRAM ($02-$EF)
+-- keeps full caching + the speedup; coherency there is CPU-writes-only
+-- (invalidate_wr). Bank $01 excluded (mirrors bank $00 SDRAM; never a CPU bank).
+rp_cacheable <= '1' when (addr_hi_816 >= x"02" and addr_hi_816 < x"F0") -- SuperRAM only ($02-$EF)
                 else '0';
 
 gen_read_path : if CACHE_READ_PATH generate
@@ -5006,6 +5040,28 @@ gen_read_path : if CACHE_READ_PATH generate
 		end if;
 	end process;
 
+	-- iter-16 Bug-2 fix: capture the SuperRAM read tuple at SDRAM read-ISSUE.
+	-- cpu_cyc marks the CPU's SDRAM access slot; there cpuAddr/addr_hi_816 are the
+	-- address actually driven to the SDRAM (ramAddr <= systemAddr) for THIS read —
+	-- the address whose data returns on cpuDi_nocache and is consumed at the later
+	-- enableCpu_816 (the fill edge). enableCpu_816 is low during cpu_cyc, so cpuAddr
+	-- has NOT yet combinationally advanced here = the un-skewed read address. Holding
+	-- it until rp_fill_we makes fill_addr/fill_bank match fill_data. Gated on a
+	-- cacheable CPU read so non-cacheable / write / VIC traffic never overwrites it.
+	process(clk32)
+	begin
+		if rising_edge(clk32) then
+			if supercpu_en = '1' and cpu_cyc = '1' and rp_cacheable = '1' and cpuWe = '0' then
+				rp_fill_addr_r <= cpuAddr;
+				rp_fill_bank_r <= addr_hi_816;
+			end if;
+		end if;
+	end process;
+
+	-- FILL_TXMATCH mux: captured (un-skewed) tuple, or legacy live cpuAddr.
+	rp_fill_addr_sel <= rp_fill_addr_r when FILL_TXMATCH else cpuAddr;
+	rp_fill_bank_sel <= rp_fill_bank_r when FILL_TXMATCH else addr_hi_816;
+
 	read_path_cache : entity work.cpu_cache
 		port map (
 			clk        => clk32,
@@ -5019,8 +5075,10 @@ gen_read_path : if CACHE_READ_PATH generate
 			cache_hit  => rp_cache_hit,
 			fill_data  => cpuDi_nocache,  -- iter-7d: fill from the pre-override base (NOT cpuDi). On a miss cpuDi_nocache = the exact byte the CPU reads (SCPU regs / ramDin / cpuDi_raw); using cpuDi here would feed the registered override's output back into the cache on any stale-hit cycle (Codex Q3).
 			fill_we    => rp_fill_we,
-			fill_addr  => cpuAddr,
-			fill_bank  => addr_hi_816,
+			-- iter-16 Bug-2 fix: transaction-matched fill tuple (captured at read-issue)
+			-- via rp_fill_*_sel below; legacy live cpuAddr when FILL_TXMATCH=false.
+			fill_addr  => rp_fill_addr_sel,
+			fill_bank  => rp_fill_bank_sel,
 			wb_pending => open,
 			wb_addr    => open,
 			wb_data    => open,
@@ -5028,9 +5086,17 @@ gen_read_path : if CACHE_READ_PATH generate
 			flush      => '0',
 			cpu_en     => enableCpu_816,
 			wb_enable  => '0',
-			snoop_we   => '0',
-			snoop_addr => (others => '0'),
-			snoop_bank => (others => '0'),
+			-- iter-15b: DMA-snoop coherency for the cache read path. REU FETCH DMA
+			-- writes bank-$00 motherboard RAM by overriding cpuAddr/cpuWe with
+			-- dma_addr/dma_we (fpga64:3667-3669); REU never touches SuperRAM, so the
+			-- written bank is always $00. Without this, a byte the CPU cached in
+			-- bank $00 stays valid after the REU overwrites it ⇒ the Doom loader's
+			-- REU→SuperRAM copy reads stale data and wedges ("eeee" screen, the
+			-- iter-7f-documented CACHE_READ_PATH Doom regression). snoop_inv
+			-- invalidates the matching byte at top priority (cpu_cache.vhd:393).
+			snoop_we   => dma_active and cpuWe,
+			snoop_addr => cpuAddr,
+			snoop_bank => x"00",
 			same_line  => rp_same_line,   -- iter-15: LIVE same-line for the fast-fire gate
 			dbg_flush_active => open,
 			dbg_tag_match    => open

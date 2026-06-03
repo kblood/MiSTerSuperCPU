@@ -26,14 +26,55 @@ at any CPU cadence.
    latches at q=5 (`STATE_READ`, :159-160) ≈ 5 clk64 later. `dout` LAGS while `cpuAddr`
    ADVANCES at the consume edge ⇒ fill_addr is ahead of fill_data.
 
-**FIX DESIGN (next, GHDL-first):** transaction-matched fill — tag the fill with the address
-whose data is actually in `dout`. Either (a) capture `{addr_hi_816,cpuAddr}` at SDRAM
-read-LAUNCH and present it as fill_addr/bank when that read's data is valid (handshake on
-sdram_pm `data_valid`), or (b) delay fill_addr/fill_bank by the #clk32 that `dout` lags
-`cpuAddr`. Steps: build a faithful pipeline bench (emergent skew, not injected) → implement
-the RTL fix → re-run `cpu_cache_bank20_replay_tb` (must stay 0 stale) + the emergent bench
-(must flip to 0) → queue an HW Doom build when MiSTer frees up. Speedup stays OFF until HW Doom
-confirms. Detail in memory `project_cache_invalidate_cpuen_hole.md` (root-cause section).
+**FIX DESIGN (chosen = option a, transaction-matched fill):** tag the fill with the address
+whose data is actually in `dout` — capture `{addr_hi_816,cpuAddr}` at SDRAM read-ISSUE
+(`cpu_cyc` slot, where `enableCpu_816` is low so `cpuAddr` has NOT yet advanced) and hold it to
+the `rp_fill_we` edge. Emergent bench `cpu_cache_superram_pipe_tb.vhd` (LAT=3, nothing injected):
+**MODE BUGGY (live cpuAddr) = 63/64 stale; MODE FIXED (tx-matched) = 0 stale.**
+
+**✅ RTL IMPLEMENTED 2026-06-03 (uncommitted)** in `fpga64_sid_iec.vhd` behind `constant
+FILL_TXMATCH := true` (+ `CACHE_READ_PATH := true`, `ALT_FIRE_SAMELINE := false` to isolate the
+read-coherency fix from the speedup): new `rp_fill_addr_r`/`rp_fill_bank_r` capture process gated
+on `supercpu_en and cpu_cyc and rp_cacheable and cpuWe='0'`, fed to `cpu_cache.fill_addr/fill_bank`
+via `rp_fill_addr_sel`/`rp_fill_bank_sel`. Residual risk: single capture register assumes ≤1 read
+in flight at the fill edge (true with alt-fire OFF, one CPU grant/arbiter period); if Doom still
+shows staleness, upgrade to a depth-N delay line.
+
+**HARNESS VALIDATED 2026-06-03** (the previous "Doom harness broken" claim was a MISDIAGNOSIS):
+re-ran the autoload probe on cache-OFF `95db2dda` → reaches **"Init Playloop state."** REU/MGL
+environment is HEALTHY. The garbage `$2C`/`V:AB` runaway that triggered the "broken harness"
+worry was from `04b980a2`, which INDEX.md shows is **commit `0deb09327d` = iter-15 same-line 2×
+alt-fire (speedup ON)** — i.e. the cache+alt build that crashes Doom BY DESIGN, NOT a cache-OFF
+baseline. Lesson reaffirmed: identify the deployed build's commit before blaming environment.
+
+**❌ HW RESULT 2026-06-03 — FILL_TXMATCH FALSIFIED (build `af834bf9`, STA-clean):** deployed +
+ran the probe AND a continuous launch→crash UART (`tools/doom_autoload/fix_trace.txt`, 3240 lines).
+Doom boots clean, launches, prints a full init-text screen (~t060), then crashes at the
+**byte-identical** point as the unfixed cache-on build `38118b68`: 145 lines of real bank-$20 code
+(last good `PC:2003AB` fetching correct `8D 7A D0 A9`), then a stale operand → wild `PC:80007F` →
+bank `$4D`/`$2B` runaway (550 lines) → bank-$00 wedge (`PC:000047`, SP draining). **FILL_TXMATCH had
+ZERO observable effect** ⇒ the fill-tuple skew is NOT Bug 2's HW cause: in deployed
+`SAME_CLOCK_PASSTHROUGH` the bridge holds `cpuAddr` stable through the access, so capture-at-issue
+== live `cpuAddr` at the fill edge = a no-op. The emergent pipe-bench "cpuAddr advances ahead of
+LAT-delayed dout" model does not match real passthrough timing.
+
+**Reverted `CACHE_READ_PATH := false`** (Doom-safe), restored MiSTer to `95db2dda`, released lock.
+FILL_TXMATCH capture RTL kept in source (inert, correct-in-principle).
+
+**REFINED SUSPECT (next iter, GHDL-FIRST — do NOT build until proven):** with alt OFF and the fill
+addr provably un-skewed, the remaining read-path mechanism is the **iter-7d registered `_d1` hit/di
+override** (`rp_cache_hit_d1`/`rp_cache_di_d1`, fpga64:5035-5041): on a cross-line cache HIT it may
+serve a one-clk32-stale byte (the registered di lags `line_word` settling) → wrong operand → the
+`$2003AB`→`$80007F` wild jump. The corrupting `$2003A3` read is likely a HIT (no fresh fill), which
+is exactly why fixing the FILL path did nothing. Build a faithful GHDL bench modeling the `_d1`
+override consumption at the real 4-apart cadence (extend `cpu_cache_sched_phasing_tb`), reproduce
+the cross-line stale-hit, prove a fix, THEN one HW build. Detail in memory
+`project_cache_invalidate_cpuen_hole.md`.
+
+**HARNESS VALIDATED 2026-06-03** (was a misdiagnosis): cache-OFF `95db2dda` re-reached "Init
+Playloop" — REU/MGL env is HEALTHY. The garbage `$2C`/`V:AB` run that triggered the "broken harness"
+worry was `04b980a2` = INDEX.md commit `0deb09327d` = iter-15 speedup-ON (crashes Doom by design),
+NOT a cache-OFF baseline. Identify the deployed build's commit before blaming environment.
 
 **Also this session:** removed a stale, self-contradicting iter-12 "does-not-revive-the-lever"
 claim from MEMORY.md (iter-15 already shipped the lever HW-proven 3.0×). The compaction summary

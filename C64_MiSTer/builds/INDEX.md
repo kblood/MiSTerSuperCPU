@@ -2,6 +2,27 @@
 
 | Built (UTC)        | Branch              | SHA        | MD5 (short) | Subject                                    | Dirty |
 |--------------------|---------------------|------------|-------------|--------------------------------------------|-------|
+| 20260603 075530 | milestone-b-cdc-rew | 8ea2a8f733 | af834bf9    | sim(cache): iter-16 emergent Bug-2 skew be | yes   |
+| 20260602 204453 | milestone-b-cdc-rew | 0deb09327d | 04b980a2    | feat(speed): iter-15 same-line 2x alt-fire | yes   |
+| 20260602 201014 | milestone-b-cdc-rew | 0deb09327d | 38118b68    | feat(speed): iter-15 same-line 2x alt-fire | yes   |
+| 20260602 191210 | milestone-b-cdc-rew | 0deb09327d | 9c809b0b    | feat(speed): iter-15 same-line 2x alt-fire | yes   |
+| 20260602 184127 | milestone-b-cdc-rew | 0deb09327d | 26db604d    | feat(speed): iter-15 same-line 2x alt-fire | yes   |
+| 20260602 175647 | milestone-b-cdc-rew | 0deb09327d | cb53ed8c    | feat(speed): iter-15 same-line 2x alt-fire | yes   |
+| 20260602 135440 | milestone-b-cdc-rew | f431651380 | 6fe98f79    | sim(cache): iter-15 faithful registered-en | yes   |
+| 20260602 070006 | milestone-b-cdc-rew | 8770a921a2 | f74736f6    | docs(speed): correct iter-10 speed-lever a | yes   |
+| 20260602 063212 | milestone-b-cdc-rew | 8770a921a2 | 934f03f4    | docs(speed): correct iter-10 speed-lever a | yes   |
+| 20260531 184342 | milestone-b-cdc-rew | 12309a0ffb | 7139db68    | fix(cache): iter-7e bank-switch coherency  | yes   |
+| 20260531 181453 | milestone-b-cdc-rew | 12309a0ffb | f1d6bcfd    | fix(cache): iter-7e bank-switch coherency  | yes   |
+| 20260531 172940 | milestone-b-cdc-rew | 5ab17f6425 | e9c36c3e    | fix(cache): iter-7d register the cpuDi cac | yes   |
+| 20260531 160835 | milestone-b-cdc-rew | 5bbed4b2fd | 3514fc7d    | docs(turbo): iter-7c reframe — read-path | yes   |
+| 20260531 080331 | milestone-b-cdc-rew | 497071bf28 | 0228d2b6    | fix(cache): gate read-path fill on miss-on | yes   |
+| 20260530 230403 | milestone-b-cdc-rew | c4cf4cdb8b | e0e83e5c    | test(turbo): iter-7 RDY-handshake HW-FALSI | yes   |
+| 20260530 223645 | milestone-b-cdc-rew | ee4be7fb1b | 12b93c5e    | docs(turbo): iter-7 Build 1 in flight —  | yes   |
+| 20260530 205142 | milestone-b-cdc-rew | e087279c01 | 03ec86cf    | feat(cache): gated read-path wiring (cache | yes   |
+| 20260530 152005 | milestone-b-cdc-rew | e7e3d3eabf | e5e899fc    | build(turbo): add cpu_cache.vhd to QSF for | yes   |
+| 20260530 112029 | milestone-b-cdc-rew | 49262b1775 | 1a88abb8    | docs(milestone-b): clk48 HW-FALSIFIED —  | yes   |
+| 20260530 095410 | milestone-b-cdc-rew | 84ddf8fa5d | abf8ff88    | revert(milestone-b): clk64 HW-FALSIFIED (L | yes   |
+| 20260530 092839 | milestone-b-cdc-rew | 84ddf8fa5d | 0d284387    | revert(milestone-b): clk64 HW-FALSIFIED (L | yes   |
 | 20260530 050832 | milestone-b-cdc-rew | 38c1d36592 | 00452c21    | sim(milestone-b): SuperRAM long store/load | yes   |
 | 20260529 230500 | milestone-b-cdc-rew | 079882a523 | fc4e8176    | sim(turbo): two-domain throughput+correctn | yes   |
 | 20260529 161117 | milestone-b-cdc-rew | 52d58d13f4 | 44c6f2f8    | test(scpu): SCPU-library compat harness +  | yes   |
