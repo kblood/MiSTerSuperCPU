@@ -1581,7 +1581,7 @@ signal cobs_hw_reg   : unsigned(7 downto 0) := (others => '0');  -- window-compl
 -- top of the cpuDi mux + rp_cache_hit->sdram_hit_pred short grant) are wired as
 -- an INSEPARABLE pair — shortening the grant without the data override is the
 -- Doom BRK $00:000A stale-latch class. Read-only: write hits stay disabled.
-constant CACHE_READ_PATH : boolean := false;  -- DOOM-SAFE BASELINE (restored 2026-06-03 after iter-17 Build D). iter-17 RESULT: Build D (this=true, CACHE_DATA_OVERRIDE=false, HITPRED_SHORTGRANT=false) reaches the DOOM TITLE SCREEN ⇒ the cache FOOTPRINT is INNOCENT; the cache-on Doom crashes are TWO FUNCTIONAL bugs — (1) hit_pred grant [leave HITPRED_SHORTGRANT=false, mooted], (2) the `_d1` cpuDi data override serving a wrong bank-$20 byte [ISOLATION C `4160e2ef`, the bug to FIX next, GHDL-first]. Lever SALVAGEABLE: fix bug 2 → re-enable (true + CACHE_DATA_OVERRIDE=true + HITPRED_SHORTGRANT=false), then add ALT_FIRE for the 3×. iter-17 DIAGNOSTIC 2026-06-03: cache instance + fill + hit_pred all LIVE but the cpuDi DATA override is gated OFF via CACHE_DATA_OVERRIDE (below). Partitions Bug 2: if Doom RUNS, the corruptor is the data override (cache_di->cpuDi->P65C816, logically coherent per me+Codex => timing-marginal); if Doom CRASHES, the only remaining active difference is the sdram_hit_pred short grant ("001" reservation on a HIT), confirming the grant/dual-tracker desync. RESTORE :=false after the experiment. PRIOR: iter-16 2026-06-03 HW RESULT: the transaction-matched fill fix (FILL_TXMATCH, build af834bf9) had ZERO effect on Doom — it crashes at the IDENTICAL instruction (last good PC:2003AB fetching real bytes 8D 7A D0 A9, then a stale operand sends PC wild to $80007F -> bank $4D/$2B runaway -> bank-$00 wedge), byte-for-byte the same as the unfixed cache-on build 38118b68. => the fill-tuple SKEW is NOT Bug 2's HW cause: in the deployed SAME_CLOCK_PASSTHROUGH config the bridge holds cpuAddr stable through the access, so capture-at-issue == live cpuAddr at the fill edge = a no-op. Bug 2's corruptor is elsewhere on the read path (prime remaining suspect: the iter-7d registered _d1 hit/di override serving a cross-line-stale byte). REVERTED FALSE to keep the shipped baseline Doom-safe; re-investigate GHDL-first before the next build. The FILL_TXMATCH capture RTL stays in source (correct-in-principle, inert while this gate is false). [Earlier note, still valid for the cache-OFF A/B:] Was REVERTED FALSE 2026-06-02 to restore Doom. HW-FALSIFIED for Doom: full UART trace (doomtrace_38118b68) shows the loader DOES populate bank $20 + Doom DOES launch (PC:2000B6, first fetches = real code 8D 7A D0 A9), but the SuperRAM cache then serves STALE bytes on bank-$20 reads => Doom reads a garbage operand, JMPs wild to bank $2B/$4D, crashes to bank-$00 runaway (SP draining). Confirmed cadence-INDEPENDENT (alt-fire OFF in build 38118b68 still corrupts) so the iter-15 3x speedup, which intrinsically needs this path, is unshippable until a GHDL-proven SuperRAM write->read coherency fix lands. cache-OFF baseline (95db2dda) reaches Init Playloop on the SAME SDRAM image => bank $20 has real data => the read path is the corruptor. Re-enable ONLY after sim/cache_coherency_tb reproduces the bank-$20 loader-write->Doom-read staleness + proves the fix. [orig default false] (RBF bit-identical to shipped when off). iter-15: was flipped TRUE to feed the cache + the same-line 2x scheduler (ALT_FIRE_SAMELINE). HW-proven clean at 4-apart (iter-7e e9c36c3e) for BOOT/Lorenz but NOT Doom. [orig default false] (RBF bit-identical when off). ITER-7e 2026-05-31 HW-CONFIRMED: with fix B (rp_cacheable excludes ROM-shadowable bank-$00 $8/9/A/B/E/F + non-RAM $D), probe build e9c36c3e (this flag TRUE) BOOTS CLEAN (SCPU64 V0.07/READY) + Lorenz scpu PASS (serial LOAD = the e0e83e5c corruption case, now clean) + Lorenz t65 PASS (no regression). FIRST clean HW boot of the cache read path feeding the CPU. Ships false until the variable-cadence 2x arbiter (the actual speedup; this is correctness-only at 4-apart). ITER-7d 2026-05-31: the cpuDi override now consumes the REGISTERED rp_cache_hit_d1/rp_cache_di_d1 (below) + fills from cpuDi_nocache, converting the masked single-cycle consume into a genuine 2-cycle path. Scripted setup-1 STA on the fitted probe build 3514fc7d (cache_sta_probe.tcl, cache_1cyc_path_iter7d.txt): forced -setup 1 worst slack = +7.797ns (0 viol) on rp_cache_hit_d1 -> P65C816|AddrGen|PCr — vs iter-6's -0.651ns FAIL on the un-registered path. So the masked-timing violation behind the iter-7c boot corruption (build 0228d2b6 garbled boot) is ELIMINATED off-device. REMAINING GATE = HW (needs MiSTer): flip true, build, confirm boot clean + Lorenz scpu/t65 100% + Doom no-regress at the existing 4-apart cadence (this is correctness-only — no speed change yet; the variable-cadence 2x arbiter is the follow-up). Until HW-confirmed, ships false. HISTORY: iter-7c (this flag true, pre-register) HW-FALSIFIED — fill-on-miss-only corrupted boot ("< 0JEEP"), control 97392a1f clean; iter-7b cache-only (e0e83e5c) booted clean but corrupted Lorenz LOAD.
+constant CACHE_READ_PATH : boolean := false;  -- iter-18 RESTORED Doom-safe baseline (was true for the ground-truth override build 595008b1). RBF bit-identical to shipped when false; all cache constants below become don't-care. iter-18 RESULT: the FILL_DATAVALID_GATE fix (below) collapsed the HW divergence detector from WD=FFFF (saturated, unfixed) to WD=2 ⇒ the fill-data-phase root cause + fix are corroborated on silicon. RESIDUAL: 2 mismatches at bank $20 $00AE, cache=$00 vs SDRAM=$4A — the $00 is a pre-write/empty value = a SECOND, distinct loader-write→fill-read ORDERING race (Codex candidate a), NOT the fill-phase bug. The override consume path is still HW-UNVALIDATED: the REU loader was environmentally stuck (WP:00FD83 fetch-wait + KERNAL idle $E5xx, CPU never reached bank $20). NEXT (GHDL-first): extend sim/cache_coherency_tb to model the loader-WRITE→fill-READ ordering (cache=$00 residual) before any further override-on HW build. --- iter-17 DIAG BUILD (Build-D config: data override OFF + divergence detector). RESTORE false after. DOOM-SAFE BASELINE (restored 2026-06-03 after iter-17 Build D). iter-17 RESULT: Build D (this=true, CACHE_DATA_OVERRIDE=false, HITPRED_SHORTGRANT=false) reaches the DOOM TITLE SCREEN ⇒ the cache FOOTPRINT is INNOCENT; the cache-on Doom crashes are TWO FUNCTIONAL bugs — (1) hit_pred grant [leave HITPRED_SHORTGRANT=false, mooted], (2) the `_d1` cpuDi data override serving a wrong bank-$20 byte [ISOLATION C `4160e2ef`, the bug to FIX next, GHDL-first]. Lever SALVAGEABLE: fix bug 2 → re-enable (true + CACHE_DATA_OVERRIDE=true + HITPRED_SHORTGRANT=false), then add ALT_FIRE for the 3×. iter-17 DIAGNOSTIC 2026-06-03: cache instance + fill + hit_pred all LIVE but the cpuDi DATA override is gated OFF via CACHE_DATA_OVERRIDE (below). Partitions Bug 2: if Doom RUNS, the corruptor is the data override (cache_di->cpuDi->P65C816, logically coherent per me+Codex => timing-marginal); if Doom CRASHES, the only remaining active difference is the sdram_hit_pred short grant ("001" reservation on a HIT), confirming the grant/dual-tracker desync. RESTORE :=false after the experiment. PRIOR: iter-16 2026-06-03 HW RESULT: the transaction-matched fill fix (FILL_TXMATCH, build af834bf9) had ZERO effect on Doom — it crashes at the IDENTICAL instruction (last good PC:2003AB fetching real bytes 8D 7A D0 A9, then a stale operand sends PC wild to $80007F -> bank $4D/$2B runaway -> bank-$00 wedge), byte-for-byte the same as the unfixed cache-on build 38118b68. => the fill-tuple SKEW is NOT Bug 2's HW cause: in the deployed SAME_CLOCK_PASSTHROUGH config the bridge holds cpuAddr stable through the access, so capture-at-issue == live cpuAddr at the fill edge = a no-op. Bug 2's corruptor is elsewhere on the read path (prime remaining suspect: the iter-7d registered _d1 hit/di override serving a cross-line-stale byte). REVERTED FALSE to keep the shipped baseline Doom-safe; re-investigate GHDL-first before the next build. The FILL_TXMATCH capture RTL stays in source (correct-in-principle, inert while this gate is false). [Earlier note, still valid for the cache-OFF A/B:] Was REVERTED FALSE 2026-06-02 to restore Doom. HW-FALSIFIED for Doom: full UART trace (doomtrace_38118b68) shows the loader DOES populate bank $20 + Doom DOES launch (PC:2000B6, first fetches = real code 8D 7A D0 A9), but the SuperRAM cache then serves STALE bytes on bank-$20 reads => Doom reads a garbage operand, JMPs wild to bank $2B/$4D, crashes to bank-$00 runaway (SP draining). Confirmed cadence-INDEPENDENT (alt-fire OFF in build 38118b68 still corrupts) so the iter-15 3x speedup, which intrinsically needs this path, is unshippable until a GHDL-proven SuperRAM write->read coherency fix lands. cache-OFF baseline (95db2dda) reaches Init Playloop on the SAME SDRAM image => bank $20 has real data => the read path is the corruptor. Re-enable ONLY after sim/cache_coherency_tb reproduces the bank-$20 loader-write->Doom-read staleness + proves the fix. [orig default false] (RBF bit-identical to shipped when off). iter-15: was flipped TRUE to feed the cache + the same-line 2x scheduler (ALT_FIRE_SAMELINE). HW-proven clean at 4-apart (iter-7e e9c36c3e) for BOOT/Lorenz but NOT Doom. [orig default false] (RBF bit-identical when off). ITER-7e 2026-05-31 HW-CONFIRMED: with fix B (rp_cacheable excludes ROM-shadowable bank-$00 $8/9/A/B/E/F + non-RAM $D), probe build e9c36c3e (this flag TRUE) BOOTS CLEAN (SCPU64 V0.07/READY) + Lorenz scpu PASS (serial LOAD = the e0e83e5c corruption case, now clean) + Lorenz t65 PASS (no regression). FIRST clean HW boot of the cache read path feeding the CPU. Ships false until the variable-cadence 2x arbiter (the actual speedup; this is correctness-only at 4-apart). ITER-7d 2026-05-31: the cpuDi override now consumes the REGISTERED rp_cache_hit_d1/rp_cache_di_d1 (below) + fills from cpuDi_nocache, converting the masked single-cycle consume into a genuine 2-cycle path. Scripted setup-1 STA on the fitted probe build 3514fc7d (cache_sta_probe.tcl, cache_1cyc_path_iter7d.txt): forced -setup 1 worst slack = +7.797ns (0 viol) on rp_cache_hit_d1 -> P65C816|AddrGen|PCr — vs iter-6's -0.651ns FAIL on the un-registered path. So the masked-timing violation behind the iter-7c boot corruption (build 0228d2b6 garbled boot) is ELIMINATED off-device. REMAINING GATE = HW (needs MiSTer): flip true, build, confirm boot clean + Lorenz scpu/t65 100% + Doom no-regress at the existing 4-apart cadence (this is correctness-only — no speed change yet; the variable-cadence 2x arbiter is the follow-up). Until HW-confirmed, ships false. HISTORY: iter-7c (this flag true, pre-register) HW-FALSIFIED — fill-on-miss-only corrupted boot ("< 0JEEP"), control 97392a1f clean; iter-7b cache-only (e0e83e5c) booted clean but corrupted Lorenz LOAD.
 -- iter-17 DIAGNOSTIC (2026-06-03): independent gate for the cpuDi cache-DATA
 -- override, so a CACHE_READ_PATH=true build can run with the cache instance +
 -- fill + sdram_hit_pred ALL live while the CPU still gets SDRAM-passthrough data
@@ -1590,7 +1590,7 @@ constant CACHE_READ_PATH : boolean := false;  -- DOOM-SAFE BASELINE (restored 20
 -- both functional-coherent per me+Codex (=> remaining cause is timing/CDC, not
 -- logic). Set false for the diagnostic build; restore true (with CACHE_READ_PATH
 -- false) for the shipped Doom-safe baseline where this is don't-care.
-constant CACHE_DATA_OVERRIDE : boolean := true;   -- don't-care while CACHE_READ_PATH=false (Doom-safe baseline). iter-17 BUILD D (2026-06-03) flipped this to data override OFF + HITPRED_SHORTGRANT=false => BOTH CPU-facing cache effects off, but CACHE_READ_PATH=true so the cache is still compiled-in + filling/snooping. DECISIVE corner of the partition: vs 48730a04 (data off, hit_pred ON => CRASH) differs only by hit_pred; vs ISOLATION C 4160e2ef (data ON, hit_pred off => CRASH) differs only by data override. D RUNS => 48730a04 crash was hit_pred + ISOLATION C crash was the _d1 data override (TWO functional bugs, footprint innocent); D CRASHES => the cache's mere presence corrupts (masked-timing / fitter footprint, STA-clean but real-violating, the clk48/SLOT3 class) => cache lever DEAD for Doom => pivot to Milestone C. PRIOR: iter-17 FIX build had this true (ISOLATION C, HW-CRASHED 4160e2ef 2026-06-03 — turning hit_pred off did NOT save Doom, so hit_pred is not the sole corruptor; the data override is implicated). RESTORE true (with CACHE_READ_PATH=false) for the shipped Doom-safe baseline where this is don't-care.
+constant CACHE_DATA_OVERRIDE : boolean := true;  -- iter-18 GROUND-TRUTH build: override ON to directly test the FILL_DATAVALID_GATE fix (the divergence detector is phase-ambiguous — it samples cpuDi_nocache at the consume edge launch+2, BEFORE data is fresh @ launch+3, so even a CORRECT cache mismatches the stale reference => WD unreliable). Doom override-on is the unambiguous test: reaches title/menu + Lorenz clean => fill fix WORKS, add alt-fire for 3x; crashes => fix insufficient (switch to dout_reu VIC-immune fill source). PRIOR (iter-17 DIAG): Build-D config (override OFF => CPU reads SDRAM, Doom runs clean) so the divergence detector below can flag cache!=SDRAM with no crash noise. RESTORE true after. don't-care while CACHE_READ_PATH=false (Doom-safe baseline). iter-17 BUILD D (2026-06-03) flipped this to data override OFF + HITPRED_SHORTGRANT=false => BOTH CPU-facing cache effects off, but CACHE_READ_PATH=true so the cache is still compiled-in + filling/snooping. DECISIVE corner of the partition: vs 48730a04 (data off, hit_pred ON => CRASH) differs only by hit_pred; vs ISOLATION C 4160e2ef (data ON, hit_pred off => CRASH) differs only by data override. D RUNS => 48730a04 crash was hit_pred + ISOLATION C crash was the _d1 data override (TWO functional bugs, footprint innocent); D CRASHES => the cache's mere presence corrupts (masked-timing / fitter footprint, STA-clean but real-violating, the clk48/SLOT3 class) => cache lever DEAD for Doom => pivot to Milestone C. PRIOR: iter-17 FIX build had this true (ISOLATION C, HW-CRASHED 4160e2ef 2026-06-03 — turning hit_pred off did NOT save Doom, so hit_pred is not the sole corruptor; the data override is implicated). RESTORE true (with CACHE_READ_PATH=false) for the shipped Doom-safe baseline where this is don't-care.
 -- iter-17 Bug 2 FIX gate: false => sdram_hit_pred forced '0' (no cache-hit grant
 -- shortening), the HW-proven corruptor (diagnostic 48730a04). Assignment ~:3411.
 constant HITPRED_SHORTGRANT : boolean := false;
@@ -1619,6 +1619,22 @@ signal rp_fill_we    : std_logic := '0';
 signal rp_cache_di_d1  : unsigned(7 downto 0) := (others => '0');
 signal rp_cache_hit_d1 : std_logic := '0';
 
+-- iter-17 DIAGNOSTIC (2026-06-03): cache-HIT data-divergence detector. On every
+-- consume edge where the override would fire (rp_cache_hit_d1='1'), compare the
+-- cache byte the override DELIVERS (rp_cache_di_d1) against the live SDRAM
+-- passthrough (cpuDi_nocache = the Build-D-proven-correct byte for cpuAddr). Any
+-- mismatch IS Bug 2 (the cache serves != SDRAM on a hit). Captures the FIRST one
+-- {addr,bank,cache,sdram} + a saturating count. Run in Build-D config (override
+-- OFF) so Doom runs clean and the count reflects pure content divergence, NOT
+-- post-crash pollution. count==0 => content coherent => bug is override DELIVERY
+-- (phase/line_word), not content. count>0 => content diverges => addr/bytes show
+-- where/what. Exposed via the (passthrough-inert) bridge probe UART fields below.
+signal diag_mm_count   : unsigned(15 downto 0) := (others => '0');
+signal diag_mm_addr    : unsigned(15 downto 0) := (others => '0');
+signal diag_mm_bank    : unsigned(7 downto 0)  := (others => '0');
+signal diag_mm_cache   : unsigned(7 downto 0)  := (others => '0');
+signal diag_mm_sdram   : unsigned(7 downto 0)  := (others => '0');
+
 -- iter-16 (2026-06-03): TRANSACTION-MATCHED FILL TUPLE (Bug 2 fix).
 -- The read-path cache fill data (fill_data => cpuDi_nocache) is the SDRAM read
 -- result for the address the CPU ISSUED a few clk32 ago, but fill_addr/fill_bank
@@ -1638,6 +1654,12 @@ signal rp_fill_addr_r  : unsigned(15 downto 0) := (others => '0');
 signal rp_fill_bank_r  : unsigned(7 downto 0)  := (others => '0');
 signal rp_fill_addr_sel : unsigned(15 downto 0) := (others => '0'); -- FILL_TXMATCH mux
 signal rp_fill_bank_sel : unsigned(7 downto 0)  := (others => '0');
+-- iter-18 (2026-06-03): Bug 2 ROOT-CAUSE fix — data-valid-gated delayed fill.
+signal rp_fill_we_imm   : std_logic := '0';                          -- legacy immediate miss-fill
+signal rp_fill_req      : std_logic := '0';                          -- pending miss-fill (set @ consume, cleared @ fire)
+signal rp_fill_fire     : std_logic := '0';                          -- fire when SDRAM data fresh
+signal rp_fill_addr_dly : unsigned(15 downto 0) := (others => '0');   -- addr latched @ consume (matched to dout_r)
+signal rp_fill_bank_dly : unsigned(7 downto 0)  := (others => '0');
 
 -- iter-15 (2026-06-02): enable the same-line 2x alt-fire single gap-gated scheduler.
 -- Requires CACHE_READ_PATH=true (the read path supplies rp_same_line/rp_cache_hit).
@@ -1657,7 +1679,23 @@ constant ALT_FIRE_SAMELINE : boolean := false;  -- iter-17 ISOLATION build C: al
 -- rp_fill_addr_r/rp_fill_bank_r decl above. When true (and CACHE_READ_PATH), the
 -- cache fill is tagged with the address captured at SDRAM read-issue instead of the
 -- live (combinationally-advanced) cpuAddr. Only meaningful when CACHE_READ_PATH=true.
-constant FILL_TXMATCH : boolean := true;
+constant FILL_TXMATCH : boolean := false;  -- iter-17b DIAG: test whether the LIVE-cpuAddr fill (=false, sampled at the SAME consume edge as cpuDi_nocache => matched pair, the Build-D-correct argument) gives WD=0, vs the iter-16 read-issue capture (=true) which gave WD=FFFF (content widely wrong). RESTORE per outcome.
+
+-- iter-18 (2026-06-03): Bug 2 ROOT-CAUSE fix — gate the SuperRAM cache fill on the
+-- SDRAM data-valid handshake. ROOT CAUSE (HW divergence-detector WD=FFFF, $2000C5
+-- cache=$03 vs SDRAM=$40; + RTL + Codex; + GHDL cpu_cache_filldata_phase_tb
+-- BUGGY=64/FIXED=0): the fill FF latches cpuDi_nocache (= ramDin = sdram_pm dout_r)
+-- at enableCpu_816 (= cpu_cyc_s(1) = launch+2 clk32), but dout_r is FRESH only at q=5
+-- (~launch+3). So the immediate fill captures the PREVIOUS read's byte = stale; the
+-- CPU itself reads correctly because C64.sdc `set_multicycle_path -setup 2/4
+-- -to *P65C816*` lets its capture FF settle ~4 clk32 late (after q=5) — the fill FF
+-- has no such relief. That asymmetry is why Build-D RUNS (CPU-only) while cache content
+-- is wrong, and why golden-data benches never caught it. FIX: at a miss consume latch a
+-- pending request + the matched addr/bank, then fire the cache fill_we when
+-- sdram_data_valid_sync is high (dout_r fresh = THIS access's byte, asserted ~launch+4,
+-- before the next read's ce-edge clears it) sampling LIVE cpuDi_nocache. When false, the
+-- legacy immediate fill. Only meaningful when CACHE_READ_PATH=true.
+constant FILL_DATAVALID_GATE : boolean := true;
 
 -- iter-7 (2026-05-30): RDY-handshake gate for the cache-HIT alt-slot (the
 -- cadence-correctness half — the STA gate cleared the data-path-timing half).
@@ -4892,13 +4930,22 @@ dbg_vic_di_or   <= std_logic_vector(vic_di_or_lat);
 -- clk_sys via 2-FF chains before driving the dbg_pool / UART formatter.
 dbg_bridge_fsm_state       <= std_logic_vector(cpu816_dbg_fsm_state);
 dbg_bridge_last_bus_di     <= std_logic_vector(cpu816_dbg_last_bus_di);
-dbg_bridge_req_count       <= std_logic_vector(cpu816_dbg_req_count);
-dbg_bridge_ack_count       <= std_logic_vector(cpu816_dbg_ack_count);
+-- iter-17 DIAGNOSTIC: when CACHE_READ_PATH (diag build), repurpose the
+-- passthrough-INERT Milestone-B bridge-probe UART fields to carry the cache-hit
+-- divergence detector results: RQ=first-mismatch addr, AK={cache:sdram} bytes,
+-- WD=saturating mismatch count, GM=first-mismatch bank. When false (baseline),
+-- bit-identical to the original bridge-probe wiring.
+dbg_bridge_req_count       <= std_logic_vector(diag_mm_addr) when CACHE_READ_PATH
+                              else std_logic_vector(cpu816_dbg_req_count);
+dbg_bridge_ack_count       <= (std_logic_vector(diag_mm_cache) & std_logic_vector(diag_mm_sdram)) when CACHE_READ_PATH
+                              else std_logic_vector(cpu816_dbg_ack_count);
 dbg_bridge_vec_fetch_count <= std_logic_vector(cpu816_dbg_vec_fetch_count);
 -- Milestone B v2 (2026-05-26): vblank-snapped bridge probes.
-dbg_bridge_wait_dwell_max  <= std_logic_vector(cpu816_dbg_wait_dwell_max);
+dbg_bridge_wait_dwell_max  <= std_logic_vector(diag_mm_count) when CACHE_READ_PATH
+                              else std_logic_vector(cpu816_dbg_wait_dwell_max);
 dbg_bridge_activity_flags  <= std_logic_vector(cpu816_dbg_activity_flags);
-dbg_bridge_gap_max         <= std_logic_vector(cpu816_dbg_gap_max);
+dbg_bridge_gap_max         <= std_logic_vector(diag_mm_bank) when CACHE_READ_PATH
+                              else std_logic_vector(cpu816_dbg_gap_max);
 
 -- ====================================================================
 -- more-turbo iter-4d (2026-05-30): read-only cpu_cache HIT-RATE OBSERVER
@@ -5050,8 +5097,34 @@ gen_read_path : if CACHE_READ_PATH generate
 	-- Reproduced + fix validated off-device: sim/cache_coherency_tb/
 	-- cpu_cache_fillonhit_tb.vhd ($AA leaks into line B with fill-on-hit; clean
 	-- when gated). Textbook cache behaviour anyway: never re-fill a hit.
-	rp_fill_we <= enableCpu_816 and (vda_816 or vpa_816) and (not cpuWe)
-	              and rp_cacheable and (not rp_cache_hit);
+	-- legacy immediate miss-fill decision (samples cpuDi_nocache AT the consume,
+	-- before dout_r is fresh => stale; see FILL_DATAVALID_GATE for the fix).
+	rp_fill_we_imm <= enableCpu_816 and (vda_816 or vpa_816) and (not cpuWe)
+	                  and rp_cacheable and (not rp_cache_hit);
+
+	-- iter-18 Bug-2 ROOT-CAUSE fix: data-valid-gated delayed fill. Latch the miss
+	-- request + the matched address/bank at the consume edge; fire the actual cache
+	-- fill_we only once sdram_data_valid_sync is high (dout_r fresh @ q=5 = this
+	-- access's byte, asserted before the next read's ce-edge clears data_valid).
+	-- cpuAddr at the consume rising edge is still THIS access's address (it advances
+	-- after the edge), so rp_fill_addr_dly is transaction-matched to the fired byte.
+	rp_fill_req_proc : process(clk32)
+	begin
+		if rising_edge(clk32) then
+			if rp_fill_fire = '1' then
+				rp_fill_req <= '0';            -- request serviced
+			end if;
+			if rp_fill_we_imm = '1' then       -- set wins over clear (cannot coincide @ >=4-apart)
+				rp_fill_req      <= '1';
+				rp_fill_addr_dly <= cpuAddr;
+				rp_fill_bank_dly <= addr_hi_816;
+			end if;
+		end if;
+	end process;
+	rp_fill_fire <= rp_fill_req and sdram_data_valid_sync;
+
+	-- fill_we to the cache: data-valid-gated (fix) or legacy immediate.
+	rp_fill_we <= rp_fill_fire when FILL_DATAVALID_GATE else rp_fill_we_imm;
 
 	-- iter-7d: register the cache HIT override one clk32. rp_cache_hit/rp_cache_di
 	-- are combinational on the live cpuAddr; rp_cache_di is only valid the cycle
@@ -5064,6 +5137,30 @@ gen_read_path : if CACHE_READ_PATH generate
 		if rising_edge(clk32) then
 			rp_cache_hit_d1 <= rp_cache_hit;
 			rp_cache_di_d1  <= rp_cache_di;
+		end if;
+	end process;
+
+	-- iter-17 DIAGNOSTIC: detect cache-hit data divergence (see decl ~:1621).
+	-- At the consume edge (enableCpu_816) with the override active (rp_cache_hit_d1),
+	-- the CPU would latch rp_cache_di_d1; the correct value is cpuDi_nocache (live
+	-- SDRAM, what Build D feeds and runs Doom on). A mismatch flags the exact Bug-2
+	-- corruption. cpuAddr/addr_hi_816 are stable through the 4-apart access, so the
+	-- SDRAM byte on cpuDi_nocache belongs to the same address as the cache byte.
+	diag_proc: process(clk32)
+	begin
+		if rising_edge(clk32) then
+			if enableCpu_816 = '1' and rp_cache_hit_d1 = '1'
+			   and rp_cache_di_d1 /= cpuDi_nocache then
+				if diag_mm_count = 0 then
+					diag_mm_addr  <= cpuAddr;
+					diag_mm_bank  <= addr_hi_816;
+					diag_mm_cache <= rp_cache_di_d1;
+					diag_mm_sdram <= cpuDi_nocache;
+				end if;
+				if diag_mm_count /= x"FFFF" then
+					diag_mm_count <= diag_mm_count + 1;
+				end if;
+			end if;
 		end if;
 	end process;
 
@@ -5085,9 +5182,15 @@ gen_read_path : if CACHE_READ_PATH generate
 		end if;
 	end process;
 
-	-- FILL_TXMATCH mux: captured (un-skewed) tuple, or legacy live cpuAddr.
-	rp_fill_addr_sel <= rp_fill_addr_r when FILL_TXMATCH else cpuAddr;
-	rp_fill_bank_sel <= rp_fill_bank_r when FILL_TXMATCH else addr_hi_816;
+	-- Fill address/bank select. iter-18: when FILL_DATAVALID_GATE, use the address
+	-- latched at the consume (matched to the dout_r byte fired at data-valid). Else
+	-- the FILL_TXMATCH read-issue capture, or legacy live cpuAddr.
+	rp_fill_addr_sel <= rp_fill_addr_dly when FILL_DATAVALID_GATE
+	                    else rp_fill_addr_r when FILL_TXMATCH
+	                    else cpuAddr;
+	rp_fill_bank_sel <= rp_fill_bank_dly when FILL_DATAVALID_GATE
+	                    else rp_fill_bank_r when FILL_TXMATCH
+	                    else addr_hi_816;
 
 	read_path_cache : entity work.cpu_cache
 		port map (
