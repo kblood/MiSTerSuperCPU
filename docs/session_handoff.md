@@ -61,7 +61,33 @@ would leave WD saturated), and the residual 2 at cache=$00 is independently mean
 3. Then `ALT_FIRE_SAMELINE := true` for the 3× SuperRAM speedup; gate Doom + Lorenz +
    superram_bench.
 
-### Alternative if the override path stays a tar pit
+### DECISIVE A/B (end of iter-18): override-on stalls the LOADER, build-specific
+
+Two override-on Doom runs (build `595008b1`: CACHE_READ_PATH=true, CACHE_DATA_OVERRIDE
+=true, FILL_DATAVALID_GATE=true, detector) **both stalled at the loader** — 100% bank
+$00, WP:00FD83 (REU fetch-wait) + WP:00370F dominant, **0 bank-$20 lines**, reproducible.
+The cache-OFF control (build `b6612ef2`: CACHE_READ_PATH=false, freshly compiled from the
+restored baseline, STA-clean) on the **same MiSTer / same REU image / same harness today**
+**completed the loader and ran SuperRAM Doom** — 4199 bank-$20..$2C lines, engine code
+executing, ending in a loop at $2BDE55 (black screen this run = env/REU data quality, not
+a cache effect; cache is off). ⇒ **the override-on loader stall is BUILD-SPECIFIC, not
+environmental** — the REU harness works; enabling the read-path cache + override breaks the
+loader even though the override is logically inert in the bank-$00 loader phase. Caveat:
+the A/B disables the WHOLE gen_read_path generate, so the culprit is one of {override mux
+masked-timing, my new FILL_DATAVALID_GATE logic interacting with the loader's bank-$20
+write traffic, the detector} — not isolated. But the decision is the same regardless: after
+iter-15..18, the cache-read-path/override HW lever does NOT converge and fails in
+inconsistent masked-timing/integration ways. The fill-data-phase fix is proven OFF-DEVICE
+(bench BUGGY=64/FIXED=0 + WD FFFF→2) but yields no working override-on HW build.
+
+**VERDICT: park the cache-read-path speed lever.** Fill-fix banked as inert infrastructure
+(commit 54eccfb). Pivot to a compat lever (next section). If ever revived: first isolate
+which gen_read_path element stalls the loader (build Build-D + FILL_DATAVALID_GATE, override
+OFF — if it completes the loader like plain Build-D did, the override mux is the masked-timing
+culprit; if it stalls, my fill-gate logic is buggy). The deployed `b6612ef2` is the
+Doom-safe baseline (RBF == shipped when CACHE_READ_PATH=false).
+
+### Alternative if the override path stays a tar pit (NOW THE ACTIVE PATH)
 
 The cache speed lever has now consumed iter-15..18. If the write-ordering bench does
 not converge quickly, pivot to a compat lever where progress is not gated on the flaky
