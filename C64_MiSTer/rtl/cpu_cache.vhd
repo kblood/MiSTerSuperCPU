@@ -201,9 +201,21 @@ begin
 	--     ROM/RAM visibility transitions.
 	--   Banks $01-$EF: SuperRAM — all addresses are plain RAM.
 	--   Banks $F0-$FF: SuperCPU ROM served from BRAM — no caching needed.
-	cacheable_addr <= '1' when (cpu_bank = x"00"
-	                            and cpu_addr(15 downto 12) /= x"D")                 -- all except $D000-$DFFF
-	                       or  (cpu_bank > x"00" and cpu_bank < x"F0")               -- SuperRAM
+	-- iter-15b (2026-06-02): SuperRAM-ONLY caching (banks $02-$EF). Bank $00
+	-- and bank $01 are NO LONGER cached. Rationale: the same-line 2x alt-fire
+	-- speedup fires ONLY on scpu_fast_path = SuperRAM accesses, so caching bank
+	-- $00 buys ~zero speed but carries ALL the coherency risk — ZP, stack,
+	-- screen RAM, the $01 processor-port ROM/RAM banking, and REU DMA targets.
+	-- With the cache feeding the CPU (CACHE_READ_PATH=true) those bank-$00
+	-- hazards crashed Doom three different ways (eeee wedge, bank-$00 runaway,
+	-- $0D67 poll-freeze) while the cache-OFF baseline runs Doom fine. Bank $01
+	-- is excluded too: it mirrors bank $00 SDRAM (bank01_mirror_to_00, c64.sv),
+	-- so caching it while bank $00 is uncached would be alias-incoherent; the
+	-- SuperRAM long-store {1,bank,addr} form starts at bank $02 anyway, so $01
+	-- is never a CPU data/code bank. Bank $00/$01 now run in the proven 4-apart
+	-- SDRAM passthrough (identical to CACHE_READ_PATH=false for those banks).
+	-- SuperRAM is plain RAM with only CPU writes — covered by invalidate_wr.
+	cacheable_addr <= '1' when (cpu_bank >= x"02" and cpu_bank < x"F0")             -- SuperRAM only ($02-$EF)
 	                  else '0';
 
 	-- Read: cacheable address, not writing, not flushing
@@ -239,10 +251,24 @@ begin
 	-- the cached byte if the tag matches. This covers both bank-$00 writes
 	-- (where ROM/RAM aliasing could cause stale cache data) and SuperRAM
 	-- writes (banks $01-$EF). Writes go to SDRAM via the normal path.
+	--
+	-- iter-15b (2026-06-02): the gate was `cpu_en='1'`, which MISSED the write
+	-- whenever the CPU's write strobe (cpu_we) did not coincide with the enable
+	-- pulse the cache samples on the clk32 edge — exactly the Doom-loader
+	-- long-store case under turbo/alt-fire. The miss left stale (pre-transfer
+	-- garbage) bytes cached, so the CPU later fetched garbage code => the
+	-- runaway (PBR=$00, $8000-$CFFF sweep). Reproduced in
+	-- sim/cache_coherency_tb/cpu_cache_doom_coherency_tb.vhd (S2): cpu_en=0
+	-- write returns STALE $AA. Fix: fire for the ENTIRE cpu_we window (robust to
+	-- enable phase) and exclude DMA writes via `snoop_we='0'` — snoop_we is
+	-- `dma_active and cpuWe`, so `not snoop_we` = "a CPU write, not DMA" (DMA
+	-- writes are invalidated by the snoop path with the correct bank=$00 tag).
+	-- A spurious extra invalidate just costs a harmless re-fetch; a MISSED one
+	-- corrupts. So invalidate aggressively.
 	invalidate_wr <= '1' when enable = '1'
 	                      and cacheable_addr = '1'
 	                      and cpu_we = '1'
-	                      and cpu_en = '1'
+	                      and snoop_we = '0'
 	                      and flush_active = '0'
 	                 else '0';
 

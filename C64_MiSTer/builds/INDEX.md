@@ -2,6 +2,10 @@
 
 | Built (UTC)        | Branch              | SHA        | MD5 (short) | Subject                                    | Dirty |
 |--------------------|---------------------|------------|-------------|--------------------------------------------|-------|
+| 20260603 134322 | milestone-b-cdc-rew | c3a070d4c5 | b6612ef2    | test(cache): iter-16 FILL_TXMATCH HW-FALSI | yes   |
+| 20260603 110207 | milestone-b-cdc-rew | c3a070d4c5 | 4160e2ef    | test(cache): iter-16 FILL_TXMATCH HW-FALSI | yes   |
+| 20260603 094616 | milestone-b-cdc-rew | c3a070d4c5 | a42ec7d7    | test(cache): iter-16 FILL_TXMATCH HW-FALSI | yes   |
+| 20260603 090735 | milestone-b-cdc-rew | c3a070d4c5 | 48730a04    | test(cache): iter-16 FILL_TXMATCH HW-FALSI | yes   |
 | 20260603 075530 | milestone-b-cdc-rew | 8ea2a8f733 | af834bf9    | sim(cache): iter-16 emergent Bug-2 skew be | yes   |
 | 20260602 204453 | milestone-b-cdc-rew | 0deb09327d | 04b980a2    | feat(speed): iter-15 same-line 2x alt-fire | yes   |
 | 20260602 201014 | milestone-b-cdc-rew | 0deb09327d | 38118b68    | feat(speed): iter-15 same-line 2x alt-fire | yes   |

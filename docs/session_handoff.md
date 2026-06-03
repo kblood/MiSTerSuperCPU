@@ -1,6 +1,164 @@
 # Session Handoff
 
-## ✅ iter-16 (2026-06-03): BUG 2 ROOT CAUSE FOUND — fill-tuple skew (address-ahead-of-data).
+## ✅🔬 iter-17 (2026-06-03): BUILD D RUNS DOOM (title screen) → cache FOOTPRINT INNOCENT → the cache-on crashes are TWO FUNCTIONAL bugs (fixable), NOT masked-timing. Cache read-path lever SALVAGEABLE. Next = GHDL-fix the `_d1` data-override staleness.
+
+**DECISIVE POSITIVE RESULT (clean uninterrupted re-run, build `b6612ef2`):** Build D
+(CACHE_READ_PATH=true, **data override OFF + hit_pred OFF** = both CPU-facing effects
+off, cache still compiled-in + filling/snooping) **reaches the DOOM TITLE SCREEN** and
+runs clean for the full 240s (UART grew steadily t020→t240, NO freeze; 1395 SuperRAM
+lines sustained across banks $20-$2C; screenshot `tools/doom_autoload/buildD_rerun_C64.png`
+= rendered DOOM logo + id Software + shareware menu). Even further than the cache-OFF
+baseline's "Init Playloop." (The `doom_uart_test` "CRASH" verdict is a false positive
+from its $80 heuristic — 93 $80 lines ~2%, recovered; Doom visibly renders.)
+
+**THEREFORE (the strategic redirection):**
+- The cache's **fitter footprint / mere presence is INNOCENT** — it does NOT corrupt
+  Doom. The earlier "masked-timing footprint → pivot to Milestone C" hypothesis is
+  FALSIFIED. (Build D's first run looked confounded by a CD32 takeover at t220; the
+  clean re-run confirms it RUNS.)
+- The cache-on crashes are **FUNCTIONAL, fixable bugs**, each independently sufficient:
+  1. **`48730a04`** (data OFF, hit_pred **ON**) crashed = the **hit_pred grant**
+     shortening corrupts (consumes SDRAM early per the `sdram_busy`→`cpu_cyc` mechanism).
+     → MOOTED for shipping: just leave `HITPRED_SHORTGRANT=false` (the alt-fire FAST
+     path is hit_pred-independent, so the 3× speedup survives without it).
+  2. **ISOLATION C `4160e2ef`** (data **ON**, hit_pred OFF) crashed = the **`_d1`
+     data override** serves a wrong byte on a bank-$20 read. → THE bug to fix (the
+     cache feeds the CPU through it, AND the alt-fire FAST path consumes the registered
+     `_d1`, so the speedup needs it correct).
+- **Cache read-path lever is SALVAGEABLE** — fix bug #2 and the Doom-safe 3× speedup is
+  back on the table (data override fixed + hit_pred off + alt on).
+
+**THE PUZZLE for the GHDL attack:** `cpu_cache_sched_phasing_tb` (mains-only, 4-apart)
+says the `_d1` override is COHERENT, and iter-16 `cpu_cache_bank20_replay_tb` Scenario
+A (aligned/settled fills) is also coherent — yet ISOLATION C crashes at 4-apart with
+the override on. So the benches are MISSING the real staleness source. Build D proves
+it's FUNCTIONAL (reproducible in sim with a faithful-enough model), not timing.
+Prime suspect: the loader-write→Doom-read coherency under REAL fill timing (the fill
+source is `cpuDi_nocache` = SDRAM-delayed, not the bench's instant correct byte) ×
+the override delivering it. iter-16 fill-skew fix was HW-falsified (passthrough holds
+cpuAddr stable), so the skew model was wrong — but the staleness is real and lands via
+the override. **NEXT (GHDL-FIRST):** build a bench that models loader long-stores to
+bank $20 with realistic SDRAM write-commit-vs-fill-read timing + the `_d1` override
+consumption at 4-apart, reproduce the ISOLATION C wrong-byte, prove a fix, THEN one HW
+build (data ON + hit_pred OFF + fix; gate on Doom title + Lorenz + then add alt for 3×).
+
+**SHARED-MISTER NOTE:** the CD32/ao486 agent overrode my fresh (<30min) lock and
+core-swapped Minimig over the first Build D run at ~t220. Operator manually freed the
+MiSTer for the clean re-run. For future decisive HW runs under contention, coordinate a
+window (aicc/agent-db) rather than relying on the lockfile alone.
+
+---
+
+## 🗄️ (SUPERSEDED) iter-17 building-Build-D framing — kept for the partition logic
+
+**NEW THIS SESSION (the decisive datum):** rebuilt + HW-ran ISOLATION C (build
+`4160e2ef`, CACHE_READ_PATH=true, **data override ON, alt OFF, hit_pred OFF**).
+Boots clean (KERNAL editor idle loop, healthy). **Doom CRASHED** — `doom_uart_test`
+verdict CRASH: reached bank $20 (~36 lines), bounced through bank $00 (`PC:000A64`,
+`I:000D68`, instr window `8D 7A D0 A9`), then wild `PC:2BAF57`/`8003CD`/`291117` →
+$4D-heavy runaway (last SuperRAM `PC:2B8D00`). The Bug-2 family.
+
+**What this proves (corrects the prior "data path INNOCENT" conclusion):**
+- `48730a04` (data OFF, hit_pred **ON**) crashed ⇒ with the override off, the only
+  CPU-facing cache feature was hit_pred ⇒ hit_pred IS a corruptor.
+- ISOLATION C (data **ON**, hit_pred OFF) crashed ⇒ with hit_pred off, the only
+  CPU-facing feature was the `_d1` data override ⇒ **the data override IS ALSO
+  implicated.** Turning EITHER feature off alone did not save Doom. So "hit_pred was
+  the sole 4-apart corruptor" is FALSE. Memory `project_bug2_is_hitpred_grant.md`
+  title is now wrong (hit_pred is *a* corruptor, not *the* one).
+
+**KEY TENSION (drives the strategy):** functional sim says the cache is COHERENT at
+4-apart — both `cpu_cache_sched_phasing_tb` (mains-only control, 0 stale) and the
+iter-16 `cpu_cache_bank20_replay_tb` Scenario A (aligned fills, settled timing).
+Yet HW crashes in ALL THREE cache-on configs regardless of which CPU-facing feature
+is on. Sim-coherent + HW-corrupt-regardless = the signature of a real timing
+violation STA does NOT catch (the masked-timing / fitter-footprint class the memory
+warns about for clk48/SLOT3), NOT a logic bug the functional benches can reach.
+
+**DECISIVE CORNER NOW BUILDING — Build D** (CACHE_DATA_OVERRIDE=false +
+HITPRED_SHORTGRANT=false, CACHE_READ_PATH=true): both CPU-facing effects OFF, cache
+still compiled-in + filling/snooping. CPU runs pure baseline passthrough.
+- **D RUNS** → footprint innocent; 48730a04 crash = hit_pred, ISOLATION C crash =
+  `_d1` data override → TWO functional bugs (each in principle fixable, but the
+  cache lever now needs two fixes + the speedup on top).
+- **D CRASHES** → the cache's mere presence corrupts → masked-timing/fitter footprint
+  → cache read-path lever is DEAD for Doom → bank the safe baseline, PIVOT to
+  Milestone C (demand arbiter @ clk32, recover speed via bus slots, no cache).
+- Build log `build_iter17_buildD.log`. MiSTer restored to safe baseline `95db2dda`
+  + lock released (off-device until D finishes). On D done: claim lock, deploy, run
+  `tools/doom_uart_test.py 240`.
+
+**BUILD D RESULT (2026-06-03, CONFOUNDED by CD32 takeover — RE-RUN NEEDED):** built
+`b6612ef2` (CACHE_DATA_OVERRIDE=false + HITPRED_SHORTGRANT=false + CACHE_READ_PATH
+=true), STA-clean, boots clean. `doom_uart_test` classified CRASH, BUT the trace tells
+a very different story from ISOLATION C: **Build D ran Doom DEEP** — 1981 SuperRAM
+lines across banks $20,$21,$27,$28,$29,$2B,$2C (structured multi-bank engine
+execution), ending in a tight legit loop in bank $28 (`$283CD5–$283D16`). NOT the
+ISOLATION C garbage runaway (39 lines, random-bank spray → $00 wedge). The lone wild
+bank $80 (119 lines) was EARLY (~t030, loader region `I:0007B2`) and execution
+RECOVERED into deep Doom after. **CONFOUND:** the CD32/ao486 agent loaded Minimig over
+my C64 at ~t220 (overrode my fresh 15:44 lock) — the UART freeze t220→t240 and the
+CD32-logo `t240.png` are that core-swap, not a wedge. Screenshot `t180.png` (15:47) =
+genuine C64 SuperCPU debug overlay (black bg, no visible Doom frame yet). **READING:**
+leans STRONGLY toward FOOTPRINT INNOCENT → the cache-on crashes (ISOLATION C = `_d1`
+data override, 48730a04 = hit_pred grant) are FUNCTIONAL & fixable, NOT masked-timing.
+This is the hopeful branch. **BUT NOT CONCLUSIVE** (early $80, no visible frame,
+takeover). **NEXT = clean Build D re-run** (uninterrupted MiSTer; verify screenshot
+reads `/media/fat/screenshots/C64/` not MinimigCD; want a visible Doom title/menu frame
+to confirm "runs"). If D confirmed-runs → GHDL-reproduce the data-override staleness
+that crashes ISOLATION C at 4-apart (the sched_phasing bench currently says coherent →
+it's MISSING something real), fix, re-enable data+alt, keep hit_pred off, HW-gate. If
+re-run D actually crashes (the early $80 was real) → footprint after all → pivot to
+Milestone C. COOPERATION NOTE: CD32 agent overrode a <30min lock; may clobber the
+re-run — consider aicc/agent-db coordination for a 5-min window.
+
+**Prior iter-17 builds (context):**
+
+**Method that broke the logjam:** added a constant `CACHE_DATA_OVERRIDE` gating ONLY
+the `cpuDi <= rp_cache_di_d1` override, plus `HITPRED_SHORTGRANT` gating
+`sdram_hit_pred`, so I can turn the cache's CPU-facing effects on/off independently
+and partition Bug 2 on hardware (it resists functional sim — iter-15b/16 proved the
+functional cache is coherent, so the bug is system-level: arbiter/timing).
+
+**Builds run this iter (all CACHE_READ_PATH=true; cache-OFF baseline runs Doom fine):**
+- `48730a04` DIAGNOSTIC = data-override OFF, alt OFF, hit_pred ON. CPU gets
+  byte-identical baseline SDRAM data. **Doom STILL CRASHED** (bank-$20 `2000C0`→`20038F`
+  → wild `$80`/`$2B`/`$29`). ⇒ **the cache DATA path is INNOCENT**; corruptor is
+  `sdram_hit_pred` OR the cache's fitter footprint. Mechanism for hit_pred:
+  `sdram_busy_cnt<="001"` on a hit → `sdram_busy` clears early (:3376) → `cpu_cyc`
+  fires sooner (:3489, gated on `sdram_busy='0'`) → `cpu_cyc_s(1)`/`enableCpu`
+  consume sooner → CPU latches SDRAM before the ~79ns read settles = stale. This is
+  the dual-tracker desync force-disabled at :3387-3396. (Refutes Codex's "hit_pred
+  inert at 4-apart" — he missed that `sdram_busy` gates `cpu_cyc`.)
+- `a42ec7d7` FIX-attempt = data ON, alt ON, hit_pred OFF (`HITPRED_SHORTGRANT=false`).
+  **Still crashed** but the crash MOVED (reached bank `$2C` `PC:2CB717` then wild
+  `$80`/`$FF`) ⇒ hit_pred=0 changed behaviour + let it run deeper, but a SECOND
+  corruptor remains. This build changed 3 vars vs the diagnostic (data, alt, hit_pred)
+  so it doesn't cleanly isolate. Suspect: alt-fire's 2-apart `_d1` consume.
+- `bf2hbser1` (BUILDING) ISOLATION C = data ON, **alt OFF**, hit_pred OFF. SINGLE
+  variable vs known-crash `38118b68` (data ON, alt OFF, hit_pred ON). DECIDES:
+  - **C WORKS** → hit_pred WAS the 4-apart corruptor + the data path is HW-coherent
+    at 4-apart. Since the fix-attempt (alt ON) crashed, alt-fire is a 2nd corruptor.
+    Shippable now: correct cache @ 4-apart (no speedup = correctness milestone);
+    then fix alt-fire's `_d1`-consume coherency for the 3×.
+  - **C CRASHES** → hit_pred NOT the sole cause; data-path-at-4-apart or the cache's
+    fitter footprint (placement pushes a relaxed-multicycle path marginal; STA-clean
+    but real-violating, the clk48/SLOT3 masking class) corrupts. Cache lever likely
+    DEAD for Doom → bank the safe baseline, PIVOT (Milestone C demand arbiter / compat).
+
+**Test tool:** `tools/doom_uart_test.py [secs]` — reloads core, fires Doom MGL,
+captures `/dev/ttyS1` continuously (reliable; the daemon screenshot pipe wedged mid-run),
+auto-classifies SUCCESS / CRASH / STALL. Doom legit banks = `$00` + `$20-$3F`; wild =
+`$80`/`$FF`/etc. SUCCESS needs a screenshot too (Init-Playloop text isn't on the CPU UART).
+
+**State:** source currently = ISOLATION C config. RBFs archived under `C64_MiSTer/builds/`.
+Memory: `project_bug2_is_hitpred_grant.md` (note: title is provisional — hit_pred
+confirmed as A corruptor by the diagnostic, but the fix-attempt shows it's not the
+ONLY one; update after Build C). MiSTer free (`CORENAME=MENU`).
+
+---
+
+## ✅ iter-16 (2026-06-03): BUG 2 ROOT CAUSE FOUND — fill-tuple skew (address-ahead-of-data). [SUPERSEDED by iter-17: fill-skew HW-falsified; data path proven innocent]
 
 **Bottom line:** Bug 2 (SuperRAM bank-$20 read staleness that blocks the iter-15 3× speedup)
 is a **fill-tuple skew**, not a write-race / tag-alias / missed-invalidate. The cache fill is
