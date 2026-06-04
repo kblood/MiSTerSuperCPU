@@ -2,6 +2,7 @@
 
 | Built (UTC)        | Branch              | SHA        | MD5 (short) | Subject                                    | Dirty |
 |--------------------|---------------------|------------|-------------|--------------------------------------------|-------|
+| 20260604 135451 | milestone-b-cdc-rew | e6b3405333 | 404422c5    | fix(65c816): iter-21 MVN/MVP emu-mode bloc | yes   |
 | 20260604 044358 | milestone-b-cdc-rew | 58b308a5bd | 4671ecfc    | fix(65c816): iter-20 emu-mode stack page-c | yes   |
 | 20260604 001834 | milestone-b-cdc-rew | 27acd2d2f8 | 7dcc71e3    | docs(cache): iter-18 close — decisive A/ | yes   |
 | 20260603 225945 | milestone-b-cdc-rew | 27acd2d2f8 | c0e941b0    | docs(cache): iter-18 close — decisive A/ | yes   |
