@@ -1,111 +1,152 @@
 # Session Handoff
 
-## 🎯🔬⚙️ iter-18 (2026-06-03): fill-data-phase fix CORROBORATED on silicon (WD FFFF→2); a SECOND residual hole found; override consume still HW-unvalidated (REU env block)
+## 🟥⚡ iter-22 (2026-06-04): Cache Bug 2 — fill/invalidate race bench reproduces the iter-18 HW signature + a cancel fix, but the fix is HW-FALSIFIED. Reverted, committed `2b4d7ac` (unpushed). Speed lever still parked.
 
-**STATE: source restored to Doom-safe baseline (`CACHE_READ_PATH := false`, RBF
-bit-identical to shipped). Fill-fix RTL + GHDL bench committed as inert infrastructure.
-MiSTer lock released. Nothing pushed.**
+**GOAL: unlock the HW-proven 3x same-line alt-fire (commit `0deb093`), which is
+shipped OFF because it needs `CACHE_READ_PATH=true` and that path has an open
+SuperRAM read-coherency bug (Bug 2) that crashes Doom.**
 
-### What iter-18 established
+**WHAT WAS DONE.** The strongest Bug-2 signal is iter-18's on-silicon divergence
+detector residual: `bank $20 $00AE cache=$00 (pre-write empty) vs SDRAM=$4A
+(loader-written)` = a loader-write -> fill-read ordering race. Built a new GHDL
+bench `sim/cache_coherency_tb/cpu_cache_fill_invalidate_race_tb.vhd` that
+reproduces that exact signature off-device (BUG=1) and proves a fix
+(`FILL_CANCEL_ON_WRITE`: clear the pending `rp_fill_req` on a matching CPU write
+-> re-read misses -> SDRAM path returns $4A; FIX=0). Implemented the cancel in
+`fpga64_sid_iec.vhd`.
 
-1. **Root cause (fill DATA capture phase) is real and the fix works in isolation.**
-   GHDL bench `sim/cache_coherency_tb/cpu_cache_filldata_phase_tb.vhd` (run
-   `run_filldata_phase.ps1`): models `dout_r` fresh at +3 clk32 while the fill fires
-   at +2 (buggy) / +3 (fixed). Result **BUGGY=64, FIXED=0** — each buggy line returns
-   the PREVIOUS access's byte (off-by-one stale) = exact HW signature. Re-verified
-   this session.
+**RESULT: HW-FALSIFIED** (build `404422c5`, `CACHE_READ_PATH=true` isolation,
+alt-fire OFF). Boot clean, but Doom did NOT reach title — wedged at `PC:00D013`
+(crashed into I/O space, white screen) and the divergence detector STILL read
+`WD=2` at `$20:00AE`, byte-identical to iter-18. The GHDL-proven cancel is a HW
+no-op: its window (read-miss -> fast fill-fire, ~4 clk32) does NOT overlap the
+loader's write (many loops later) — the fill fires and allocates the stale $00
+BEFORE the write arrives, so there is no pending fill to cancel. The unit bench
+placed the write INSIDE the pending window = a timing that doesn't occur in
+deployed passthrough (same sim/HW mismatch class as FILL_TXMATCH, iter-16).
 
-2. **Silicon corroboration via the HW divergence detector.** Override-ON ground-truth
-   build `595008b1` (CACHE_READ_PATH=true, CACHE_DATA_OVERRIDE=true,
-   **FILL_DATAVALID_GATE=true**, detector retained). Plain boot = **clean to READY**
-   (SCPU64 V0.07 / 38911 BYTES FREE) ⇒ the fill-fix RTL does NOT break execution.
-   Doom UART run: divergence **WD collapsed from FFFF (saturated, unfixed iter-16/17)
-   to 0002** ⇒ the fill-data-phase fix removed essentially all the content corruption.
+**STATE NOW.** Reverted `CACHE_READ_PATH=false` (Doom-safe, RBF bit-identical to
+shipped). `FILL_CANCEL_ON_WRITE` stays in source, inert (closes a real but rare
+race; NOT the Bug-2 cause). MiSTer restored to iter-21 baseline `4671ecfc`, lock
+released, boot clean (SCPU64 V0.07). Committed `2b4d7ac`.
 
-3. **A SECOND, distinct residual hole.** The 2 surviving mismatches are at
-   **bank $20, addr $00AE, cache=$00 vs SDRAM=$4A**. `cache=$00` is a pre-write/empty
-   value ⇒ this is a **loader-WRITE → fill-READ ordering race** (Codex candidate a:
-   the fill reads SDRAM before the loader's long-store to that line has committed),
-   NOT the fill-phase bug just fixed. This is the next target.
+**NEXT (GHDL-first, the real lesson).** The `cpu_cache` UNIT bench cannot see the
+actual fill-fire-vs-write ordering — every unit-level "fix" (FILL_TXMATCH,
+FILL_CANCEL_ON_WRITE) has been a HW no-op because the deployed passthrough timing
+differs from the hand-pulsed bench. A faithful SYSTEM-level repro is required
+before any further cache-on HW build: extend `c64_reduced_harness` (fpga64 +
+sdram_pm + a loader write->read sequence) so the fill FIRE timing, the
+invalidate, and the SDRAM read latency are all real. Reproduce the persistent
+`cache=$00 vs SDRAM=$4A` there, then fix, then ONE HW build. Do NOT build another
+cache-on RBF off a unit-bench-only fix. Alternative levers if Bug 2 stays stuck:
+Milestone C demand arbiter @ clk32 (separate path, no cache dependency).
 
-4. **Override consume path is still HW-UNVALIDATED.** The Doom run never reached
-   bank $20 — PC/instruction banks were 100% bank $00, oscillating between KERNAL idle
-   ($E5CF/$E5D4/$E5CD) and the loader ML ($0700-$078E), with **WP:00FD83** (REU
-   fetch-wait) + WP:00370F dominating. The loader is alive but never completes the
-   REU→SuperRAM transfer ⇒ never XCE+JMLs into bank $20. This is the **recurring REU
-   environmental block**, not a build regression. So the `_d1` override serving
-   bank-$20 reads was not actually exercised.
+## ✅🎮 iter-21 (2026-06-04): SHIPPED — MVP/MVN emu-mode block-move address bug FIXED, GHDL-PROVEN, HW-VERIFIED, COMMITTED (`e6b3405`, unpushed)
 
-### Key correction to the prior handoff
+**STATE: DONE. One genuine 65816 functional bug (MVP/MVN $44/$54 block-move
+address generation in emulation mode) found + fixed in `AddrGen.vhd`,
+GHDL-validated against the full 10000-case SST silicon-trace suite (both modes,
+0-fail), ZERO regressions across the 512-opcode sweep. Build GREEN (RBF md5
+`4671ecfc`). HW-VERIFIED 2026-06-04 on the freed MiSTer: boot to READY clean +
+Lorenz scpu (8min) AND t65 (4min) both regression-clean — continuous progress,
+all tests "ok", no wedge. Committed as `e6b3405` on `milestone-b-cdc-rewrite`
+(push still gated on user). MiSTer lock released.**
 
-The divergence detector is **phase-ambiguous as an oracle**: it samples
-`cpuDi_nocache` at the consume edge (+2), before `dout_r` is fresh (+3), so even a
-correct cache can mismatch the stale reference. WD=0 was therefore never an
-achievable clean target. The FFFF→2 *collapse* is still a strong signal (a no-op fix
-would leave WD saturated), and the residual 2 at cache=$00 is independently meaningful
-(empty-line, not a phase artifact). But do not treat WD as a precise correctness oracle.
+### NEXT SESSION ENTRY POINT
+iter-21 is closed. Remaining SST fails are both explicitly deferred (see
+backlog below): **$40 RTI** cycle-count (functionally correct, low value) and
+**$e1 SBC(dp,X)** (1-in-10000 boundary case, low value × high regression risk —
+shared emu dp-wrap path). No other genuine compat bug is currently surfaced by
+the SST suite. Next highest-leverage compat lever = a broader/fresh SST or
+SuperCPU-library sweep to surface the next real bug, or revisit the parked speed
+work (cache read-path coherency / in-816 pipeline). Pick per north-star at
+session start.
 
-### NEXT (GHDL-first — do this before any further override-on HW build)
+### What was found & fixed
 
-1. **Extend `sim/cache_coherency_tb` to model the loader-WRITE → fill-READ ordering
-   race** (the cache=$00 residual): a CPU long-store to a bank-$20 line, then a read
-   miss to the same line whose fill reads `dout_r` *before* the store's data has
-   propagated through `sdram_pm` (write latency + the read launch/q=5 latency).
-   Reproduce cache=$00-while-SDRAM-has-data, then prove a fix (candidates: gate the
-   fill on the same `sdram_data_valid` *and* ensure no in-flight write to the line, or
-   invalidate-on-write must beat the fill — check `invalidate_wr` vs `fill_we` priority
-   in `cpu_cache.vhd:380-503` under realistic write-commit timing).
-2. Only after the bench reproduces+fixes the ordering race, do ONE HW build with
-   override ON + both fixes, and get a **clean REU load** (verify the loader completes
-   to bank $20 — watch for sustained bank-$20 PCs, not WP:00FD83) before judging it.
-3. Then `ALT_FIRE_SAMELINE := true` for the 3× SuperRAM speedup; gate Doom + Lorenz +
-   superram_bench.
+**The bug (genuine functional, emulation-mode only).** MVN ($54) / MVP ($44)
+block moves formed the source (`{srcbank, X}`) and destination (`{DBR, Y}`)
+24-bit addresses with the **high byte = stale PCH** instead of `X.H` / `Y.H`
+(which are $00 in 8-bit-index mode). The LOW byte was correct and incremented
+properly, so the move walked the right offsets in the WRONG 256-byte window and
+never touched the intended memory. SST signature: `RAM[8600B6] exp=06 got=00`
+(dest never written); observed bus `F3EA67` vs expected `F30067`, `5CEAF3` vs
+`5C00F3` — the $EA is PCH leaking into bits 15:8. 49/50 cases failed before the
+fix.
 
-### DECISIVE A/B (end of iter-18): override-on stalls the LOADER, build-specific
+**Root cause.** `C64_MiSTer/rtl/65C816/AddrGen.vhd` — the high-byte address mux
+handles the block-move direct loads `IND_CTRL="10"` (`X->AA`) / `"11"` (`Y->AA`)
+**only in the native `e6502='0'` branch** (lines ~142-145). The emulation `else`
+branch ignored `IND_CTRL` entirely and left `NewAAH` = stale `AAH`. Only MVN/MVP
+use `IND_CTRL` 10/11, so the fix is fully isolated — no other opcode can change.
 
-Two override-on Doom runs (build `595008b1`: CACHE_READ_PATH=true, CACHE_DATA_OVERRIDE
-=true, FILL_DATAVALID_GATE=true, detector) **both stalled at the loader** — 100% bank
-$00, WP:00FD83 (REU fetch-wait) + WP:00370F dominant, **0 bank-$20 lines**, reproducible.
-The cache-OFF control (build `b6612ef2`: CACHE_READ_PATH=false, freshly compiled from the
-restored baseline, STA-clean) on the **same MiSTer / same REU image / same harness today**
-**completed the loader and ran SuperRAM Doom** — 4199 bank-$20..$2C lines, engine code
-executing, ending in a loop at $2BDE55 (black screen this run = env/REU data quality, not
-a cache effect; cache is off). ⇒ **the override-on loader stall is BUILD-SPECIFIC, not
-environmental** — the REU harness works; enabling the read-path cache + override breaks the
-loader even though the override is logically inert in the bank-$00 loader phase. Caveat:
-the A/B disables the WHOLE gen_read_path generate, so the culprit is one of {override mux
-masked-timing, my new FILL_DATAVALID_GATE logic interacting with the loader's bank-$20
-write traffic, the detector} — not isolated. But the decision is the same regardless: after
-iter-15..18, the cache-read-path/override HW lever does NOT converge and fails in
-inconsistent masked-timing/integration ways. The fill-data-phase fix is proven OFF-DEVICE
-(bench BUGGY=64/FIXED=0 + WD FFFF→2) but yields no working override-on HW build.
+**The fix.** Added `IND_CTRL="10"/"11"` → `"0" & X(15:8)` / `"0" & Y(15:8)`
+handling to the emulation branch, ahead of the unchanged dp,X/dp,Y page-cross
+logic. (`X.H`/`Y.H` are held at 0 in 8-bit-index mode → correct $00 high byte.)
 
-**VERDICT: park the cache-read-path speed lever.** Fill-fix banked as inert infrastructure
-(commit 54eccfb). Pivot to a compat lever (next section). If ever revived: first isolate
-which gen_read_path element stalls the loader (build Build-D + FILL_DATAVALID_GATE, override
-OFF — if it completes the loader like plain Build-D did, the override mux is the masked-timing
-culprit; if it stalls, my fill-gate logic is buggy). The deployed `b6612ef2` is the
-Doom-safe baseline (RBF == shipped when CACHE_READ_PATH=false).
+**Bench fix that exposed it.** `sim/p65c816_singlesteptest/p65c816_sst_tb.vhd`:
+the cycle-record buffers were sized `0 to 31`; MVP/MVN block moves emit up to
+100 bus cycles/case, so the bench asserted "cycle count exceeds buffer (>31)"
+and could not test them at all. Enlarged both `cyc_arr_t` and `cyc_obs_arr_t`
+to `0 to 127` and the assert to `<=127`. This made $44/$54 testable, which
+immediately surfaced the CPU bug above (NOT a test artifact).
 
-### Alternative if the override path stays a tar pit (NOW THE ACTIVE PATH)
+### Validation
+- **GHDL/SST (silicon oracle):** $54.e/$54.n/$44.e/$44.n all **fail=0 at full
+  10000 cases** (skips 0/8/0/6 = normal prelude collisions). Pre-fix: 49/50
+  fail.
+- **Regression:** full 512-opcode sweep (300 cases/op) = ZERO new fails. Only
+  failures are the pre-existing/deferred **$40 RTI** cycle-count (599, functionally
+  correct). Everything else 0-fail. Change is block-move-exclusive so this is
+  expected.
+- **Build:** 0 errors, RBF md5 `4671ecfc`, ALMs 31,530/41,910 (75%). All clock
+  domains TNS=0; worst-case setup slack 0.443ns is pll_hdmi (orthogonal); CPU
+  domains 3.7-4.2ns, SDRAM 4.48ns — all positive.
+- **HW: PENDING** (MiSTer busy with CD32 agent). Note: MVN/MVP are 65816-only
+  and NOT in the Lorenz suite, so the HW step is purely a boot+Lorenz regression
+  guard (confirm no t65/scpu regression); the fix itself is proven by SST.
 
-The cache speed lever has now consumed iter-15..18. If the write-ordering bench does
-not converge quickly, pivot to a compat lever where progress is not gated on the flaky
-REU loader + an imperfect oracle: WriteSmart register decode ($D074-$D077/$D0B3), or a
-SCPU library compatibility sweep. The shipped baseline (cache-off) is unaffected.
+### RESUME STEPS (when MiSTer frees — re-check `/tmp/CORENAME` == empty or C64)
+1. `python tools/mister_debug.py deploy` (RBF already at `output_files/C64.rbf`;
+   archived `builds/...4671ecfc-dirty.rbf`).
+2. Boot to READY (SCPU64 V0.07) check.
+3. `tools/lorenz_run.py scpu` + `tools/lorenz_run.py t65` — both must stay
+   continuous / all-"ok" / no wedge.
+4. If clean → commit (build green + HW regression-clean). Files:
+   `C64_MiSTer/rtl/65C816/AddrGen.vhd` + `sim/p65c816_singlesteptest/p65c816_sst_tb.vhd`.
+   Push still gated on user.
 
-### Files (this session)
+### NEXT compat backlog (GHDL-first, after iter-21 commits)
+- **$40 RTI** cycle-count (missing one internal IO cycle; functionally CORRECT,
+  PC restored right — low value, risks interrupt latency). Only remaining SST
+  fail class besides MVP/MVN (now fixed).
+- **$e1 SBC(dp,X)** = 1 edge case (#8668 in 10000). CHARACTERIZED this session:
+  direct-page wrap discrepancy in the (dp,X) indirect POINTER fetch. With E=1,
+  DL=$00, D=$F400, dp=$B0, X=$4F → pointer-low at $00:F4FF (correct), but our
+  core fetches pointer-HIGH with 6502 page-wrap ($F4FF→$F400, pointer=$002F)
+  whereas the silicon trace does a full 16-bit increment ($F4FF→$F500,
+  pointer=$3E2F). Wrong pointer → wrong operand → wrong result → the reported
+  `P exp=30 got=31` (carry) is downstream, NOT a carry-ALU bug. ⚠️ HIGH
+  REGRESSION RISK: the emu dp-wrap logic is in `AddrGen.vhd` (the same emu
+  `else` branch iter-21 touched, AAHCtrl="110"/DLNoZero path) and is SHARED by
+  all dp,X/(dp),Y/[dp] modes — needs a multi-case study of the exact WDC wrap
+  rule (textbook "DL=0 wraps within page" disagrees with this SST trace) + full
+  512-op regression before changing. Extract single cases with the renumber
+  trick: `e1_case8668.txt` generator (C-index must match bench's 0-based
+  counter or it asserts "case-index mismatch").
+  TRIAGE (this session, GHDL 10000 each): the WHOLE (dp,X) indirect family —
+  $01/$21/$41/$61/$81/$a1/$c1 — passes 10000/10000 in emu mode; only $e1 has
+  its one boundary case (different per-opcode random corpora, so this is a
+  coverage artifact, not e1-specificity — the bug is latent across the family).
+  ⇒ the dp addressing path is fundamentally SOLID; this is a rare boundary
+  quirk. VERDICT: LOW value (≈no software depends on the DL=0 + dp+X=$FF +
+  16-bit-pointer corner) × HIGH risk (shared path, 9999+ passing cases) ⇒
+  stay deferred; do NOT rush. If ever fixed: the silicon truth is pointer-HIGH
+  uses full 16-bit increment ($F4FF→$F500), NOT 6502 page-wrap ($F4FF→$F400),
+  even when DL=0 — contradicts textbook lore; trust the SST trace.
+- SST suite remains the highest-leverage off-device compat lever.
 
-- `C64_MiSTer/rtl/fpga64_sid_iec.vhd` — FILL_DATAVALID_GATE fix (delayed fill, latched
-  addr/bank, fired on `sdram_data_valid_sync`); `CACHE_READ_PATH := false` restored
-  (Doom-safe). Divergence detector + repurposed UART fields retained (inert when
-  CACHE_READ_PATH=false).
-- `sim/cache_coherency_tb/cpu_cache_filldata_phase_tb.vhd` + `run_filldata_phase.ps1`
-  — NEW, the fill-data-phase reproduction+fix proof (BUGGY=64/FIXED=0).
-
-Memory: `project_bug2_fill_latches_stale_dout.md` (update with the WD FFFF→2
-corroboration + the cache=$00 write-ordering residual). LESSON: a content bug that
-survives every golden-data sim can be a capture-phase bug the consumer dodges via a
-multicycle exception its secondary capture FF doesn't share — model real dout latency.
-And a HW detector run in a non-crashing config beats chasing a crash, but check its
-sampling phase before trusting its zero.
+### Speed status (unchanged from iter-19)
+All cadence/raised-clock >4MHz levers HW-dead; cache read-path parked (coherency);
+only remaining speed lever = pipeline inside the P65C816 di->ALU->PC (deep,
+multi-session). Same-line 2x alt-fire (3.0x, commit 0deb093) rides the parked cache.
