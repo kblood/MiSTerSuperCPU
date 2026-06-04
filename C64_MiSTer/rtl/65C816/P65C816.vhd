@@ -455,28 +455,37 @@ begin
 							SP(7 downto 0) <= X(7 downto 0);
 						end if;
 					when "110"=>
-						-- 2026-04-20: match VICE reg_emul=1 stack wrap within page $01.
-						-- Previously unguarded full-16-bit inc caused SP to underflow into
-						-- zero page in emulation mode when opcodes $2B/$6B/$AB (PLD/RTL/PLB)
-						-- were fetched from 6502 unofficial-opcode byte positions, clobbering
-						-- zp $2F and hanging Asterix-class decompressors.
-						if EF = '0' then
-							SP <= std_logic_vector(unsigned(SP) + 1);
-						else
-							SP(15 downto 8) <= x"01";
-							SP(7 downto 0)  <= std_logic_vector(unsigned(SP(7 downto 0)) + 1);
-						end if;
+						-- New 65816 pull family ($2B/$6B/$AB = PLD/RTL/PLB).
+						-- Full-width 16-bit increment in BOTH modes. In emulation
+						-- mode these ops cross the page-1 boundary on the byte
+						-- accesses (SST: pull at S=$01FF reads $0200, not $0100),
+						-- unlike the old 6502 pulls. SP is re-normalized to page 1
+						-- at the instruction boundary by the LAST_CYCLE block below,
+						-- so it never RESTS in zero page (the earlier per-cycle
+						-- page-1 force fixed the resting value but corrupted the
+						-- cross-page access address; see iter-20 SST $2B/$6B/$AB).
+						SP <= std_logic_vector(unsigned(SP) + 1);
 					when "111" =>
-						-- Same emu-mode SP-wrap fix for $0B/$22/$62/$D4/$F4/$FC
-						-- (PHD/JSR long/PER/PEI/PEA/JSR (abs,X)).
-						if EF = '0' then
-							SP <= std_logic_vector(unsigned(SP) - 1);
-						else
-							SP(15 downto 8) <= x"01";
-							SP(7 downto 0)  <= std_logic_vector(unsigned(SP(7 downto 0)) - 1);
-						end if;
+						-- New 65816 push family ($0B/$22/$62/$D4/$F4/$FC =
+						-- PHD/JSL/PER/PEI/PEA/JSR(abs,X)). Full-width 16-bit
+						-- decrement in BOTH modes; emulation-mode page-cross on the
+						-- byte accesses (SST: push at S=$0100 writes $00FF, not
+						-- $01FF). Re-normalized at the boundary below.
+						SP <= std_logic_vector(unsigned(SP) - 1);
 					when others => null;
 				end case;
+				-- Emulation-mode stack-pointer normalization (iter-20). The new
+				-- 16-bit stack ops above decrement/increment SP full-width so their
+				-- byte accesses cross page 1 like real WDC silicon; here the high
+				-- byte is re-forced to $01 at the instruction boundary so SP rests
+				-- in page 1 (prevents the zp-clobber an unguarded full-16-bit SP
+				-- caused in Asterix-class decompressors). Old 6502 stack ops keep
+				-- their per-cycle page-1 force (LOAD_SP "001"/"011") and never leave
+				-- page 1 mid-instruction, so this is a no-op for them. This partial
+				-- assignment overrides only SP(15:8) from the case above.
+				if EF = '1' and LAST_CYCLE = '1' then
+					SP(15 downto 8) <= x"01";
+				end if;
 			end if; 
 		end if;
 	end process;
@@ -725,16 +734,14 @@ begin
 			when "0010"=>
 				ADDR_BUS <= PBR & std_logic_vector(unsigned(AA(15 downto 0)) + ADDR_INC);
 			when "0110"=>
-				-- NMOS JMP ($xxFF) page-wrap in emu mode (E=1): real NMOS 6502
-				-- increments only AA(7:0) when reading successive bytes of an
-				-- indirect target through bank 0 -- JMP ($02FF) reads lo from
-				-- $02FF and hi from $0200, NOT $0300. Mirrors the EF-gated
-				-- wrap already used by ADDR_BUS="0111" (DP indirect) below.
-				if EF = '1' then
-					ADDR_BUS <= x"00" & AA(15 downto 8) & std_logic_vector(unsigned(AA(7 downto 0)) + ADDR_INC(7 downto 0));
-				else
-					ADDR_BUS <= x"00" & std_logic_vector(unsigned(AA(15 downto 0)) + ADDR_INC);
-				end if;
+				-- JMP (abs) $6C and JMP [abs] $DC indirect-pointer reads. The
+				-- W65C816 FIXED the NMOS JMP ($xxFF) page-wrap bug -- it reads the
+				-- high byte from the next page even in emulation mode (SST $6C:
+				-- ptr $A6FF -> hi at $A700, not $A600; $DC: bank at $DC00 not
+				-- $DB00). So always full 16-bit increment, both modes. (iter-20:
+				-- the earlier EF=1 NMOS-wrap was wrong for the 65816; "0110" is
+				-- used ONLY by $6C/$DC, verified -- $7C uses "0010".)
+				ADDR_BUS <= x"00" & std_logic_vector(unsigned(AA(15 downto 0)) + ADDR_INC);
 				
 			when "0011" | "0111" =>
 				-- DP indirect pointer-byte read. ADDR_BUS="0111" requests
