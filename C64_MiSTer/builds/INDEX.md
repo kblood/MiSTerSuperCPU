@@ -2,6 +2,12 @@
 
 | Built (UTC)        | Branch              | SHA        | MD5 (short) | Subject                                    | Dirty |
 |--------------------|---------------------|------------|-------------|--------------------------------------------|-------|
+| 20260604 044358 | milestone-b-cdc-rew | 58b308a5bd | 4671ecfc    | fix(65c816): iter-20 emu-mode stack page-c | yes   |
+| 20260604 001834 | milestone-b-cdc-rew | 27acd2d2f8 | 7dcc71e3    | docs(cache): iter-18 close — decisive A/ | yes   |
+| 20260603 225945 | milestone-b-cdc-rew | 27acd2d2f8 | c0e941b0    | docs(cache): iter-18 close — decisive A/ | yes   |
+| 20260603 212243 | milestone-b-cdc-rew | 2dd7f7a72a | 595008b1    | test(cache): iter-17 Build D HW-PROVEN — | yes   |
+| 20260603 203130 | milestone-b-cdc-rew | 2dd7f7a72a | 394f476d    | test(cache): iter-17 Build D HW-PROVEN — | yes   |
+| 20260603 185851 | milestone-b-cdc-rew | 2dd7f7a72a | f9f0a5c9    | test(cache): iter-17 Build D HW-PROVEN — | yes   |
 | 20260603 134322 | milestone-b-cdc-rew | c3a070d4c5 | b6612ef2    | test(cache): iter-16 FILL_TXMATCH HW-FALSI | yes   |
 | 20260603 110207 | milestone-b-cdc-rew | c3a070d4c5 | 4160e2ef    | test(cache): iter-16 FILL_TXMATCH HW-FALSI | yes   |
 | 20260603 094616 | milestone-b-cdc-rew | c3a070d4c5 | a42ec7d7    | test(cache): iter-16 FILL_TXMATCH HW-FALSI | yes   |

@@ -290,7 +290,7 @@ begin
             x_f   : std_logic;
             l_f   : std_logic;
         end record;
-        type cyc_arr_t is array (0 to 31) of cyc_exp_t;
+        type cyc_arr_t is array (0 to 127) of cyc_exp_t;
         variable cyc_exp : cyc_arr_t;
 
         type cyc_obs_t is record
@@ -305,7 +305,7 @@ begin
             mf    : std_logic;
             xf    : std_logic;
         end record;
-        type cyc_obs_arr_t is array (0 to 31) of cyc_obs_t;
+        type cyc_obs_arr_t is array (0 to 127) of cyc_obs_t;
         variable observed : cyc_obs_arr_t;
 
         -- Counters
@@ -458,7 +458,7 @@ begin
             readline(fin, l);
             read_eat_tag(l);
             read_dec(l, n_cy);
-            assert n_cy <= 31 report "cycle count exceeds buffer (>31)" severity failure;
+            assert n_cy <= 127 report "cycle count exceeds buffer (>127)" severity failure;
             for i in 0 to n_cy - 1 loop
                 readline(fin, l);
                 read_hex(l, tmp_addr);

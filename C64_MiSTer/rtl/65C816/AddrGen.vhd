@@ -146,7 +146,17 @@ begin
 				when others => null;
 			end case;
 		else
-			if AAHCtrl(2) = '0' then
+			-- IND_CTRL "10"/"11" = block-move (MVN/MVP) direct X->AA / Y->AA.
+			-- These must be handled in emulation too: without this branch the
+			-- high byte fell through to the AAHCtrl logic below and kept the
+			-- STALE AAH (leftover PCH), corrupting the block-move source/dest
+			-- address (low byte was already correct via NewAAL). X.H/Y.H are
+			-- held at 0 in 8-bit-index mode, giving the correct $00 high byte.
+			if IND_CTRL = "10" then
+				NewAAH <= "0" & X(15 downto 8);
+			elsif IND_CTRL = "11" then
+				NewAAH <= "0" & Y(15 downto 8);
+			elsif AAHCtrl(2) = '0' then
 				NewAAH <= "0" & AAH;
 			else
 				-- emu mode dp,X / dp,Y page-cross:
