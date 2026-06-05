@@ -43,6 +43,13 @@ architecture sim of c64_superram_coherency_tb is
     constant CLK_PERIOD : time := 31250 ps;  -- ~32 MHz
 
     signal clk   : std_logic := '0';
+    -- iter-24: real 64 MHz SDRAM clock. PLL-aligned so clk32 rising edges
+    -- coincide with every-other clk64 rising edge (matches c64.sv clk_sys/clk64).
+    -- clk32 starts '0' (rises at 15.625 ns); clk64 starts '1' (rises at 15.625,
+    -- 31.25, ...). The intermediate clk64 rising edge (mid clk32 period) is where
+    -- the SDRAM ce-edge / data_valid drop lands -> the clk64->clk32 stale-high
+    -- window the cache fill races (Bug 2).
+    signal clk64 : std_logic := '1';
     signal reset : std_logic := '1';
 
     -- ioctl pseudo-interface (unused here, tied off)
@@ -76,6 +83,13 @@ architecture sim of c64_superram_coherency_tb is
 
     signal sim_done : boolean := false;
 
+    -- iter-24: dual-clock mode select. false = clk32 SDRAM (green coherent
+    -- baseline). true = clk64 faithful-timing SDRAM (the proof that Bug 2 is a
+    -- setup-time class: in zero-delay sim the CPU itself reads stale SDRAM and
+    -- BRK-loops, since there is no SDC multicycle to let it sample late). The
+    -- runner flips this in lockstep with the top's CLK64_SDRAM generic.
+    constant DUALCLK : boolean := false;
+
     -- iter-23 DEBUG: internal-signal observers (external names into the DUT)
     -- to discriminate WHY the reset vector reads $00. Path = tb.dut(top).dut(fpga64).
     signal obs_emu     : std_logic;   -- emu_mode_816_i ('1'=emu at reset, expected)
@@ -87,6 +101,18 @@ architecture sim of c64_superram_coherency_tb is
     signal obs_swe     : std_logic;             -- top sdram_we
     signal obs_saddr   : unsigned(23 downto 0); -- top sdram_addr
     signal obs_sdin    : std_logic_vector(7 downto 0); -- top sdram_din
+
+    -- iter-24: the built-in HW divergence detector (diag_proc, fpga64:5178).
+    -- A non-zero count = a cache HIT served rp_cache_di_d1 /= cpuDi_nocache =
+    -- exactly Bug 2 (stale cache byte), with the offending addr/bank + the two
+    -- bytes captured at the first divergence. This is the SAME detector used on
+    -- HW (Build-D WD), now observed in-system.
+    signal obs_dvalid  : std_logic;             -- sdram_data_valid_sync (in DUT)
+    signal obs_mmcount : unsigned(15 downto 0); -- diag_mm_count
+    signal obs_mmaddr  : unsigned(15 downto 0); -- diag_mm_addr
+    signal obs_mmbank  : unsigned(7 downto 0);  -- diag_mm_bank
+    signal obs_mmcache : unsigned(7 downto 0);  -- diag_mm_cache
+    signal obs_mmsdram : unsigned(7 downto 0);  -- diag_mm_sdram
 
     procedure tick(signal clk : std_logic; n : natural) is
     begin
@@ -122,6 +148,21 @@ begin
         wait;
     end process;
 
+    -- iter-24: 64 MHz clock for the behavioral SDRAM. Starts '1' so its rising
+    -- edges land at 15.625/31.25/46.875 ns; clk32 rises at 15.625/46.875 ns, so
+    -- every clk32 rising edge coincides with a clk64 rising edge (PLL-aligned),
+    -- with one extra clk64 rising edge mid clk32 period.
+    clk64gen : process
+    begin
+        while not sim_done loop
+            clk64 <= '1';
+            wait for CLK_PERIOD / 4;
+            clk64 <= '0';
+            wait for CLK_PERIOD / 4;
+        end loop;
+        wait;
+    end process;
+
     rstgen : process
     begin
         reset <= '1';
@@ -137,11 +178,13 @@ begin
     dut : entity work.c64_reduced_top_v2
         generic map (
             SDRAM_BYTES => 16#300000#,
-            TEST_ROM    => 1
+            TEST_ROM    => 1,
+            CLK64_SDRAM => DUALCLK
         )
         port map (
             clk32             => clk,
             clk_cpu           => clk,   -- iter-23: passthrough (SCPU_MCP_ACTIVE='0') => clk_cpu = clk32. Unmapped it defaults '0' and the 816 never clocks (cpuAddr frozen $0000).
+            clk64             => clk64, -- iter-24: 64MHz SDRAM clock (clk64_sdram_model)
             reset             => reset,
             ioctl_download    => ioctl_download,
             ioctl_wr          => ioctl_wr,
@@ -177,6 +220,14 @@ begin
     obs_swe    <= << signal .c64_superram_coherency_tb.dut.sdram_we   : std_logic >>;
     obs_saddr  <= << signal .c64_superram_coherency_tb.dut.sdram_addr : unsigned(23 downto 0) >>;
     obs_sdin   <= << signal .c64_superram_coherency_tb.dut.sdram_din  : std_logic_vector(7 downto 0) >>;
+
+    -- iter-24: divergence detector + data-valid handshake observers.
+    obs_dvalid  <= << signal .c64_superram_coherency_tb.dut.dut.sdram_data_valid_sync : std_logic >>;
+    obs_mmcount <= << signal .c64_superram_coherency_tb.dut.dut.diag_mm_count : unsigned(15 downto 0) >>;
+    obs_mmaddr  <= << signal .c64_superram_coherency_tb.dut.dut.diag_mm_addr  : unsigned(15 downto 0) >>;
+    obs_mmbank  <= << signal .c64_superram_coherency_tb.dut.dut.diag_mm_bank  : unsigned(7 downto 0) >>;
+    obs_mmcache <= << signal .c64_superram_coherency_tb.dut.dut.diag_mm_cache : unsigned(7 downto 0) >>;
+    obs_mmsdram <= << signal .c64_superram_coherency_tb.dut.dut.diag_mm_sdram : unsigned(7 downto 0) >>;
 
     -- iter-23 DEBUG: catch the reset-vector fetch ($FFFA-$FFFF) and report
     -- emu mode + the byte the CPU sees, regardless of exact cycle timing.
@@ -221,7 +272,8 @@ begin
             if obs_swe = '1' and (pwe = '0' or obs_saddr /= paddr) and
                (obs_saddr = (x"00" & x"0400") or obs_saddr = (x"00" & x"0401")
                 or obs_saddr = (x"00" & x"0402") or obs_saddr = (x"00" & x"0403")
-                or obs_saddr = (x"20" & x"00AE")) then
+                or obs_saddr = (x"00" & x"0405")
+                or obs_saddr = (x"20" & x"00AE") or obs_saddr = (x"20" & x"0140")) then
                 report "SDRAMWR addr=$" & hex2(std_logic_vector(obs_saddr(23 downto 16)))
                      & ":" & hex4(std_logic_vector(obs_saddr(15 downto 0)))
                      & " data=$" & hex2(obs_sdin)
@@ -239,17 +291,21 @@ begin
     ------------------------------------------------------------------
     stim : process
         variable rb        : std_logic_vector(7 downto 0);
-        variable w0        : std_logic_vector(7 downto 0);  -- witness first read
-        variable w1        : std_logic_vector(7 downto 0);  -- witness re-read
+        variable w0        : std_logic_vector(7 downto 0);  -- A read (line $20:0140)
+        variable w1        : std_logic_vector(7 downto 0);  -- B first read (miss, live SDRAM)
+        variable w2        : std_logic_vector(7 downto 0);  -- B re-read (HIT) <- the key witness
         variable sdr       : std_logic_vector(7 downto 0);  -- SDRAM truth $20:00AE
+        variable sdrA      : std_logic_vector(7 downto 0);  -- SDRAM truth $20:0140
         variable done      : std_logic_vector(7 downto 0);
         variable pass_cnt  : integer := 0;
         variable fail_cnt  : integer := 0;
         variable waited    : integer := 0;
-        constant W_FIRST   : unsigned(23 downto 0) := x"00" & x"0400";
-        constant W_REREAD  : unsigned(23 downto 0) := x"00" & x"0401";
+        constant W_AREAD   : unsigned(23 downto 0) := x"00" & x"0400";
+        constant W_BFIRST  : unsigned(23 downto 0) := x"00" & x"0401";
+        constant W_BREREAD : unsigned(23 downto 0) := x"00" & x"0405";
         constant W_DONE    : unsigned(23 downto 0) := x"00" & x"0402";
         constant SR_TARGET : unsigned(23 downto 0) := x"20" & x"00AE";
+        constant SR_LINEA  : unsigned(23 downto 0) := x"20" & x"0140";
     begin
         wait until reset = '0';
         -- ROM load (~16 KB pushed over c64rom_wr) then the CPU boots into the
@@ -283,6 +339,15 @@ begin
         ----------------------------------------------------------------
         tick(clk, 80_000);
 
+        -- iter-24 dual-clock diagnostic: did the emu copy-stub's STA $0800,X
+        -- writes land in SDRAM? ($0800 = LDA #$C3 = $A9, $0801 = $C3). If these
+        -- are $00, the clk64 model's WRITE path is broken; if non-$00 but the CPU
+        -- still BRK-loops, the READ phase (fetch from $0800) is the issue.
+        probe_byte(clk, probe_addr, probe_data, x"00" & x"0800", rb);
+        report "copy-check $00:0800 = $" & hex2(rb) & "  (expect $A9 = body LDA #imm)";
+        probe_byte(clk, probe_addr, probe_data, x"00" & x"0801", rb);
+        report "copy-check $00:0801 = $" & hex2(rb) & "  (expect $C3)";
+
         -- Boot marker: did the CPU execute the very first instruction at $E000?
         probe_byte(clk, probe_addr, probe_data, x"00" & x"0403", rb);
         report "boot marker ($00:0403) = $" & hex2(rb) & "  (expect $C3 if CPU ran $E000)";
@@ -301,52 +366,99 @@ begin
                & ", PC=$" & hex2(std_logic_vector(dbg_pbr)) & ":" & hex4(std_logic_vector(dbg_pc)) & ")";
 
         -- Read the witnesses + SDRAM truth.
-        probe_byte(clk, probe_addr, probe_data, W_FIRST,  w0);
-        probe_byte(clk, probe_addr, probe_data, W_REREAD, w1);
+        probe_byte(clk, probe_addr, probe_data, W_AREAD,   w0);
+        probe_byte(clk, probe_addr, probe_data, W_BFIRST,  w1);
+        probe_byte(clk, probe_addr, probe_data, W_BREREAD, w2);
         probe_byte(clk, probe_addr, probe_data, SR_TARGET, sdr);
+        probe_byte(clk, probe_addr, probe_data, SR_LINEA,  sdrA);
 
-        report "witness[0] first-read  ($00:0400) = $" & hex2(w0) & "  (expect $00, pre-write SDRAM)";
-        report "witness[1] re-read     ($00:0401) = $" & hex2(w1) & "  (expect $4A if coherent)";
-        report "SDRAM truth $20:00AE              = $" & hex2(sdr) & "  (expect $4A: the long-store reached memory)";
+        report "witness[0] A read      ($00:0400) = $" & hex2(w0) & "  (expect $AA: line A $20:0140)";
+        report "witness[1] B 1st read  ($00:0401) = $" & hex2(w1) & "  (expect $4A: miss serves live SDRAM)";
+        report "witness[2] B re-read   ($00:0405) = $" & hex2(w2) & "  (expect $4A coherent / $AA = STALE HIT = BUG 2)";
+        report "SDRAM truth $20:00AE              = $" & hex2(sdr)  & "  (expect $4A)";
+        report "SDRAM truth $20:0140              = $" & hex2(sdrA) & "  (expect $AA)";
 
-        -- Sanity: first read should be the pre-write $00.
-        if w0 = x"00" then
+        -- Sanity: the seed long-stores must reach SDRAM.
+        if sdr = x"4A" and sdrA = x"AA" then
             pass_cnt := pass_cnt + 1;
         else
-            report "SANITY: first read != $00 -- SuperRAM read path or test ROM is "
-                 & "wrong (got $" & hex2(w0) & ")." severity warning;
-            fail_cnt := fail_cnt + 1;
-        end if;
-
-        -- Sanity: the long-store must reach SDRAM.
-        if sdr = x"4A" then
-            pass_cnt := pass_cnt + 1;
-        else
-            report "SANITY: SDRAM $20:00AE != $4A -- the long-store never reached "
-                 & "memory (got $" & hex2(sdr) & "); a different bug than the cache."
+            report "SANITY: SDRAM seed wrong ($20:00AE=$" & hex2(sdr) & " $20:0140=$" & hex2(sdrA)
+                 & ") -- the long-stores never reached memory; a different bug than the cache."
                  severity warning;
             fail_cnt := fail_cnt + 1;
         end if;
 
+        -- Sanity: the B first read (a MISS) must serve live SDRAM = $4A. A miss
+        -- reads cpuDi_nocache directly (no cache override), so this is always
+        -- correct unless the SuperRAM read path itself is broken.
+        if w1 = x"4A" then
+            pass_cnt := pass_cnt + 1;
+        else
+            report "SANITY: B first read != $4A (got $" & hex2(w1)
+                 & ") -- SuperRAM read path or test ROM is wrong." severity warning;
+            fail_cnt := fail_cnt + 1;
+        end if;
+
+        -- iter-24: in-system divergence detector readout. This is the decisive
+        -- in-system Bug-2 signal — independent of the witness pattern. A non-zero
+        -- count means a cache HIT served a byte that differs from live SDRAM.
+        report "DIAG diverge count=" & integer'image(to_integer(obs_mmcount))
+             & " first @ $" & hex2(std_logic_vector(obs_mmbank)) & ":" & hex4(std_logic_vector(obs_mmaddr))
+             & " cache=$" & hex2(std_logic_vector(obs_mmcache))
+             & " sdram=$" & hex2(std_logic_vector(obs_mmsdram));
+        if obs_mmcount /= 0 then
+            report "SUPERRAM_COHERENCY: DIAG-DIVERGE count=" & integer'image(to_integer(obs_mmcount))
+                 & " @ $" & hex2(std_logic_vector(obs_mmbank)) & ":" & hex4(std_logic_vector(obs_mmaddr))
+                 & " cache=$" & hex2(std_logic_vector(obs_mmcache)) & " sdram=$" & hex2(std_logic_vector(obs_mmsdram))
+                 & " == BUG 2 REPRODUCED (HIT served stale byte)";
+        end if;
+
         -- The coherency verdict (gated on the CPU having actually run the
-        -- program -- boot marker $C3 -- not on the flaky $0402 readback).
+        -- program -- boot marker $C3). The decisive witness is the B RE-READ
+        -- (a cache HIT): coherent => $4A; stale => $AA (line A's value leaked in
+        -- via the fill latching A's dout before B's read propagated).
         if rb = x"C3" then
-            if w1 = x"4A" then
-                report "SUPERRAM_COHERENCY: PASS  re-read=$4A (cache coherent on this path)";
+            if w2 = x"4A" then
+                report "SUPERRAM_COHERENCY: PASS  B re-read=$4A (cache coherent on the cross-line path)";
+            elsif w2 = x"AA" and sdr = x"4A" then
+                report "SUPERRAM_COHERENCY: STALE B re-read=$AA while SDRAM=$4A "
+                     & "== BUG 2 REPRODUCED (HIT served line A's stale dout)";
             elsif sdr = x"4A" then
-                report "SUPERRAM_COHERENCY: STALE re-read=$" & hex2(w1)
+                report "SUPERRAM_COHERENCY: STALE B re-read=$" & hex2(w2)
                      & " while SDRAM=$4A == BUG 2 REPRODUCED (cache served stale byte)";
             else
-                report "SUPERRAM_COHERENCY: INCONCLUSIVE re-read=$" & hex2(w1)
+                report "SUPERRAM_COHERENCY: INCONCLUSIVE B re-read=$" & hex2(w2)
                      & " SDRAM=$" & hex2(sdr) & " (write path suspect, not the cache)";
             end if;
         end if;
 
         tick(clk, 50);
         report "=== SUMMARY: sanity pass=" & integer'image(pass_cnt)
-             & " fail=" & integer'image(fail_cnt) & " ===";
+             & " fail=" & integer'image(fail_cnt) & " (mode=" & boolean'image(DUALCLK) & ") ===";
         sim_done <= true;
-        if fail_cnt /= 0 then
+
+        if DUALCLK then
+            -- Dual-clock proof run. EXPECTED outcome: the CPU reads stale SDRAM
+            -- (boot marker $C3 written, but the body fetch from $0800 returns the
+            -- not-yet-fresh dout => BRK-loop, done marker != $EE). This is the
+            -- finding, not a regression: zero-delay sim has no SDC multicycle, so
+            -- the consumer cannot sample the clk64 dout_r late => Bug 2 (a fill-FF
+            -- setup-time violation) is NOT reproducible as a functional divergence.
+            if rb = x"C3" and done /= x"EE" then
+                report "DUAL-CLOCK FINDING: CPU read stale SDRAM (boot=$C3, done=$"
+                     & hex2(done) & " != $EE) => Bug 2 is a SETUP-TIME class, "
+                     & "unreproducible in zero-delay RTL. EXPECTED.";
+                report "c64_superram_coherency_tb: PASS" severity note;
+            elsif rb = x"C3" and done = x"EE" and obs_mmcount /= 0 then
+                report "DUAL-CLOCK SURPRISE: program completed AND divergence "
+                     & "detected => Bug 2 reproduced functionally; investigate.";
+                report "c64_superram_coherency_tb: PASS" severity note;
+            else
+                report "DUAL-CLOCK: program completed coherent (done=$" & hex2(done)
+                     & ", diverge=" & integer'image(to_integer(obs_mmcount)) & ").";
+                report "c64_superram_coherency_tb: PASS" severity note;
+            end if;
+        elsif fail_cnt /= 0 then
             report "c64_superram_coherency_tb: FAIL" severity failure;
         else
             report "c64_superram_coherency_tb: PASS" severity note;

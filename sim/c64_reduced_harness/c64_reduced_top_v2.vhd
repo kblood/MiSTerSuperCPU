@@ -62,13 +62,27 @@ entity c64_reduced_top_v2 is
         SCPU_MCP_ACTIVE : std_logic := '0';
         -- iter-23: 0 = real KERNAL/BASIC (default, existing v2 behavior).
         -- 1 = Bug-2 SuperRAM coherency test ROM (make_bug2_test_rom).
-        TEST_ROM : integer := 0
+        TEST_ROM : integer := 0;
+        -- iter-24: false = clk32 behavioral SDRAM (simple_sdram_model, the green
+        -- iter-23 baseline where data settles by the clk32 consume edge). true =
+        -- clk64-clocked SDRAM (clk64_sdram_model) with faithful sdram_pm q-FSM
+        -- timing + sticky data_valid + 1-flop clk32 sync — exposes the clk64->clk32
+        -- read-latch phase. NOTE: under true, zero-delay sim has no SDC multicycle
+        -- so the CPU itself reads stale SDRAM (it BRK-loops); this DEMONSTRATES
+        -- that Bug 2 is a setup-time / timing-asymmetry class, not a functional bug
+        -- reproducible in zero-delay RTL. See docs/session_handoff.md (iter-24).
+        CLK64_SDRAM : boolean := false
     );
     port (
         clk32     : in  std_logic;
         -- Milestone B: separate CPU clock (64MHz). Defaults to '0' so the
         -- existing v2 tb (which leaves it unconnected) stays in passthrough.
         clk_cpu   : in  std_logic := '0';
+        -- iter-24: real 64MHz SDRAM clock. The behavioral SDRAM (clk64_sdram_model)
+        -- runs here so sdram_data_valid is a genuine clk64->clk32 CDC level (the
+        -- domain Bug 2 lives in). Defaults to '0' for back-compat with tbs that
+        -- only use the clk32 path; those keep the simple_sdram_model behavior.
+        clk64     : in  std_logic := '0';
         reset     : in  std_logic;
 
         -- ioctl pseudo-interface (bench-driven PRG loader)
@@ -208,6 +222,19 @@ architecture rtl of c64_reduced_top_v2 is
     signal sdram_dout : std_logic_vector(7 downto 0);
     signal sdram_probe_dout : std_logic_vector(7 downto 0);
     signal bram_probe_dout_s : unsigned(7 downto 0);
+
+    -- iter-24: model the real sdram_pm.v `data_valid` handshake so the DUT's
+    -- FILL_DATAVALID_GATE is actually exercised. Real semantics (sdram_pm.v:159-194):
+    --   * data_valid <= 0 at the ce-edge of a NEW SDRAM cycle (read OR write)
+    --   * data_valid <= 1 at the q==STATE_READ sample edge (dout_r fresh)
+    -- In the harness, sdram_re/sdram_we pulse for one clk32 at cycle start, and
+    -- simple_sdram_model makes dout fresh 3 clk32 later for SuperRAM (bank!=$00),
+    -- 2 clk32 later for bank $00. We mirror that with a small latency counter.
+    -- Without this, sdram_data_valid defaults '1' => the fill fires immediately
+    -- and the deferred-fill pending window (where Bug 2 lives) never opens.
+    signal sdram_ce : std_logic := '0';            -- cycle-start strobe (re or we)
+    signal sdram_dv_cnt : integer range 0 to 7 := 0; -- clk32 data_valid latency ctr
+    signal sdram_data_valid_drv : std_logic := '0';  -- data_valid (clk32 or clk64 path)
 
 begin
 
@@ -412,21 +439,76 @@ begin
         end if;
     end process;
 
-    sdram_inst : entity work.simple_sdram_model
-        generic map (
-            MEM_BYTES => SDRAM_BYTES
-        )
-        port map (
-            clk        => clk32,
-            reset      => reset,
-            addr       => sdram_addr,
-            din        => sdram_din,
-            we         => sdram_we,
-            re         => sdram_re,
-            dout       => sdram_dout,
-            probe_addr => probe_addr,
-            probe_dout => sdram_probe_dout
-        );
+    -- iter-24: the SDRAM cycle-start strobe (ce) for the clk64 model. A read OR
+    -- a write starts a cycle. sdram_re/sdram_we are 1-clk32 pulses (registered in
+    -- sdram_write_mux), i.e. 2 clk64 wide, so the clk64 model's `ce && !last_ce`
+    -- edge-detect fires exactly once per access — just like the real sdram_pm.
+    sdram_ce <= sdram_re or sdram_we;
+
+    -- ── clk32 SDRAM path (default, green iter-23 baseline) ──────────────
+    gen_sdram_clk32 : if not CLK64_SDRAM generate
+        sdram_inst32 : entity work.simple_sdram_model
+            generic map (
+                MEM_BYTES => SDRAM_BYTES
+            )
+            port map (
+                clk        => clk32,
+                reset      => reset,
+                addr       => sdram_addr,
+                din        => sdram_din,
+                we         => sdram_we,
+                re         => sdram_re,
+                dout       => sdram_dout,
+                probe_addr => probe_addr,
+                probe_dout => sdram_probe_dout
+            );
+
+        -- clk32 data_valid model: drop on read/write issue, raise 3 clk32 later
+        -- (SuperRAM) / 2 (bank $00), matching simple_sdram_model's read depth.
+        sdram_dv_proc : process(clk32)
+        begin
+            if rising_edge(clk32) then
+                if reset = '1' then
+                    sdram_data_valid_drv <= '0';
+                    sdram_dv_cnt         <= 0;
+                else
+                    if sdram_re = '1' or sdram_we = '1' then
+                        sdram_data_valid_drv <= '0';
+                        if sdram_addr(23 downto 16) /= x"00" then
+                            sdram_dv_cnt <= 3;
+                        else
+                            sdram_dv_cnt <= 2;
+                        end if;
+                    elsif sdram_dv_cnt > 1 then
+                        sdram_dv_cnt <= sdram_dv_cnt - 1;
+                    elsif sdram_dv_cnt = 1 then
+                        sdram_dv_cnt         <= 0;
+                        sdram_data_valid_drv <= '1';
+                    end if;
+                end if;
+            end if;
+        end process;
+    end generate;
+
+    -- ── clk64 SDRAM path (faithful sdram_pm timing; the dual-clock proof) ──
+    gen_sdram_clk64 : if CLK64_SDRAM generate
+        sdram_inst64 : entity work.clk64_sdram_model
+            generic map (
+                MEM_BYTES => SDRAM_BYTES
+            )
+            port map (
+                clk64      => clk64,
+                reset      => reset,
+                addr       => sdram_addr,
+                din        => sdram_din,
+                we         => sdram_we,
+                ce         => sdram_ce,
+                dout       => sdram_dout,
+                data_valid => sdram_data_valid_drv,
+                probe_addr => probe_addr,
+                probe_dout => sdram_probe_dout
+            );
+    end generate;
 
     -- fpga64_sid_iec.ramDin is the data coming BACK from SDRAM. Drive it
     -- directly from the (combinational) sdram_dout.
@@ -468,6 +550,10 @@ begin
             io_cycle     => io_cycle,
             ext_cycle    => ext_cycle,
             refresh      => refresh_sig,
+
+            -- iter-24: model the SDRAM read-completion handshake so the DUT's
+            -- FILL_DATAVALID_GATE defers the cache fill (the Bug-2 window).
+            sdram_data_valid => sdram_data_valid_drv,
 
             cia_mode     => '0',
             turbo_mode   => "00",

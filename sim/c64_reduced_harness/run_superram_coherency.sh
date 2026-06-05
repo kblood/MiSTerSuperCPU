@@ -15,6 +15,9 @@ set -euo pipefail
 
 STOP_TIME="${STOP_TIME:-6ms}"
 CACHE_READ_PATH="${CACHE_READ_PATH:-1}"
+# iter-24: CLK64_SDRAM=1 runs the dual-clock (faithful sdram_pm timing) proof.
+# Default 0 = clk32 behavioral SDRAM (the green coherent baseline).
+CLK64_SDRAM="${CLK64_SDRAM:-0}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -94,6 +97,15 @@ else
     echo "patch#3: CACHE_READ_PATH left false (sanity run)"
 fi
 
+# Patch #5 (iter-24): stage the tb + flip DUALCLK for the dual-clock proof run.
+cp -f "${SCRIPT_DIR}/c64_superram_coherency_tb.vhd" "${STAGE}/c64_superram_coherency_tb.vhd"
+if [ "${CLK64_SDRAM}" == "1" ]; then
+    sed -i 's/constant DUALCLK : boolean := false;/constant DUALCLK : boolean := true;/' "${STAGE}/c64_superram_coherency_tb.vhd"
+    echo "patch#5: CLK64_SDRAM=1 (dual-clock proof; CPU expected to read stale)"
+else
+    echo "patch#5: CLK64_SDRAM=0 (clk32 coherent baseline)"
+fi
+
 cd "${WORK_DIR}"
 
 SOURCES=(
@@ -126,10 +138,11 @@ SOURCES=(
 
     "${PHASE2_DIR}/prg_loader_pkg.vhd"
     "${COMMON_DIR}/simple_sdram_model.vhd"
+    "${SCRIPT_DIR}/clk64_sdram_model.vhd"
 
     "${SCRIPT_DIR}/rom_loader_pkg.vhd"
     "${SCRIPT_DIR}/c64_reduced_top_v2.vhd"
-    "${SCRIPT_DIR}/c64_superram_coherency_tb.vhd"
+    "${STAGE}/c64_superram_coherency_tb.vhd"
 )
 
 echo "==> Analyze (SuperRAM coherency repro, CACHE_READ_PATH=${CACHE_READ_PATH})"

@@ -327,7 +327,7 @@ package body rom_loader_pkg is
         r(BASE + 16#000#) := x"A9";  r(BASE + 16#001#) := x"C3";  -- LDA #$C3
         r(BASE + 16#002#) := x"8D";  r(BASE + 16#003#) := x"03";
         r(BASE + 16#004#) := x"04";                                 -- STA $0403 (boot marker)
-        r(BASE + 16#005#) := x"A2";  r(BASE + 16#006#) := x"31";  -- LDX #$31 (len-1 = 49)
+        r(BASE + 16#005#) := x"A2";  r(BASE + 16#006#) := x"37";  -- LDX #$37 (len-1 = 55 => 56 bytes)
         r(BASE + 16#007#) := x"BD";  r(BASE + 16#008#) := x"00";
         r(BASE + 16#009#) := x"E1";                                 -- LDA $E100,X
         r(BASE + 16#00A#) := x"9D";  r(BASE + 16#00B#) := x"00";
@@ -338,43 +338,51 @@ package body rom_loader_pkg is
         r(BASE + 16#012#) := x"08";                                 -- JMP $0800
 
         -- ---- Native body (assembled to run at $0800; stored at ROM $E100) ----
+        -- iter-24 CROSS-LINE stale-dout repro (the iter-18 mechanism the iter-23
+        -- same-address test could not expose). Two DISTINCT SuperRAM lines, both
+        -- bank $20: line A = $20:0140 (line_index $028), line B = $20:00AE (line
+        -- $015). Seed both via long-stores (uncached writes), then read A (fill
+        -- $AA, dout settles to $AA) immediately followed by read B (miss): if B's
+        -- deferred fill latches dout while it still holds A's stale $AA (before B's
+        -- SDRAM read propagates), B's cache line is poisoned with $AA. The re-read
+        -- of B is then a HIT serving stale $AA while SDRAM=$4A == Bug 2.
         --   0800 A9 C3        LDA #$C3
-        --   0802 8D 04 04     STA $0404      ; native-body-entered marker
+        --   0802 8D 04 04     STA $0404      ; native-entered marker
         --   0805 18           CLC
-        --   0806 FB           XCE            ; -> NATIVE mode
-        --   0807 AF AE 00 20  LDA $2000AE    ; first read (miss/fill, SDRAM=$00)
-        --   080B 8D 00 04     STA $0400      ; witness[0]
-        --   080E A2 20        LDX #$20
-        --   0810 CA           DEX
-        --   0811 D0 FD        BNE $0810      ; delay ~32x (let the fill allocate)
-        --   0813 A9 4A        LDA #$4A
-        --   0815 8F AE 00 20  STA $2000AE    ; NATIVE long store (the "loader write")
-        --   0819 EA EA        NOP NOP
-        --   081B AF AE 00 20  LDA $2000AE    ; re-read (coherent=$4A / stale=$00=BUG)
-        --   081F 8D 01 04     STA $0401      ; witness[1]
-        --   0822 A9 EE        LDA #$EE
-        --   0824 8D 02 04     STA $0402      ; done marker
-        --   0827 EA x8                       ; NOP flush (commit done store)
-        --   082F 4C 2F 08     JMP $082F      ; spin
+        --   0806 FB           XCE            ; -> NATIVE
+        --   0807 A9 AA        LDA #$AA
+        --   0809 8F 40 01 20  STA $200140    ; line A SDRAM = $AA
+        --   080D A9 4A        LDA #$4A
+        --   080F 8F AE 00 20  STA $2000AE    ; line B SDRAM = $4A
+        --   0813 AF 40 01 20  LDA $200140    ; read A (miss -> fill $AA)
+        --   0817 8D 00 04     STA $0400      ; witness[0] = A read (expect $AA)
+        --   081A AF AE 00 20  LDA $2000AE    ; read B (miss; CPU sees live $4A)
+        --   081E 8D 01 04     STA $0401      ; witness[1] = B 1st read (expect $4A)
+        --   0821 AF AE 00 20  LDA $2000AE    ; re-read B (HIT) <- bug surfaces
+        --   0825 8D 05 04     STA $0405      ; witness[2] = B re-read (coherent $4A / stale $AA)
+        --   0828 A9 EE        LDA #$EE
+        --   082A 8D 02 04     STA $0402      ; done marker
+        --   082D EA x8                       ; NOP flush
+        --   0835 4C 35 08     JMP $0835      ; spin
         r(NBODY + 16#00#) := x"A9";  r(NBODY + 16#01#) := x"C3";   -- LDA #$C3
         r(NBODY + 16#02#) := x"8D";  r(NBODY + 16#03#) := x"04";  r(NBODY + 16#04#) := x"04"; -- STA $0404
         r(NBODY + 16#05#) := x"18";                                -- CLC
         r(NBODY + 16#06#) := x"FB";                                -- XCE -> native
-        r(NBODY + 16#07#) := x"AF";  r(NBODY + 16#08#) := x"AE";  r(NBODY + 16#09#) := x"00";  r(NBODY + 16#0A#) := x"20"; -- LDA $2000AE
-        r(NBODY + 16#0B#) := x"8D";  r(NBODY + 16#0C#) := x"00";  r(NBODY + 16#0D#) := x"04"; -- STA $0400
-        r(NBODY + 16#0E#) := x"A2";  r(NBODY + 16#0F#) := x"20";  -- LDX #$20
-        r(NBODY + 16#10#) := x"CA";                                -- DEX
-        r(NBODY + 16#11#) := x"D0";  r(NBODY + 16#12#) := x"FD";  -- BNE $0810 (-3)
-        r(NBODY + 16#13#) := x"A9";  r(NBODY + 16#14#) := x"4A";  -- LDA #$4A
-        r(NBODY + 16#15#) := x"8F";  r(NBODY + 16#16#) := x"AE";  r(NBODY + 16#17#) := x"00";  r(NBODY + 16#18#) := x"20"; -- STA $2000AE
-        r(NBODY + 16#19#) := x"EA";  r(NBODY + 16#1A#) := x"EA";  -- NOP NOP
-        r(NBODY + 16#1B#) := x"AF";  r(NBODY + 16#1C#) := x"AE";  r(NBODY + 16#1D#) := x"00";  r(NBODY + 16#1E#) := x"20"; -- LDA $2000AE
-        r(NBODY + 16#1F#) := x"8D";  r(NBODY + 16#20#) := x"01";  r(NBODY + 16#21#) := x"04"; -- STA $0401
-        r(NBODY + 16#22#) := x"A9";  r(NBODY + 16#23#) := x"EE";  -- LDA #$EE
-        r(NBODY + 16#24#) := x"8D";  r(NBODY + 16#25#) := x"02";  r(NBODY + 16#26#) := x"04"; -- STA $0402
-        r(NBODY + 16#27#) := x"EA";  r(NBODY + 16#28#) := x"EA";  r(NBODY + 16#29#) := x"EA";  r(NBODY + 16#2A#) := x"EA";
-        r(NBODY + 16#2B#) := x"EA";  r(NBODY + 16#2C#) := x"EA";  r(NBODY + 16#2D#) := x"EA";  r(NBODY + 16#2E#) := x"EA";
-        r(NBODY + 16#2F#) := x"4C";  r(NBODY + 16#30#) := x"2F";  r(NBODY + 16#31#) := x"08"; -- JMP $082F
+        r(NBODY + 16#07#) := x"A9";  r(NBODY + 16#08#) := x"AA";  -- LDA #$AA
+        r(NBODY + 16#09#) := x"8F";  r(NBODY + 16#0A#) := x"40";  r(NBODY + 16#0B#) := x"01";  r(NBODY + 16#0C#) := x"20"; -- STA $200140
+        r(NBODY + 16#0D#) := x"A9";  r(NBODY + 16#0E#) := x"4A";  -- LDA #$4A
+        r(NBODY + 16#0F#) := x"8F";  r(NBODY + 16#10#) := x"AE";  r(NBODY + 16#11#) := x"00";  r(NBODY + 16#12#) := x"20"; -- STA $2000AE
+        r(NBODY + 16#13#) := x"AF";  r(NBODY + 16#14#) := x"40";  r(NBODY + 16#15#) := x"01";  r(NBODY + 16#16#) := x"20"; -- LDA $200140
+        r(NBODY + 16#17#) := x"8D";  r(NBODY + 16#18#) := x"00";  r(NBODY + 16#19#) := x"04"; -- STA $0400
+        r(NBODY + 16#1A#) := x"AF";  r(NBODY + 16#1B#) := x"AE";  r(NBODY + 16#1C#) := x"00";  r(NBODY + 16#1D#) := x"20"; -- LDA $2000AE
+        r(NBODY + 16#1E#) := x"8D";  r(NBODY + 16#1F#) := x"01";  r(NBODY + 16#20#) := x"04"; -- STA $0401
+        r(NBODY + 16#21#) := x"AF";  r(NBODY + 16#22#) := x"AE";  r(NBODY + 16#23#) := x"00";  r(NBODY + 16#24#) := x"20"; -- LDA $2000AE
+        r(NBODY + 16#25#) := x"8D";  r(NBODY + 16#26#) := x"05";  r(NBODY + 16#27#) := x"04"; -- STA $0405
+        r(NBODY + 16#28#) := x"A9";  r(NBODY + 16#29#) := x"EE";  -- LDA #$EE
+        r(NBODY + 16#2A#) := x"8D";  r(NBODY + 16#2B#) := x"02";  r(NBODY + 16#2C#) := x"04"; -- STA $0402
+        r(NBODY + 16#2D#) := x"EA";  r(NBODY + 16#2E#) := x"EA";  r(NBODY + 16#2F#) := x"EA";  r(NBODY + 16#30#) := x"EA";
+        r(NBODY + 16#31#) := x"EA";  r(NBODY + 16#32#) := x"EA";  r(NBODY + 16#33#) := x"EA";  r(NBODY + 16#34#) := x"EA";
+        r(NBODY + 16#35#) := x"4C";  r(NBODY + 16#36#) := x"35";  r(NBODY + 16#37#) := x"08"; -- JMP $0835
 
         -- Vectors: reset/NMI/IRQ all -> $E000 (offset $3FFC/$3FFA/$3FFE)
         r(16#3FFC#) := x"00";  r(16#3FFD#) := x"E0";
