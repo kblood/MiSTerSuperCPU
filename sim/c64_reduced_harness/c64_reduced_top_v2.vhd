@@ -54,12 +54,15 @@ use work.c64_ram64k_pkg.all;  -- ram_t for the sim-only BRAM probe
 
 entity c64_reduced_top_v2 is
     generic (
-        SDRAM_BYTES : integer := 2 * 1024 * 1024;
+        SDRAM_BYTES : integer := 16#300000#;  -- iter-23: 3 MiB so SuperRAM banks $02-$2F are addressable (was 2 MiB = bank $00 only)
         -- Milestone B (2026-05-30): '0' = passthrough (v2 default, single
         -- clk32 domain). '1' = engage the MCP async bridge; the bench must
         -- then drive clk_cpu at 64MHz. Threaded to the fpga64_sid_iec
         -- SCPU_MCP_ACTIVE generic.
-        SCPU_MCP_ACTIVE : std_logic := '0'
+        SCPU_MCP_ACTIVE : std_logic := '0';
+        -- iter-23: 0 = real KERNAL/BASIC (default, existing v2 behavior).
+        -- 1 = Bug-2 SuperRAM coherency test ROM (make_bug2_test_rom).
+        TEST_ROM : integer := 0
     );
     port (
         clk32     : in  std_logic;
@@ -226,7 +229,16 @@ begin
         variable v_status : rom_status_t;
     begin
         -- Elaboration-time (or deferred-init) ROM resolution
-        resolve_kernal_basic(v_image, v_status);
+        if TEST_ROM = 1 then
+            -- iter-23: force the Bug-2 SuperRAM coherency test program.
+            v_image := make_bug2_test_rom;
+            v_status.found  := true;
+            v_status.bytes  := 16384;
+            v_status.source := (others => ' ');
+            v_status.source(1 to 22) := "bug2_superram_testrom ";
+        else
+            resolve_kernal_basic(v_image, v_status);
+        end if;
         rom_image    <= v_image;
         rom_status_s <= v_status;
         report "rom_loader: found=" & boolean'image(v_status.found)
@@ -357,11 +369,30 @@ begin
     -- (those need to land in bank $00 of SDRAM for SuperRAM coherency)
     ------------------------------------------------------------------
     sdram_write_mux : process(clk32)
+        variable phys_bank : unsigned(7 downto 0);
     begin
         if rising_edge(clk32) then
             sdram_we   <= '0';
             sdram_re   <= '0';
             sdram_din  <= (others => '0');
+
+            -- iter-23: SuperRAM bank select, mirroring the real c64.sv
+            -- scpu_sdram_addr geometry (c64.sv:1143): SuperRAM (bank != $00)
+            -- maps to {bank, c64_addr}; bank $01 mirrors onto bank $00
+            -- (bank01_mirror_to_00); bank $00 stays bank $00. The real HW uses a
+            -- 25-bit addr with bit24=1 as the SuperRAM marker, but the 24-bit
+            -- model only needs a CONSISTENT mapping because cpu_cache is tagged by
+            -- the CPU-side {addr_hi_816, cpuAddr}, NOT the SDRAM physical address.
+            -- PREVIOUSLY this hardcoded bank $00 (x"00" & c64_addr), which made
+            -- SuperRAM unaddressable through the CPU — the structural reason no
+            -- system-level Bug-2 repro ever existed. See memory file
+            -- project_v2_harness_hardcodes_bank00.
+            if cpu_has_bus_s = '1' and supercpu_bank_s /= x"00"
+               and supercpu_bank_s /= x"01" then
+                phys_bank := unsigned(supercpu_bank_s);
+            else
+                phys_bank := x"00";
+            end if;
 
             if reset /= '1' then
                 if io_cycle_we = '1' then
@@ -369,13 +400,13 @@ begin
                     sdram_addr <= io_cycle_addr(23 downto 0);
                     sdram_din  <= std_logic_vector(io_cycle_data);
                 elsif ram_we = '1' then
-                    -- Real writes via ramAddr/ramDout — always bank $00
+                    -- Real CPU writes via ramAddr/ramDout — SuperRAM-aware bank.
                     sdram_we   <= '1';
-                    sdram_addr <= x"00" & c64_addr;
+                    sdram_addr <= phys_bank & c64_addr;
                     sdram_din  <= std_logic_vector(c64_data_out);
                 elsif ram_ce = '1' then
                     sdram_re   <= '1';
-                    sdram_addr <= x"00" & c64_addr;
+                    sdram_addr <= phys_bank & c64_addr;
                 end if;
             end if;
         end if;

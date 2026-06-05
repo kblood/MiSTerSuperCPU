@@ -78,6 +78,15 @@ package rom_loader_pkg is
     --     fills these anyway)
     function make_fallback_rom return rom_bin_t;
 
+    -- iter-23: Bug-2 SuperRAM cache-coherency test ROM. Reset vector -> $E000
+    -- where a 65C816 program does: enter native mode, read $20:$00AE (cache
+    -- fill while SDRAM=$00), delay so the fill allocates the line, long-store
+    -- $4A to $20:$00AE (the "loader write"), then re-read $20:$00AE. The two
+    -- read-backs + a done marker are written to witness bytes $00:$0400/$0401/
+    -- $0402 so the scoreboard (SDRAM probe) can compare. A coherent cache
+    -- yields witness[1]=$4A; a stale cache (Bug 2) yields witness[1]=$00.
+    function make_bug2_test_rom return rom_bin_t;
+
     -- Convenience: try the preferred paths in order; fall back to the
     -- idle stub if none found. Returns a 16 KB image + source label.
     procedure resolve_kernal_basic (
@@ -293,6 +302,84 @@ package body rom_loader_pkg is
         -- IRQ/BRK vector ($FFFE/$FFFF) -> $E000
         r(16#3FFE#) := x"00";
         r(16#3FFF#) := x"E0";
+
+        return r;
+    end function;
+
+    function make_bug2_test_rom return rom_bin_t is
+        variable r : rom_bin_t (0 to 16383) := (others => x"EA"); -- NOP fill
+        -- KERNAL window: MIF offset $2000 == CPU address $E000.
+        constant BASE  : integer := 16#2000#;   -- $E000 (emu copy stub)
+        constant NBODY  : integer := 16#2100#;   -- $E100 (native body source image)
+    begin
+        -- iter-23 NATIVE repro. The coherency test must run in NATIVE mode to
+        -- exercise the native long-store write-strobe addr/bank path (Codex
+        -- candidate b for Bug 2). But native-mode reads of $E000-$FFFF come from
+        -- the bank-$00 SRAM ROM-shadow (fpga64_buslogic.vhd:412) which the harness
+        -- never populates (no kickstart MVN) => $00 = BRK. RAM ($0800) is NOT
+        -- shadowed (cs_ramLoc, served from ramData in both modes), so:
+        --   * $E000: a tiny EMU-mode stub copies the body from ROM $E100 into
+        --     RAM $0800, then JMP $0800.
+        --   * $0800: the body does CLC; XCE -> native, then the long store/read
+        --     test, all fetched from RAM (shadow-immune).
+        --
+        -- ---- Emu copy stub @ $E000 ----
+        r(BASE + 16#000#) := x"A9";  r(BASE + 16#001#) := x"C3";  -- LDA #$C3
+        r(BASE + 16#002#) := x"8D";  r(BASE + 16#003#) := x"03";
+        r(BASE + 16#004#) := x"04";                                 -- STA $0403 (boot marker)
+        r(BASE + 16#005#) := x"A2";  r(BASE + 16#006#) := x"31";  -- LDX #$31 (len-1 = 49)
+        r(BASE + 16#007#) := x"BD";  r(BASE + 16#008#) := x"00";
+        r(BASE + 16#009#) := x"E1";                                 -- LDA $E100,X
+        r(BASE + 16#00A#) := x"9D";  r(BASE + 16#00B#) := x"00";
+        r(BASE + 16#00C#) := x"08";                                 -- STA $0800,X
+        r(BASE + 16#00D#) := x"CA";                                 -- DEX
+        r(BASE + 16#00E#) := x"10";  r(BASE + 16#00F#) := x"F7";  -- BPL $E007 (-9)
+        r(BASE + 16#010#) := x"4C";  r(BASE + 16#011#) := x"00";
+        r(BASE + 16#012#) := x"08";                                 -- JMP $0800
+
+        -- ---- Native body (assembled to run at $0800; stored at ROM $E100) ----
+        --   0800 A9 C3        LDA #$C3
+        --   0802 8D 04 04     STA $0404      ; native-body-entered marker
+        --   0805 18           CLC
+        --   0806 FB           XCE            ; -> NATIVE mode
+        --   0807 AF AE 00 20  LDA $2000AE    ; first read (miss/fill, SDRAM=$00)
+        --   080B 8D 00 04     STA $0400      ; witness[0]
+        --   080E A2 20        LDX #$20
+        --   0810 CA           DEX
+        --   0811 D0 FD        BNE $0810      ; delay ~32x (let the fill allocate)
+        --   0813 A9 4A        LDA #$4A
+        --   0815 8F AE 00 20  STA $2000AE    ; NATIVE long store (the "loader write")
+        --   0819 EA EA        NOP NOP
+        --   081B AF AE 00 20  LDA $2000AE    ; re-read (coherent=$4A / stale=$00=BUG)
+        --   081F 8D 01 04     STA $0401      ; witness[1]
+        --   0822 A9 EE        LDA #$EE
+        --   0824 8D 02 04     STA $0402      ; done marker
+        --   0827 EA x8                       ; NOP flush (commit done store)
+        --   082F 4C 2F 08     JMP $082F      ; spin
+        r(NBODY + 16#00#) := x"A9";  r(NBODY + 16#01#) := x"C3";   -- LDA #$C3
+        r(NBODY + 16#02#) := x"8D";  r(NBODY + 16#03#) := x"04";  r(NBODY + 16#04#) := x"04"; -- STA $0404
+        r(NBODY + 16#05#) := x"18";                                -- CLC
+        r(NBODY + 16#06#) := x"FB";                                -- XCE -> native
+        r(NBODY + 16#07#) := x"AF";  r(NBODY + 16#08#) := x"AE";  r(NBODY + 16#09#) := x"00";  r(NBODY + 16#0A#) := x"20"; -- LDA $2000AE
+        r(NBODY + 16#0B#) := x"8D";  r(NBODY + 16#0C#) := x"00";  r(NBODY + 16#0D#) := x"04"; -- STA $0400
+        r(NBODY + 16#0E#) := x"A2";  r(NBODY + 16#0F#) := x"20";  -- LDX #$20
+        r(NBODY + 16#10#) := x"CA";                                -- DEX
+        r(NBODY + 16#11#) := x"D0";  r(NBODY + 16#12#) := x"FD";  -- BNE $0810 (-3)
+        r(NBODY + 16#13#) := x"A9";  r(NBODY + 16#14#) := x"4A";  -- LDA #$4A
+        r(NBODY + 16#15#) := x"8F";  r(NBODY + 16#16#) := x"AE";  r(NBODY + 16#17#) := x"00";  r(NBODY + 16#18#) := x"20"; -- STA $2000AE
+        r(NBODY + 16#19#) := x"EA";  r(NBODY + 16#1A#) := x"EA";  -- NOP NOP
+        r(NBODY + 16#1B#) := x"AF";  r(NBODY + 16#1C#) := x"AE";  r(NBODY + 16#1D#) := x"00";  r(NBODY + 16#1E#) := x"20"; -- LDA $2000AE
+        r(NBODY + 16#1F#) := x"8D";  r(NBODY + 16#20#) := x"01";  r(NBODY + 16#21#) := x"04"; -- STA $0401
+        r(NBODY + 16#22#) := x"A9";  r(NBODY + 16#23#) := x"EE";  -- LDA #$EE
+        r(NBODY + 16#24#) := x"8D";  r(NBODY + 16#25#) := x"02";  r(NBODY + 16#26#) := x"04"; -- STA $0402
+        r(NBODY + 16#27#) := x"EA";  r(NBODY + 16#28#) := x"EA";  r(NBODY + 16#29#) := x"EA";  r(NBODY + 16#2A#) := x"EA";
+        r(NBODY + 16#2B#) := x"EA";  r(NBODY + 16#2C#) := x"EA";  r(NBODY + 16#2D#) := x"EA";  r(NBODY + 16#2E#) := x"EA";
+        r(NBODY + 16#2F#) := x"4C";  r(NBODY + 16#30#) := x"2F";  r(NBODY + 16#31#) := x"08"; -- JMP $082F
+
+        -- Vectors: reset/NMI/IRQ all -> $E000 (offset $3FFC/$3FFA/$3FFE)
+        r(16#3FFC#) := x"00";  r(16#3FFD#) := x"E0";
+        r(16#3FFA#) := x"00";  r(16#3FFB#) := x"E0";
+        r(16#3FFE#) := x"00";  r(16#3FFF#) := x"E0";
 
         return r;
     end function;
