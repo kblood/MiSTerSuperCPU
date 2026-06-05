@@ -1,100 +1,87 @@
-# Session Handoff — iter-24 (2026-06-05)
+# Session Handoff — iter-25 (2026-06-05)
 
 ## North star
-Make the SuperCPU as compatible and fast as possible. The live speed lever is the
-HW-proven 3.0x "same-line alt-fire" cache speedup (commit `0deb093`), **blocked**
-by cache "Bug 2": with `CACHE_READ_PATH=true` the SuperRAM cache serves a stale
-byte on a bank-$20 read, crashing Doom.
+Make the SuperCPU as compatible and fast as possible.
 
-## THE DECISIVE FINDING (iter-24): Bug 2 is a SETUP-TIME class, not a functional bug
-Four prior fixes (FILL_TXMATCH iter-16, FILL_DATAVALID_GATE iter-18,
-FILL_CANCEL_ON_WRITE iter-22) were HW no-ops. iter-22 demanded a SYSTEM repro;
-iter-23 built it (clk32 SDRAM) and found everything COHERENT. iter-24 closed the
-last fidelity gap — a **dual-clock** SDRAM — and that is what cracked it:
+## TL;DR of where we are
+- **SPEED lever is exhausted at the RTL level.** The HW-proven 3.0x same-line
+  alt-fire cache speedup (commit `0deb093`) is blocked by cache "Bug 2", which
+  iter-24 proved is a **setup-time/timing-asymmetry class bug, unreproducible in
+  any zero-delay RTL sim** (5 distinct RTL fixes all HW-falsified, the last two
+  byte-identical no-ops). Raised-clock (clk48/clk64, Milestone B) also HW-dead.
+  Remaining speed needs a CPU-internal pipeline (deep, multi-session) — NOT a
+  quick win. The cache RTL stays gated/inert (CACHE_READ_PATH=false = shipped,
+  Doom-safe).
+- **COMPAT work is the live, productive vein** (the iter-20/21 SST sweep that has
+  shipped HW-verified fixes this month). The 65C816 core is now ~functionally
+  clean: the full SST re-baseline (5.12M cases) showed only RTI (40.e/40.n) and
+  one $e1 flag edge failing. **iter-25 fixed RTI (this session).**
 
-- I built `clk64_sdram_model.vhd`: a clk64-clocked behavioral SDRAM that faithfully
-  mirrors `sdram_pm.v`'s q-FSM (RASCAS=2, CAS=2 → STATE_READ=5, V6 early-exit),
-  **sticky `data_valid`** (set at q==5, cleared at the clk64 ce-edge), consumed by
-  the DUT's existing 1-flop clk32 sync. clk64 is PLL-aligned to clk32 in the tb.
-- Result (CLK64_SDRAM=1): the **CPU itself reads stale SDRAM** and BRK-loops — the
-  copied program body IS in SDRAM ($0800=$A9 verified, so writes land), but the
-  CPU's instruction fetch from $0800 returns the not-yet-fresh `dout_r` ⇒ executes
-  BRK ⇒ loops to $E000 (boot marker written 4×, done marker never).
-- WHY this is the proof: in **zero-delay RTL sim** the P65C816 di-capture FF and the
-  `cpu_cache` fill FF latch on the SAME clk32 edge and read the SAME zero-delay
-  `cpuDi_nocache` expression. There is **no way** to make the CPU read fresh while
-  the fill reads stale. Either the data is aligned to the latch edge (both correct
-  — the clk32 baseline) or it isn't (both stale — the dual-clock CPU crash). The
-  CPU-vs-fill DIFFERENTIAL that *is* Bug 2 exists ONLY on silicon, created by
-  `C64.sdc`: the CPU's capture path has `set_multicycle_path -setup 2/4 -to
-  *P65C816*` (lets it sample the late-arriving deep `cpuDi_nocache` mux), while the
-  cache fill FF has **no equivalent relief** (lines 44-45 vs nothing for the fill).
-  So on silicon the fill FF samples the still-propagating mux ~1 clk32 early = stale.
-- ⇒ **No zero-delay RTL bench (unit, system, single- OR dual-clock) can reproduce
-  Bug 2 as a functional divergence.** This explains all four prior no-ops AND
-  retires the iter-22 "must build a system repro" mandate — the system repro is
-  built and it PROVES the bug is unreproducible in sim. Validation of a fix must be
-  **STA + HW**, not GHDL. Codex independently confirmed (two adversarial passes).
+## iter-25: RTI ($40) made cycle-exact — SHIPPED (commit `edf5daf`)
+RTI was functionally correct (returned to the right PC/P/PBR) but cycle-trace
+WRONG in both modes (40.e 9906 fail, 40.n 9995 fail in SST). Two defects:
+1. **Missing leading IO cycle.** Real WDC RTI has TWO internal cycles after the
+   opcode fetch (PBR:PC+1 x2) before the stack pulls; the microcode had one.
+   Fixed by adding a pure-IO leading cycle (mirrors the RTS/RTL template).
+2. **Native PBR-pull setup in the wrong trace position.** Native RTI pulls a 4th
+   byte (PBR) needing SP one higher than emu. The old microcode did this with a
+   dedicated internal LOAD_SP="000" cycle between PCH-pull and PBR-pull —
+   state-correct but a cycle real silicon doesn't emit (its pulls are
+   combinationally pre-incremented). Replaced with a surgical
+   `IR=$40 ∧ EF='0' ∧ STATE_CTRL="111"` special case in `P65C816.vhd` that
+   increments SP on the PCH-pull cycle in NATIVE only, so the next cycle reads
+   PBR at S+4 with no extra cycle. Gated on IR=$40 ⇒ cannot affect any other
+   opcode; in emu the PCH-pull is the last cycle and must NOT increment (SP=S+3).
 
-## The fix to build (Codex-vetted): matched-tuple STAGED FILL (option b)
-Make the cache `fill_data` path **reg→reg** so it no longer samples the deep
-`cpuDi_nocache` mux under a single-cycle constraint:
-- At `rp_fill_fire`, register the WHOLE tuple together: `{data=cpuDi_nocache,
-  addr=rp_fill_addr_dly, bank=rp_fill_bank_dly}` into staged regs (this capture is
-  covered by the EXISTING clk64→clk32 setup-2 multicycle, C64.sdc:31-33).
-- Assert cache `fill_we` ONE clk32 later, driving `fill_data/addr/bank` from ONLY
-  the staged regs (reg→reg into the M10K — closes single-cycle naturally).
-- Off-by-one care (Codex caveat d): data+addr+bank+we MUST be delayed together;
-  the write/cancel invalidation must apply to the same staged tuple. Sticky
-  `data_valid` must be transaction-matched (fire on the valid edge belonging to
-  THIS read, not merely level-high) — else the staged fill can still capture the
-  previous read's byte.
-- Gate behind a constant (e.g. `FILL_STAGED_TUPLE`, default false = bit-identical
-  shipped). Build → **read the STA report for the fill path** (confirm it closes
-  where the direct path didn't) → ONE HW test: Doom + Lorenz with
-  CACHE_READ_PATH=true + staged fill, alt-fire OFF first (isolate Bug 2); if Doom
-  runs, add alt-fire for the 3x. Defer the SDC-multicycle option (c) — Codex: a
-  multicycle alone can silence STA while HW still samples too early.
+Why native couldn't be done without the special case: the leading-increment pull
+model needs the PCH-pull to increment in native (4 pulls) but not in emu (3
+pulls, PCH is last). That mode-conditional increment has no spare LOAD_SP
+encoding, so a tightly-gated IR=$40 special case is the minimal correct fix.
 
-## What landed this session (iter-24)
-- `sim/c64_reduced_harness/clk64_sdram_model.vhd` (NEW) — faithful clk64 SDRAM.
-- `c64_reduced_top_v2.vhd` — `CLK64_SDRAM` generic (if-generate: clk32 simple model
-  default / clk64 model opt-in); `clk64` port; ce strobe.
-- `c64_superram_coherency_tb.vhd` — clk64 gen (PLL-aligned); `DUALCLK` mode; cross-
-  line stale-dout test ROM witnesses; diag-divergence observers; dual-clock verdict.
-- `rom_loader_pkg.vhd` `make_bug2_test_rom` — CROSS-LINE pattern: seed $20:0140=$AA
-  & $20:00AE=$4A, read A then B then re-read B (the iter-18 stale-dout shape).
-- `run_superram_coherency.sh` — `CLK64_SDRAM=0|1` env (default 0); stages+patches tb.
+Result (both byte-exact vs TomHarte SST vectors):
+- emu  = fetch,IO,IO,pullP,pullPCL,pullPCH (6cy, SP=S+3)
+- native = +pullPBR (7cy, SP=S+4)
 
-## iter-24b: ROBUST STAGED FILL implemented + TEST BUILD running
-- `fpga64_sid_iec.vhd` gen_read_path: added `FILL_STAGED_TUPLE` (constant, default
-  false = bit-identical shipped) + `stage_fill_proc` (3-stage) + rp_fill_*_sel/sel2
-  muxes feeding the cpu_cache fill ports.
-- CODEX REVIEW (tools/codex-out/iter24-staged-fill-review.txt) caught that a capture
-  AT rp_fill_fire samples the deep mux on the SAME edge the direct M10K did => no
-  settling gain, only endpoint shortening (marginal, my theory predicts it fails).
-  Switched to the ROBUST 3-stage: stage1 @fire latches addr/bank + provisional data
-  + arms; stage2 @fire+1 RE-captures the now-settled cpuDi_nocache (deep mux had the
-  full 2 clk32 the C64.sdc:31-33 multicycle promises) when cpuAddr still matches
-  (passthrough holds it stable, iter-16), emits fill_we; M10K writes reg->reg @fire+2.
-  Fire-edge cancel (Codex bug #4: FILL_CANCEL_ON_WRITE clears rp_fill_req but fire
-  is already high) + gap-cycle cancel; fire+2 write caught by cpu_cache cpu_wr_pending
-  >fill priority. Assumes >=4-apart cadence (alt OFF); faster cadence needs review.
-- Sim regression: clk32 baseline PASS with FILL_STAGED=1 (robust 3-stage, no break).
-  Runner gained `FILL_STAGED=0|1` env (patch#6).
-- TEST BUILD (UNCOMMITTED constant flips): CACHE_READ_PATH=true + FILL_STAGED_TUPLE
-  =true, CACHE_DATA_OVERRIDE=true, HITPRED_SHORTGRANT=false, ALT_FIRE_SAMELINE=false
-  (alt OFF to isolate Bug 2). Build log: build_iter24_staged.log. (A first marginal
-  capture-at-fire build was killed ~8min in after the Codex review.)
-- NEXT: when build green -> read STA fill-path slack -> check shared-MiSTer ownership
-  -> ONE HW test (Doom + Lorenz). If Doom runs: flip ALT_FIRE_SAMELINE=true for the
-  3x. If still stale (no-op): the deep mux itself is the wall even with 2 clk32 ->
-  fill from the shallow `ramDin` node instead of the full cpuDi_nocache mux.
-  Either way REVERT CACHE_READ_PATH + FILL_STAGED_TUPLE to false before committing
-  source (keep the staged-fill RTL in tree, inert).
+### Validation (complete)
+- **GHDL SST (authoritative oracle — checks full cycle-by-cycle bus trace + final
+  state):** 40.e 9906→**0 fail**, 40.n 9995→**0 fail**.
+- **Regression:** targeted sweep over 30 stack/control/ALU opcodes both modes
+  (600k cases) = **0 fail**; change is IR=$40-confined and the MCode block stays
+  8 slots/opcode so ROM indexing is unchanged.
+- **Build:** md5 `d387a4d5`, fitter OK 75% ALM, TimeQuest clean (worst setup
+  +0.346, hold +0.219, TNS=0).
+- **HW system-regression guard:** deployed to `/media/fat/_Test/C64.rbf`, boots
+  to READY (KERNAL idle loop PC:00E5CF), Lorenz scpu runs clean ~10 min (basic/
+  lda/sta/ldx/stx all "ok", no wedge, CPU healthy). Lorenz only validates RTI
+  *function* (already correct) not cycle traces, so SST is the real RTI oracle —
+  the Lorenz run's job is system health, which passed. t65 mode uses the T65 core
+  (untouched by this 65C816-only change).
+- **MiSTer daemon wedged once** mid-session on back-to-back core reloads
+  (screenshots dropped, `ttyS1: 31250` baud spam, core dropped to menu.rbf, zero
+  UART — a crashed CPU still streams UART, so this was the daemon not the core).
+  Reboot (pre-authorized) cleared it; the post-reboot run was clean to t=584s.
 
-## Status / housekeeping (iter-24a)
-- Bench GREEN both modes: clk32 (coherent baseline, PASS) and clk64 (dual-clock
-  proof: CPU reads stale = EXPECTED finding, PASS). Re-run the proof:
-  `CACHE_READ_PATH=1 CLK64_SDRAM=1 bash run_superram_coherency.sh`.
-- iter-24a harness + docs committed `def0174`. Memory: project_bug2_setup_time_class.
+## Next levers (resume here, in priority order)
+1. **Continue the SST compat sweep** (GHDL-first, the shipping vein). Remaining
+   known failure: **$e1 (SBC dp,X) 1 case** (case 8668, P exp=30 got=31 = carry
+   bit; likely a decimal-mode SBC carry corner — 1/10000, very marginal). After
+   that the SST suite is ~100% (a clean regression oracle going forward).
+   Re-baseline if desired: `sweep_sst.ps1 -All` (~3.6h).
+2. **Real SuperCPU software compat sweep** (the genuine compat frontier, beyond
+   SST micro-details). Needs HW + curated program set; open-ended.
+3. **Speed (long horizon):** a pipeline INSIDE the P65C816 to raise miss cadence
+   in clk32 passthrough — the only speed path left after cache/raised-clock are
+   HW-dead. Deep, multi-session; GHDL-prove first.
+
+## Tooling notes
+- SST single op: `sim/p65c816_singlesteptest/run_sst.ps1 -InputFile
+  ../../external/65816/v1.bin/<op>.<e|n>.txt -StopTime 60000ms` (NOT the default
+  "5s" — GHDL rejects it). Sweep: `sweep_sst.ps1 -Opcodes @(...)` or `-All`.
+- MCode field order (per `P65816_pkg.vhd` MicroInst_r): stateCtrl, addrBus,
+  addrInc, loadP, loadT, muxCtrl, addrCtrl, loadPC, loadSP, regAXY, loadDKB,
+  busCtrl, ALUCtrl, byteSel, outBus, va. Each opcode = 8 slots (IR*8 + STATE).
+- LOAD_SP decode in `P65C816.vhd` ~418: 000 null, 001 inc(emu=page1+lo), 010
+  cond-inc(w16), 011 dec, 100 SP<=A, 101 SP<=X, 110 newinc(16b both modes), 111
+  newdec. STATE_CTRL="111" = RTI/BRK/COP last-cycle-or-continue (mode branch).
+- Lorenz: `tools/lorenz_run.py [t65|scpu] --mins N` (screenshot daemon flakes on
+  long runs; CPU health is better confirmed via UART when screenshots go NONE).
