@@ -66,10 +66,35 @@ Make the cache `fill_data` path **reg→reg** so it no longer samples the deep
   & $20:00AE=$4A, read A then B then re-read B (the iter-18 stale-dout shape).
 - `run_superram_coherency.sh` — `CLK64_SDRAM=0|1` env (default 0); stages+patches tb.
 
-## Status / housekeeping
+## iter-24b: ROBUST STAGED FILL implemented + TEST BUILD running
+- `fpga64_sid_iec.vhd` gen_read_path: added `FILL_STAGED_TUPLE` (constant, default
+  false = bit-identical shipped) + `stage_fill_proc` (3-stage) + rp_fill_*_sel/sel2
+  muxes feeding the cpu_cache fill ports.
+- CODEX REVIEW (tools/codex-out/iter24-staged-fill-review.txt) caught that a capture
+  AT rp_fill_fire samples the deep mux on the SAME edge the direct M10K did => no
+  settling gain, only endpoint shortening (marginal, my theory predicts it fails).
+  Switched to the ROBUST 3-stage: stage1 @fire latches addr/bank + provisional data
+  + arms; stage2 @fire+1 RE-captures the now-settled cpuDi_nocache (deep mux had the
+  full 2 clk32 the C64.sdc:31-33 multicycle promises) when cpuAddr still matches
+  (passthrough holds it stable, iter-16), emits fill_we; M10K writes reg->reg @fire+2.
+  Fire-edge cancel (Codex bug #4: FILL_CANCEL_ON_WRITE clears rp_fill_req but fire
+  is already high) + gap-cycle cancel; fire+2 write caught by cpu_cache cpu_wr_pending
+  >fill priority. Assumes >=4-apart cadence (alt OFF); faster cadence needs review.
+- Sim regression: clk32 baseline PASS with FILL_STAGED=1 (robust 3-stage, no break).
+  Runner gained `FILL_STAGED=0|1` env (patch#6).
+- TEST BUILD (UNCOMMITTED constant flips): CACHE_READ_PATH=true + FILL_STAGED_TUPLE
+  =true, CACHE_DATA_OVERRIDE=true, HITPRED_SHORTGRANT=false, ALT_FIRE_SAMELINE=false
+  (alt OFF to isolate Bug 2). Build log: build_iter24_staged.log. (A first marginal
+  capture-at-fire build was killed ~8min in after the Codex review.)
+- NEXT: when build green -> read STA fill-path slack -> check shared-MiSTer ownership
+  -> ONE HW test (Doom + Lorenz). If Doom runs: flip ALT_FIRE_SAMELINE=true for the
+  3x. If still stale (no-op): the deep mux itself is the wall even with 2 clk32 ->
+  fill from the shallow `ramDin` node instead of the full cpuDi_nocache mux.
+  Either way REVERT CACHE_READ_PATH + FILL_STAGED_TUPLE to false before committing
+  source (keep the staged-fill RTL in tree, inert).
+
+## Status / housekeeping (iter-24a)
 - Bench GREEN both modes: clk32 (coherent baseline, PASS) and clk64 (dual-clock
   proof: CPU reads stale = EXPECTED finding, PASS). Re-run the proof:
   `CACHE_READ_PATH=1 CLK64_SDRAM=1 bash run_superram_coherency.sh`.
-- MiSTer untouched this session (pure GHDL). Shipped RBF unchanged (CACHE_READ_PATH
-  =false, Doom-safe). Lorenz/Doom regression status unchanged from `e6b3405`.
-- NEXT: implement the staged-fill fix (gated), build, STA-check the fill path, HW-test.
+- iter-24a harness + docs committed `def0174`. Memory: project_bug2_setup_time_class.

@@ -1660,6 +1660,19 @@ signal rp_fill_req      : std_logic := '0';                          -- pending 
 signal rp_fill_fire     : std_logic := '0';                          -- fire when SDRAM data fresh
 signal rp_fill_addr_dly : unsigned(15 downto 0) := (others => '0');   -- addr latched @ consume (matched to dout_r)
 signal rp_fill_bank_dly : unsigned(7 downto 0)  := (others => '0');
+-- iter-24 STAGED FILL (FILL_STAGED_TUPLE): the reg->reg fill tuple staged one
+-- clk32 after rp_fill_fire so the M10K write data comes from a settled register
+-- instead of the deep cpuDi_nocache mux. Inert when FILL_STAGED_TUPLE=false.
+signal rp_fill_data_st  : unsigned(7 downto 0)  := (others => '0');   -- staged fill_data (= cpuDi_nocache @ fire)
+signal rp_fill_addr_st  : unsigned(15 downto 0) := (others => '0');   -- staged fill_addr (matched to data)
+signal rp_fill_bank_st  : unsigned(7 downto 0)  := (others => '0');   -- staged fill_bank (matched to data)
+signal rp_fill_we_st    : std_logic := '0';                          -- staged fill we (M10K write @ fire+2)
+signal rp_fill_arm      : std_logic := '0';                          -- stage-1 arm: re-capture settled data @ fire+1
+-- iter-24: final fill-port selects (staged tuple vs the existing direct path).
+signal rp_fill_data_sel : unsigned(7 downto 0)  := (others => '0');
+signal rp_fill_we_sel   : std_logic := '0';
+signal rp_fill_addr_sel2 : unsigned(15 downto 0) := (others => '0');
+signal rp_fill_bank_sel2 : unsigned(7 downto 0)  := (others => '0');
 
 -- iter-15 (2026-06-02): enable the same-line 2x alt-fire single gap-gated scheduler.
 -- Requires CACHE_READ_PATH=true (the read path supplies rp_same_line/rp_cache_hit).
@@ -1716,6 +1729,30 @@ constant FILL_DATAVALID_GATE : boolean := true;
 -- match is safe by construction (a spurious cancel only costs a re-fetch).
 -- Only meaningful with FILL_DATAVALID_GATE (the delayed-fill pending window).
 constant FILL_CANCEL_ON_WRITE : boolean := true;
+
+-- iter-24 (2026-06-05): Bug 2 SETUP-TIME fix — matched-tuple STAGED FILL.
+-- The dual-clock GHDL harness (sim/c64_reduced_harness, CLK64_SDRAM=1) proved
+-- Bug 2 is a setup-time ASYMMETRY, not a functional ordering bug: the direct
+-- fill (fill_data => cpuDi_nocache) drives the deep dout_r->mux path (~26ns)
+-- ACROSS the cpu_cache port boundary into the M10K write (with its own setup),
+-- and that combined path does not settle within the ~1 clk32 functionally
+-- available at rp_fill_fire — while the P65C816 di-capture FF gets the
+-- C64.sdc `-setup 2/4 -to *P65C816*` relief the fill FF has no equivalent of.
+-- In zero-delay sim both FFs latch the same value on the same edge, so no
+-- bench (unit/system/single-/dual-clock) can reproduce it (see
+-- project_bug2_setup_time_class; explains the four prior HW no-ops).
+-- FIX (Codex-vetted, robust 3-stage): give the deep mux the FULL 2 clk32 the
+-- multicycle promises by RE-capturing the data one clk32 AFTER fire (a capture
+-- AT fire samples the mux on the same edge the direct M10K did = no settling
+-- gain, only endpoint shortening). Stage 1 @fire latches addr/bank + provisional
+-- data + arms; stage 2 @fire+1 re-captures the now-settled cpuDi_nocache when the
+-- CPU is still on this access (passthrough holds cpuAddr stable, iter-16) and
+-- emits fill_we; the M10K writes reg->reg at fire+2. Fire-edge + gap-cycle write
+-- cancels (Codex); an fire+2 write is caught by cpu_cache's cpu_wr_pending>fill
+-- priority. See stage_fill_proc. Default FALSE => staged regs pruned =>
+-- bit-identical shipped. Validation is STA + HW, NOT GHDL (zero-delay sim cannot
+-- model the asymmetry). Only meaningful with CACHE_READ_PATH and FILL_DATAVALID_GATE.
+constant FILL_STAGED_TUPLE : boolean := false;
 
 -- iter-7 (2026-05-30): RDY-handshake gate for the cache-HIT alt-slot (the
 -- cadence-correctness half — the STA gate cleared the data-path-timing half).
@@ -5155,6 +5192,57 @@ gen_read_path : if CACHE_READ_PATH generate
 	-- fill_we to the cache: data-valid-gated (fix) or legacy immediate.
 	rp_fill_we <= rp_fill_fire when FILL_DATAVALID_GATE else rp_fill_we_imm;
 
+	-- iter-24 STAGED FILL (robust, 3-stage). The KEY insight (Codex-confirmed):
+	-- capturing cpuDi_nocache AT rp_fill_fire samples the deep mux on the SAME edge
+	-- the direct M10K write did => no extra functional settling, only endpoint
+	-- shortening (marginal). The robust fix RE-captures one clk32 LATER, at which
+	-- point the deep cpuDi_nocache mux has had the full 2 clk32 since dout_r went
+	-- fresh (= the C64.sdc:31-33 multicycle's promised budget) to settle.
+	--   Stage 1 @ fire (F): latch addr/bank + a provisional (F-sampled, addr-matched)
+	--     data byte and ARM stage 2 — unless a CPU write hits this address on the
+	--     SAME edge (FILL_CANCEL_ON_WRITE clears rp_fill_req but rp_fill_fire/we are
+	--     already high this cycle, so the arm must be cancelled here — Codex).
+	--   Stage 2 @ F+1: if the CPU is still on this access (passthrough holds cpuAddr
+	--     stable, iter-16) RE-capture the now-settled byte; else keep the provisional.
+	--     Emit rp_fill_we_st (M10K writes reg->reg at F+2) unless a write hit the
+	--     staged address during this gap cycle. (An F+2 write is handled by the
+	--     cache's own cpu_wr_pending > fill priority, cpu_cache.vhd:351.)
+	-- NOTE: assumes >=4-apart miss cadence (alt-fire OFF). A faster miss cadence
+	-- (alt-fire) would need re-review of back-to-back fire / dout_r-overwrite.
+	stage_fill_proc : process(clk32)
+	begin
+		if rising_edge(clk32) then
+			rp_fill_we_st <= '0';
+			rp_fill_arm   <= '0';
+			-- Stage 1 @ fire
+			if rp_fill_we = '1'
+			   and not (FILL_CANCEL_ON_WRITE and cpuWe = '1'
+			            and cpuAddr = rp_fill_addr_sel and addr_hi_816 = rp_fill_bank_sel) then
+				rp_fill_addr_st <= rp_fill_addr_sel;
+				rp_fill_bank_st <= rp_fill_bank_sel;
+				rp_fill_data_st <= cpuDi_nocache;   -- provisional (addr-matched fallback)
+				rp_fill_arm     <= '1';
+			end if;
+			-- Stage 2 @ fire+1
+			if rp_fill_arm = '1' then
+				if cpuAddr = rp_fill_addr_st and addr_hi_816 = rp_fill_bank_st
+				   and cpuWe = '0' then
+					rp_fill_data_st <= cpuDi_nocache;   -- robust: fully-settled re-capture
+				end if;
+				if not (FILL_CANCEL_ON_WRITE and cpuWe = '1'
+				        and cpuAddr = rp_fill_addr_st and addr_hi_816 = rp_fill_bank_st) then
+					rp_fill_we_st <= '1';
+				end if;
+			end if;
+		end if;
+	end process;
+
+	-- Final fill-port selects: staged tuple (FILL_STAGED_TUPLE) vs the direct path.
+	rp_fill_data_sel  <= rp_fill_data_st when FILL_STAGED_TUPLE else cpuDi_nocache;
+	rp_fill_we_sel    <= rp_fill_we_st  when FILL_STAGED_TUPLE else rp_fill_we;
+	rp_fill_addr_sel2 <= rp_fill_addr_st when FILL_STAGED_TUPLE else rp_fill_addr_sel;
+	rp_fill_bank_sel2 <= rp_fill_bank_st when FILL_STAGED_TUPLE else rp_fill_bank_sel;
+
 	-- iter-7d: register the cache HIT override one clk32. rp_cache_hit/rp_cache_di
 	-- are combinational on the live cpuAddr; rp_cache_di is only valid the cycle
 	-- AFTER line_word settles (cross-line). Sampling both into _d1 here lets the
@@ -5232,12 +5320,15 @@ gen_read_path : if CACHE_READ_PATH generate
 			cpu_do     => cpuDo,
 			cache_di   => rp_cache_di,
 			cache_hit  => rp_cache_hit,
-			fill_data  => cpuDi_nocache,  -- iter-7d: fill from the pre-override base (NOT cpuDi). On a miss cpuDi_nocache = the exact byte the CPU reads (SCPU regs / ramDin / cpuDi_raw); using cpuDi here would feed the registered override's output back into the cache on any stale-hit cycle (Codex Q3).
-			fill_we    => rp_fill_we,
-			-- iter-16 Bug-2 fix: transaction-matched fill tuple (captured at read-issue)
-			-- via rp_fill_*_sel below; legacy live cpuAddr when FILL_TXMATCH=false.
-			fill_addr  => rp_fill_addr_sel,
-			fill_bank  => rp_fill_bank_sel,
+			-- iter-24: fill data/we/addr/bank go through *_sel (staged reg->reg tuple
+			-- when FILL_STAGED_TUPLE, else the direct path). fill_data base is the
+			-- pre-override cpuDi_nocache (iter-7d: NOT cpuDi — using cpuDi would feed
+			-- the registered override's output back into the cache on a stale-hit cycle,
+			-- Codex Q3). fill_addr/bank are the transaction-matched tuple (iter-16).
+			fill_data  => rp_fill_data_sel,
+			fill_we    => rp_fill_we_sel,
+			fill_addr  => rp_fill_addr_sel2,
+			fill_bank  => rp_fill_bank_sel2,
 			wb_pending => open,
 			wb_addr    => open,
 			wb_data    => open,

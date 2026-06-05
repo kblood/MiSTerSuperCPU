@@ -18,6 +18,11 @@ CACHE_READ_PATH="${CACHE_READ_PATH:-1}"
 # iter-24: CLK64_SDRAM=1 runs the dual-clock (faithful sdram_pm timing) proof.
 # Default 0 = clk32 behavioral SDRAM (the green coherent baseline).
 CLK64_SDRAM="${CLK64_SDRAM:-0}"
+# iter-24: FILL_STAGED=1 flips FILL_STAGED_TUPLE=true (the staged reg->reg fill).
+# Sim cannot VALIDATE the fix (Bug 2 is a setup-time class, unreproducible in
+# zero-delay RTL) — this only regression-checks the staged path stays coherent
+# in the clk32 baseline. Default 0 = direct fill (shipped path).
+FILL_STAGED="${FILL_STAGED:-0}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -95,6 +100,14 @@ if [ "${CACHE_READ_PATH}" == "1" ]; then
     echo "patch#3: CACHE_READ_PATH=true"
 else
     echo "patch#3: CACHE_READ_PATH left false (sanity run)"
+fi
+
+# Patch #6 (iter-24): flip FILL_STAGED_TUPLE for the staged reg->reg fill path.
+if [ "${FILL_STAGED}" == "1" ]; then
+    sed -i 's/constant FILL_STAGED_TUPLE : boolean := false;/constant FILL_STAGED_TUPLE : boolean := true;/' "${STAGE}/fpga64_sid_iec.vhd"
+    echo "patch#6: FILL_STAGED_TUPLE=true (staged reg->reg fill)"
+else
+    echo "patch#6: FILL_STAGED_TUPLE left false (direct fill)"
 fi
 
 # Patch #5 (iter-24): stage the tb + flip DUALCLK for the dual-clock proof run.
