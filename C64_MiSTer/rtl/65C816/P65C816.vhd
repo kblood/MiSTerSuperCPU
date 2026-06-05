@@ -486,7 +486,20 @@ begin
 				if EF = '1' and LAST_CYCLE = '1' then
 					SP(15 downto 8) <= x"01";
 				end if;
-			end if; 
+				-- RTI native PBR-pull setup (cycle-exact, iter-25). In native mode
+				-- RTI pulls a 4th byte (PBR), so the stack pointer must advance one
+				-- more than the emu path. Doing this as a dedicated LOAD_SP="000"
+				-- microcode cycle is correct in *state* but inserts a spurious
+				-- internal cycle that real WDC silicon does not have (its pulls are
+				-- combinationally pre-incremented). Instead, on the PCH-pull cycle
+				-- (STATE_CTRL="111") of RTI ($40) in native mode only, increment SP
+				-- here so the very next cycle reads PBR at S+4 with no extra cycle.
+				-- Gated on IR=$40 so it can affect no other opcode; in emu (EF='1')
+				-- the PCH pull is the last cycle and must NOT increment (SP=S+3).
+				if IR = x"40" and EF = '0' and MC.STATE_CTRL = "111" then
+					SP <= std_logic_vector(unsigned(SP) + 1);
+				end if;
+			end if;
 		end if;
 	end process;
 	
