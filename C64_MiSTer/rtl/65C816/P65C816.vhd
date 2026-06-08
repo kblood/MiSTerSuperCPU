@@ -757,18 +757,18 @@ begin
 				ADDR_BUS <= x"00" & std_logic_vector(unsigned(AA(15 downto 0)) + ADDR_INC);
 				
 			when "0011" | "0111" =>
-				-- DP indirect pointer-byte read. ADDR_BUS="0111" requests
-				-- NMOS-style emu-mode page wrap on the +1 byte. Real WDC
-				-- silicon (per SST traces) only wraps when DPL=0 (DP is
-				-- page-aligned); when DPL!=0 the ptr+1 increment is full
-				-- 16-bit and may cross a page boundary. Gate the wrap on
-				-- D(7:0)=0 to match silicon. Fixes ~262 fails across the
-				-- 8 (DP,X) opcodes (ORA/AND/EOR/ADC/STA/LDA/CMP/SBC).
-				if EF = '0' or MC.ADDR_BUS(2) = '0' or D(7 downto 0) /= x"00" then
-					ADDR_BUS <= x"00" & std_logic_vector(unsigned(DX) + ADDR_INC);
-				else
-					ADDR_BUS <= x"00" & DX(15 downto 8) & std_logic_vector(unsigned(DX(7 downto 0)) + ADDR_INC(7 downto 0));
-				end if;
+				-- DP indirect pointer-byte read. The +1 (and +2 for long
+				-- [dp]/[dp],Y) pointer-byte increment is ALWAYS full 16-bit
+				-- on the W65C816 -- it does NOT replicate the NMOS 6502's
+				-- zero-page pointer wrap, even in emulation mode with DPL=0.
+				-- This is a documented emu-mode incompatibility. SST oracle
+				-- (iter-26): EVERY emu DPL=0 case whose ptr+1 crosses a page
+				-- carries, never wraps -- e.g. (dp,X) E1/8668 $F4FF->$F500,
+				-- [dp] 27/3340 $2FFF->$3000, [dp],Y 17/1411 $B6FF->$B700.
+				-- (The earlier EF=1&DPL=0 wrap branch broke E1/8668; it was
+				-- never exercised by any case that wanted a wrap. The DPL!=0
+				-- "262 fail" fix was really the full-16-bit path, kept here.)
+				ADDR_BUS <= x"00" & std_logic_vector(unsigned(DX) + ADDR_INC);
 				
 			when "1000" | "1100" => 
 				if EF = '0' or MC.ADDR_BUS(2) = '0' then
