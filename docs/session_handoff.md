@@ -5,8 +5,12 @@ Make the SuperCPU as compatible and fast as possible.
 
 ## TL;DR of where we are
 - **COMPAT vein remains the productive lever** (GHDL-first SST sweep). iter-26
-  closed the last known SST failure: **$e1 (SBC dp,X) case 8668**. The 65C816
-  SST suite is now ~100% clean across the entire DP-indirect addressing family.
+  closed the last known SST failure: **$e1 (SBC dp,X) case 8668**. A full SST
+  re-baseline now confirms the 65C816 core is **100% SST-clean: 0 fail across
+  all 256 opcodes × emu/native = 5,120,000 cases** (5,672 skips = expected
+  prelude-region overlaps, not failures). The SST suite is now a definitive
+  clean regression oracle — run `sweep_sst.ps1 -All` (~3.4h) before/after any
+  CPU change to guard it. Results: `sweep_results_iter26_full/summary.csv`.
 - **SPEED lever still exhausted at RTL** (cache "Bug 2" = setup-time class,
   HW-unreproducible; raised-clock B HW-dead). Cache RTL stays gated/inert
   (CACHE_READ_PATH=false shipped). Remaining speed = a CPU-internal pipeline
@@ -42,11 +46,11 @@ correct. Safe because the wrap only ever changed behavior when DX(7:0)=$FF.
   for this addressing fix; Lorenz confirms system health.
 
 ## Next levers (resume here, in priority order)
-1. **Continue/finish the SST compat sweep.** With $e1 closed, no DP-indirect
-   fails remain. Re-baseline the full suite if desired (`sweep_sst.ps1 -All`,
-   ~3.6h) to confirm ~100% and find any other stragglers — the suite is now a
-   clean regression oracle going forward.
-2. **Real SuperCPU software compat sweep** (genuine compat frontier beyond SST
+1. **SST sweep is DONE (100% clean, 0/5.12M).** Nothing left to chase in the
+   SST micro-detail vein. Keep it green: re-run `sweep_sst.ps1 -All` after any
+   future CPU/ALU/AddrGen change as the regression guard.
+2. **Real SuperCPU software compat sweep** — now the live compat frontier
+   (genuine programs, beyond SST
    micro-details). Needs HW + curated program set; open-ended.
 3. **Speed (long horizon):** a pipeline INSIDE the P65C816 to raise miss
    cadence in clk32 passthrough — the only speed path left after cache and
