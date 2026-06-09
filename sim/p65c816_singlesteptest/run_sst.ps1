@@ -21,6 +21,7 @@ param(
     [string]$InputFile = "../../external/65816/v1.bin/06.e.txt",
     [int]$MaxCases = 0,
     [switch]$VerboseEach,
+    [switch]$GarbageInternal,
     [string]$LogFile = "sst.log",
     [string]$StopTime = "5s"
 )
@@ -91,10 +92,13 @@ try {
 
     $verboseStr = if ($VerboseEach) { "true" } else { "false" }
 
+    $garbageStr = if ($GarbageInternal) { "true" } else { "false" }
+
     $genericArgs = @(
         "-ginput_file=$resolvedInput",
         "-gmax_cases=$MaxCases",
-        "-gverbose=$verboseStr"
+        "-gverbose=$verboseStr",
+        "-ggarbage_internal=$garbageStr"
     )
 
     Write-Host "==> Run (max_cases=$MaxCases verbose=$verboseStr stop=$StopTime)" -ForegroundColor Cyan

@@ -29,6 +29,7 @@ param(
     [int]$MaxCases     = 0,
     [string]$StopTime  = '60000ms',
     [string]$ResultDir = 'sweep_results',
+    [switch]$GarbageInternal,               # drive D_IN garbage on internal cycles
     [switch]$All                            # discover opcode list from input dir
 )
 
@@ -105,10 +106,12 @@ try {
     foreach ($t in $targets) {
         $name = [System.IO.Path]::GetFileNameWithoutExtension($t)
         $log  = Join-Path $resDir "$name.log"
+        $garbageStr = if ($GarbageInternal) { "true" } else { "false" }
         $args = @(
             "-ginput_file=$t",
             "-gmax_cases=$MaxCases",
-            "-gverbose=false"
+            "-gverbose=false",
+            "-ggarbage_internal=$garbageStr"
         )
         $t0 = Get-Date
         & $ghdl -r @flags p65c816_sst_tb @args --stop-time=$StopTime *> $log

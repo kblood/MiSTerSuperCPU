@@ -39,7 +39,13 @@ entity p65c816_sst_tb is
         input_file : string  := "../../external/65816/v1.bin/06.e.txt";
         max_cases  : integer := 0;          -- 0 = run all in file
         verbose    : boolean := false;
-        prelude_base_lo : integer := 16#FE00#  -- $00:FE00 prelude entry
+        prelude_base_lo : integer := 16#FE00#;  -- $00:FE00 prelude entry
+        -- When true, drive D_IN with a garbage constant on every INTERNAL
+        -- cycle (VDA=0 and VPA=0). Proves the CPU never depends on the data
+        -- bus during internal cycles -- the precondition for an internal-cycle
+        -- fast-fire speed lever (advance the CPU on internal cycles without a
+        -- real SDRAM read). If SST stays 0-fail with this on, it is safe.
+        garbage_internal : boolean := false
     );
 end entity;
 
@@ -115,8 +121,14 @@ begin
 
     -----------------------------------------------------------------------------
     -- Combinational memory read for D_IN
+    --
+    -- garbage_internal: on internal cycles (VDA=0 and VPA=0) the W65C816 makes
+    -- no valid memory access, so the data bus is don't-care. When the generic
+    -- is set, force D_IN to a garbage constant on those cycles to PROVE the
+    -- datapath never consumes it (internal-cycle fast-fire safety proof).
     -----------------------------------------------------------------------------
-    d_in <= mem.read24(unsigned(a_out));
+    d_in <= x"5A" when (garbage_internal and vda_s = '0' and vpa_s = '0')
+            else mem.read24(unsigned(a_out));
 
     -----------------------------------------------------------------------------
     -- Memory write process
