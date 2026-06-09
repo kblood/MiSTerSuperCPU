@@ -1,0 +1,15 @@
+**Findings**
+
+1. `cpu_cyc_va_ok` closes the active MAIN-path dangling hazard, but not every syntactic source of `cpu_cyc`.
+   In [fpga64_sid_iec.vhd](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd:3657), `cpu_cyc_va_ok` qualifies only the parenthesized main term. The trailing `alt_fire_r` / `alt_fire_r2` terms at lines 3662-3663 bypass it. Today both are hard-driven `'0'` at lines 3759 and 3782, so this is inert in this build. If either alt-fire path is re-enabled, internal cycles can again create `cpu_cyc_s` despite `VDA=VPA=0`.
+
+2. I do not see a live “prior memory `cpu_cyc_s(1)` collides with fast-internal” path in the current build.
+   `cpu_cyc_s <= cpu_cyc_s(0) & cpu_cyc` at [fpga64_sid_iec.vhd:3785](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd:3785), and the scheduler prioritizes MAIN at line 3812. A legitimate prior memory prefetch means the CPU has not yet consumed/advanced that memory cycle, so `vda_816/vpa_816` still describe a memory access and the fast-internal `elsif` at line 3821 is false. Once MAIN fires, `en_gap` resets before any later internal fast fire.
+
+3. PHASE looks correct in default passthrough mode: `vda_816/vpa_816` are the pending cycle’s flags.
+   The bridge default is passthrough: `SAME_CLOCK_PASSTHROUGH => not SCPU_MCP_ACTIVE` at [fpga64_sid_iec.vhd:3436](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd:3436), and passthrough maps raw CPU VPA/VDA through at [scpu_async_bridge.vhd:766](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/scpu_async_bridge.vhd:766). P65C816 advances `IR/STATE` only on `EN` at [P65C816.vhd:189](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/P65C816.vhd:189); `MCode` then registers the next microinstruction on `EN` at [MCode.vhd:2367](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/MCode.vhd:2367), and VDA/VPA are combinational from `MC.VA` at [P65C816.vhd:859](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/P65C816.vhd:859). So the scheduler samples the already-presented next bus phase, not the just-completed one.
+
+4. I do not see an `<2 clk32` enable-spacing violation.
+   Fast-internal requires `en_gap >= 2` and even CPU slot at [fpga64_sid_iec.vhd:3823](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd:3823). MAIN has no `en_gap` guard at line 3812, but a pending MAIN and fast-internal cannot be simultaneously true for a valid prior memory cycle as above. This is conservative against `C64.sdc:44`.
+
+Config note: the diff currently sets `constant INTERNAL_FAST_FIRE : boolean := true` at [fpga64_sid_iec.vhd:1733](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd:1733), so it is not “default false / bit-identical” in this worktree.

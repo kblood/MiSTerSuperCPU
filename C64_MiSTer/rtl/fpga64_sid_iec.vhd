@@ -1472,6 +1472,7 @@ signal iof_i        : std_logic;
 
 signal io_enable    : std_logic;
 signal cpu_cyc      : std_logic;
+signal cpu_cyc_va_ok : std_logic;   -- iter-27: VDA/VPA qualifier for the main prefetch (INTERNAL_FAST_FIRE only)
 signal cpu_cyc_s    : std_logic_vector(1 downto 0);
 signal turbo_m      : std_logic_vector(2 downto 0);
 -- iter-15 (2026-06-02): same-line 2x alt-fire single gap-gated enable scheduler.
@@ -1687,6 +1688,58 @@ signal rp_fill_bank_sel2 : unsigned(7 downto 0)  := (others => '0');
 -- cpu_cache_sched_phasing_tb (LIVE gate PASS warm+cold, _d1 FAIL). HW-GATED until
 -- boot+Lorenz+Doom+Wolf3D+speed confirmed.
 constant ALT_FIRE_SAMELINE : boolean := false;  -- iter-17 ISOLATION build C: alt OFF to make a SINGLE-variable test vs known-crash 38118b68 (data ON, alt OFF, hit_pred ON). Now data ON, alt OFF, hit_pred OFF => isolates whether the hit_pred grant is the 4-apart Doom corruptor. iter-15b PARTITION (2026-06-02): SuperRAM-only caching did NOT fix the $0D67/$AB loader freeze (bank-$00 caching ruled OUT). Remaining suspects with bank $00 uncached: (A) alt-fire 2x cadence disrupting the loader's SuperRAM transfer, or (B) SuperRAM cache DATA staleness. This build = cache-on (SuperRAM-only) + alt OFF (4-apart). If Doom runs -> (A) alt-fire; if it still wedges at $0D67 -> (B) SuperRAM data. Revert to true once partitioned. iter-16: (B) ROOT-CAUSED as the fill-tuple skew; FILL_TXMATCH below is the fix — keep alt OFF for the first fix build to isolate read-coherency from the speedup.
+
+-- iter-27 (2026-06-09): INTERNAL-CYCLE FAST-FIRE speed lever. The CPU spends
+-- ~22.6% of its cycles on INTERNAL operations (VDA=0 and VPA=0 -- RMW modify,
+-- decimal correct, taken-branch IO, transfers, NOP, REP/SEP, XBA, stack/ctrl
+-- IO). On an internal cycle the W65C816 makes NO valid memory access, so the
+-- data bus is don't-care -- PROVEN by the SST garbage-injection sweep (force
+-- D_IN garbage whenever VDA=VPA=0 -> 0 fail across all 256 opcodes x emu/native
+-- = 5.12M cases; see sim/p65c816_singlesteptest, -GarbageInternal). Because an
+-- internal cycle reads no SDRAM, it can advance the CPU 2-apart (next even CPU
+-- slot, en_gap>=2) WITHOUT waiting for the 4-clk32 SDRAM window -- a fundamentally
+-- DIFFERENT class from the dead cache/alt-fire levers, which all raced SDRAM data
+-- delivery. This change:
+--   * adds NO new data-capturing register (unlike the Bug-2 cache fill FF),
+--   * reads NO SDRAM on the fast cycle (so no stale-latch class),
+--   * respects `set_multicycle_path -setup 2 -to *P65C816*` (C64.sdc:44) by
+--     firing only on even slots with en_gap>=2 (>=2 clk32 between fires); the
+--     CPU-internal reg->ALU->reg paths close at setup-2 (+23.6ns, iter-19 STA),
+--   * leaves every MEMORY cycle on the proven main path (cpu_cyc prefetch +
+--     cpu_cyc_s(1) consume = full SDRAM window), so no memory access is shortened.
+-- Expected throughput gain ~+12-15% (22.6% of cycles at 2x). Default false =>
+-- enableCpu <= cpu_cyc_s(1) exactly as shipped (RBF bit-identical).
+--
+-- iter-27 v2 (Codex falsification #1 ADDRESSED): the dangling-MAIN hazard is
+-- removed by VDA/VPA-gating cpu_cyc itself. When INTERNAL_FAST_FIRE, cpu_cyc is
+-- additionally qualified by (vda_816 or vpa_816) (cpu_cyc_va_ok, near the cpu_cyc
+-- assignment) so an INTERNAL cycle issues NO prefetch and NO pending cpu_cyc_s(1)
+-- MAIN pulse — it is advanced ONLY by the fast-internal scheduler branch. Memory
+-- cycles (VDA or VPA = 1) keep the full prefetch+consume SDRAM window unchanged.
+-- When the constant is false, cpu_cyc_va_ok folds to '1' => cpu_cyc and the
+-- scheduler are bit-identical to the shipped arbiter (RBF bit-identical).
+--
+-- ⚠ STILL GATED false / NOT YET HW-BUILT. Two residual Codex risks need a SYSTEM
+-- bench (c64_reduced_harness + faithful clk64_sdram_model — a zero-delay bench
+-- cannot see prefetch/consume desync, the Bug-2 lesson) before any HW build:
+--   (#2 PHASE) confirm vda_816/vpa_816 sampled at the enableCpu decision edge are
+--      the PENDING cycle's flags, not the just-completed cycle's (en_gap>=2 gives
+--      settle time; Codex rates this "unlikely" but it is the #1 thing to assert).
+--   (#3 CLASSIFY) assert NO cpu_cyc / cpu_cyc_s(1) pulse is ever generated while
+--      VDA=VPA=0, and final machine state + instruction-retire count match the
+--      INTERNAL_FAST_FIRE=false baseline bit-for-bit (only the cycle count drops).
+-- Semantic precondition (D_IN unused on internal cycles) is PROVEN (5.12M SST
+-- garbage sweep, committed 2c34007).
+constant INTERNAL_FAST_FIRE : boolean := false;  -- iter-27 HW-DEAD (2026-06-09): build 0675f71e (this constant=true) WEDGED on HW —
+-- black screen, CPU hard-pinned at PC:$EE97 (KERNAL IEC region), never reached READY. Control: the iter-26 shipped
+-- RBF 3698680a deployed to the SAME MiSTer in the SAME session booted clean (SCPU64 V0.07 / READY, PC cycling the
+-- real keyboard-idle loop $E5CD-$E5D6). So the wedge is THIS lever, not the environment. Falsifies the handoff's
+-- "different class / no SDRAM-staleness risk" hope: fast-firing internal cycles 2-apart still advances the CPU's
+-- phase ahead of the ~4-clk32 SDRAM read cadence, so the FOLLOWING memory fetch races SDRAM latency = the same
+-- setup-time/phase class that killed every cache lever (Bug 2). Bench-clean (zero-delay system bench bit-identical
+-- 178->0, ~8% faster) + SST 0/5.12M semantics + Codex logic-clean all PASSED yet HW wedges — exactly the class a
+-- zero-delay bench cannot reproduce. Kept gated false (RBF bit-identical to shipped) as the record; bench +
+-- garbage-sweep harness retained. Do NOT re-enable without a latency-faithful KERNAL-boot bench that reproduces it.
 
 -- iter-16 (2026-06-03): transaction-matched fill tuple — the Bug 2 fix. See the
 -- rp_fill_addr_r/rp_fill_bank_r decl above. When true (and CACHE_READ_PATH), the
@@ -3599,7 +3652,18 @@ begin
 	end if;
 end process;
 
-cpu_cyc <= '1' when (sdram_busy = '0' and (
+-- iter-27 fix (Codex falsification #1): VDA/VPA qualifier for the main prefetch.
+-- When INTERNAL_FAST_FIRE, an INTERNAL cycle (VDA=VPA=0) must NOT issue a cpu_cyc
+-- prefetch — otherwise the fast-internal scheduler advances the CPU past that
+-- cycle while a dangling cpu_cyc_s(1) MAIN pulse (from the bogus prefetch's
+-- stale address) fires on the FOLLOWING cycle and consumes the wrong SDRAM read
+-- => stale di => wedge. Gating cpu_cyc on (vda or vpa) means internal cycles
+-- issue no prefetch and no pending MAIN; they are advanced ONLY by the
+-- fast-internal branch. When the constant is false this is '1' always =>
+-- cpu_cyc is bit-identical to the shipped arbiter (Quartus constant-folds it).
+cpu_cyc_va_ok <= '1' when (not INTERNAL_FAST_FIRE) or (vda_816 = '1' or vpa_816 = '1') else '0';
+
+cpu_cyc <= '1' when (sdram_busy = '0' and cpu_cyc_va_ok = '1' and (
 				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
 				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
 				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
@@ -3749,7 +3813,35 @@ begin
 		--     is why it may land off the prefetch cadence. Writes/misses (rp_cache_hit=0)
 		--     fall to the MAIN path = 4-apart = safe.
 		-- en_gap: clk32 since the last fire; reset on fire, saturating +1 otherwise.
-		if not (ALT_FIRE_SAMELINE and CACHE_READ_PATH) or supercpu_en = '0' then
+		if INTERNAL_FAST_FIRE and supercpu_en = '1' then
+			-- ── iter-27: internal-cycle fast-fire scheduler ──
+			-- MAIN: every MEMORY cycle stays on the proven prefetch-tied pulse
+			-- (cpu_cyc @ CPU0/4/8/C reserves SDRAM -> cpu_cyc_s(1) @ CPU2/6/A/E
+			-- consumes after the full ~4-clk32 window). No memory access shortened.
+			if cpu_cyc_s(1) = '1' then
+				enableCpu <= '1';
+				en_gap    <= (others => '0');
+			-- FAST-INTERNAL: the PENDING cycle is internal (VDA=0 and VPA=0 => the
+			-- W65C816 makes no valid memory access this cycle, data bus don't-care,
+			-- proven by the SST garbage sweep). Advance 2-apart at an even CPU slot,
+			-- en_gap>=2 (>=2 clk32 => honours C64.sdc:44 -setup 2 -to *P65C816*).
+			-- Reads no SDRAM => no stale-latch class. baLoc + cpu816_rdy_to_cpu so
+			-- the pulse is a real CPU advance (not a VIC-badline / not-ready stall).
+			elsif vda_816 = '0' and vpa_816 = '0'
+			      and scpu_force_1mhz = '0' and dma_active = '0'
+			      and en_gap >= 2
+			      and baLoc = '1' and cpu816_rdy_to_cpu = '1'
+			      and ( sysCycle = CYCLE_CPU0 or sysCycle = CYCLE_CPU2
+			            or sysCycle = CYCLE_CPU4 or sysCycle = CYCLE_CPU6
+			            or sysCycle = CYCLE_CPU8 or sysCycle = CYCLE_CPUA
+			            or sysCycle = CYCLE_CPUC or sysCycle = CYCLE_CPUE ) then
+				enableCpu <= '1';
+				en_gap    <= (others => '0');
+			else
+				enableCpu <= '0';
+				if en_gap < 63 then en_gap <= en_gap + 1; end if;
+			end if;
+		elsif not (ALT_FIRE_SAMELINE and CACHE_READ_PATH) or supercpu_en = '0' then
 			enableCpu <= cpu_cyc_s(1);
 			if cpu_cyc_s(1) = '1' then en_gap <= (others => '0');
 			elsif en_gap < 63 then en_gap <= en_gap + 1; end if;
