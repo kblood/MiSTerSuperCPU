@@ -78,11 +78,24 @@ reservation, dead class). The two real levers left are both large:
 
 ### Speed lever 1 (real, big) — page-mode SDRAM controller
 Replace the auto-precharge `sdram_pm` read path with open-row back-to-back column
-reads so a second read on the same row costs ~3 clk64 instead of 6. This is the ONLY
-way to legitimately drop below the 6-clk64 ce-spacing floor. It is the deferred
-Build-A page-mode FSM that wedged the C64 at PC=$00:$0D62 (`sdram_pm.v` header) —
-needs a careful incremental re-add (row tracking, conflict/refresh paths) GHDL-proven
-in `sim/sdram_pm_tb` + `c64_reduced_harness` before any HW build. Multi-session.
+reads so a same-row read costs ~4 clk64 instead of the cold 6–8. This is the ONLY way
+to legitimately drop below the 6-clk64 ce-spacing floor. Already deeply explored: 8
+draft FSMs (`rtl/sdram_pm.v.buildC*/.V5/.V6/.V7/.V8*.draft`, one
+`V8_addrlatch_FAILED`), a dedicated bench `sim/sdram_pm_tb/`
+(`sdram_pm_buildc_extended_tb.vhd`), and a full design in `docs/plan_sdram_page_mode.md`
+(Layer 1 page-mode FSM + Layer 2 `ready` backpressure + Layer 3 extra CPU slots). The
+Build-A page-mode wedged the C64 at PC=$00:$0D62 — the 2nd slot's `ce` edge restarted
+the FSM mid-access (`plan_sdram_page_mode.md:7-10`); Layer 2 backpressure (gate
+`cpu_cyc` on `sdram_ready`) is the fix for that and is the part still not wired in.
+
+**DO THIS FIRST (cheap characterization gate, no risky build — the GOAL-A discipline
+that just paid off):** measure Doom's SuperRAM **page-hit rate** during gameplay.
+`plan_sdram_page_mode.md:87-103` — if hit-rate >90%, page-mode wins little and the
+whole multi-session rewrite is NOT worth it; if <60%, it's a big win. Unknown today.
+Cheapest: add a hit/miss counter to the `sdram_pm` open-row predictor (the
+`sdram_pred_row/bank/valid` logic already exists in `fpga64_sid_iec.vhd:3767-3801`),
+expose via UART/`T:`/`WD:`, run `tools/doom_autoload_probe.py` for ~60 s, read the
+ratio. That number decides whether Lever 1 is pursued at all.
 
 ### Speed lever 2 (highest ceiling, deepest) — pipeline the 65C816 internals
 Per iter-19 STA the real per-read floor is the CPU-internal di→ALU→BCD→PC path
