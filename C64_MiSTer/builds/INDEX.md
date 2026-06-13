@@ -2,6 +2,7 @@
 
 | Built (UTC)        | Branch              | SHA        | MD5 (short) | Subject                                    | Dirty |
 |--------------------|---------------------|------------|-------------|--------------------------------------------|-------|
+| 20260613 195259 | milestone-b-cdc-rew | 4136f780ce | c7407490    | perf(scpu): iter-30 WRITEFRAC gate — pos | yes   |
 | 20260613 183710 | milestone-b-cdc-rew | 5cd57fb7bd | b776750b    | perf(scpu): iter-29 page-hit GATE measured | yes   |
 | 20260613 172946 | milestone-b-cdc-rew | 3bba79ff3f | 2d5c79f9    | docs(handoff): page-mode lever entry point | yes   |
 | 20260613 170035 | milestone-b-cdc-rew | 3bba79ff3f | 42b6da7c    | docs(handoff): page-mode lever entry point | yes   |

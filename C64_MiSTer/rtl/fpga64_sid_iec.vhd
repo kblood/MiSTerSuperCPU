@@ -1591,10 +1591,20 @@ signal cobs_hw_reg   : unsigned(7 downto 0) := (others => '0');  -- window-compl
 -- decision rule: HIGH PH => page-mode is a big win => pursue; PH<~45% => drop.
 -- Counter-only: changes NO cadence => cannot wedge (safe to build). When
 -- PAGEHIT_OBSERVER=false, dbg_cache_hr/hw revert to cobs => RBF bit-identical.
--- iter-30 (2026-06-13): page-hit measurement is CONCLUDED (dropped at ~54%);
--- the HR/HW UART slot is now reused by WRITEFRAC_OBSERVER below, so PAGEHIT is
--- set false. Re-flip true (and WRITEFRAC false) to re-characterize row-locality.
-constant PAGEHIT_OBSERVER : boolean := false;
+-- iter-30 (2026-06-13) D-GATE: re-enabled to model a WIDER open row. A1 found
+-- Doom's SuperRAM traffic is ~99% reads (write fraction ~0.7%), so the read path
+-- is where ~all SuperRAM bandwidth is => the read-latency lever (page-mode) is the
+-- matching option. VICE models 2-8KB SIMM rows; ours is 256B because the SDRAM
+-- column = {addr[23]=1(fixed), c64_addr[7:0]} => only c64_addr[7:0]=256 sequential.
+-- PAGEHIT_COL_EXTRA folds N extra low row-bits into the column to model a column
+-- remap: 0=256B (iter-29 baseline, got ~54%), 1=512B (achievable: use all 9 chip
+-- column bits = c64_addr[8:0]), 2=1KB, 3=2KB (theoretical ceiling — needs >9
+-- column bits the chip lacks). Mask the low COL_EXTRA bits of req_row to 0 so
+-- addresses sharing a wider aligned region count as the same open row. If 512B
+-- locality is materially >54%, page-mode+remap revives; else page-mode stays
+-- dropped and only the 65C816-internal pipeline (Lever 2) remains.
+constant PAGEHIT_OBSERVER  : boolean := true;
+constant PAGEHIT_COL_EXTRA : integer := 0;   -- 0=256B(canonical) 1=512B 2=1KB 3=2KB; iter-30 measured 512B==54%==256B (no gain, remap useless)
 type ph_row_arr_t is array(0 to 3) of unsigned(12 downto 0);
 signal ph_row_b     : ph_row_arr_t := (others => (others => '0'));  -- open row per sd_ba
 signal ph_valid_b   : std_logic_vector(3 downto 0) := (others => '0');
@@ -1617,7 +1627,7 @@ signal ph_hw_reg    : unsigned(7 downto 0)  := (others => '0');  -- window-compl
 -- scpu_fast_path='1' (SuperRAM bank $02+, exactly the buffer's target); tally =
 -- cpuWe='1'. When WRITEFRAC_OBSERVER=false the mux reverts (PAGEHIT or cobs) =>
 -- RBF bit-identical. Probe: tools/writefrac_probe.py.
-constant WRITEFRAC_OBSERVER : boolean := true;
+constant WRITEFRAC_OBSERVER : boolean := false;  -- iter-30: A1 measured (~0.7%), slot handed back to PAGEHIT for the wider-row D-gate
 signal wf_win_cnt   : unsigned(7 downto 0)  := (others => '0');  -- 0..255 SuperRAM accesses
 signal wf_win_wr    : unsigned(8 downto 0)  := (others => '0');  -- writes in window 0..256
 signal wf_fr_reg    : unsigned(7 downto 0)  := (others => '0');  -- writes per 256 (sat 255)
@@ -5325,7 +5335,7 @@ begin
 					req_bank := "00";
 					req_row  := "00000" & systemAddr(15 downto 8);
 				end if;
-				idx := to_integer(req_bank);
+				for b in 0 to PAGEHIT_COL_EXTRA - 1 loop req_row(b) := '0'; end loop; idx := to_integer(req_bank);
 				-- HIT iff it matches THIS bank's currently-open row (per-bank
 				-- model: other banks' open rows are unaffected).
 				if ph_valid_b(idx) = '1' and req_row = ph_row_b(idx) then
