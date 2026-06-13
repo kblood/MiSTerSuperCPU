@@ -2,6 +2,14 @@
 
 | Built (UTC)        | Branch              | SHA        | MD5 (short) | Subject                                    | Dirty |
 |--------------------|---------------------|------------|-------------|--------------------------------------------|-------|
+| 20260613 183710 | milestone-b-cdc-rew | 5cd57fb7bd | b776750b    | perf(scpu): iter-29 page-hit GATE measured | yes   |
+| 20260613 172946 | milestone-b-cdc-rew | 3bba79ff3f | 2d5c79f9    | docs(handoff): page-mode lever entry point | yes   |
+| 20260613 170035 | milestone-b-cdc-rew | 3bba79ff3f | 42b6da7c    | docs(handoff): page-mode lever entry point | yes   |
+| 20260609 142421 | milestone-b-cdc-rew | 51c3d6c848 | e0b4619c    | perf(scpu): iter-27 internal-cycle fast-fi | yes   |
+| 20260609 130337 | milestone-b-cdc-rew | 2c34007e8a | 0675f71e    | test(sst): garbage-internal D_IN injection | yes   |
+| 20260608 150337 | milestone-b-cdc-rew | 2164c224fd | 3698680a    | docs(handoff): iter-25 RTI cycle-exact shi | yes   |
+| 20260605 062114 | milestone-b-cdc-rew | edf5daf391 | d387a4d5    | fix(65c816): iter-25 RTI cycle-exact — 4 | yes   |
+| 20260605 014139 | milestone-b-cdc-rew | def0174e54 | ed351d66    | test(cache): iter-24 dual-clock GHDL harne | yes   |
 | 20260604 135451 | milestone-b-cdc-rew | e6b3405333 | 404422c5    | fix(65c816): iter-21 MVN/MVP emu-mode bloc | yes   |
 | 20260604 044358 | milestone-b-cdc-rew | 58b308a5bd | 4671ecfc    | fix(65c816): iter-20 emu-mode stack page-c | yes   |
 | 20260604 001834 | milestone-b-cdc-rew | 27acd2d2f8 | 7dcc71e3    | docs(cache): iter-18 close — decisive A/ | yes   |

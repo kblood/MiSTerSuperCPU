@@ -1591,7 +1591,10 @@ signal cobs_hw_reg   : unsigned(7 downto 0) := (others => '0');  -- window-compl
 -- decision rule: HIGH PH => page-mode is a big win => pursue; PH<~45% => drop.
 -- Counter-only: changes NO cadence => cannot wedge (safe to build). When
 -- PAGEHIT_OBSERVER=false, dbg_cache_hr/hw revert to cobs => RBF bit-identical.
-constant PAGEHIT_OBSERVER : boolean := true;
+-- iter-30 (2026-06-13): page-hit measurement is CONCLUDED (dropped at ~54%);
+-- the HR/HW UART slot is now reused by WRITEFRAC_OBSERVER below, so PAGEHIT is
+-- set false. Re-flip true (and WRITEFRAC false) to re-characterize row-locality.
+constant PAGEHIT_OBSERVER : boolean := false;
 type ph_row_arr_t is array(0 to 3) of unsigned(12 downto 0);
 signal ph_row_b     : ph_row_arr_t := (others => (others => '0'));  -- open row per sd_ba
 signal ph_valid_b   : std_logic_vector(3 downto 0) := (others => '0');
@@ -1599,6 +1602,26 @@ signal ph_win_cnt   : unsigned(7 downto 0)  := (others => '0');  -- 0..255
 signal ph_win_hits  : unsigned(8 downto 0)  := (others => '0');  -- 0..256
 signal ph_hr_reg    : unsigned(7 downto 0)  := (others => '0');  -- hits per 256 (sat 255)
 signal ph_hw_reg    : unsigned(7 downto 0)  := (others => '0');  -- window-completion (liveness)
+
+-- ── iter-30 (2026-06-13) TRACK A1: WRITEFRAC_OBSERVER — read-only, wedge-safe ──
+-- Sizes the posted-write-buffer payoff (Track C) before any risky build by
+-- measuring what FRACTION of the CPU's SuperRAM (scpu_fast_path) SDRAM accesses
+-- are WRITES. VICE confirms the SuperCPU's speed model posts writes (free) while
+-- reads cannot be (scpu64cpu.c buffer_finish/wait_buffer); our gain is therefore
+-- bounded by this write fraction. Counter-only: shares the EXACT structure of
+-- pagehit_obs (256-access window, sat-255 result, liveness counter) and changes
+-- NO cadence => cannot wedge. Reuses the dead HR/HW UART slot, now labelled
+-- "WF:## WW:##" in debug_uart_pool_fmt.sv. WF = SuperRAM writes per last 256
+-- SuperRAM CPU SDRAM accesses (sat $FF; WF/2.56 = write %); WW = window-completion
+-- counter (advances => observer live). Gate = cpu_cyc='1' and cs_ram='1' and
+-- scpu_fast_path='1' (SuperRAM bank $02+, exactly the buffer's target); tally =
+-- cpuWe='1'. When WRITEFRAC_OBSERVER=false the mux reverts (PAGEHIT or cobs) =>
+-- RBF bit-identical. Probe: tools/writefrac_probe.py.
+constant WRITEFRAC_OBSERVER : boolean := true;
+signal wf_win_cnt   : unsigned(7 downto 0)  := (others => '0');  -- 0..255 SuperRAM accesses
+signal wf_win_wr    : unsigned(8 downto 0)  := (others => '0');  -- writes in window 0..256
+signal wf_fr_reg    : unsigned(7 downto 0)  := (others => '0');  -- writes per 256 (sat 255)
+signal wf_ww_reg    : unsigned(7 downto 0)  := (others => '0');  -- window-completion (liveness)
 
 -- ── more-turbo iter-6: READ-PATH (cache feeds the CPU) — GATED, ADDITIVE ──
 -- CACHE_READ_PATH=false (default) => the read-path generate block below emits
@@ -5344,9 +5367,51 @@ begin
 	end if;
 end process;
 
-dbg_cache_hr <= std_logic_vector(ph_hr_reg) when PAGEHIT_OBSERVER
+-- iter-30 TRACK A1: write-fraction observer (SuperRAM CPU SDRAM accesses).
+-- Same window/saturation/liveness shape as pagehit_obs; tallies cpuWe instead of
+-- a row-hit. Read-only => no cadence change => cannot wedge.
+writefrac_obs : process(clk32)
+	variable wr : unsigned(8 downto 0);
+begin
+	if rising_edge(clk32) then
+		if cobs_reset = '1' then
+			wf_win_cnt <= (others => '0');
+			wf_win_wr  <= (others => '0');
+			wf_fr_reg  <= (others => '0');
+			wf_ww_reg  <= (others => '0');
+		else
+			-- A CPU SuperRAM SDRAM access this clk32 (the posted-write buffer's
+			-- exact target: bank $02+ via scpu_fast_path, RAM via cs_ram).
+			if cpu_cyc = '1' and cs_ram = '1' and scpu_fast_path = '1' then
+				if cpuWe = '1' then
+					wr := wf_win_wr + 1;
+				else
+					wr := wf_win_wr;
+				end if;
+				if wf_win_cnt = x"FF" then
+					-- 256th access closes the window: latch writes-per-256 (sat 255).
+					if wr(8) = '1' then
+						wf_fr_reg <= x"FF";
+					else
+						wf_fr_reg <= wr(7 downto 0);
+					end if;
+					wf_ww_reg  <= wf_ww_reg + 1;
+					wf_win_cnt <= (others => '0');
+					wf_win_wr  <= (others => '0');
+				else
+					wf_win_cnt <= wf_win_cnt + 1;
+					wf_win_wr  <= wr;
+				end if;
+			end if;
+		end if;
+	end if;
+end process;
+
+dbg_cache_hr <= std_logic_vector(wf_fr_reg) when WRITEFRAC_OBSERVER
+                else std_logic_vector(ph_hr_reg) when PAGEHIT_OBSERVER
                 else std_logic_vector(cobs_hr_reg);
-dbg_cache_hw <= std_logic_vector(ph_hw_reg) when PAGEHIT_OBSERVER
+dbg_cache_hw <= std_logic_vector(wf_ww_reg) when WRITEFRAC_OBSERVER
+                else std_logic_vector(ph_hw_reg) when PAGEHIT_OBSERVER
                 else std_logic_vector(cobs_hw_reg);
 
 -- ====================================================================

@@ -762,21 +762,22 @@ module debug_uart_pool_fmt
 			9'd395: line_byte = hex_nibble(lat_iec_lines[7:4]);
 			9'd396: line_byte = hex_nibble(lat_iec_lines[3:0]);
 
-			// iter-29 (2026-06-13): " PH:## PW:##" page-hit-rate observer
-			// (repurposes the dead more-turbo iter-4d cpu_cache HR/HW slot;
-			// same lat_cache_hr/hw regs, now fed by the page-hit observer in
-			// fpga64_sid_iec.vhd). PH = page-HITs per last 256 CPU SDRAM
-			// accesses (sat $FF; /2.56 = % row-locality). PW = window-completion
-			// counter (advances => observer is live). HIGH PH => page-mode SDRAM
-			// is a big win (see project_pagemode_decision_rule_corrected).
+			// iter-30 (2026-06-13): " WF:## WW:##" write-fraction observer
+			// (reuses the same dead cpu_cache HR/HW slot the iter-29 page-hit
+			// observer used; same lat_cache_hr/hw regs, now fed by the
+			// WRITEFRAC_OBSERVER in fpga64_sid_iec.vhd). WF = SuperRAM WRITES per
+			// last 256 SuperRAM CPU SDRAM accesses (sat $FF; /2.56 = write %). WW =
+			// window-completion counter (advances => observer is live). HIGH WF =>
+			// posted-write buffer (Track C) has high payoff. (When PAGEHIT_OBSERVER
+			// is on instead, these two bytes carry PH/PW page-hit data — same slot.)
 			9'd397: line_byte = " ";
-			9'd398: line_byte = "P";
-			9'd399: line_byte = "H";
+			9'd398: line_byte = "W";
+			9'd399: line_byte = "F";
 			9'd400: line_byte = ":";
 			9'd401: line_byte = hex_nibble(lat_cache_hr[7:4]);
 			9'd402: line_byte = hex_nibble(lat_cache_hr[3:0]);
 			9'd403: line_byte = " ";
-			9'd404: line_byte = "P";
+			9'd404: line_byte = "W";
 			9'd405: line_byte = "W";
 			9'd406: line_byte = ":";
 			9'd407: line_byte = hex_nibble(lat_cache_hw[7:4]);
