@@ -1741,6 +1741,45 @@ constant INTERNAL_FAST_FIRE : boolean := false;  -- iter-27 HW-DEAD (2026-06-09)
 -- zero-delay bench cannot reproduce. Kept gated false (RBF bit-identical to shipped) as the record; bench +
 -- garbage-sweep harness retained. Do NOT re-enable without a latency-faithful KERNAL-boot bench that reproduces it.
 
+-- iter-28 (2026-06-09 analysis / 2026-06-13 FALSIFIED): MILESTONE C demand arbiter
+-- @ clk32. Adds busy-gated cpu_cyc terms at the intermediate CPU-region slots
+-- (CPU1/2/3/5/6/7/9/A/B), gated identically to the baseline RAM terms and kept
+-- INSIDE the sdram_busy='0' gate, intending to raise the 4 MHz floor (cpu_cyc only
+-- at CPU0/4/8/C) to ~5 MHz.
+--
+-- VERDICT: **INERT — this lever adds ZERO fires.** The original GOAL-A premise
+-- ("busy_cnt='011' ALREADY permits a 3-clk32 cadence; only the slot positions stop
+-- it") is WRONG. "011" with the static decrement (3786-3791: 011->010->001->000)
+-- clears sdram_busy only at N+4, so after any cs_ram fire at slot N, sdram_busy='1'
+-- through N+1..N+3 — and every demand slot requires cs_ram='1', so it is ALWAYS
+-- busy-blocked within that window. "011" is therefore a 4-apart FLOOR, not a
+-- 3-apart permit. The sdram_ready early-clear (3787) cannot help: on HW the V6
+-- 6-clk64 MISS access + 2-FF ready sync makes the ready rising-edge visible in
+-- clk32 only at ~N+5, strictly later than the static N+4.
+--
+-- PROOF (sim, 2026-06-13): c64_reduced_harness run_internal_fastfire.sh, three
+-- configs — DEMAND=0 / DEMAND=1 / DEMAND=1+NOEARLYCLEAR — are BYTE-IDENTICAL
+-- (cpu_cyc_fires=7640, ticks_to_op2000=68776, witnesses $AA/$4A/$4A/$EE). Disabling
+-- the early-clear (NOEARLYCLEAR, patch#10) changes nothing => the early-clear is
+-- redundant and the static-decrement 4-apart floor governs. The instrumentation's
+-- "min_cyc_gap=3" counts IDLE holes between fires (since_cyc increments only when
+-- cpu_cyc=0), so gap=3 = a 4-apart cadence = the documented 4 MHz floor, NOT
+-- 3-apart. (A 2026-06-09 note misread gap=3 as "3-apart over-firing"; corrected.)
+--
+-- To actually reach a 3-apart cs_ram cadence requires reducing the reservation to
+-- "010" (clears at N+3). That puts the SDRAM ce-edge spacing at exactly 6 clk64 =
+-- the V6 throughput floor with ZERO slack: the clk32->clk64 cpu_cyc->ce strobe sync
+-- (C64.sdc:82-90, a real 3-FF synchronizer => +/-1 clk64 capture uncertainty) can
+-- then land the 2nd ce-edge at q=5 (mid-sample) => FSM restart => corruption = the
+-- same setup/phase-race class as the 6 HW-dead levers. So "010" is NOT safe either.
+-- The only sound throughput lever is a page-mode SDRAM controller (open-row
+-- back-to-back column reads, no 6-clk64 spacing requirement) — the deferred Build-A
+-- rewrite that wedged at PC=$0D62. See memory project_demand_arbiter_inert_zerodelay.
+--
+-- Kept as a gated dead-lever record (default false => Quartus constant-folds the
+-- demand term away; cpu_cyc + RBF bit-identical to shipped 3698680a). Do NOT build.
+constant DEMAND_ARBITER : boolean := false;  -- iter-28: HW-INERT (busy-blocked); dead record
+
 -- iter-16 (2026-06-03): transaction-matched fill tuple — the Bug 2 fix. See the
 -- rp_fill_addr_r/rp_fill_bank_r decl above. When true (and CACHE_READ_PATH), the
 -- cache fill is tagged with the address captured at SDRAM read-issue instead of the
@@ -3667,7 +3706,22 @@ cpu_cyc <= '1' when (sdram_busy = '0' and cpu_cyc_va_ok = '1' and (
 				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
 				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
 				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
-				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1'))
+				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1')) or
+				-- iter-28 Milestone C: demand slots — busy-gated extra CPU-region
+				-- fires (inside the sdram_busy='0' gate above; busy_cnt="011" paces
+				-- to >=3 clk32). SCPU full-turbo (turbo_m="111") + RAM only + not
+				-- throttled. Folds away when DEMAND_ARBITER=false. Slots CPU1..CPUB
+				-- (NOT CPUC/D/E/F): the last possible consume is CPUB+2=CPUD (CPUC's
+				-- own consume CPUE is existing behaviour), all in-region. CPUD/E are
+				-- EXCLUDED because they are NOT reliably busy-blocked — an io_enable
+				-- CPUC fire (cs_ram=0) does NOT load busy_cnt, so a following RAM
+				-- access at CPUE could fire and its consume would land in the next
+				-- period's EXT0 (Codex iter-28 review, hole #5).
+				(DEMAND_ARBITER and supercpu_en = '1' and turbo_m = "111"
+				   and cs_ram = '1' and scpu_force_1mhz = '0'
+				   and (sysCycle = CYCLE_CPU1 or sysCycle = CYCLE_CPU2 or sysCycle = CYCLE_CPU3
+				        or sysCycle = CYCLE_CPU5 or sysCycle = CYCLE_CPU6 or sysCycle = CYCLE_CPU7
+				        or sysCycle = CYCLE_CPU9 or sysCycle = CYCLE_CPUA or sysCycle = CYCLE_CPUB))
 			)) or (alt_fire_r = '1' and scpu_force_1mhz = '0')
 			   or (alt_fire_r2 = '1' and scpu_force_1mhz = '0') else '0';
 				

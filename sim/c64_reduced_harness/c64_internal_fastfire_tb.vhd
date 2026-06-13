@@ -127,6 +127,8 @@ architecture sim of c64_internal_fastfire_tb is
     signal obs_vpa      : std_logic;
     signal obs_encpu    : std_logic;            -- enableCpu (registered advance)
     signal obs_engap    : unsigned(5 downto 0);
+    signal obs_turbo_m  : std_logic_vector(2 downto 0);  -- iter-28: CPU turbo gate
+    signal obs_sbusy    : std_logic;            -- iter-28: sdram_busy
 
     -- FASTFIRE_MODE: report-only flag the runner flips in lockstep with the
     -- staged fpga64's INTERNAL_FAST_FIRE constant (sed). Lets a single log line
@@ -139,6 +141,10 @@ architecture sim of c64_internal_fastfire_tb is
     signal fastfire_cnt : integer := 0;   -- enableCpu pulses on internal cycles
     signal mem_encpu    : integer := 0;   -- enableCpu pulses on memory cycles
     signal ticks_to_tgt : integer := -1;  -- clk32 ticks reset_n->op_count=TARGET_OPS
+    signal cyc_fires    : integer := 0;   -- iter-28: total cpu_cyc rising edges (fire-rate)
+    signal demand_fires : integer := 0;   -- iter-28: cpu_cyc fires at intermediate (non CPU0/4/8/C) slots
+    signal turbo_max    : std_logic_vector(2 downto 0) := "000"; -- iter-28: max turbo_m seen
+    signal min_cyc_gap  : integer := 999; -- iter-28: smallest clk32 spacing between cpu_cyc fires
 
     procedure tick(signal clk : std_logic; n : natural) is
     begin
@@ -262,6 +268,8 @@ begin
     obs_vpa      <= << signal .c64_internal_fastfire_tb.dut.dut.vpa_816   : std_logic >>;
     obs_encpu    <= << signal .c64_internal_fastfire_tb.dut.dut.enableCpu : std_logic >>;
     obs_engap    <= << signal .c64_internal_fastfire_tb.dut.dut.en_gap    : unsigned(5 downto 0) >>;
+    obs_turbo_m  <= << signal .c64_internal_fastfire_tb.dut.dut.turbo_m   : std_logic_vector(2 downto 0) >>;
+    obs_sbusy    <= << signal .c64_internal_fastfire_tb.dut.dut.sdram_busy : std_logic >>;
     obs_cpu_cyc1 <= obs_cpu_cycs(1);
 
     -- iter-27: INVARIANT + METRIC monitor. Samples every clk32 rising edge once
@@ -285,6 +293,8 @@ begin
         variable ticks   : integer := 0;
         variable prev_en : std_logic := '0';
         variable internal_now : boolean;
+        variable prev_cyc : std_logic := '0';    -- iter-28: cpu_cyc edge detect
+        variable since_cyc : integer := 99;       -- clk32 since last cpu_cyc fire
     begin
         wait until reset = '0';
         -- skip the ROM-load + boot settle (same window the other monitors use)
@@ -319,6 +329,21 @@ begin
                 end if;
             end if;
             prev_en := obs_encpu;
+
+            -- iter-28 DEMAND-ARBITER fire-rate: count cpu_cyc rising edges and the
+            -- spacing between them. A demand fire = spacing <=3 clk32 (tighter than
+            -- the baseline 4-apart CPU0/4/8/C cadence). turbo_max records whether the
+            -- demand gate's turbo_m="111" precondition is ever met in this bench.
+            if obs_turbo_m > turbo_max then turbo_max <= obs_turbo_m; end if;
+            if obs_cpu_cyc = '1' and prev_cyc = '0' then
+                cyc_fires <= cyc_fires + 1;
+                if since_cyc < min_cyc_gap then min_cyc_gap <= since_cyc; end if;
+                if since_cyc <= 3 then demand_fires <= demand_fires + 1; end if;
+                since_cyc := 0;
+            else
+                if since_cyc < 99 then since_cyc := since_cyc + 1; end if;
+            end if;
+            prev_cyc := obs_cpu_cyc;
 
             -- METRIC: latch the tick count when op_count first reaches TARGET_OPS.
             if ticks_to_tgt < 0 and to_integer(dbg_en_count) >= TARGET_OPS then
@@ -552,6 +577,11 @@ begin
         report "FASTFIRE_WITNESS: done=$" & hex2(done)
              & " w0=$" & hex2(w0) & " w1=$" & hex2(w1) & " w2=$" & hex2(w2)
              & " sdrAE=$" & hex2(sdr) & " sdr140=$" & hex2(sdrA);
+        -- iter-28 demand-arbiter fire-rate readout (DEMAND=0 vs DEMAND=1):
+        report "DEMAND_FIRERATE: cpu_cyc_fires=" & integer'image(cyc_fires)
+             & " demand_fires(<=3apart)=" & integer'image(demand_fires)
+             & " min_cyc_gap=" & integer'image(min_cyc_gap)
+             & " turbo_max=" & integer'image(to_integer(unsigned(turbo_max)));
         if FASTFIRE_MODE and viol_count /= 0 then
             report "FASTFIRE: INVARIANT FAILED (" & integer'image(viol_count)
                  & " prefetch-on-internal events) -- the cpu_cyc VDA/VPA gate is not holding."

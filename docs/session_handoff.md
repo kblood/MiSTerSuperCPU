@@ -1,169 +1,147 @@
-# Session Handoff — iter-27 (2026-06-09)
+# Session Handoff — iter-28 (2026-06-13)
 
 ## North star
 Make the SuperCPU as compatible and fast as possible.
 
-## ⛔ iter-27 OUTCOME: INTERNAL-FAST-FIRE HW-FALSIFIED — lever joins the HW-dead set
-The HW gate ran (build `0675f71e`, `INTERNAL_FAST_FIRE=true`) and the lever **WEDGED
-on silicon**: black screen, CPU hard-pinned at **PC:$EE97** (KERNAL IEC region),
-never reached READY. **Control (same MiSTer, same session):** the iter-26 shipped
-RBF `3698680a` booted **clean** — SCPU64 V0.07 / "38911 BASIC BYTES FREE / READY.",
-PC cycling the real keyboard-idle loop **$E5CD–$E5D6**. So the wedge is the lever,
-not the environment. This **falsifies the "different class / no SDRAM-staleness
-risk" hope**: fast-firing internal cycles 2-apart still advances the CPU's phase
-ahead of the ~4-clk32 SDRAM read cadence, so the *following* memory fetch races
-SDRAM latency = the same setup-time/phase class that killed every cache lever
-(Bug 2). Everything zero-delay PASSED (system bench bit-identical 178→0 + ~8%
-faster; SST garbage 0/5.12M; Codex logic-clean) yet HW wedges — exactly the class
-a zero-delay bench cannot reproduce. **Action taken (per the documented plan):**
-reverted `INTERNAL_FAST_FIRE := false` (RBF bit-identical to shipped), kept the
-gated RTL + system bench + garbage-sweep harness as the record, restored MiSTer
-`_Test` to iter-26 `3698680a`, committed. **Net speed status: ALL known speed
-levers are now HW-dead** (cache read-path, raised-clock B clk64/clk48, alt-fire,
-internal-fast-fire). The shipped build remains pure ~4 MHz. The next real speed
-lever requires either (a) a latency-faithful KERNAL-boot bench (c64_reduced_harness
-+ clk64_sdram_model) that can finally REPRODUCE this wedge class so a fix is
-validatable, or (b) a pipeline inside the 65C816 (deep, multi-session), or
-(c) Milestone C demand-arbiter @ clk32. Do NOT build another speed RBF off a
-zero-delay bench — that anti-pattern has now failed 6×.
+## ⛔ iter-28 GOAL B DONE (GHDL, no build): demand arbiter FALSIFIED — INERT. GOAL-A "GO" was WRONG.
+Prototyped the Milestone C demand arbiter (`DEMAND_ARBITER` constant; busy-gated
+extra `cpu_cyc` terms at CPU1/2/3/5/6/7/9/A/B, all inside the `sdram_busy='0'`
+gate) and A/B-tested it in `sim/c64_reduced_harness`
+(`run_internal_fastfire.sh`, `DEMAND=0|1`).
+- **Genuine A/B (real constant false vs true, staged-verified): BYTE-IDENTICAL** —
+  cpu_cyc_fires=7640, min_cyc_gap=3, ticks_to_op2000=68776, witnesses
+  $AA/$4A/$4A/$EE in both. The demand arbiter adds **ZERO fires → no speed gain**.
+  (NO HW build — correctly avoided the 7th zero-delay-blind speed RBF.)
+- **GOAL-A premise was WRONG.** "busy_cnt='011' already permits a 3-clk32 cadence;
+  only slot positions stop it" is FALSE. "011" STATIC-decrements 011→010→001→000
+  and clears `sdram_busy` only at **N+4** (`:3786-3791`), so it is a **4-apart
+  FLOOR**. Every demand slot requires `cs_ram='1'` and is therefore busy-blocked
+  through N+1..N+3 → never fires. The `sdram_ready` early-clear is REDUNDANT:
+  `NOEARLYCLEAR=1` (patch#10) is byte-identical; a-fortiori on HW the 6-clk64 MISS
+  + 2-FF sync makes ready visible only at ~N+5, later than the static N+4, so the
+  4-apart floor governs HW too.
+- **Instrumentation correction**: `min_cyc_gap` counts IDLE holes between fires
+  (`since_cyc` increments only when cpu_cyc=0, tb:344) → gap=3 = a **4-apart**
+  cadence = the documented 4 MHz floor, NOT 3-apart over-firing. (A 2026-06-09 note
+  misread this.)
+- **Reaching 3-apart needs reservation "010"** (clears at N+3) → SDRAM ce-edge
+  spacing = exactly 6 clk64 = the V6 throughput floor with ZERO slack. The ±1 clk64
+  uncertainty of the `cpu_cyc`→ce strobe sync (`C64.sdc:82-90`, a real 3-FF
+  synchronizer) can land the 2nd ce-edge at q=5 (mid-`dout_r` sample) → `sdram_pm`
+  FSM restart → corruption = the SAME dead class as the 6 prior levers. "010" is
+  NOT safe and is zero-delay-blind. **The only sound throughput lever is a
+  page-mode SDRAM controller** (open-row back-to-back column reads, no 6-clk64
+  spacing) — the deferred Build-A rewrite (wedged PC=$0D62).
+- `DEMAND_ARBITER := false` committed as a gated dead-lever record (RBF
+  bit-identical to shipped `3698680a`; Quartus constant-folds the term away).
+- Full detail: memory `project_demand_arbiter_inert_zerodelay.md`.
 
-## TL;DR of where we are
-- **COMPAT is essentially solved at the instruction level.** SST suite is 100%
-  clean (0/5.12M, iter-26). Lorenz 100% both modes. Doom + Wolf3D run; SCPU Kicks
-  renders. No strong signal points at a specific broken instruction → the open
-  half of the north star is now **SPEED**.
-- **SPEED status:** shipped build runs **pure ~4 MHz** in clk32 passthrough —
-  every prior speed enhancement (cache read-path, raised-clock B clk64/clk48,
-  alt-fire) is HW-dead and inert behind `CACHE_READ_PATH=false`. The 4 MHz floor
-  is SDRAM-bound: `enableCpu` fires only at sysCycle CPU0/4/8/C (every 4 clk32),
-  matched to the ~4-clk32 SDRAM read latency. We are ~5× below real SuperCPU
-  20 MHz.
+## Where we are
+- **COMPAT is solved at the instruction level.** SST suite 100% clean (0/5.12M,
+  iter-26). Lorenz 100% both modes. Doom + Wolf3D run; SCPU Kicks renders. No
+  signal points at a specific broken instruction. The SST vein is exhausted.
+- **SPEED is the open half — and ALL known speed levers are now HW-dead.** The
+  shipped build runs **pure ~4 MHz** in clk32 passthrough. The 4 MHz floor is
+  SDRAM-bound: `enableCpu` fires only at sysCycle CPU0/4/8/C (every 4 clk32),
+  matched to the ~4-clk32 SDRAM read latency (`busy_cnt="011"` MISS floor). We are
+  ~5× below real SuperCPU 20 MHz. Dead levers: cache read-path, raised-clock B
+  (clk64/clk48), alt-fire, and now internal-fast-fire (iter-27). Each died the
+  same way: **zero-delay bench passes, silicon wedges** (the SDRAM-latency /
+  setup-time / phase class). **Anti-pattern that has failed 6×: do NOT build
+  another speed RBF off a zero-delay bench.**
 
-## iter-27: INTERNAL-CYCLE FAST-FIRE — new speed lever, PROVEN-SAFE semantics, v1 scheduler FLAWED (do not build)
-A genuinely **different, safer class** than the dead cache/alt-fire levers. Every
-dead lever raced *SDRAM data delivery* (and the cache added an unconstrained fill
-FF = the Bug-2 setup-time corruptor). This lever touches neither.
+## ⛔ iter-27 OUTCOME (record): internal-cycle fast-fire HW-FALSIFIED
+HW build `0675f71e` (`INTERNAL_FAST_FIRE=true`) **WEDGED** — black screen, CPU
+hard-pinned at **PC:$EE97** (KERNAL IEC region), never reached READY. Control
+(same MiSTer, same session): iter-26 shipped RBF `3698680a` booted **clean**
+(SCPU64 V0.07 / READY, PC cycling the real keyboard-idle loop **$E5CD–$E5D6**) ⇒
+the wedge is the lever, not the environment. Falsifies the "different class / no
+SDRAM-staleness risk" hope: fast-firing internal cycles 2-apart still advances the
+CPU's phase ahead of the ~4-clk32 SDRAM cadence → the *following* memory fetch
+races SDRAM latency = the same class that killed every cache lever. Everything
+zero-delay PASSED (system bench bit-identical 178→0 + ~8% faster; SST garbage
+0/5.12M; Codex v2 logic-clean) yet HW wedges. Reverted `INTERNAL_FAST_FIRE :=
+false` (RBF bit-identical), kept gated RTL + bench as the record, restored MiSTer,
+committed `51c3d6c`. Full detail: memory `project_internal_cycle_fast_fire.md`.
+Diagnostic lesson: a boot wedge masquerades as a healthy idle (frames advance,
+WD:FFFF) — the tell is PC pinned at ONE address vs the idle loop's $E5CD–$E5D6
+RANGE. ALWAYS A/B a suspect speed RBF against the shipped RBF on the same MiSTer.
 
-**Idea:** ~22.6% of CPU cycles are INTERNAL operations (VDA=0 ∧ VPA=0: RMW modify,
-decimal correct, taken-branch IO, transfers, NOP, REP/SEP, XBA, stack/ctrl IO —
-measured across all 256 opcodes from the SST traces). On an internal cycle the
-W65C816 makes **no valid memory access**, so the data bus is don't-care. Those
-cycles currently still wait for the 4 MHz SDRAM cadence even though they need no
-bus. Firing them 2-apart (2 clk32, next even CPU slot) gives ~**+12-15%**
-throughput with no SDRAM-staleness risk. It would be the **first shippable** speed
-gain (everything else is inert).
+## NEXT — arbiter-tweak speed levers are EXHAUSTED; pick a frontier below
 
-### What is DONE and SOLID this iteration
-1. **Semantic-safety PROOF (GHDL-first, the foundational result).** Modified the
-   SST harness to drive D_IN with garbage (`x"5A"`) on every internal cycle
-   (VDA=0 ∧ VPA=0) — new `-GarbageInternal` switch on `run_sst.ps1` /
-   `sweep_sst.ps1` (generic `garbage_internal`, gated, default false = baseline).
-   - Diverse subset (RMW, decimal ADC/SBC, abs,X page-cross, branches,
-     RTI/RTS/RTL, MVN/MVP, JSR/JSL/JML, XBA, SBC(dp,X)) = **44,000 cases, 0 fail**.
-     Results: `sim/p65c816_singlesteptest/sweep_results_garb_subset/`.
-   - **Full 5.12M sweep COMPLETE (definitive):** `pass=5,114,328 fail=0
-     skip=5,672` (`-All -GarbageInternal`, `sweep_results_garb_full/`) —
-     identical pass/skip split to the clean iter-26 baseline ⇒ the CPU never
-     consumes D_IN on internal cycles. Harness COMMITTED `2c34007` (reusable
-     oracle; baseline bit-identical when the generic is false).
-2. **Payoff quantified:** 22.6% internal cycles (median per-opcode 22.8%;
-   NOP/XBA/transfers/REP/SEP run 50-75% internal). Model ⇒ ~+12-15%.
-3. **SDC analysis (favorable):** `set_multicycle_path -setup 2 -to *P65C816*`
-   (C64.sdc:44) already assumes enableCpu fires ≥2 clk32 apart — the fast-fire
-   (even slots, en_gap≥2) respects it exactly; CPU-internal reg→ALU→reg closes at
-   setup-2 (+23.6ns, iter-19 STA). Adds NO new data-capturing register; reads NO
-   SDRAM on the fast cycle. dout_r→CPU budget (clk64→clk32 -setup 2) is unchanged.
-4. **RTL implemented, gated, syntax-clean.** New constant `INTERNAL_FAST_FIRE`
-   (`fpga64_sid_iec.vhd` ~:1690, default **false** ⇒ RBF bit-identical) + a new
-   highest-priority scheduler branch (~:3775). Quartus Analysis & Elaboration
-   **0 errors** (`syntax_iter27.log`).
+iter-28 closed the last cheap speed idea. The 4 MHz floor is a genuine
+SDRAM-throughput floor (6 clk64 = 3 clk32 min ce-spacing, auto-precharge), and the
+arbiter already runs the CPU as fast as that floor + the di-FF multicycle safely
+allow (4-apart). You cannot beat it by adding arbiter slots — every faster cadence
+either is busy-blocked (demand, inert) or eats the ce-sync jitter margin (the "010"
+reservation, dead class). The two real levers left are both large:
 
-### The v1 FLAW — FIXED + SYSTEM-BENCH VALIDATED (iter-27 v2)
-**v1 flaw (Codex):** `cpu_cyc` was gated on `cs_ram` (address decode), NOT on
-VDA/VPA. An INTERNAL cycle presenting a RAM-region address still issued a
-`cpu_cyc` prefetch + a pending `cpu_cyc_s(1)` MAIN pulse → dangling MAIN consumes
-stale data on the following cycle ⇒ wedge.
+### Speed lever 1 (real, big) — page-mode SDRAM controller
+Replace the auto-precharge `sdram_pm` read path with open-row back-to-back column
+reads so a second read on the same row costs ~3 clk64 instead of 6. This is the ONLY
+way to legitimately drop below the 6-clk64 ce-spacing floor. It is the deferred
+Build-A page-mode FSM that wedged the C64 at PC=$00:$0D62 (`sdram_pm.v` header) —
+needs a careful incremental re-add (row tracking, conflict/refresh paths) GHDL-proven
+in `sim/sdram_pm_tb` + `c64_reduced_harness` before any HW build. Multi-session.
 
-**FIX (applied):** new combinational `cpu_cyc_va_ok` (`fpga64_sid_iec.vhd`, near
-the `cpu_cyc` assignment) = `'1' when (not INTERNAL_FAST_FIRE) or (vda_816='1' or
-vpa_816='1')`, AND-ed into the `cpu_cyc` main-slot block. When `INTERNAL_FAST_FIRE`,
-an internal cycle issues NO prefetch and NO MAIN pulse — it is advanced ONLY by
-the fast-internal scheduler branch; memory cycles keep the full prefetch+consume
-window. When false, `cpu_cyc_va_ok` folds to `'1'` ⇒ `cpu_cyc` bit-identical to
-the shipped arbiter. Quartus A&E **0 errors** (`syntax_iter27.log` re-run).
+### Speed lever 2 (highest ceiling, deepest) — pipeline the 65C816 internals
+Per iter-19 STA the real per-read floor is the CPU-internal di→ALU→BCD→PC path
+(~15 ns), not the cpuDi mux. Pipelining it is the biggest win but the deepest,
+multi-session effort.
 
-**SYSTEM-BENCH VALIDATION (decisive):** new
-`sim/c64_reduced_harness/c64_internal_fastfire_tb.vhd` + `run_internal_fastfire.sh`
-drive the REAL `fpga64_sid_iec` arbiter + real P65C816 with `make_bug2_test_rom`,
-observe `cpu_cyc/cpu_cyc_s(1)/vda_816/vpa_816/enableCpu` via external names, and
-assert the invariant "cpu_cyc never '1' while vda=vpa=0". A/B (`FASTFIRE=0` vs `1`):
-| metric | baseline | fast-fire |
-|---|---|---|
-| viol_count (prefetch-on-internal) | **178** | **0** |
-| witnesses (w0/w1/w2/done) | $AA/$4A/$4A/$EE | $AA/$4A/$4A/$EE (identical) |
-| fastfire_cnt (lever engaged) | 178 | 178 |
-| ticks_to_op2000 | 68776 | 63364 (~7.9% fewer) |
-The fix drives prefetch-on-internal 178→0 (a model-INDEPENDENT structural
-property: the stale-data desync can only arise FROM a prefetch-on-internal, so
-zeroing them removes the mechanism the zero-delay bench otherwise can't see),
-keeps output bit-identical, and runs measurably faster. `DUALCLK=true` is NOT
-used for this A/B (it wedges even the baseline CPU in zero-delay — the
-setup-time-class finding). RESIDUAL (HW-only): the Codex #2 PHASE question
-(vda/vpa at the decision edge = pending cycle's) and the setup-time margin — a
-zero-delay bench can't confirm timing; that's the single HW-build gate.
+### Compat frontier (productive, NO risky build) — real SuperCPU software on HW
+SST is 100% clean and Lorenz passes both modes, so instruction-level compat is
+solved; the live frontier is *non-instruction* incompatibility. Curate real SCPU
+software (GEOS, SCPU-library titles, timing-sensitive demos, WriteSmart users), run
+on HW, and triage failures. This is the natural north-star step that does NOT require
+a speed build and cannot hit the dead zero-delay-bench wall. **Recommended next** if
+the goal is steady progress without committing to a multi-session controller rewrite.
 
-## Next levers (resume here, priority order)
-1. **Finish the internal-fast-fire lever (the active speed thread).**
-   a. ✅ Garbage sweep 0/5.12M (proof complete, committed `2c34007`).
-   b. ✅ Scheduler redesigned (`cpu_cyc_va_ok` VDA/VPA gate) — A&E 0 err.
-   c. ✅ System bench built + A/B validated (178→0, bit-identical, ~8% faster):
-      `sim/c64_reduced_harness/c64_internal_fastfire_tb.vhd` +
-      `run_internal_fastfire.sh`. `FASTFIRE=0|1 bash run_internal_fastfire.sh`.
-   d. ✅ Re-Codex'd the v2 fix (`tools/codex-out/iter27-fastfire-v2-review.txt`).
-      Verdict POSITIVE: (#2) no prior-memory `cpu_cyc_s(1)` vs fast-internal
-      collision — MAIN resets en_gap first; (#3 PHASE) vda/vpa at the decision
-      edge ARE the pending cycle's flags in passthrough (the handoff's "HW-only"
-      residual — now structurally confirmed); (#4) no `<2 clk32` spacing
-      violation. ONE actionable but INERT finding (#1): `cpu_cyc_va_ok` qualifies
-      only the main term, NOT the trailing `alt_fire_r`/`alt_fire_r2` terms
-      (fpga64_sid_iec.vhd:3662-3663) — both are hard-`'0'` every clk32 in this
-      build (the `'1'` assigns at 3757/3780 are commented out), so it is inert
-      HERE; it would only re-open the dangling-MAIN hazard if alt-fire is ever
-      revived alongside INTERNAL_FAST_FIRE. Defensive fix (AND `cpu_cyc_va_ok`
-      into those terms too) deferred — alt-fire is HW-dead; revisit only if revived.
-   e. ✅ DONE = HW build `0675f71e` (`INTERNAL_FAST_FIRE := true`) deployed + tested.
-      **RESULT: WEDGED** (black screen, PC pinned $EE97). Control iter-26 `3698680a`
-      booted clean on the same MiSTer. ⇒ phase/setup-time class CONFIRMED, lever is
-      HW-DEAD. Reverted constant to false, restored MiSTer, committed gated RTL +
-      bench as the record. See the "⛔ iter-27 OUTCOME" block at the top.
-      Diagnostic note for next time: the wedge looks like a healthy idle at a glance
-      (frames advance, WD:FFFF) — the tell is PC pinned at a SINGLE address vs the
-      real keyboard-idle loop's $E5CD–$E5D6 RANGE. Always A/B against the shipped RBF.
-2. **SST stays the compat regression oracle** — re-run `sweep_sst.ps1 -All` after
-   any CPU/ALU/AddrGen change (must stay 0/5.12M).
-3. **Real SuperCPU software compat** — secondary; current pool (Doom/Wolf3D/SCPU
-   Kicks) all run. Open-ended, needs new curated titles.
+## Other options (documented, not the current plan)
+- **C — Latency-faithful KERNAL-boot bench.** Integrate `clk64_sdram_model`
+  (faithful q5 latency) into `c64_reduced_harness` running the *real* KERNAL boot
+  in scpu mode, and reproduce the iter-27 $EE97 wedge with a fast-fire-style
+  change. If it reproduces, *any* future clk32 speed fix becomes validatable
+  instead of dying on HW. High leverage but **uncertain** — prior attempts
+  (iter-23/24) found `clk64_sdram_model` wedges even the baseline CPU in
+  zero-delay, and it may only confirm "unfixable in RTL." Worth building if B
+  needs a validation harness it doesn't currently have.
+- **D — Pipeline the 65C816 internals.** Per iter-19 STA the real floor is the
+  CPU-internal di→ALU→PC path (~15 ns), not the cpuDi mux (~3–5 ns). Pipelining it
+  is the highest ceiling but the deepest, multi-session effort.
+- **E — Real SuperCPU software compat sweep.** Curate new titles (demos, GEOS,
+  SCPU library) and run on HW; this is where *non-instruction* incompatibilities
+  (timing-sensitive demos, WriteSmart usage) surface. Open-ended, lower per-unit
+  signal since the current pool passes. This is the natural compat frontier now
+  that SST is exhausted.
+- **F — WriteSmart register decode** ($D074–D077 / $D0B3). A specific real-HW
+  feature from the backlog that may unlock specific software. Reportedly already
+  software-visible; full decode is the remaining piece.
+- **(low) bank-$01 ROM-shadow reads** — deferred, no known consumer.
 
-## State of the working tree (COMMITTED this iteration — lever recorded as HW-dead)
-- `C64_MiSTer/rtl/fpga64_sid_iec.vhd` — `INTERNAL_FAST_FIRE := false` (HW-dead, gated;
-  RBF bit-identical to shipped) + `cpu_cyc_va_ok` VDA/VPA gate + fast-internal
-  scheduler branch + the HW-dead annotation. Kept as the record.
+## State of the working tree (clean — committed `51c3d6c`)
+- `C64_MiSTer/rtl/fpga64_sid_iec.vhd` — `INTERNAL_FAST_FIRE := false` (HW-dead,
+  gated; RBF bit-identical to shipped) + `cpu_cyc_va_ok` VDA/VPA gate +
+  fast-internal scheduler branch + HW-dead annotation. Kept as the record.
 - `sim/c64_reduced_harness/c64_internal_fastfire_tb.vhd` + `run_internal_fastfire.sh`
-  — the system bench (A/B `FASTFIRE=0|1`, 178→0 prefetch-on-internal, bit-identical,
-  ~8% fewer ticks). NOTE: zero-delay ⇒ it could NOT predict the HW wedge (the whole
-  point — same blind spot as the Bug-2 benches).
-- Garbage-sweep proof harness already committed `2c34007` (`p65c816_sst_tb.vhd`
-  `garbage_internal` generic + `run_sst.ps1`/`sweep_sst.ps1 -GarbageInternal`).
-- Codex v2 review: `tools/codex-out/iter27-fastfire-v2-review.txt` (logic-clean,
-  flagged only the inert alt-fire-term gap #1).
-- MiSTer `_Test` restored to iter-26 `3698680a` (known-good); lock released.
+  — the iter-27 system bench (A/B `FASTFIRE=0|1`; zero-delay, could NOT predict the
+  HW wedge — the whole point).
+- Garbage-sweep proof harness committed `2c34007`
+  (`p65c816_sst_tb.vhd` `garbage_internal` + `run_sst.ps1`/`sweep_sst.ps1
+  -GarbageInternal`).
+- Codex v2 review: `tools/codex-out/iter27-fastfire-v2-review.txt`.
+- MiSTer `_Test` = iter-26 `3698680a` (known-good), lock released, healthy
+  (PC cycling $E5CD–$E5D6).
 
 ## Tooling notes
-- Garbage-internal proof: `run_sst.ps1 -InputFile <op>.<e|n>.txt -GarbageInternal
-  -StopTime 60000ms`; sweep `sweep_sst.ps1 -All -GarbageInternal -ResultDir X`.
-- Internal-cycle fraction measured by parsing CY-block flag tokens (positions
-  1-2 = VDA 'd' / VPA 'p'; '--' = internal) in `external/65816/v1.bin/*.txt`.
-- Deployed HW = iter-26 `3698680a` (md5 confirmed on `/media/fat/_Test/C64.rbf`).
-  MiSTer free at handoff (CORENAME=MENU).
-- Cadence facts: `enableCpu <= cpu_cyc_s(1)` shipped; cpu_cyc @CPU0/4/8/C gated on
-  sdram_busy + cs_ram; busy_cnt="011" MISS floor = ~4 clk32 = the 4 MHz ceiling.
+- SST regression oracle: `sweep_sst.ps1 -All` must stay 0/5.12M after ANY
+  CPU/ALU/AddrGen change. Garbage variant: add `-GarbageInternal`.
+- HW A/B method: deploy suspect RBF, sample UART `PC:` distribution
+  (`mister_debug.py uart N`). Healthy idle = a RANGE around $E5CD–$E5D6; wedge =
+  one pinned address. Always run the shipped `3698680a` as the control.
+- `lorenz_run.py [scpu|t65]`'s MGL core-reload can transiently wedge the daemon
+  screenshot/command pipe (stale frames / empty `/media/fat/screenshots/C64/`);
+  `reboot` clears it (pre-authorized). Confirm core via `cat /tmp/CORENAME`.
+- Cadence facts: `enableCpu <= cpu_cyc_s(1)` shipped; `cpu_cyc` @CPU0/4/8/C gated
+  on `sdram_busy` + `cs_ram`; `busy_cnt="011"` MISS floor = ~4 clk32 = the 4 MHz
+  ceiling (the target of GOAL A's analysis).

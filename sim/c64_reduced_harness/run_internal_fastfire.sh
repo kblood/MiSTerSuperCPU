@@ -130,6 +130,41 @@ else
     echo "patch#7: INTERNAL_FAST_FIRE left false (baseline arbiter A/B reference)"
 fi
 
+# Patch #9 (iter-28): flip DEMAND_ARBITER in the staged fpga64 (Milestone C
+# demand slots). DEMAND=1 enables the busy-gated intermediate CPU-region fires.
+# Zero-delay bench can only confirm functional correctness + fire-rate increase
+# (it CANNOT validate the setup-time class — STA+HW are the real gates).
+DEMAND="${DEMAND:-0}"
+if [ "${DEMAND}" == "1" ]; then
+    sed -i 's/constant DEMAND_ARBITER : boolean := false;/constant DEMAND_ARBITER : boolean := true;/' "${STAGE}/fpga64_sid_iec.vhd"
+    if ! grep -q 'constant DEMAND_ARBITER : boolean := true;' "${STAGE}/fpga64_sid_iec.vhd"; then
+        echo "patch#9 ERROR: DEMAND_ARBITER constant not found/flipped" >&2
+        exit 3
+    fi
+    echo "patch#9: DEMAND_ARBITER=true (Milestone C demand slots under test)"
+else
+    echo "patch#9: DEMAND_ARBITER left false (baseline arbiter)"
+fi
+
+# Patch #10 (iter-28): NOEARLYCLEAR=1 disables the sdram_ready early-clear of
+# sdram_busy_cnt, forcing the static decrement ONLY. This empirically isolates
+# the mechanism: with the early-clear gone, the busy reservation "011" must
+# static-decrement over the full 4 clk32 (the HW floor, since on real silicon
+# the V6 6-clk64 MISS + 2-FF ready sync makes the early-clear arrive too late
+# to ever beat the static path). Predicts DEMAND=1 becomes byte-identical to
+# baseline (4-apart) — proving the demand slots are busy-blocked on HW.
+NOEARLYCLEAR="${NOEARLYCLEAR:-0}"
+if [ "${NOEARLYCLEAR}" == "1" ]; then
+    sed -i "s/if sdram_ready_sync(1) = '1' and sdram_ready_sync_prev = '0' then/if false then  -- NOEARLYCLEAR: static-decrement only/" "${STAGE}/fpga64_sid_iec.vhd"
+    if ! grep -q 'NOEARLYCLEAR: static-decrement only' "${STAGE}/fpga64_sid_iec.vhd"; then
+        echo "patch#10 ERROR: early-clear condition not found/patched" >&2
+        exit 3
+    fi
+    echo "patch#10: NOEARLYCLEAR=1 (sdram_busy_cnt static-decrement only = HW floor)"
+else
+    echo "patch#10: early-clear left intact (zero-delay over-fire path)"
+fi
+
 # Patch #5 (iter-24): stage the tb + flip DUALCLK for the dual-clock proof run.
 cp -f "${SCRIPT_DIR}/c64_internal_fastfire_tb.vhd" "${STAGE}/c64_internal_fastfire_tb.vhd"
 if [ "${CLK64_SDRAM}" == "1" ]; then
