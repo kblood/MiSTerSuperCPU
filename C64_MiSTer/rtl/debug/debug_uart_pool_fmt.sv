@@ -762,17 +762,21 @@ module debug_uart_pool_fmt
 			9'd395: line_byte = hex_nibble(lat_iec_lines[7:4]);
 			9'd396: line_byte = hex_nibble(lat_iec_lines[3:0]);
 
-			// more-turbo iter-4d: " HR:## HW:##" read-only cpu_cache observer.
-			// HR = hits per last 256-cacheable-read window (sat $FF; /2.56 = %).
-			// HW = window-completion counter (advances => observer sees reads).
+			// iter-29 (2026-06-13): " PH:## PW:##" page-hit-rate observer
+			// (repurposes the dead more-turbo iter-4d cpu_cache HR/HW slot;
+			// same lat_cache_hr/hw regs, now fed by the page-hit observer in
+			// fpga64_sid_iec.vhd). PH = page-HITs per last 256 CPU SDRAM
+			// accesses (sat $FF; /2.56 = % row-locality). PW = window-completion
+			// counter (advances => observer is live). HIGH PH => page-mode SDRAM
+			// is a big win (see project_pagemode_decision_rule_corrected).
 			9'd397: line_byte = " ";
-			9'd398: line_byte = "H";
-			9'd399: line_byte = "R";
+			9'd398: line_byte = "P";
+			9'd399: line_byte = "H";
 			9'd400: line_byte = ":";
 			9'd401: line_byte = hex_nibble(lat_cache_hr[7:4]);
 			9'd402: line_byte = hex_nibble(lat_cache_hr[3:0]);
 			9'd403: line_byte = " ";
-			9'd404: line_byte = "H";
+			9'd404: line_byte = "P";
 			9'd405: line_byte = "W";
 			9'd406: line_byte = ":";
 			9'd407: line_byte = hex_nibble(lat_cache_hw[7:4]);

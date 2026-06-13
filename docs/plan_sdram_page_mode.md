@@ -93,9 +93,25 @@ bottleneck" because turbo speedup is ~3×, but we haven't decomposed:
 - VIC slot stalls
 - IRQ handler overhead
 
-If page-hit rate is high (>90%), the SDRAM cold path is already rare and
-page-mode wins little. If page-hit rate is low (<60%), page-mode is a
-big win. We don't know which regime Doom is in.
+**CORRECTED 2026-06-13 (was BACKWARDS): page-mode accelerates HITS and
+penalizes MISSES.** Let hit latency Lh≈3.5 clk64, miss Lm≈8, current
+auto-precharge fixed ≈6. Avg page-mode = H·Lh + (1−H)·Lm; beats 6 when
+H > ~0.45 (break-even). So:
+- **H > ~90% → page-mode is a BIG win** (~3.95 clk64 avg vs 6 ≈ 1.5×).
+- **H ~60% → modest** (~5.3 clk64, ~1.13×).
+- **H < ~45% → page-mode is SLOWER** — drop the rewrite.
+The earlier text ("high → wins little, low → big win") was inverted;
+independently confirmed by Codex 2026-06-13. We don't know which regime
+Doom is in. **Deeper prize:** the SDRAM throughput floor (6 clk64) already
+sits below the CPU cadence floor (8 clk64 = 4-apart `enableCpu`). Page-mode
+same-row reads (~4 clk64) create the timing margin that could make a 3-apart
+cadence SAFE — the exact margin iter-28 found missing (the "010" ce-sync
+wedge). High H is what unlocks a tighter, still-safe CPU cadence.
+**Measurement caveat (Codex):** CPU-to-CPU same-row hit rate is an UPPER
+bound — VIC/video SDRAM accesses interleaved between CPU accesses can close
+the open row under a single-global-row policy. Measure CPU-stream locality
+as primary (it governs whether a tighter cadence is even reachable); treat
+VIC eviction as a separate discount.
 
 **Cheap measurement**: instrument cart_ce / sdram bank/row history in
 UART for 60 seconds of Doom gameplay. Hash row sequences to compute

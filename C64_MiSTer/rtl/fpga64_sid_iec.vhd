@@ -1571,6 +1571,35 @@ signal cobs_win_hits : unsigned(8 downto 0) := (others => '0');  -- hits in curr
 signal cobs_hr_reg   : unsigned(7 downto 0) := (others => '0');  -- last window: hits-per-256 (sat 255)
 signal cobs_hw_reg   : unsigned(7 downto 0) := (others => '0');  -- window-completion count (liveness)
 
+-- iter-29 (2026-06-13) PAGE-HIT-RATE observer. Read-only; measures the DRAM
+-- row-locality of the CPU's SDRAM access stream to gate the page-mode SDRAM
+-- rewrite (the only remaining sound speed lever — see
+-- project_pagemode_decision_rule_corrected). Models a realistic page-mode
+-- controller with ONE OPEN ROW PER SDRAM BANK (the SDRAM device keeps 4 rows
+-- open, sd_ba=addr[22:21]=supercpu_bank[6:5]). A bank's row stays open until a
+-- different-row access to THAT bank or a refresh (refresh precharges all banks).
+-- HIT = this CPU cs_ram access targets the same row[20:8] as the currently-open
+-- row of its bank. This is the CORRECT model: it does NOT count bank-$00
+-- zeropage/stack accesses as evicting the SuperRAM (bank $28→sd_ba"01") row, so
+-- it captures the speedup a per-bank page-mode controller would actually see.
+-- (build #1, md5 42b6da7c, used a single GLOBAL open row = a lower bound: Doom
+-- title-screen ~50% because interleaved bank-$00 accesses falsely evicted the
+-- SuperRAM row. This per-bank build is the decisive number.)
+-- Repurposes the PH:## PW:## UART field (the cpu_cache observer it replaces is
+-- dead; that instance then prunes). PH = hits per 256 CPU SDRAM accesses (sat
+-- 255; PH/2.56 ~= %), PW = window-completion counter (liveness). CORRECTED
+-- decision rule: HIGH PH => page-mode is a big win => pursue; PH<~45% => drop.
+-- Counter-only: changes NO cadence => cannot wedge (safe to build). When
+-- PAGEHIT_OBSERVER=false, dbg_cache_hr/hw revert to cobs => RBF bit-identical.
+constant PAGEHIT_OBSERVER : boolean := true;
+type ph_row_arr_t is array(0 to 3) of unsigned(12 downto 0);
+signal ph_row_b     : ph_row_arr_t := (others => (others => '0'));  -- open row per sd_ba
+signal ph_valid_b   : std_logic_vector(3 downto 0) := (others => '0');
+signal ph_win_cnt   : unsigned(7 downto 0)  := (others => '0');  -- 0..255
+signal ph_win_hits  : unsigned(8 downto 0)  := (others => '0');  -- 0..256
+signal ph_hr_reg    : unsigned(7 downto 0)  := (others => '0');  -- hits per 256 (sat 255)
+signal ph_hw_reg    : unsigned(7 downto 0)  := (others => '0');  -- window-completion (liveness)
+
 -- ── more-turbo iter-6: READ-PATH (cache feeds the CPU) — GATED, ADDITIVE ──
 -- CACHE_READ_PATH=false (default) => the read-path generate block below emits
 -- ZERO hardware and rp_cache_* keep their inert defaults, so cpuDi + the
@@ -5243,8 +5272,82 @@ begin
 	end if;
 end process;
 
-dbg_cache_hr <= std_logic_vector(cobs_hr_reg);
-dbg_cache_hw <= std_logic_vector(cobs_hw_reg);
+-- iter-29 page-hit-rate observer (see decl ~:1574). Independent of the cobs
+-- cache observer above; counts DRAM row-locality of CPU SDRAM accesses to gate
+-- the page-mode rewrite. Read-only — touches no cadence/arbiter logic.
+pagehit_obs : process(clk32)
+	variable req_bank : unsigned(1 downto 0);
+	variable req_row  : unsigned(12 downto 0);
+	variable idx      : integer range 0 to 3;
+	variable is_hit   : std_logic;
+	variable wh       : unsigned(8 downto 0);
+begin
+	if rising_edge(clk32) then
+		if cobs_reset = '1' then
+			ph_valid_b  <= (others => '0');
+			ph_win_cnt  <= (others => '0');
+			ph_win_hits <= (others => '0');
+			ph_hr_reg   <= (others => '0');
+			ph_hw_reg   <= (others => '0');
+		else
+			-- A CPU SDRAM access this clk32 (same gate as the arbiter's
+			-- predictor-row update at the cs_ram block, :3768).
+			if cpu_cyc = '1' and cs_ram = '1' then
+				-- Post-mapping {bank,row} of THIS access (mirrors :3778-3786;
+				-- bank=sd_ba=addr[22:21], row=addr[20:8]).
+				if scpu_fast_path = '1' then
+					req_bank := addr_hi_816(6 downto 5);
+					req_row  := addr_hi_816(4 downto 0) & systemAddr(15 downto 8);
+				else
+					req_bank := "00";
+					req_row  := "00000" & systemAddr(15 downto 8);
+				end if;
+				idx := to_integer(req_bank);
+				-- HIT iff it matches THIS bank's currently-open row (per-bank
+				-- model: other banks' open rows are unaffected).
+				if ph_valid_b(idx) = '1' and req_row = ph_row_b(idx) then
+					is_hit := '1';
+				else
+					is_hit := '0';
+				end if;
+				if is_hit = '1' then
+					wh := ph_win_hits + 1;
+				else
+					wh := ph_win_hits;
+				end if;
+				if ph_win_cnt = x"FF" then
+					-- 256th access closes the window: latch hits-per-256 (sat 255).
+					if wh(8) = '1' then
+						ph_hr_reg <= x"FF";
+					else
+						ph_hr_reg <= wh(7 downto 0);
+					end if;
+					ph_hw_reg   <= ph_hw_reg + 1;
+					ph_win_cnt  <= (others => '0');
+					ph_win_hits <= (others => '0');
+				else
+					ph_win_cnt  <= ph_win_cnt + 1;
+					ph_win_hits <= wh;
+				end if;
+				-- Open this access's row in its bank for the next comparison.
+				ph_row_b(idx)   <= req_row;
+				ph_valid_b(idx) <= '1';
+			end if;
+			-- A real refresh auto-precharges ALL banks => every open row closes.
+			-- Same condition as the refresh issue at :1989. Refresh and a CPU
+			-- access never share a clk32 (different sysCycle slots); give
+			-- refresh priority on the valid bits to stay conservative.
+			if preCycle = sysCycleDef'pred(CYCLE_EXT4) and rfsh_cycle = "00" then
+				ph_valid_b <= (others => '0');
+			end if;
+		end if;
+	end if;
+end process;
+
+dbg_cache_hr <= std_logic_vector(ph_hr_reg) when PAGEHIT_OBSERVER
+                else std_logic_vector(cobs_hr_reg);
+dbg_cache_hw <= std_logic_vector(ph_hw_reg) when PAGEHIT_OBSERVER
+                else std_logic_vector(cobs_hw_reg);
 
 -- ====================================================================
 -- more-turbo iter-6: READ-PATH cache (feeds the CPU). GATED + ADDITIVE.

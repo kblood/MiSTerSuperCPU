@@ -1,0 +1,68 @@
+1. Let page-hit latency be `Lh = 3-4` clocks and miss latency be `Lm = 8` clocks.
+
+Average page-mode cost:
+
+```text
+Lavg = H * Lh + (1 - H) * Lm
+```
+
+Page-mode beats current auto-precharge when:
+
+```text
+Lavg < 6
+```
+
+Using `Lh = 3.5`, `Lm = 8`:
+
+```text
+8 - 4.5H < 6
+H > 0.44
+```
+
+So rough break-even is **40-50% page hits**, depending on whether a hit is closer to 3 or 4 clocks.
+
+- `H < ~45%`: page-mode is slower.
+- `H ~= ~45%`: roughly neutral.
+- `H > ~45%`: page-mode is faster.
+- `H > 90%`: page-mode is substantially faster, not just slightly.
+
+2. The quoted rule is mostly **backwards** under this latency model.
+
+High page-hit rate is exactly when open-row page-mode helps most, because you keep avoiding `PRECHARGE + ACTIVATE`. Low page-hit rate means you often pay the expensive miss path, so benefit shrinks and can become a loss.
+
+At `H = 90%`, with `Lh = 3.5`:
+
+```text
+0.9 * 3.5 + 0.1 * 8 = 3.95 clocks
+```
+
+That is a large win over 6 clocks.
+
+At `H = 60%`:
+
+```text
+0.6 * 3.5 + 0.4 * 8 = 5.3 clocks
+```
+
+That is only a modest win.
+
+At `H = 30%`:
+
+```text
+0.3 * 3.5 + 0.7 * 8 = 6.65 clocks
+```
+
+That is slower than the current controller.
+
+3. Yes, naive consecutive-CPU locality can mislead.
+
+Important effects:
+
+- **Other bus masters:** VIC/video/DMA accesses between CPU accesses may open a different row and destroy the apparent CPU hit.
+- **Bank awareness:** SDRAM can keep one row open per bank. A naive “same row as previous CPU access” metric may undercount benefit if alternating accesses hit open rows in different banks.
+- **Address mapping:** Measure actual SDRAM `{bank,row}` after controller mapping, not CPU linear address locality.
+- **Refresh:** Refresh closes rows periodically, reducing hits after refresh and adding overhead.
+- **Timing quantization:** If CPU wait states are rounded to fixed slots, saving 2 clocks may not always improve visible CPU timing.
+- **Controller policy:** The measured predictor must match the intended policy: one global open row, open row per bank, close-on-idle, close-before-video, etc.
+
+Best measurement: log the actual post-arbitration SDRAM command stream or at least the real sequence of SDRAM `{bank,row}` accesses from all masters, then simulate the proposed page policy.
