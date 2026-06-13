@@ -119,13 +119,17 @@ the goal is steady progress without committing to a multi-session controller rew
   software-visible; full decode is the remaining piece.
 - **(low) bank-$01 ROM-shadow reads** — deferred, no known consumer.
 
-## State of the working tree (clean — committed `51c3d6c`)
-- `C64_MiSTer/rtl/fpga64_sid_iec.vhd` — `INTERNAL_FAST_FIRE := false` (HW-dead,
-  gated; RBF bit-identical to shipped) + `cpu_cyc_va_ok` VDA/VPA gate +
-  fast-internal scheduler branch + HW-dead annotation. Kept as the record.
+## State of the working tree (clean — committed `ccbdf2a`)
+- `C64_MiSTer/rtl/fpga64_sid_iec.vhd` — `DEMAND_ARBITER := false` (iter-28 INERT,
+  gated dead record; RBF bit-identical to shipped) + `INTERNAL_FAST_FIRE := false`
+  (iter-27 HW-dead) + `cpu_cyc_va_ok` VDA/VPA gate. Both kept as the record.
 - `sim/c64_reduced_harness/c64_internal_fastfire_tb.vhd` + `run_internal_fastfire.sh`
-  — the iter-27 system bench (A/B `FASTFIRE=0|1`; zero-delay, could NOT predict the
-  HW wedge — the whole point).
+  — system bench. iter-28 added `turbo_m`/`sdram_busy`/cpu_cyc fire-rate observers
+  (`DEMAND_FIRERATE` report) + runner `DEMAND=0|1` (patch#9) and `NOEARLYCLEAR=1`
+  (patch#10). A/B verdict: false≡true≡NOEARLYCLEAR, all 7640 fires / gap=3 (4-apart).
+  Zero-delay — confirms inertness but (as always) cannot predict an HW wedge.
+- iter-28 A/B logs: `tools/codex-out/demand2_true_baseline.log` (DEMAND=0) vs
+  `demand2_demand_on.log` (DEMAND=1) — byte-identical fire-rate.
 - Garbage-sweep proof harness committed `2c34007`
   (`p65c816_sst_tb.vhd` `garbage_internal` + `run_sst.ps1`/`sweep_sst.ps1
   -GarbageInternal`).
@@ -143,5 +147,10 @@ the goal is steady progress without committing to a multi-session controller rew
   screenshot/command pipe (stale frames / empty `/media/fat/screenshots/C64/`);
   `reboot` clears it (pre-authorized). Confirm core via `cat /tmp/CORENAME`.
 - Cadence facts: `enableCpu <= cpu_cyc_s(1)` shipped; `cpu_cyc` @CPU0/4/8/C gated
-  on `sdram_busy` + `cs_ram`; `busy_cnt="011"` MISS floor = ~4 clk32 = the 4 MHz
-  ceiling (the target of GOAL A's analysis).
+  on `sdram_busy` + `cs_ram`; `busy_cnt="011"` MISS reservation STATIC-decrements to
+  0 at N+4 = a hard 4-apart FLOOR = the 4 MHz ceiling (iter-28: NOT a 3-apart permit;
+  demand slots are busy-blocked, so adding arbiter slots cannot beat it).
+- A fire's data pipeline: `cpu_cyc`@N → `cpu_cyc_s(1)`@N+2 → `enableCpu`@N+3 consume;
+  `sdram_pm` (V6) samples `dout_r` at q=5 = 5 clk64 = 2.5 clk32 after the ce-edge;
+  min ce-spacing = 6 clk64 = 3 clk32 (auto-precharge). Sub-3-clk32 reads need a
+  page-mode controller, not an arbiter change.
