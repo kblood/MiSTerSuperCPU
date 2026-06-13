@@ -1,101 +1,91 @@
-# Session Handoff — current (rebased 2026-06-13, post iter-29)
+# Session Handoff — current (rebased 2026-06-13, post iter-30)
 
 ## North star
 Make the SuperCPU as **compatible and fast** as possible. Drive; don't ask.
 
-## ✅ iter-29 DONE: page-hit GATE MEASURED on HW → page-mode SDRAM DROPPED
-Ran the cheap characterization gate (counter-only, wedge-safe) before committing
-to the multi-session page-mode rewrite. Added a read-only gated
-(`PAGEHIT_OBSERVER`) page-hit-rate observer in `fpga64_sid_iec.vhd` (repurposes
-the dead cpu_cache `HR/HW` UART slot → **`PH:## PW:##`**); probe =
-`tools/pagehit_probe.py`. Observer geometry verified EXACT vs `sdram_pm.v:185`.
-- **Two HW builds, A/B at the Doom title (engine rendering from SuperRAM, boot
-  clean, PW advancing):** #1 `42b6da7c` single-global open row = **~50%**; #2
-  `2d5c79f9` per-bank open row (the realistic 4-bank SDRAM model) = **~54%**.
-- **Per-bank recovered only +4 pts** ⇒ bank-$00 zeropage/stack interleaving is
-  NOT the dominant miss source; misses are **intra-bank "01" row competition**
-  (256-byte effective rows — addr[23] is wasted as a column bit — plus scattered
-  code/texture reads). Fundamental to Doom's access stream.
-- **VERDICT: DROP page-mode (Lever 1) as the next step.** At ~54% (break-even
-  ~45%): ~1.08× raw SDRAM, ~1.1–1.15× CPU even counting the cadence-margin prize
-  = poor ROI for a high-risk multi-session rewrite that already wedged (PC=$0D62).
-- Sub-option (NOT pursued): address remap (column=`c64_addr[8:0]` → 512-byte
-  rows) could lengthen runs but only pays WITH page-mode + risks REU/VIC layout.
-- Observer committed gated `true` (debug-only; prunes from the shipped non-debug
-  RBF). `_Test` restored to shipped `3698680a`. Full detail: memory
-  `project_pagehit_gate_measured_dropped.md`.
+## ✅ iter-30 DONE: SPEED FRONTIER DECLARED CLOSED → pivot to COMPAT frontier
+The operator asked to dig deeper into each remaining speed lever with Sonnet
+subagents and mine VICE `xscpu64` for clues. Done. The investigation closed the
+speed half of the project (short of a multi-month CPU-architecture rewrite that
+needs an explicit operator decision to fund).
+
+**What iter-30 did, in order:**
+1. **VICE differential (4 Sonnet subagents)** → VICE gets 20 MHz with ZERO CPU
+   pipelining; ALL its speed is the memory-timing accumulator, keystone = a posted
+   WRITE BUFFER. `project_vice_differential_write_buffer.md`.
+2. **A1 `WRITEFRAC_OBSERVER` HW gate** → Doom SuperRAM write fraction ~0.7-0.9%
+   (read-dominated; heavy writes go to bus-visible bank $00 = un-postable anyway)
+   ⇒ **posted-write buffer DROPPED.** `project_writefrac_gate_dropped.md`.
+3. **Wider-row page-hit D-gate** → 512B locality 54.2% == 256B 54% (misses are
+   scattered-access, not row-width-bound) ⇒ **page-mode DROPPED in ALL forms**
+   (standalone / per-bank / 256B / 512B-remap). `project_pagehit_gate_measured_dropped.md`.
+4. **Lever 2 (65C816-internal pipeline) datapath analysis (Sonnet) + Codex** →
+   all 3 pipeline insertion points FATAL to SST cycle-exactness (the CPU does
+   D_IN-read+ALU+writeback on ONE edge, even internal cycles; SST compares every
+   cycle exactly). **Speed and compat are in direct architectural tension.**
+   Codex independently agrees the frontier is closed short of a CPU rewrite.
+   `project_speed_frontier_closed_compat_pivot.md`.
+
+## Speed-lever ledger (COMPLETE — all exhausted)
+| Lever | Verdict |
+|---|---|
+| cache read-path ×5 | HW-wedged (zero-delay-bench-blind death class) |
+| raised-clock | HW-wedged |
+| alt-fire (2-clk32) | HW-wedged |
+| internal-fast-fire | HW-wedged |
+| demand-arbiter | INERT (4-apart floor; byte-identical A/B) |
+| posted write buffer | DROPPED — Doom SuperRAM ~0.7% writes, no ROI |
+| page-mode SDRAM (all forms) | DROPPED — 54% locality → ~1.1× |
+| 65C816-internal pipeline | FORBIDDEN by SST cycle-exactness |
+
+**Two remaining speed options, both multi-month CPU-architecture projects needing
+an explicit operator funding decision (NOT autonomous-loop work):**
+- **Cycle-preserving datapath surgery** — faster BCD adder / carry-select decimal
+  / precomputed PC+addr candidates / mux-depth split with NO added architectural
+  latency. Preserves SST. Lower risk, lower ceiling (~1.x×). Start with P65C816
+  critical-path STA.
+- **Dual-mode CPU** — a second non-cycle-exact fast SuperRAM engine with precise
+  traps/flushes into the exact core. Higher ceiling (20 MHz fast path) but trades
+  away the SST guarantee; killer obstacle = precise mode-boundary semantics
+  (drain before IRQ/NMI/ABORT/I-O/bank-0/VIC/mode-crossing branches/DMA).
 
 ## Status in one breath
 - **Instruction-level compat is SOLVED.** SST 100% clean (0/5.12M). Lorenz 100%
-  both modes. Doom + Wolf3D run; SCPU Kicks renders. The SST vein is exhausted.
-- **Speed is the open half, and all *cheap* speed levers are dead.** Shipped build
-  runs pure **~4 MHz** in clk32 SDRAM passthrough — a genuine SDRAM-throughput
-  floor (6 clk64 = 3 clk32 min ce-spacing, auto-precharge; `busy_cnt="011"` =
-  4-apart `enableCpu`). We're ~5× below real SuperCPU 20 MHz.
-- **6 speed attempts have died the same way: zero-delay bench passes, silicon
-  wedges.** (cache read-path ×5, raised-clock, alt-fire, internal-fast-fire,
-  demand arbiter.) Full death record + cadence analysis archived in
-  `session_handoff_2026-06-13_iter28-speed-levers-exhausted.md`.
-- **HARD RULE: do NOT build another speed RBF off a zero-delay bench.** It has
-  failed 6×. Any speed RBF needs a latency-faithful repro harness (Option C) OR a
-  fundamentally different approach (Lever 2, the CPU pipeline) — page-mode (Lever
-  1) is now dropped per the iter-29 gate.
-- **iter-29 added the only safe RBF class proven this session: a read-only
-  counter/observer** (changes no cadence) — that is how the page-hit gate was
-  measured without risking a wedge. Re-use that pattern for any future on-HW
-  characterization.
+  both modes. Doom + Wolf3D run; SCPU Kicks renders. SST vein exhausted.
+- **Speed is closed for the autonomous loop.** Shipped build runs ~4 MHz (clk32
+  SDRAM passthrough, `busy_cnt="011"` = 4-apart `enableCpu`, 6-clk64 auto-precharge
+  floor). ~5× below real SuperCPU 20 MHz — and every cheap lever to close that gap
+  is dead (table above).
+- **HARD RULE persists:** do NOT build another speed RBF off a zero-delay bench
+  (failed 6×). The only safe RBF class proven this session = read-only
+  counter/observer (changes no cadence) — reuse for any HW characterization.
 
 ## Shipped build / MiSTer state
 - `_Test` C64.rbf = iter-26 `3698680a` (known-good): boots READY, SCPU64 V0.07,
-  idle PC cycles **$E5CD–$E5D6**. Use this as the A/B control for any speed RBF.
-- Working tree: page-hit observer committed (gated `PAGEHIT_OBSERVER=true`,
-  debug-only, prunes in shipped RBF). Gated dead-lever constants
-  (`DEMAND_ARBITER`/`INTERNAL_FAST_FIRE` = false) left in `fpga64_sid_iec.vhd` as
-  the record; both are RBF-bit-identical to shipped (Quartus folds them away).
+  idle PC cycles **$E5CD–$E5D6**. A/B control for any future speed RBF.
+- Working tree: gated read-only observers committed in `fpga64_sid_iec.vhd`
+  (`PAGEHIT_OBSERVER`/`WRITEFRAC_OBSERVER`, debug-only, prune from shipped RBF;
+  `PAGEHIT_COL_EXTRA` parametrizes row width). Gated dead-lever constants
+  (`DEMAND_ARBITER`/`INTERNAL_FAST_FIRE`=false) left as record; RBF-bit-identical
+  to shipped (Quartus folds them away).
 
-## NEXT — pick a frontier (page-mode now de-prioritized by the iter-29 gate)
+## NEXT — COMPAT frontier (the active autonomous-loop track)
 
 ### ✅ Recommended A — real SuperCPU software compat sweep (no risky build)
-With page-mode dropped (iter-29) AND all arbiter-tweak speed levers dead, the
-highest-leverage *steady* progress is the compat frontier. SST is exhausted ⇒ the
-live frontier is *non-instruction* incompatibility. Curate real SCPU software
-(GEOS, SCPU-library titles, timing-sensitive demos, WriteSmart users), run on the
-shipped RBF on HW, triage failures. No speed build, no zero-delay-bench wall risk.
-The `pagehit_probe.py` autoload/UART harness + the page-hit observer are reusable
-to characterize *other* titles' access patterns if a speed question resurfaces.
+With the speed frontier closed, the highest-leverage *steady* progress is the
+compat frontier. SST is exhausted ⇒ the live frontier is *non-instruction*
+incompat. Curate real SCPU software (GEOS, SCPU-library titles, timing-sensitive
+demos, WriteSmart users), run on shipped `3698680a` on HW, triage failures. No
+speed build, no zero-delay-bench wall. The `pagehit_probe.py`/`writefrac_probe.py`
+autoload+UART harness + the observers are reusable to characterize any title.
 
-### Lever 2 (highest ceiling, deepest) — pipeline the 65C816 internals
-Now the ONLY remaining speed lever with real headroom. Per iter-19 STA the real
-per-read floor is the CPU-internal di→ALU→BCD→PC path (~15 ns), NOT the SDRAM/mux.
-Pipelining it is the biggest win but the deepest, multi-session effort. Unlike the
-6 dead arbiter/cache/clock levers, this attacks the actual critical path rather
-than the cadence quantization, so it is not in the zero-delay-bench-blind class.
+### Backlog F — WriteSmart register decode ($D074–D077 / $D0B3)
+Specific real-HW feature; reportedly already partly software-visible, full decode
+is the remaining piece. VICE B4 (`scpu64mem.c scpu64_hardware_store` ~684-817)
+documents the optimization-mode → `mem_set_mirroring` semantics to match.
 
-### ⛔ Lever 1 (page-mode SDRAM) — DROPPED by the iter-29 gate
-Doom SuperRAM row-locality measured ~50% global / **~54% per-bank** = near the
-~45% break-even ⇒ ~1.1× best case for a high-risk multi-session rewrite that
-already wedged (PC=$0D62). Not worth it. The drafts (`rtl/sdram_pm.v.buildC*`,
-`sim/sdram_pm_tb/`, `docs/plan_sdram_page_mode.md`) and the Layer-2 backpressure
-fix remain on file if a future workload shows much higher locality — re-measure
-with `pagehit_probe.py` first. A column-remap (`c64_addr[8:0]`→512-byte rows)
-could raise locality but only pays *with* page-mode and risks REU/VIC layout.
-
-### Option C (enabler, uncertain) — latency-faithful KERNAL-boot bench
-Integrate `clk64_sdram_model` (faithful q5 latency) into `c64_reduced_harness`
-running the real KERNAL boot in scpu mode; reproduce the iter-27 $EE97 wedge with a
-fast-fire change. If it reproduces, *any* future clk32 speed fix becomes
-validatable instead of dying on HW — would revive the cheap-arbiter levers. But
-prior attempts (iter-23/24) found the model wedges even the baseline CPU; may only
-confirm "unfixable in RTL."
-
-### Lever 2 / Option D (highest ceiling, deepest) — pipeline 65C816 internals
-Per iter-19 STA the real per-read floor is the CPU-internal di→ALU→BCD→PC path
-(~15 ns), not the cpuDi mux (~3–5 ns). Biggest win, deepest multi-session effort.
-
-### Backlog (documented, not current plan)
-- **F — WriteSmart register decode** ($D074–D077 / $D0B3): specific real-HW feature;
-  reportedly already software-visible, full decode is the remaining piece.
-- bank-$01 ROM-shadow reads — deferred, no known consumer.
+### ⏸ Speed (operator-funded only) — see ledger above
+Datapath surgery or dual-mode CPU. Surface to operator; do not start in the loop.
 
 ## Tooling notes
 - SST regression oracle: `sweep_sst.ps1 -All` must stay 0/5.12M after ANY
@@ -103,7 +93,10 @@ Per iter-19 STA the real per-read floor is the CPU-internal di→ALU→BCD→PC 
 - HW A/B method: deploy suspect RBF, sample UART `PC:` distribution
   (`mister_debug.py uart N`). Healthy idle = a RANGE around $E5CD–$E5D6; wedge =
   one pinned address. Always run shipped `3698680a` as the control.
+- Read-only observer pattern (iter-29/30): gated constant in `fpga64_sid_iec.vhd`,
+  reuse dead cpu_cache HR/HW UART slot via `debug_uart_pool_fmt.sv`, probe with a
+  `pagehit_probe.py`-style autoload+UART script. Wedge-proof, prunes from shipped.
 - `lorenz_run.py [scpu|t65]`'s MGL core-reload can transiently wedge the daemon
   pipe; `reboot` clears it (pre-authorized). Confirm core via `cat /tmp/CORENAME`.
-- Full speed-lever death record + cadence math:
-  `session_handoff_2026-06-13_iter28-speed-levers-exhausted.md`.
+- Full death records: `session_handoff_2026-06-13_iter28-speed-levers-exhausted.md`
+  + the iter-30 memory files listed above.
