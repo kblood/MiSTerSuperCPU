@@ -1,7 +1,25 @@
-# Session Handoff — current (rebased 2026-06-13, post iter-30)
+# Session Handoff — current (rebased 2026-06-13, post iter-31)
 
 ## North star
 Make the SuperCPU as **compatible and fast** as possible. Drive; don't ask.
+
+## ✅ iter-31 DONE: operator-funded speed paths PURSUED → both blocked by the SDRAM wall
+Operator said "continue them [the 2 funded speed paths], most-probable first."
+- **Path 1 (datapath surgery) — STA-FALSIFIED by direct measurement.** Built a
+  carry-select `AddSubBCD` (cycle-preserving; SST 0-fail on 24 arith opcodes ×
+  emu/native; build `700af1f5`). The carry chain shrank 8.8→5.1 ns but the worst
+  `dout_r→CPU` path did NOT improve (26.6→27.4 ns) — it shifted to the **zero-flag
+  tail** (`result→Equal3→ZO→P[1]`), irreducible without pipelining. Reverted.
+- **Path 2 (dual-mode CPU) — structural category error here.** A faster engine
+  still fetches SuperRAM through the same SDRAM controller at 4-apart; its only
+  edge is a BRAM cache/prefetch (= dead cache lever / "lookahead won't fit M10K").
+- **Decisive finding:** the CPU already closes at 32 MHz and *waits on SDRAM*. The
+  binding wall is **SDRAM random-access throughput** (`sdram_pm` 6-clk64
+  auto-precharge + cpu_cyc→ce CDC ±1-clk64 jitter ⇒ 4-apart floor), which NEITHER
+  funded path touches. Speed is memory-bound, not CPU-bound. Frontier re-confirmed
+  CLOSED with a direct STA proof. Full detail:
+  `memory/project_datapath_surgery_falsified_sdram_bound.md`. STA probe kept at
+  `C64_MiSTer/datapath_surgery_sta_probe.tcl`.
 
 ## ✅ iter-30 DONE: SPEED FRONTIER DECLARED CLOSED → pivot to COMPAT frontier
 The operator asked to dig deeper into each remaining speed lever with Sonnet
