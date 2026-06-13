@@ -7,6 +7,23 @@ and (for missing items) a sketch of how it could be added.
 
 For the prioritized cross-lane work plan see `docs/roadmap.md`.
 
+> **⚠️ iter-30 (2026-06-13) CORRECTION — read before trusting any "speed payoff"
+> claim below.** The SPEED FRONTIER IS CLOSED short of a multi-month CPU rewrite
+> (`memory/project_speed_frontier_closed_compat_pivot.md`). Every performance
+> claim in this doc that references the **write buffer / Phase B / cacheable_wr /
+> WriteSmart→10-15 MHz** is STALE — it assumes the `cpu_cache`/write-buffer path
+> is viable. It is NOT: the cache is dead/uncompiled (CPU runs SDRAM passthrough),
+> the posted-write buffer was dropped (Doom SuperRAM writes measured ~0.7% =
+> no ROI, `project_writefrac_gate_dropped.md`), page-mode was dropped (54%
+> locality → ~1.1×, `project_pagehit_gate_measured_dropped.md`), and the only
+> remaining headroom — pipelining the 65C816 internals — is FORBIDDEN by SST
+> cycle-exactness (Sonnet + Codex confirmed). **WriteSmart is therefore NO LONGER
+> the "largest payoff" item** — its payoff was speed via the dead cache path; its
+> residual value is detection-only register decode (already STUB-COMPLETE).
+> The live frontier is **non-instruction COMPAT** (run real SCPU software on HW,
+> triage failures). Speed continuation = an operator-funded CPU-architecture
+> project (datapath surgery or dual-mode CPU), not autonomous-loop work.
+
 Legend:
 - **DONE** — implemented and verified working
 - **DONE-untested** — implemented but no automated regression coverage
