@@ -620,7 +620,7 @@ cartridge cartridge
 	.mem_ce(ram_ce),
 	.mem_ce_out(cart_ce),
 	.mem_write_out(cart_we),
-	.mem_in(sdram_data),
+	.mem_in(sdram_data_eff),
 	.mem_out(cart_wrdata),
 	.mem_addr(cart_addr),
 	.mem_req(cart_mem_req),
@@ -1080,6 +1080,58 @@ wire scpu_fast_path;
 // the Doom REU->SuperRAM transfer (BRK $00:000A). Reverted to Build B stub.
 // See docs/turbo_build1_controller_falsified.md.
 wire sdram_fast_path = 1'b0;
+
+// ============================================================================
+// iter-31 (2026-06-14): AUTHORITATIVE bank-$00 (bottom-64KB) on-chip BRAM.
+// The real CMD SuperCPU's FAST tier is the 128KB SRAM (banks $00/$01); we run
+// bank $00 in slow SDRAM (4-apart cpu_cyc cadence). Doom spends 38.8% of CPU
+// SDRAM accesses in bank $00 (measured by BANKFRAC_OBSERVER, build 20520ae5).
+// This BRAM *is* the bottom 64KB (NOT a cache of SDRAM => no fill, no coherency
+// race => OUTSIDE the 6-dead-lever setup-time death class). One BRAM serves CPU
+// + VIC + REU because all three resolve bank $00 through the single sdram_pm
+// port via cart_addr/sdram_data (time-multiplexed bus): see c64.sv read path
+// cartridge.mem_in -> data_out -> c64_data_in -> fpga64.ramDin -> buslogic
+// dataToCpu/dataToVic. Classifier = (eff SDRAM addr [24:16]==0): cart ROM and
+// SuperRAM are bit24=1 / [24:20]=00001 (cartridge.v get_bank, reu.v {1,addr}).
+// The bank $01->$00 mirror already routes to cart_addr (bottom 64KB) so the
+// alias is automatic.
+//
+// STAGED (Codex go-staged, memory/project_bank00_bram_lever_sized_go.md):
+//   BANK00_BRAM=1 STEP 2-5  : BRAM is the read SOURCE, SDRAM still read at
+//     4-apart (no arbiter change => not the death class). C64 boot + VIC + Doom
+//     render clean <=> BRAM byte-faithful (CPU AND VIC eat bram_q).
+//   STEP 6 (future, gated)  : drop SDRAM ce for bank $00 + k=2 fast-fire with a
+//     HARD bank00_bram_access vs sdram_access arbiter split (the only
+//     death-class-adjacent change).
+// Default 0 => RBF bit-identical to shipped 3698680a (Quartus folds it away).
+localparam BANK00_BRAM = 1'b1;
+
+// Effective SDRAM-port mux (mirrors the sdram_pm .addr/.ce/.we/.din mux below)
+// so the BRAM sees the same write/read stream as the SDRAM.
+wire [24:0] sdram_eff_addr = io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : ext_cycle ? reu_ram_addr : scpu_sdram_addr;
+wire        sdram_eff_ce   = io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : ext_cycle ? reu_ram_ce   : cart_ce;
+wire        sdram_eff_we   = io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : ext_cycle ? reu_ram_we   : cart_we;
+wire  [7:0] sdram_eff_din  = io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : ext_cycle ? reu_ram_dout : cart_wrdata;
+wire        is_bank00      = (sdram_eff_addr[24:16] == 9'b0);
+
+(* ramstyle = "M10K" *) reg [7:0] bank00_mem [0:65535];
+reg [7:0] bram_q;     // BRAM registered read of the issued access, held until next ce
+reg       b00_sel;    // issued access was a bank-$00 READ (held until next ce)
+always @(posedge clk64) begin
+	if (sdram_eff_ce) begin
+		if (sdram_eff_we & is_bank00) bank00_mem[sdram_eff_addr[15:0]] <= sdram_eff_din;
+		bram_q  <= bank00_mem[sdram_eff_addr[15:0]];
+		b00_sel <= is_bank00 & ~sdram_eff_we;
+	end
+end
+
+// Step 2-5: override the CPU/VIC/REU-C64 read byte for bank-$00 reads with the
+// BRAM value. SDRAM ce is unchanged (still read in parallel) so the data_valid
+// handshake/cadence is identical; bram_q is ready ~1 clk64 after ce, long before
+// fpga64 samples ramDin at sdram_data_valid (~5 clk64). Faithful BRAM => bit-
+// identical CPU/VIC behavior at 4-apart.
+wire [7:0] sdram_data_eff = (BANK00_BRAM & b00_sel) ? bram_q : sdram_data;
+
 sdram_pm sdram
 (
 	.sd_addr(SDRAM_A),
@@ -1102,10 +1154,10 @@ sdram_pm sdram
 	// flow through cartridge passthrough (cart_we = ram_we and cart_wrdata =
 	// c64_data_out when no romL/romH override), so SCPU writes land at the
 	// SuperRAM address and SCPU reads return sdram_data unchanged.
-	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : ext_cycle ? reu_ram_addr : scpu_sdram_addr ),
-	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : ext_cycle ? reu_ram_ce   : cart_ce         ),
-	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : ext_cycle ? reu_ram_we   : cart_we         ),
-	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : ext_cycle ? reu_ram_dout : cart_wrdata     ),
+	.addr( sdram_eff_addr ),
+	.ce  ( sdram_eff_ce   ),
+	.we  ( sdram_eff_we   ),
+	.din ( sdram_eff_din  ),
 	.dout( sdram_data ),
 	.ready( sdram_ready ),
 	.data_valid( sdram_data_valid )
