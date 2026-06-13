@@ -1603,7 +1603,7 @@ signal cobs_hw_reg   : unsigned(7 downto 0) := (others => '0');  -- window-compl
 -- addresses sharing a wider aligned region count as the same open row. If 512B
 -- locality is materially >54%, page-mode+remap revives; else page-mode stays
 -- dropped and only the 65C816-internal pipeline (Lever 2) remains.
-constant PAGEHIT_OBSERVER  : boolean := true;
+constant PAGEHIT_OBSERVER  : boolean := false;  -- iter-31: slot handed to BANKFRAC_OBSERVER
 constant PAGEHIT_COL_EXTRA : integer := 0;   -- 0=256B(canonical) 1=512B 2=1KB 3=2KB; iter-30 measured 512B==54%==256B (no gain, remap useless)
 type ph_row_arr_t is array(0 to 3) of unsigned(12 downto 0);
 signal ph_row_b     : ph_row_arr_t := (others => (others => '0'));  -- open row per sd_ba
@@ -1632,6 +1632,22 @@ signal wf_win_cnt   : unsigned(7 downto 0)  := (others => '0');  -- 0..255 Super
 signal wf_win_wr    : unsigned(8 downto 0)  := (others => '0');  -- writes in window 0..256
 signal wf_fr_reg    : unsigned(7 downto 0)  := (others => '0');  -- writes per 256 (sat 255)
 signal wf_ww_reg    : unsigned(7 downto 0)  := (others => '0');  -- window-completion (liveness)
+
+-- ── iter-31 (2026-06-13) BANKFRAC_OBSERVER — read-only, wedge-safe ──────────────
+-- Sizes the AUTHORITATIVE bank-$00 BRAM lever (operator question 2026-06-13: the
+-- real SuperCPU's fast tier is the 128KB SRAM banks $00/$01, which we run in slow
+-- SDRAM). Moving bank $00 into BRAM only pays in proportion to the bank-$00 share
+-- of CPU memory traffic — instruction fetch is SuperRAM ($20) and stays SDRAM-
+-- bound. This counts, over each 256 total CPU SDRAM (cs_ram) accesses, how many
+-- target bank $00 (addr_hi_816 = $00). BF = bank-$00 accesses per last 256 CPU
+-- SDRAM accesses (sat $FF; BF/2.56 = bank-$00 %); BW = window-completion liveness.
+-- EXACT structure of pagehit/writefrac (no cadence change => cannot wedge); reuses
+-- the dead HR/HW UART slot. Probe: tools/bankfrac_probe.py.
+constant BANKFRAC_OBSERVER : boolean := true;   -- iter-31: measure bank-$00 access fraction (prize for bank-$00 BRAM)
+signal bf_win_cnt   : unsigned(7 downto 0)  := (others => '0');  -- 0..255 total CPU SDRAM accesses
+signal bf_win_b0    : unsigned(8 downto 0)  := (others => '0');  -- bank-$00 accesses in window 0..256
+signal bf_fr_reg    : unsigned(7 downto 0)  := (others => '0');  -- bank-$00 per 256 (sat 255)
+signal bf_ww_reg    : unsigned(7 downto 0)  := (others => '0');  -- window-completion (liveness)
 
 -- ── more-turbo iter-6: READ-PATH (cache feeds the CPU) — GATED, ADDITIVE ──
 -- CACHE_READ_PATH=false (default) => the read-path generate block below emits
@@ -5417,10 +5433,51 @@ begin
 	end if;
 end process;
 
-dbg_cache_hr <= std_logic_vector(wf_fr_reg) when WRITEFRAC_OBSERVER
+-- iter-31 BANKFRAC_OBSERVER: bank-$00 share of CPU SDRAM traffic. Window = 256
+-- total CPU SDRAM (cs_ram) accesses; tally = those with addr_hi_816 = $00.
+-- Same window/saturation/liveness shape as writefrac_obs; read-only => cannot wedge.
+bankfrac_obs : process(clk32)
+	variable b0 : unsigned(8 downto 0);
+begin
+	if rising_edge(clk32) then
+		if cobs_reset = '1' then
+			bf_win_cnt <= (others => '0');
+			bf_win_b0  <= (others => '0');
+			bf_fr_reg  <= (others => '0');
+			bf_ww_reg  <= (others => '0');
+		else
+			-- Any CPU RAM (SDRAM) access this clk32 (bank $00 RAM or SuperRAM).
+			if cpu_cyc = '1' and cs_ram = '1' then
+				if addr_hi_816 = x"00" then
+					b0 := bf_win_b0 + 1;
+				else
+					b0 := bf_win_b0;
+				end if;
+				if bf_win_cnt = x"FF" then
+					-- 256th access closes the window: latch bank-$00-per-256 (sat 255).
+					if b0(8) = '1' then
+						bf_fr_reg <= x"FF";
+					else
+						bf_fr_reg <= b0(7 downto 0);
+					end if;
+					bf_ww_reg  <= bf_ww_reg + 1;
+					bf_win_cnt <= (others => '0');
+					bf_win_b0  <= (others => '0');
+				else
+					bf_win_cnt <= bf_win_cnt + 1;
+					bf_win_b0  <= b0;
+				end if;
+			end if;
+		end if;
+	end if;
+end process;
+
+dbg_cache_hr <= std_logic_vector(bf_fr_reg) when BANKFRAC_OBSERVER
+                else std_logic_vector(wf_fr_reg) when WRITEFRAC_OBSERVER
                 else std_logic_vector(ph_hr_reg) when PAGEHIT_OBSERVER
                 else std_logic_vector(cobs_hr_reg);
-dbg_cache_hw <= std_logic_vector(wf_ww_reg) when WRITEFRAC_OBSERVER
+dbg_cache_hw <= std_logic_vector(bf_ww_reg) when BANKFRAC_OBSERVER
+                else std_logic_vector(wf_ww_reg) when WRITEFRAC_OBSERVER
                 else std_logic_vector(ph_hw_reg) when PAGEHIT_OBSERVER
                 else std_logic_vector(cobs_hw_reg);
 

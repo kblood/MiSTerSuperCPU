@@ -771,13 +771,13 @@ module debug_uart_pool_fmt
 			// posted-write buffer (Track C) has high payoff. (When PAGEHIT_OBSERVER
 			// is on instead, these two bytes carry PH/PW page-hit data — same slot.)
 			9'd397: line_byte = " ";
-			9'd398: line_byte = "P";
-			9'd399: line_byte = "H";
+			9'd398: line_byte = "B";
+			9'd399: line_byte = "F";
 			9'd400: line_byte = ":";
 			9'd401: line_byte = hex_nibble(lat_cache_hr[7:4]);
 			9'd402: line_byte = hex_nibble(lat_cache_hr[3:0]);
 			9'd403: line_byte = " ";
-			9'd404: line_byte = "P";
+			9'd404: line_byte = "B";
 			9'd405: line_byte = "W";
 			9'd406: line_byte = ":";
 			9'd407: line_byte = hex_nibble(lat_cache_hw[7:4]);
