@@ -34,6 +34,19 @@ PRG_REMOTE = '/media/fat/games/C64/scpu_sweep_autoload.prg'
 
 # Targets: (disk image on rig, load-name, slug, capture seconds).
 # load-name "*" = first PRG on disk (the demo's own loader/menu).
+#
+# METHODOLOGY NOTE (2026-06-14 sweep): only entries that are genuine
+# auto-running PRGs (the demo's own loader at $0801) are VALID tests. The
+# "SUPERCPU KICKS A".."K" parts load to scattered high addresses ($B200,
+# $EA00, $2200, ...) -- they are NON-BASIC binaries chained/JMP'd by the
+# loader, NOT standalone-runnable. Launching them via LOAD"name",8,1 + RUN
+# makes BASIC try to execute a binary -> "?FORMULA TOO COMPLEX ERROR"
+# floods / frozen READY / blank screens. Those are LAUNCH-METHOD artifacts,
+# NOT core incompatibilities. The valid result for SuperCPU Kicks is the
+# loader (scpu1_loader) = PASS: the demo runs (scroller + raster effects).
+# To test parts A-K properly, run them THROUGH the loader (disk-1 loader
+# chains A-C; D-K live on SCPU2/SCPU3 and need the demo's own disk-swap),
+# or build per-part ML launcher stubs once their entry points are known.
 TARGETS = [
     ('/media/fat/games/C64/SCPU1.D64',            '*',                'scpu1_loader',  240),
     ('/media/fat/games/C64/SCPU1.D64',            'SUPERCPU KICKS A', 'kicks_a',       180),
@@ -63,7 +76,8 @@ def make_autoload_prg(name):
 
 
 def coop_ok(c):
-    core = L.run(c, 'cat /tmp/CORENAME 2>/dev/null').strip()
+    core, _ = L.run(c, 'cat /tmp/CORENAME 2>/dev/null')
+    core = core.strip()
     if core in ('', 'C64', 'MENU'):
         return True, core
     return False, core

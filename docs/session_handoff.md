@@ -99,12 +99,35 @@ Continuation of the COMPAT-sweep prep while the rig was busy (AO486 slice).
   is possible for these demos; the HW sweep is the only ground truth.** (The tool is
   kept — harmless, and useful on uncrunched PRGs — with the caveat in its docstring.)
 
+## iter-32 SWEEP RAN (2026-06-14) — SuperCPU Kicks demo PASSES; per-part launch invalid
+
+Rig freed (CORENAME=MENU); ran the full 13-target sweep (build `41944346`, cfg 0x0c).
+Fixed two harness bugs first: out-dir must pre-exist for the log redirect, and
+`coop_ok` misused `L.run()` (returns a `(stdout,stderr)` tuple — now unpacked).
+
+**Result — 1 real PASS, the rest are launch-method artifacts (NOT core bugs):**
+- **scpu1_loader = PASS.** The DMAGIC / "SuperCPU Kicks" demo (disk 1, its own
+  `SCPU KICKS !/DMA` loader) boots and runs: coherent greetings/credits scroller
+  in a black panel over blue with intentional top/bottom raster bars, animating
+  cleanly across the whole capture. **First real SuperCPU *demo* validated on our
+  core beyond Doom** — a concrete compat win.
+- **kicks_a..k + cp_clock = INVALID test, not failures.** These load to scattered
+  high addresses ($B200/$EA00/$2200/...) — non-BASIC binaries the loader chains.
+  `LOAD"name",8,1` + `RUN` makes BASIC execute a binary → `?FORMULA TOO COMPLEX
+  ERROR` floods (b,k), frozen-READY (g,i), blank screens (a,c,d,e,f), partial
+  garbage (h,j). The BASIC errors actually confirm our SCPU64 ROM BASIC is healthy.
+  Methodology note added to `scpu_compat_sweep.py` TARGETS.
+- Captures: `tools/scpu_compat_sweep/<slug>/` (6-8 shots + UART each); run log
+  `sweep_run.log`; visual triage by subagent (1 PASS / 2 PARTIAL / 10 launch-artifact).
+
 ## Pending / next
 
-- **Run the expanded sweep when the rig is free**: `python tools/scpu_compat_sweep.py`
-  (rig is on AO486 = another slice; the coop guard refuses until CORENAME is
-  C64/MENU/empty). Then triage each program's screen/UART → map failures to stubs.
-  Per-target output under `tools/scpu_compat_sweep/<slug>/`.
+- **Test parts A-K properly = run THROUGH the loader** (it chains A-C on disk 1;
+  D-K need the demo's own disk-swap on SCPU2/SCPU3), or build per-part ML launcher
+  stubs once entry points are known. Standalone `LOAD,8,1`+`RUN` cannot launch them.
+- Source GEOS / a SuperCPU-library title for a register-exercising compat target
+  (the Kicks demo touches few of our stub regs at the loader stage).
+- Commit pending: `coop_ok` fix + sweep methodology note + this handoff + memory.
 - iter-31b lever committed (`48b6f3c`); k=1 STA-death committed (`bd5e20a`). Pushes
   still gated.
 - Optional/deferred: a clean native Doom frame-rate number for the k=2 model.
