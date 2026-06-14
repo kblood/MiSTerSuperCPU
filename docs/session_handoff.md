@@ -54,14 +54,38 @@ speed lever is now exhausted (7 dead levers + page-mode + write-buffer dropped +
 k=1 STA-dead + k=2 shipped). Further speed needs a multi-month CPU-arch project
 (dual-mode CPU or a raised CPU clock with CDC) = operator-funded, not loop work.
 
+## COMPAT frontier — sweep prepped (2026-06-14), HW run pending rig
+
+Accuracy is effectively done (SST 100%/5.12M + Lorenz 100% both modes; only the
+XCE M/X auto-force workaround re-test remains, cosmetic). The live frontier is
+non-instruction COMPAT: run real SCPU software on HW and triage failures against
+the known stubs (WriteSmart $D074-$D077/$D0B3, bootmap OS ROM $F0-$FF,
+badline-during-turbo, DOS ext $D0BE/$D0BF) — most marked "no known consumer", so
+the sweep is what turns them into a concrete fix queue.
+
+**Real software staged on the rig** (catalogued via new `tools/d64_dir.py`):
+- `SCPU1.D64` = "*** DMAGIC ***" SuperCPU demo disk (note: "REQUIRED: SCPU WITH
+  1MB RAM"). Runnable PRGs: `SCPU KICKS !/DMA` (loader, = "*"), `SUPERCPU KICKS
+  A`/`B`/`C` (demo parts). Timing demos = highest-value probes (hit badline-turbo).
+- `CP-ClockF83_1.3.D64` = `CP-CLOCK-1.3` CMD utility.
+- No GEOS present (would need sourcing).
+
+**Sweep harness built + validated offline:** `tools/scpu_compat_sweep.py` — sets
+cfg 0x0c, mounts each disk + a generated `LOAD"NAME",8,1` autoload PRG via MGL
+(same start_strk path as `lorenz_run.py`), captures screenshots + UART per program
+to `tools/scpu_compat_sweep/<slug>/`. Has a COOPERATION GUARD: refuses load_core
+unless `/tmp/CORENAME` is C64/MENU/empty. `--list` / `--only` / `--secs` flags.
+The generated `"*"` PRG is byte-identical to `lorenz_autoload.prg` (tokenizer
+verified).
+
 ## Pending / next
 
-- iter-31b lever already committed (`48b6f3c`). Pushes still gated.
-- **Speed frontier re-closed** for the loop. Next autonomous work = the COMPAT
-  frontier (real SCPU software on HW: GEOS / SCPU-library / timing demos), the
-  documented pivot — low-risk, no risky builds, reuses the rig + observer harness.
-- Optional/deferred (not a gate): a clean native Doom frame-rate number to put a
-  precise figure on the k=2 ~1.24-1.33× model.
+- **Run the sweep when the rig is free**: `python tools/scpu_compat_sweep.py`
+  (rig was on AO486 = another slice at prep time; the guard will refuse until free).
+  Then triage each program's screen/UART → map failures to specific stubs.
+- iter-31b lever committed (`48b6f3c`); k=1 STA-death committed (`bd5e20a`). Pushes
+  still gated.
+- Optional/deferred: a clean native Doom frame-rate number for the k=2 model.
 
 ## Artifacts
 

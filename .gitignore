@@ -191,3 +191,4 @@ tools/vice_oracle/gameplay/
 # GHDL compat sweep transient outputs (regenerable via tools/ghdl_compat_sweep.ps1)
 tools/ghdl_sweep_logs/
 tools/ghdl_compat_sweep_results.txt
+tools/_scpu_disks/
