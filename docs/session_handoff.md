@@ -28,13 +28,40 @@ the first speed lever to ship after the long dead set.**
 - Doom: A/B identical to control (same engine frame, 125 UART lines, native PC
   $2A55xx, fast-fire active = the ~1.24-1.33× win).
 
+## iter-31c (2026-06-14) — k=1 fast-fire STA-FALSIFIED (no build) — k=2 is the floor
+
+The documented follow-on speed step (k=1 / 1-apart native fast-fire, ~1.41×) is
+**STA-infeasible** — killed by a 15-second `quartus_sta` query on the already-fitted
+iter-31b design (`C64_MiSTer/k1_sta_probe.tcl`), no Quartus build, no HW risk.
+
+- clk32 period = **31.719ns** (counter[2], 31.53 MHz). At k=1 the CPU fires on
+  consecutive clk32 edges, so every path `-to P65C816` gets 1 clk32 instead of the
+  2 it has today (`C64.sdc:44` `set_multicycle_path -setup 2 -to *P65C816:cpu|*`).
+- Worst P65C816-**internal** setup path: `MCode|MI.addrInc[0] → P65C816:cpu|P[1]`
+  (the Zero flag), data delay **31.394ns**, clock skew −0.493ns ⇒ slack at −setup 2
+  = +31.361ns ⇒ **at −setup 1 = −0.358ns** = masked-timing violation (the death
+  class). This is the SAME irreducible **result→zero-flag** dependency iter-31's
+  carry-select AddSubBCD surgery already hit — the 65C816 datapath cannot complete
+  in one clk32.
+- (The worst path INTO P65C816 overall, +17.339ns, is `sdram_pm|dout_r → sdram_data_eff
+  mux → cpuDi → CPU ALU` = the SuperRAM read path; it stays 4-apart at k=1 and keeps
+  −setup 2, so it is NOT a k=1 concern. The bank-$00 BRAM `bram_q` path isn't in the
+  worst 40 — on-chip M10K is fast. The CPU-internal floor, not memory, kills k=1.)
+
+**Verdict: k=2 (shipped iter-31b `41944346`) is the architectural floor for the
+bank-$00 fast-fire lever at the current clock + datapath.** Every in-CPU / in-clock
+speed lever is now exhausted (7 dead levers + page-mode + write-buffer dropped +
+k=1 STA-dead + k=2 shipped). Further speed needs a multi-month CPU-arch project
+(dual-mode CPU or a raised CPU clock with CDC) = operator-funded, not loop work.
+
 ## Pending / next
 
-- **Commit** the lever (c64.sv + fpga64_sid_iec.vhd + docs). Pushes still gated.
-- Optional: a clean native (Doom) frame-rate measurement to put a precise number on
-  the ~1.24-1.33× model (nice-to-have, not a gate).
-- Possible follow-on speed: k=1 (1-apart) native fast-fire if STA allows (~1.41×
-  per the sizing model) — would need its own STA proof + HW A/B.
+- iter-31b lever already committed (`48b6f3c`). Pushes still gated.
+- **Speed frontier re-closed** for the loop. Next autonomous work = the COMPAT
+  frontier (real SCPU software on HW: GEOS / SCPU-library / timing demos), the
+  documented pivot — low-risk, no risky builds, reuses the rig + observer harness.
+- Optional/deferred (not a gate): a clean native Doom frame-rate number to put a
+  precise figure on the k=2 ~1.24-1.33× model.
 
 ## Artifacts
 
