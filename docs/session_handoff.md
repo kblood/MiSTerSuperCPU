@@ -119,6 +119,11 @@ Fixed two harness bugs first: out-dir must pre-exist for the log redirect, and
   Methodology note added to `scpu_compat_sweep.py` TARGETS.
 - Captures: `tools/scpu_compat_sweep/<slug>/` (6-8 shots + UART each); run log
   `sweep_run.log`; visual triage by subagent (1 PASS / 2 PARTIAL / 10 launch-artifact).
+- **PASS re-confirmed stable**: a 360s loader-only re-run (`loader_confirm.log`)
+  showed continuous coherent animation every sample for the full 6 min — no freeze,
+  no crash. Final frame `scpu1_loader/0327s.png` = same scroller, text advanced.
+- Committed `821fcb5` (coop_ok fix + methodology note). Rig released (CORENAME=MENU,
+  lock NOLOCK). Sweep artifacts left local/untracked (large PNG+UART).
 
 ## Pending / next
 
@@ -126,8 +131,9 @@ Fixed two harness bugs first: out-dir must pre-exist for the log redirect, and
   D-K need the demo's own disk-swap on SCPU2/SCPU3), or build per-part ML launcher
   stubs once entry points are known. Standalone `LOAD,8,1`+`RUN` cannot launch them.
 - Source GEOS / a SuperCPU-library title for a register-exercising compat target
-  (the Kicks demo touches few of our stub regs at the loader stage).
-- Commit pending: `coop_ok` fix + sweep methodology note + this handoff + memory.
+  (the Kicks demo touches few of our stub regs at the loader stage). **This needs
+  the user to supply disk images** — no register-exercising SCPU software is staged
+  locally, and the loop won't auto-download copyrighted titles. = current loop blocker.
 - iter-31b lever committed (`48b6f3c`); k=1 STA-death committed (`bd5e20a`). Pushes
   still gated.
 - Optional/deferred: a clean native Doom frame-rate number for the k=2 model.
