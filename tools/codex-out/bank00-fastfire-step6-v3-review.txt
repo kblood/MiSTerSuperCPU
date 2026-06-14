@@ -1,0 +1,16 @@
+**Q1: Sound.** Suppressing SDRAM `ce` for bank-$00 reads is coherent for CPU/VIC/REU-C64-side if the override is continuous-read BRAM. CPU/VIC consume `ramDin` through `cartridge.mem_in(sdram_data_eff)` at [c64.sv:623](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv:623) and `fpga64.ramDin(c64_data_in)` at [c64.sv:2042](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv:2042). REU C64-side DMA reads through `dma_din <= cpuDi` at [fpga64_sid_iec.vhd:4045](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd:4045). The raw `reu.ram_din(sdram_data)` path at [c64.sv:702](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv:702) is REU expansion-RAM side, and `reu.v` drives that as `{1'b1, addr_ram}` at [reu.v:235](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/reu.v:235), so it is not bank-$00 suppressed.
+
+**Q2: Flawed / needs-change.** `cpuWe` itself is okay when `dma_active='0'`, because `cpuWe <= cpuWe_pre when dma_active='0'` at [fpga64_sid_iec.vhd:4041](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd:4041). But `cpuWe='0'` is not enough. The existing internal-fast-fire fix explicitly learned that invalid 65C816 cycles need VDA/VPA qualification; see [fpga64_sid_iec.vhd:3772](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd:3772)-[3781](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd:3781). As written, stale bank-$00 address + `cpuWe=0` during `VDA=VPA=0` can be misclassified as a fast bank-$00 read, accidentally re-enabling internal-cycle fast-fire behavior.
+
+**Q3: Sound, assuming Q2 is fixed.** The scheduler cannot double-fire in one period because the proposed branch is a single `if/elsif`. MAIN priority is correct: `cpu_cyc_s <= ... & cpu_cyc` at [fpga64_sid_iec.vhd:3926](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd:3926), and after bank-$00 reads are excluded from `cpu_cyc`, MAIN only represents real SDRAM/write/io consumes. SuperRAM still gets `busy_cnt <= "011"` at [fpga64_sid_iec.vhd:3846](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd:3846)-[3851](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd:3851), so a following SDRAM access keeps the CPU4 issue to CPU6 consume window.
+
+**Q4: Sound functionally, but STA-sensitive.** Continuous BRAM read has the right phase: after an enable, the next access address has two clk32 periods before a 2-apart consume. But note the existing special setup-4 exception only targets `sdram_pm:sdram|sd_*` at [C64.sdc:59](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/C64.sdc:59)-[64](C:/LLM/C64/MiSTerSuperCPU/C64_MiSTer/C64.sdc:64), not `bank00_mem/bram_q`. Treat any new TNS there as expected constraint work, not a logic death.
+
+Overall: v3 as written is not buildable-with-confidence. It re-enters the prior internal-fast-fire hazard class through the classifier, not through SDRAM latency. Single RTL fix: define `b00_fast_read` with a valid-bus-cycle qualifier, preferably:
+
+```vhdl
+and (vda_816 = '1' or vpa_816 = '1')
+and cpuWe_pre = '0'
+```
+
+Use that same fixed `b00_fast_read` for both `cpu_cyc` exclusion and the FAST scheduler branch.

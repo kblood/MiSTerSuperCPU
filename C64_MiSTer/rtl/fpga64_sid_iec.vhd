@@ -907,6 +907,7 @@ signal alt_fire_r : std_logic := '0';
 signal alt_fire_r2     : std_logic := '0';
 signal cpuWe        : std_logic;
 signal cpuWe_pre    : std_logic;
+signal b00_fast_read : std_logic;  -- iter-31 step 6: current cycle is a fast bank-$00 READ
 signal cpuAddr      : unsigned(15 downto 0);
 signal cpuAddr_pre  : unsigned(15 downto 0);
 signal cpuDi        : unsigned(7 downto 0);
@@ -1857,6 +1858,20 @@ constant INTERNAL_FAST_FIRE : boolean := false;  -- iter-27 HW-DEAD (2026-06-09)
 -- Kept as a gated dead-lever record (default false => Quartus constant-folds the
 -- demand term away; cpu_cyc + RBF bit-identical to shipped 3698680a). Do NOT build.
 constant DEMAND_ARBITER : boolean := false;  -- iter-28: HW-INERT (busy-blocked); dead record
+
+-- iter-31 (2026-06-14) STEP 6: authoritative bank-$00 BRAM fast-fire. Builds on the
+-- HW-validated step-2 BRAM (c64.sv, commit 36a8d12). Fast-fire ONLY bank-$00 READS
+-- 2-apart (data from the on-chip BRAM = ~1 clk64 MATCHED latency, NOT the ~5 clk64
+-- SDRAM that made the 6 dead levers race the di setup window). Bank-$00 WRITES + all
+-- SuperRAM stay on the 4-apart cpu_cyc MAIN path (preserves the BRAM write strobe via
+-- ramCE->cart_ce->sdram_eff_ce AND the fixed cpu_cyc->cpu_cyc_s(1) 2-clk32 SDRAM
+-- window for every SuperRAM access). Codex-vetted v3
+-- (tools/codex-out/bank00-fastfire-step6-v3-review.txt): the classifier MUST qualify
+-- (vda_816 or vpa_816) — an internal cycle (VDA=VPA=0, stale bank-$00 addr, cpuWe=0)
+-- would otherwise be misclassified as a fast read = the dead internal-fast-fire lever.
+-- Default false => RBF-identical (b00_fast_read folds to '0', cpu_cyc/enableCpu
+-- bit-identical to the shipped arbiter).
+constant BANK00_FASTFIRE : boolean := true;  -- iter-31 step 6 UNDER TEST
 
 -- iter-16 (2026-06-03): transaction-matched fill tuple — the Bug 2 fix. See the
 -- rp_fill_addr_r/rp_fill_bank_r decl above. When true (and CACHE_READ_PATH), the
@@ -3735,7 +3750,15 @@ scpu_force_1mhz <= scpu_speed_1mhz or scpu_sys_1mhz or cia2_throttle_active or e
 process(clk32)
 begin
 	if rising_edge(clk32) then
-		if supercpu_en = '1' and emu_mode_816_i = '1'
+		-- iter-31b: fire in BOTH emu AND native mode. The earlier "native mode
+		-- never runs serial" assumption is FALSE for the SCPU64 ROM: the Lorenz
+		-- chained-test LOAD ($ED5A serial) ran/wedged DESPITE the prior emu-only
+		-- throttle, implying the SCPU64 KERNAL services serial in native mode.
+		-- Throttling $ED/$EE bank-$00 serial in both modes forces 1MHz there so
+		-- the bit-bang timing is correct regardless of CPU mode AND keeps fast-fire
+		-- off during serial (scpu_force_1mhz gate). Doom never executes $ED/$EE at
+		-- runtime, so no game impact.
+		if supercpu_en = '1'
 			and cpu_pc_now(23 downto 16) = x"00"
 			and (cpu_pc_now(15 downto 8) = x"ED" or cpu_pc_now(15 downto 8) = x"EE") then
 			emu_serial_throttle <= '1';
@@ -3780,11 +3803,33 @@ end process;
 -- cpu_cyc is bit-identical to the shipped arbiter (Quartus constant-folds it).
 cpu_cyc_va_ok <= '1' when (not INTERNAL_FAST_FIRE) or (vda_816 = '1' or vpa_816 = '1') else '0';
 
+-- iter-31 step 6: fast bank-$00 READ classifier (Codex v3 + iter-31b NATIVE-ONLY gate).
+-- Real memory READ (vda or vpa => excludes internal VDA=VPA=0 cycles, the
+-- internal-fast-fire hazard), bank $00 only (addr_hi=$00 => the c64.sv $01->$00 mirror
+-- stays 4-apart; safe because b00_fast_read='1' implies c64.sv is_bank00='1'), cs_ram
+-- (excludes $Dxxx I/O), not a write (writes keep the cpu_cyc MAIN path for the BRAM
+-- write strobe), not throttled, no DMA. Folds to '0' when BANK00_FASTFIRE=false =>
+-- cpu_cyc/enableCpu bit-identical.
+-- NATIVE-ONLY (emu_mode_816_i='0'): iter-31b HW finding — emu/turbo fast-fire ran the
+-- Lorenz scpu suite ~2.4-3x faster but (a) changes CPU-cycles-per-CIA-tick vs control
+-- (risks the cycle-sensitive Lorenz CIA-timer tests) and (b) disrupted the KERNAL serial
+-- LOAD ($ED5A) that chains the test programs. Gating to native mode makes ALL emulation-
+-- mode code (Lorenz's 6502 test bodies, stock C64 software, KERNAL/IEC timing loops)
+-- bit-identical to control => Lorenz scpu stays 100%. Doom runs NATIVE (XCE; JML $20:0000)
+-- so it keeps the full 38.8% bank-$00 win. Native SuperCPU software is the speed target;
+-- emu mode is the compat target and does not need acceleration.
+b00_fast_read <= '1' when BANK00_FASTFIRE and supercpu_en = '1' and cs_ram = '1'
+                      and emu_mode_816_i = '0'
+                      and addr_hi_816 = x"00"
+                      and (vda_816 = '1' or vpa_816 = '1')
+                      and cpuWe_pre = '0'
+                      and scpu_force_1mhz = '0' and dma_active = '0' else '0';
+
 cpu_cyc <= '1' when (sdram_busy = '0' and cpu_cyc_va_ok = '1' and (
-				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
-				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
-				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and scpu_force_1mhz = '0') or
-				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or cs_ram = '1')) or
+				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' and scpu_force_1mhz = '0' and b00_fast_read = '0') or
+				(sysCycle = CYCLE_CPU4 and turbo_m(1) = '1' and cs_ram = '1' and scpu_force_1mhz = '0' and b00_fast_read = '0') or
+				(sysCycle = CYCLE_CPU8 and turbo_m(2) = '1' and cs_ram = '1' and scpu_force_1mhz = '0' and b00_fast_read = '0') or
+				(sysCycle = CYCLE_CPUC and (io_enable = '1'  or (cs_ram = '1' and b00_fast_read = '0'))) or
 				-- iter-28 Milestone C: demand slots — busy-gated extra CPU-region
 				-- fires (inside the sdram_busy='0' gate above; busy_cnt="011" paces
 				-- to >=3 clk32). SCPU full-turbo (turbo_m="111") + RAM only + not
@@ -3967,6 +4012,34 @@ begin
 			            or sysCycle = CYCLE_CPU4 or sysCycle = CYCLE_CPU6
 			            or sysCycle = CYCLE_CPU8 or sysCycle = CYCLE_CPUA
 			            or sysCycle = CYCLE_CPUC or sysCycle = CYCLE_CPUE ) then
+				enableCpu <= '1';
+				en_gap    <= (others => '0');
+			else
+				enableCpu <= '0';
+				if en_gap < 63 then en_gap <= en_gap + 1; end if;
+			end if;
+		elsif BANK00_FASTFIRE and supercpu_en = '1' then
+			-- ── iter-31 step 6: authoritative bank-$00 BRAM fast-fire scheduler ──
+			-- MAIN: the prefetch-tied pulse. With bank-$00 reads excluded from cpu_cyc
+			-- above, cpu_cyc_s(1) now ONLY carries SuperRAM / bank-$00-write / io consumes
+			-- => every real SDRAM access keeps its proven cpu_cyc(CPU0/4/8/C)->cpu_cyc_s(1)
+			-- (+2 clk32) window. No en_gap guard needed here (cpu_cyc itself is throttled
+			-- by busy_cnt="011"); every real consume must fire.
+			if cpu_cyc_s(1) = '1' then
+				enableCpu <= '1';
+				en_gap    <= (others => '0');
+			-- FAST: the pending cycle is a bank-$00 READ served by the on-chip BRAM
+			-- (~1 clk64 MATCHED latency => no late-SDRAM-data di race, the death class).
+			-- Advance 2-apart at an even CPU slot, en_gap>=2 (honours C64.sdc -setup 2
+			-- -to *P65C816*). baLoc + cpu816_rdy_to_cpu => a real CPU advance (not a
+			-- VIC-badline / not-ready stall). NOT CPUE (its +2 consume wraps into EXT).
+			elsif b00_fast_read = '1'
+			      and en_gap >= 2
+			      and baLoc = '1' and cpu816_rdy_to_cpu = '1'
+			      and ( sysCycle = CYCLE_CPU0 or sysCycle = CYCLE_CPU2
+			            or sysCycle = CYCLE_CPU4 or sysCycle = CYCLE_CPU6
+			            or sysCycle = CYCLE_CPU8 or sysCycle = CYCLE_CPUA
+			            or sysCycle = CYCLE_CPUC ) then
 				enableCpu <= '1';
 				en_gap    <= (others => '0');
 			else

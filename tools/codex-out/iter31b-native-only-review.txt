@@ -1,0 +1,9 @@
+**Findings**
+
+No correctness issue found in the native-only `b00_fast_read` change. In emu mode, `b00_fast_read='0'`, so bank-$00 reads are no longer removed from `cpu_cyc` and cannot enter the BANK00 FAST scheduler branch. They fall back to `cpu_cyc_s(1)` MAIN, i.e. the 4-apart prefetch-tied path.
+
+The remaining emu-mode difference is data-source, not CPU cadence: `c64.sv` still uses `b00_override = is_bank00_q` when `BANK00_FASTFIRE=1`, so bank-$00 reads are served from the continuous BRAM mux instead of the ce-gated `b00_sel` path. Given the BRAM is authoritative and continuously tracks the live effective address, that should be byte-equivalent to the validated BRAM control. If there is a residual risk, it is only a BRAM select/address phase risk, not a fast-fire timing path.
+
+Extending `emu_serial_throttle` to native mode is intentionally broad. Any native execution at bank `$00:$EDxx` or `$00:$EExx` now forces 1MHz and also disables `b00_fast_read` through `scpu_force_1mhz`. That is a performance/timing hazard for native software that deliberately runs hot code there, but probably acceptable: those are KERNAL IEC pages, and the hardware evidence says SCPU64 ROM can reach serial there while native. If worried, narrow later to known serial ranges rather than whole pages.
+
+No scheduler logic error found. The FAST branch still referencing `b00_fast_read` is safe because the classifier now includes `emu_mode_816_i='0'`; in emu mode it is simply unreachable, while MAIN remains available.

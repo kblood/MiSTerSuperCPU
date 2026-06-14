@@ -1,120 +1,52 @@
-# Session Handoff — current (rebased 2026-06-13, post iter-31)
+# Session handoff
 
-## North star
-Make the SuperCPU as **compatible and fast** as possible. Drive; don't ask.
+## Current state (2026-06-14, iter-31b)
 
-## ✅ iter-31 DONE: operator-funded speed paths PURSUED → both blocked by the SDRAM wall
-Operator said "continue them [the 2 funded speed paths], most-probable first."
-- **Path 1 (datapath surgery) — STA-FALSIFIED by direct measurement.** Built a
-  carry-select `AddSubBCD` (cycle-preserving; SST 0-fail on 24 arith opcodes ×
-  emu/native; build `700af1f5`). The carry chain shrank 8.8→5.1 ns but the worst
-  `dout_r→CPU` path did NOT improve (26.6→27.4 ns) — it shifted to the **zero-flag
-  tail** (`result→Equal3→ZO→P[1]`), irreducible without pipelining. Reverted.
-- **Path 2 (dual-mode CPU) — structural category error here.** A faster engine
-  still fetches SuperRAM through the same SDRAM controller at 4-apart; its only
-  edge is a BRAM cache/prefetch (= dead cache lever / "lookahead won't fit M10K").
-- **Decisive finding:** the CPU already closes at 32 MHz and *waits on SDRAM*. The
-  binding wall is **SDRAM random-access throughput** (`sdram_pm` 6-clk64
-  auto-precharge + cpu_cyc→ce CDC ±1-clk64 jitter ⇒ 4-apart floor), which NEITHER
-  funded path touches. Speed is memory-bound, not CPU-bound. Frontier re-confirmed
-  CLOSED with a direct STA proof. Full detail:
-  `memory/project_datapath_surgery_falsified_sdram_bound.md`. STA probe kept at
-  `C64_MiSTer/datapath_surgery_sta_probe.tcl`.
+**The authoritative bank-$00 BRAM fast-fire speed lever LANDED and is HW-validated —
+the first speed lever to ship after the long dead set.**
 
-## ✅ iter-30 DONE: SPEED FRONTIER DECLARED CLOSED → pivot to COMPAT frontier
-The operator asked to dig deeper into each remaining speed lever with Sonnet
-subagents and mine VICE `xscpu64` for clues. Done. The investigation closed the
-speed half of the project (short of a multi-month CPU-architecture rewrite that
-needs an explicit operator decision to fund).
+- **Shipped/new HEAD build:** `41944346` (md5 `41944346d0249c5ba0c420842e0de683`),
+  currently on the MiSTer `_Test/C64.rbf`. Control baseline = `3698680a`.
+- **Design:** native-only fast-fire on bank-$00 reads. `b00_fast_read` (in
+  `fpga64_sid_iec.vhd`) fires the CPU 2-apart for bank-$00 READS served by the
+  on-chip authoritative BRAM (`c64.sv` `bank00_mem` continuous read), gated to
+  NATIVE mode (`emu_mode_816_i='0'`). `emu_serial_throttle` now fires at $00:$ED/$EE
+  in BOTH modes to protect the SCPU64 ROM's native serial LOAD.
+- **Why native-only:** emu/turbo fast-fire (`03d9f2ee`) was HW-falsified — it broke
+  the Lorenz scpu KERNAL serial LOAD ($ED5A) and would fail the CIA-timer tests
+  (CPU-cycles-per-tick ratio changes). Native-only makes all emu-mode code
+  control-equivalent (compat) while Doom (native) keeps the win.
 
-**What iter-30 did, in order:**
-1. **VICE differential (4 Sonnet subagents)** → VICE gets 20 MHz with ZERO CPU
-   pipelining; ALL its speed is the memory-timing accumulator, keystone = a posted
-   WRITE BUFFER. `project_vice_differential_write_buffer.md`.
-2. **A1 `WRITEFRAC_OBSERVER` HW gate** → Doom SuperRAM write fraction ~0.7-0.9%
-   (read-dominated; heavy writes go to bus-visible bank $00 = un-postable anyway)
-   ⇒ **posted-write buffer DROPPED.** `project_writefrac_gate_dropped.md`.
-3. **Wider-row page-hit D-gate** → 512B locality 54.2% == 256B 54% (misses are
-   scattered-access, not row-width-bound) ⇒ **page-mode DROPPED in ALL forms**
-   (standalone / per-bank / 256B / 512B-remap). `project_pagehit_gate_measured_dropped.md`.
-4. **Lever 2 (65C816-internal pipeline) datapath analysis (Sonnet) + Codex** →
-   all 3 pipeline insertion points FATAL to SST cycle-exactness (the CPU does
-   D_IN-read+ALU+writeback on ONE edge, even internal cycles; SST compares every
-   cycle exactly). **Speed and compat are in direct architectural tension.**
-   Codex independently agrees the frontier is closed short of a CPU rewrite.
-   `project_speed_frontier_closed_compat_pivot.md`.
+## Validation (A/B vs control `3698680a`)
 
-## Speed-lever ledger (COMPLETE — all exhausted)
-| Lever | Verdict |
-|---|---|
-| cache read-path ×5 | HW-wedged (zero-delay-bench-blind death class) |
-| raised-clock | HW-wedged |
-| alt-fire (2-clk32) | HW-wedged |
-| internal-fast-fire | HW-wedged |
-| demand-arbiter | INERT (4-apart floor; byte-identical A/B) |
-| posted write buffer | DROPPED — Doom SuperRAM ~0.7% writes, no ROI |
-| page-mode SDRAM (all forms) | DROPPED — 54% locality → ~1.1× |
-| 65C816-internal pipeline | FORBIDDEN by SST cycle-exactness |
+- Build green, TNS=0 (setup +0.381 / hold +0.247), 66% ALM / 84% RAM blocks.
+- Boot clean to READY, idle PC range $E5CD–$E5D6.
+- Lorenz scpu: matches control test-for-test (62s=ldaa = control), clears the
+  step-6 serial wedge, lda→sta→ldx all `-ok` over the full 9-min run.
+- Lorenz t65: bit-identical to control by construction (supercpu_en=status[82]=0
+  ⇒ fast-fire disabled in t65).
+- Doom: A/B identical to control (same engine frame, 125 UART lines, native PC
+  $2A55xx, fast-fire active = the ~1.24-1.33× win).
 
-**Two remaining speed options, both multi-month CPU-architecture projects needing
-an explicit operator funding decision (NOT autonomous-loop work):**
-- **Cycle-preserving datapath surgery** — faster BCD adder / carry-select decimal
-  / precomputed PC+addr candidates / mux-depth split with NO added architectural
-  latency. Preserves SST. Lower risk, lower ceiling (~1.x×). Start with P65C816
-  critical-path STA.
-- **Dual-mode CPU** — a second non-cycle-exact fast SuperRAM engine with precise
-  traps/flushes into the exact core. Higher ceiling (20 MHz fast path) but trades
-  away the SST guarantee; killer obstacle = precise mode-boundary semantics
-  (drain before IRQ/NMI/ABORT/I-O/bank-0/VIC/mode-crossing branches/DMA).
+## Pending / next
 
-## Status in one breath
-- **Instruction-level compat is SOLVED.** SST 100% clean (0/5.12M). Lorenz 100%
-  both modes. Doom + Wolf3D run; SCPU Kicks renders. SST vein exhausted.
-- **Speed is closed for the autonomous loop.** Shipped build runs ~4 MHz (clk32
-  SDRAM passthrough, `busy_cnt="011"` = 4-apart `enableCpu`, 6-clk64 auto-precharge
-  floor). ~5× below real SuperCPU 20 MHz — and every cheap lever to close that gap
-  is dead (table above).
-- **HARD RULE persists:** do NOT build another speed RBF off a zero-delay bench
-  (failed 6×). The only safe RBF class proven this session = read-only
-  counter/observer (changes no cadence) — reuse for any HW characterization.
+- **Commit** the lever (c64.sv + fpga64_sid_iec.vhd + docs). Pushes still gated.
+- Optional: a clean native (Doom) frame-rate measurement to put a precise number on
+  the ~1.24-1.33× model (nice-to-have, not a gate).
+- Possible follow-on speed: k=1 (1-apart) native fast-fire if STA allows (~1.41×
+  per the sizing model) — would need its own STA proof + HW A/B.
 
-## Shipped build / MiSTer state
-- `_Test` C64.rbf = iter-26 `3698680a` (known-good): boots READY, SCPU64 V0.07,
-  idle PC cycles **$E5CD–$E5D6**. A/B control for any future speed RBF.
-- Working tree: gated read-only observers committed in `fpga64_sid_iec.vhd`
-  (`PAGEHIT_OBSERVER`/`WRITEFRAC_OBSERVER`, debug-only, prune from shipped RBF;
-  `PAGEHIT_COL_EXTRA` parametrizes row width). Gated dead-lever constants
-  (`DEMAND_ARBITER`/`INTERNAL_FAST_FIRE`=false) left as record; RBF-bit-identical
-  to shipped (Quartus folds them away).
+## Artifacts
 
-## NEXT — COMPAT frontier (the active autonomous-loop track)
+- Memory: `project_bank00_bram_lever_sized_go.md` (full record, iter-31b section).
+- Lorenz A/B runs preserved: `tools/lorenz_run/scpu_control_3698680a`,
+  `tools/lorenz_run/scpu_iter31b_41944346`. Doom: `tools/doom_autoload/
+  single_prg_iter31b_41944346`.
+- Helper: `tools/lorenz_fine_capture.py` (fine-grained Lorenz screenshot capture).
+- Codex reviews: `tools/codex-out/iter31b-native-only-review.txt`,
+  `tools/codex-out/bank00-fastfire-step6-v3-review.txt`.
 
-### ✅ Recommended A — real SuperCPU software compat sweep (no risky build)
-With the speed frontier closed, the highest-leverage *steady* progress is the
-compat frontier. SST is exhausted ⇒ the live frontier is *non-instruction*
-incompat. Curate real SCPU software (GEOS, SCPU-library titles, timing-sensitive
-demos, WriteSmart users), run on shipped `3698680a` on HW, triage failures. No
-speed build, no zero-delay-bench wall. The `pagehit_probe.py`/`writefrac_probe.py`
-autoload+UART harness + the observers are reusable to characterize any title.
+## Rig
 
-### Backlog F — WriteSmart register decode ($D074–D077 / $D0B3)
-Specific real-HW feature; reportedly already partly software-visible, full decode
-is the remaining piece. VICE B4 (`scpu64mem.c scpu64_hardware_store` ~684-817)
-documents the optimization-mode → `mem_set_mirroring` semantics to match.
-
-### ⏸ Speed (operator-funded only) — see ledger above
-Datapath surgery or dual-mode CPU. Surface to operator; do not start in the loop.
-
-## Tooling notes
-- SST regression oracle: `sweep_sst.ps1 -All` must stay 0/5.12M after ANY
-  CPU/ALU/AddrGen change. Garbage variant: `-GarbageInternal`.
-- HW A/B method: deploy suspect RBF, sample UART `PC:` distribution
-  (`mister_debug.py uart N`). Healthy idle = a RANGE around $E5CD–$E5D6; wedge =
-  one pinned address. Always run shipped `3698680a` as the control.
-- Read-only observer pattern (iter-29/30): gated constant in `fpga64_sid_iec.vhd`,
-  reuse dead cpu_cache HR/HW UART slot via `debug_uart_pool_fmt.sv`, probe with a
-  `pagehit_probe.py`-style autoload+UART script. Wedge-proof, prunes from shipped.
-- `lorenz_run.py [scpu|t65]`'s MGL core-reload can transiently wedge the daemon
-  pipe; `reboot` clears it (pre-authorized). Confirm core via `cat /tmp/CORENAME`.
-- Full death records: `session_handoff_2026-06-13_iter28-speed-levers-exhausted.md`
-  + the iter-30 memory files listed above.
+Freed: menu core loaded (CORENAME=MENU), `/tmp/mister_session.lock` released.
+iter-31b (`41944346`) left on `_Test/C64.rbf` for the next C64 session.

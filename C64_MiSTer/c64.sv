@@ -1114,23 +1114,36 @@ wire        sdram_eff_we   = io_cycle ? (cart_mem_req ? cart_we     : io_cycle_w
 wire  [7:0] sdram_eff_din  = io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : ext_cycle ? reu_ram_dout : cart_wrdata;
 wire        is_bank00      = (sdram_eff_addr[24:16] == 9'b0);
 
+// iter-31 step 6: fast-fire bank-$00 READS 2-apart (BRAM matched latency). Must be
+// kept consistent with fpga64_sid_iec.vhd BANK00_FASTFIRE. Default matches that
+// constant. When 0, the override uses the step-2 ce-gated b00_sel (RBF-equivalent to
+// the HW-validated step-2 build 36a8d12).
+localparam BANK00_FASTFIRE = 1'b1;
+
 (* ramstyle = "M10K" *) reg [7:0] bank00_mem [0:65535];
-reg [7:0] bram_q;     // BRAM registered read of the issued access, held until next ce
-reg       b00_sel;    // issued access was a bank-$00 READ (held until next ce)
+reg [7:0] bram_q;       // CONTINUOUS read of BRAM at the live bus address (1-clk64 lat)
+reg       is_bank00_q;  // bank-$00-ness of the address bram_q reflects (FASTFIRE select)
+reg       b00_sel;      // step-2 ce-gated bank-$00 READ select (used when FASTFIRE=0)
 always @(posedge clk64) begin
-	if (sdram_eff_ce) begin
-		if (sdram_eff_we & is_bank00) bank00_mem[sdram_eff_addr[15:0]] <= sdram_eff_din;
-		bram_q  <= bank00_mem[sdram_eff_addr[15:0]];
-		b00_sel <= is_bank00 & ~sdram_eff_we;
-	end
+	// write port (both modes): authoritative bottom-64KB store.
+	if (sdram_eff_ce & sdram_eff_we & is_bank00) bank00_mem[sdram_eff_addr[15:0]] <= sdram_eff_din;
+	// CONTINUOUS read: bram_q tracks the bus address EVERY clk64, decoupled from ce.
+	// REQUIRED for fast bank-$00 reads (they pulse no cpu_cyc => no ramCE => no ce to
+	// capture on). Byte-equivalent to the step-2 ce-gated read at the consume edge in
+	// the 4-apart cadence (the bus addr is stable >=1 clk64 before the consumer latches).
+	bram_q      <= bank00_mem[sdram_eff_addr[15:0]];
+	is_bank00_q <= is_bank00;
+	// step-2 ce-gated select (only consulted when BANK00_FASTFIRE=0).
+	if (sdram_eff_ce) b00_sel <= is_bank00 & ~sdram_eff_we;
 end
 
-// Step 2-5: override the CPU/VIC/REU-C64 read byte for bank-$00 reads with the
-// BRAM value. SDRAM ce is unchanged (still read in parallel) so the data_valid
-// handshake/cadence is identical; bram_q is ready ~1 clk64 after ce, long before
-// fpga64 samples ramDin at sdram_data_valid (~5 clk64). Faithful BRAM => bit-
-// identical CPU/VIC behavior at 4-apart.
-wire [7:0] sdram_data_eff = (BANK00_BRAM & b00_sel) ? bram_q : sdram_data;
+// Override the CPU/VIC/REU-C64 read byte for bank-$00 reads with the BRAM value.
+// FASTFIRE: select on the continuous is_bank00_q (the fast read pulses no ce so b00_sel
+// would never assert for it). 4-apart: step-2 ce-gated b00_sel. BRAM is authoritative so
+// whenever the override picks bram_q the value is correct; non-bank-$00 reads pick
+// sdram_data unchanged.
+wire b00_override = BANK00_FASTFIRE ? is_bank00_q : b00_sel;
+wire [7:0] sdram_data_eff = (BANK00_BRAM & b00_override) ? bram_q : sdram_data;
 
 sdram_pm sdram
 (
