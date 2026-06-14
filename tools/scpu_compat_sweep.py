@@ -39,6 +39,14 @@ TARGETS = [
     ('/media/fat/games/C64/SCPU1.D64',            'SUPERCPU KICKS A', 'kicks_a',       180),
     ('/media/fat/games/C64/SCPU1.D64',            'SUPERCPU KICKS B', 'kicks_b',       180),
     ('/media/fat/games/C64/SCPU1.D64',            'SUPERCPU KICKS C', 'kicks_c',       180),
+    ('/media/fat/games/C64/SCPU2.D64',            'SUPERCPU KICKS D', 'kicks_d',       180),
+    ('/media/fat/games/C64/SCPU2.D64',            'SUPERCPU KICKS E', 'kicks_e',       180),
+    ('/media/fat/games/C64/SCPU2.D64',            'SUPERCPU KICKS F', 'kicks_f',       180),
+    ('/media/fat/games/C64/SCPU2.D64',            'SUPERCPU KICKS G', 'kicks_g',       180),
+    ('/media/fat/games/C64/SCPU3.D64',            'SUPERCPU KICKS H', 'kicks_h',       180),
+    ('/media/fat/games/C64/SCPU3.D64',            'SUPERCPU KICKS I', 'kicks_i',       180),
+    ('/media/fat/games/C64/SCPU3.D64',            'SUPERCPU KICKS J', 'kicks_j',       180),
+    ('/media/fat/games/C64/SCPU3.D64',            'SUPERCPU KICKS K', 'kicks_k',       180),
     ('/media/fat/games/C64/CP-ClockF83_1.3.D64',  'CP-CLOCK-1.3',     'cp_clock',      120),
 ]
 

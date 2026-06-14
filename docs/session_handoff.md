@@ -78,11 +78,33 @@ unless `/tmp/CORENAME` is C64/MENU/empty. `--list` / `--only` / `--secs` flags.
 The generated `"*"` PRG is byte-identical to `lorenz_autoload.prg` (tokenizer
 verified).
 
+## iter-32 prep (2026-06-14) — full demo set staged + sweep expanded; static triage proven noise-bound
+
+Continuation of the COMPAT-sweep prep while the rig was busy (AO486 slice).
+
+- **All 3 SuperCPU Kicks disks catalogued** (`tools/d64_dir.py`): SCPU1 = loader +
+  parts A/B/C; SCPU2 = parts D/E/F/G; SCPU3 = parts H/I/J/K. SCPU2.D64
+  (md5 `b7ff343b`) + SCPU3.D64 (md5 `111ac31`) **staged to the rig**
+  `/media/fat/games/C64/` and md5-verified (non-disruptive scp; AO486 untouched).
+- **Sweep expanded to 13 targets**: `tools/scpu_compat_sweep.py` TARGETS now covers
+  the loader + all 11 Kicks parts A–K + CP-Clock (~45 min HW). `--list` verified.
+- **Static feature-triage attempted and FALSIFIED as noise-bound**:
+  `tools/scpu_prg_triage.py` (new) extracts each PRG and byte-scans for SuperCPU
+  control-register operands + 65816 long ops. Result is at the random-chance floor:
+  a 51KB crunched demo yields ~10-13 register-address "hits" vs ~14 expected purely
+  by chance (p≈1/65536 × 51199 positions × 18 regs). Control: Lorenz 6510 PRGs
+  (~600 B) give 0 hits, and the rate scales linearly with size — confirming pure
+  noise. The demos are crunched (payload load addrs $B200/$EA00/etc.), so a byte
+  scan can't see the real code. **Conclusion: no reliable static pre-classification
+  is possible for these demos; the HW sweep is the only ground truth.** (The tool is
+  kept — harmless, and useful on uncrunched PRGs — with the caveat in its docstring.)
+
 ## Pending / next
 
-- **Run the sweep when the rig is free**: `python tools/scpu_compat_sweep.py`
-  (rig was on AO486 = another slice at prep time; the guard will refuse until free).
-  Then triage each program's screen/UART → map failures to specific stubs.
+- **Run the expanded sweep when the rig is free**: `python tools/scpu_compat_sweep.py`
+  (rig is on AO486 = another slice; the coop guard refuses until CORENAME is
+  C64/MENU/empty). Then triage each program's screen/UART → map failures to stubs.
+  Per-target output under `tools/scpu_compat_sweep/<slug>/`.
 - iter-31b lever committed (`48b6f3c`); k=1 STA-death committed (`bd5e20a`). Pushes
   still gated.
 - Optional/deferred: a clean native Doom frame-rate number for the k=2 model.
