@@ -125,6 +125,31 @@ Fixed two harness bugs first: out-dir must pre-exist for the log redirect, and
 - Committed `821fcb5` (coop_ok fix + methodology note). Rig released (CORENAME=MENU,
   lock NOLOCK). Sweep artifacts left local/untracked (large PNG+UART).
 
+## iter-33 (2026-06-16) — BoulderMark runs (compat PASS); speed number joystick-gated
+
+User freed the rig ("you can use the mister now"). No new register-exercising
+software was supplied, so picked the highest-value rig work available: `bmark11.d64`
+= **BOULDERMARK**, the classic C64 speed benchmark (BASIC-runnable, unlike the demo
+parts). Staged + ran in scpu mode.
+
+- **BoulderMark PASS (runs):** loads, executes the Boulder Dash cave simulation, and
+  reaches a static end-state by ~65s. **3rd real-software title confirmed running on
+  our SuperCPU** (after Doom + SuperCPU Kicks). Captures: `bouldermark/`.
+- **Speed multiplier NOT extracted = deferred.** The result screen is a full cave
+  with NO printed numeric score (verified by upscaling — pure tiles, no digits). The
+  program sits on the cave waiting for **joystick fire** to start the timed run;
+  `RUN` + keyboard SPACE (mtype) does not advance it (mtype is keyboard-only, and a
+  fresh uinput joystick isn't reliably auto-mapped to the C64 joy port without OSD
+  config). Stepped back rather than rabbit-hole a joystick helper.
+- **Reusable wins committed:** (a) the on-screen debug overlay (status bit 83) sits
+  in the lower screen and obscures bottom-screen program output — added a `--cfg`
+  flag to `scpu_compat_sweep.py` so `--cfg 0x04` = SuperCPU **on**, overlay **off**
+  (0x0c=on/on, 0x08=t65). Confirmed: with overlay off the BoulderMark screen is
+  clean & stable. (b) bmark added as a sweep target.
+- **To get a real-software speed number next:** use a CPU-bound benchmark that
+  PRINTs a text result (readable via screenshot), or build a configured uinput
+  joystick helper (`tools/mjoy.py`) to fire BoulderMark's timed run.
+
 ## Pending / next
 
 - **Test parts A-K properly = run THROUGH the loader** (it chains A-C on disk 1;

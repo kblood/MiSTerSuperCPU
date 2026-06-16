@@ -61,6 +61,10 @@ TARGETS = [
     ('/media/fat/games/C64/SCPU3.D64',            'SUPERCPU KICKS J', 'kicks_j',       180),
     ('/media/fat/games/C64/SCPU3.D64',            'SUPERCPU KICKS K', 'kicks_k',       180),
     ('/media/fat/games/C64/CP-ClockF83_1.3.D64',  'CP-CLOCK-1.3',     'cp_clock',      120),
+    # BoulderMark: a BASIC-runnable C64 speed benchmark (reports a multiplier vs a
+    # stock C64). Unlike the demo parts this IS standalone-runnable, so it gives a
+    # real measured speed number for the SuperCPU. 150s = enough for the cave run.
+    ('/media/fat/games/C64/bmark11.d64',          'BOULDERMARK',      'bouldermark',   150),
 ]
 
 
@@ -145,6 +149,8 @@ def main(argv):
     ap.add_argument('--list', action='store_true')
     ap.add_argument('--only', default=None, help='substring filter on slug/name')
     ap.add_argument('--secs', type=int, default=None, help='override capture window')
+    ap.add_argument('--cfg', type=lambda s: int(s, 0), default=0x0c,
+                    help='cfg byte10: 0x0c=scpu+overlay, 0x04=scpu no-overlay, 0x08=t65')
     args = ap.parse_args(argv[1:])
 
     targets = TARGETS
@@ -167,8 +173,8 @@ def main(argv):
         print('REFUSING: rig busy, CORENAME="{}" (not C64/MENU/empty). '
               'Run when the rig is free.'.format(core))
         c.close(); return 2
-    print('rig free (CORENAME="{}"); cfg -> 0x0c'.format(core))
-    L.set_cfg(c, 0x0c)
+    print('rig free (CORENAME="{}"); cfg -> 0x{:02x}'.format(core, args.cfg))
+    L.set_cfg(c, args.cfg)
     for d, n, s, sec in targets:
         c = run_target(c, d, n, s, sec)
     c.close()
