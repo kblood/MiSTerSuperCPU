@@ -30,11 +30,16 @@ are untouched. NOT the reverted `simm_remap_bank` mechanism (`81af800`, kickstar
   $00 = the real (zero) content of empty $F0-$FE → cap is a behavioral no-op for any
   reader that doesn't write-then-read those banks (only the detection probe does), so
   Doom v2 ≡ control bit-for-bit on every read it makes.
-- **Lorenz:** in progress (scpu, task `b6ejbxx5i`). Structural argument: `is_capped`
-  needs a 65C816 long access to bank $F0-$FE = impossible in emu mode, so unreachable
-  during Lorenz (6502 emu-mode tests); t65 inert (supercpu_enable=0).
-- Memory: `project_simm_detect_256bank_wraparound.md`. Deploy: `4c9cd300` on `_Test`.
-- **COMMIT when Lorenz green.** Files: `c64.sv` (SIMM_CAP), `tools/synthmark_detect_probe.py`.
+- **Lorenz scpu:** PASS — all tests "ok", continuous progress, no halt (final frame
+  stxzy..phan all ok). t65: cap structurally unreachable (supercpu_enable=0), bit-
+  identical by construction.
+- **COMMITTED `ec118c5`** (build `4c9cd300` on `_Test`). Files: `c64.sv` (SIMM_CAP $00),
+  `tools/synthmark_detect_probe.py`, `.gitignore` (synthmark artifacts). Push still gated.
+- Memory: `project_simm_detect_256bank_wraparound.md`.
+- **First real-software-driven compat fix to ship on the fork.** Next compat candidates
+  (need user-supplied register-exercising disks): GEOS / SuperCPU-library titles
+  exercising the $D074-$D077/$D0B3 WriteSmart stubs. Speed frontier remains closed
+  (native k=2 shipped, emu turbo opt-in works).
 
 ## Prior state (2026-06-14, iter-31b)
 
