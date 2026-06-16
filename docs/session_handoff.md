@@ -1,5 +1,25 @@
 # Session handoff
 
+## Latest (2026-06-16, iter-33c follow-up) — SynthMark64 speed differential vs VICE
+
+After the SIMM-detect fix shipped, the operator ran SynthMark64 for speed: **0.94x at
+our 1 MHz default**, **2.85x with turbo on** (`POKE 53371,0` = `$D07B`). Differential vs
+VICE 3.10 `xscpu64` (real-SuperCPU model, fast-by-default): **14.75x** (operator-reproduced;
+our run screenshot `tools/synthmark/vice_result_14_75x.png`).
+
+VICE per-op breakdown is the diagnostic: compute/ram/zeropage **~20–21x**, long store/move
+**~15–18x**, color-RAM + I/O **1.77–4.0x** (1 MHz C64 bus, un-accelerable even on real HW
+— why even real-SCPU = 14.75x not 20x). **Our 2.85x→14.75x gap is the `ram load/store/move`
+rows**: our bank $00 is SDRAM-passthrough vs real-HW fast SRAM ⇒ memory-bound, NOT
+CPU-bound (corroborates speed-frontier-closed).
+
+**Top speed lever this points to (operator-gated, NOT autonomous):** extend the shipped
+k=2 bank-$00 BRAM fast-fire (`b00_fast_read`, currently native-only) to **emulation mode**
++ emu turbo. SynthMark64 is emu-mode so gets zero benefit today. Risk: emu fast-fire was
+HW-falsified once (iter-31b `03d9f2ee` broke Lorenz scpu serial + CIA-tick); any emu
+bank-$00 acceleration must keep Lorenz 100% and stay inside the SDRAM-busy gate. GHDL-first.
+Full detail: memory `project_synthmark_vice_speed_differential.md`.
+
 ## Current state (2026-06-16, iter-33c) — SIMM-detect compat fix building
 
 **First real-software-driven COMPAT fix in flight.** SynthMark64 v0.2 (4th real-
