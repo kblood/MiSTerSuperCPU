@@ -150,21 +150,29 @@ parts). Staged + ran in scpu mode.
   PRINTs a text result (readable via screenshot), or build a configured uinput
   joystick helper (`tools/mjoy.py`) to fire BoulderMark's timed run.
 
-## iter-33b (2026-06-16) — MEASURED: emu-mode BASIC gets 1.00x (zero) speedup
+## iter-33b (2026-06-16) — CORRECTED: emu BASIC = 1.00x default, 4.04x on $D07B opt-in
 
-Drove a real CPU-speed measurement instead of waiting on the joystick decision:
-`tools/basic_speed_bench.py` types a timed BASIC loop (`10 T=TI : 20 FORI=1TO30000:
-NEXT : 30 PRINTTI-T`) over mtype and reads the jiffy clock, both modes, overlay off.
+Drove a real CPU-speed measurement: `tools/basic_speed_bench.py` types a timed BASIC
+loop over mtype and reads the jiffy clock, both modes, overlay off.
 
-**RESULT: scpu = 2170 jiffies, t65 = 2170 jiffies — identical = 1.00x.** Our SuperCPU
-gives ZERO speedup to emulation-mode code (BASIC + ~all stock 6502 software). The
-shipped fast-fire is NATIVE-65816-ONLY by design (iter-31b reverted the 2.63x emu
-turbo as a Lorenz-scpu compat-breaker). Native code (Doom, demos) accelerates; emu
-code runs at stock 1 MHz. Full record: memory `project_emu_basic_no_speedup_measured.md`.
+**First pass led to a WRONG conclusion** ("scpu==t65, ZERO emu speedup, build a
+compat-safe emu accel"). A no-build RTL investigation + a HW opt-in test corrected it:
+**the compat-safe emu turbo is ALREADY implemented and shipping.**
+- `$D07A` = force 1 MHz, `$D07B` = force 20 MHz turbo — decoded correctly at
+  `fpga64_sid_iec.vhd:2891-2896` (matches `docs/architecture_diagrams.md:446-447`).
+  **No polarity bug.**
+- Emu turbo is OPT-IN: `turbo_m="111"` only when `scpu_speed_reg_written ∧
+  ¬scpu_speed_1mhz` (i.e. software wrote $D07B), `fpga64_sid_iec.vhd:4090-4097`.
+  Default = safe 1 MHz.
+- **HW test (emu/BASIC, N=20000):** baseline **1397** jiffies → `POKE53371,0`($D07B)
+  → **346** (= **4.04x**) → `POKE53370,0`($D07A) → back to **1397**. Toggle works.
 
-**This reframes the "fast" goal:** the biggest real-world speed payoff left is a
-COMPAT-SAFE emu-mode acceleration (emu fast-fire that doesn't perturb KERNAL serial /
-CIA tick ratios) — distinct from the closed native-side frontier. Candidate next lever.
+**The 1.00x-by-default is CORRECT, not a gap:** stock BASIC/Lorenz never write $D07B,
+so they stay at the safe 1 MHz default → Lorenz scpu stays 100%. This IS the
+CMD-SuperCPU contract (1 MHz default, turbo on explicit request, with the
+`scpu_force_1mhz` auto-throttle net). iter-31b reverted an *unconditional* emu turbo
+that broke Lorenz; the landed model is exactly this opt-in. **Nothing to build here.**
+Full record: memory `project_emu_basic_no_speedup_measured.md`.
 
 ## Pending / next
 

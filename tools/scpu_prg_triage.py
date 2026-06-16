@@ -74,7 +74,7 @@ REGS = {
     0xD074: "WriteSmart/opt (STUB)", 0xD075: "WriteSmart/opt (STUB)",
     0xD076: "WriteSmart/opt (STUB)", 0xD077: "WriteSmart/opt (STUB)",
     0xD078: "cache flush (repurposed; real=SIMM cfg)",
-    0xD07A: "speed: enable turbo",   0xD07B: "speed: disable turbo (1MHz)",
+    0xD07A: "speed: force 1MHz (slow)",  0xD07B: "speed: force 20MHz (turbo)",
     0xD07E: "hw enable",             0xD07F: "hw enable",
     0xD0B0: "version/ID",            0xD0B1: "version/ID",
     0xD0B2: "WriteSmart (STUB?)",    0xD0B3: "WriteSmart (STUB)",
