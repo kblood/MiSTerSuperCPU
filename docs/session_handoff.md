@@ -150,6 +150,22 @@ parts). Staged + ran in scpu mode.
   PRINTs a text result (readable via screenshot), or build a configured uinput
   joystick helper (`tools/mjoy.py`) to fire BoulderMark's timed run.
 
+## iter-33b (2026-06-16) — MEASURED: emu-mode BASIC gets 1.00x (zero) speedup
+
+Drove a real CPU-speed measurement instead of waiting on the joystick decision:
+`tools/basic_speed_bench.py` types a timed BASIC loop (`10 T=TI : 20 FORI=1TO30000:
+NEXT : 30 PRINTTI-T`) over mtype and reads the jiffy clock, both modes, overlay off.
+
+**RESULT: scpu = 2170 jiffies, t65 = 2170 jiffies — identical = 1.00x.** Our SuperCPU
+gives ZERO speedup to emulation-mode code (BASIC + ~all stock 6502 software). The
+shipped fast-fire is NATIVE-65816-ONLY by design (iter-31b reverted the 2.63x emu
+turbo as a Lorenz-scpu compat-breaker). Native code (Doom, demos) accelerates; emu
+code runs at stock 1 MHz. Full record: memory `project_emu_basic_no_speedup_measured.md`.
+
+**This reframes the "fast" goal:** the biggest real-world speed payoff left is a
+COMPAT-SAFE emu-mode acceleration (emu fast-fire that doesn't perturb KERNAL serial /
+CIA tick ratios) — distinct from the closed native-side frontier. Candidate next lever.
+
 ## Pending / next
 
 - **Test parts A-K properly = run THROUGH the loader** (it chains A-C on disk 1;
