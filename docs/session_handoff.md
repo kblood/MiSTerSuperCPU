@@ -1,5 +1,25 @@
 # Session handoff
 
+## Latest (2026-06-16, iter-34) — emu bank-$00 fast-fire BUILT, HW-A/B-FALSIFIED, REVERTED
+
+Acted on the operator's "continue": extended the shipped native-only k=2 bank-$00
+fast-fire to emulation mode (gate `emu_mode_816_i='0'` → `emu_mode_816_i='0' or
+turbo_m="111"`, `fpga64_sid_iec.vhd`). Build `f0e8be5b` clean (setup slack +0.424ns).
+
+**FALSIFIED by clean HW A/B (identical OSD Smart 4x turbo):** control `4c9cd300` (emu
+fast-fire OFF) = **2.85x** (= operator's number), iter-34 (ON) = **2.67x** — uniformly
+slower every row including `nop`. Root cause: emu mode runs ~100% from bank $00 incl. the
+dense instruction-FETCH stream, so the change routed ALL fetches off the reliable 4-apart
+turbo `cpu_cyc` onto the gated 2-apart FAST branch, which is slower for a dense stream.
+Native fast-fire wins on Doom only because Doom code runs from SuperRAM (fetches stay off
+FAST); FAST helps SPARSE bank-$00 data reads, not as the primary read path.
+
+REVERTED (`git checkout`, no commit — never shipped). `_Test` restored to control
+`4c9cd300`. Probe: `tools/synthmark_turbo_probe.py` (uses Smart 4x; NOTE C128 turbo is a
+no-op for C64-mode programs — needs the $D030 turbo_state). Compat-safe emu turbo (Smart
+4x = 2.85x) is the emu ceiling short of a real bank-$00 SRAM tier / CPU rewrite. Speed
+frontier re-confirmed closed. Detail: memory `project_synthmark_vice_speed_differential.md`.
+
 ## Latest (2026-06-16, iter-33c follow-up) — SynthMark64 speed differential vs VICE
 
 After the SIMM-detect fix shipped, the operator ran SynthMark64 for speed: **0.94x at
