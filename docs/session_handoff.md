@@ -1,6 +1,42 @@
 # Session handoff
 
-## Current state (2026-06-14, iter-31b)
+## Current state (2026-06-16, iter-33c) — SIMM-detect compat fix building
+
+**First real-software-driven COMPAT fix in flight.** SynthMark64 v0.2 (4th real-
+software title confirmed running on our SuperCPU, after Doom / Kicks / BoulderMark)
+boots fine and detects `CPU 65816` correctly, but its status line reads
+`RAM 0 KB (0 BANKS)`. Root-caused (disassembled, high confidence): its SIMM-size
+probe ($220A) walks banks $00 upward writing a 0..255 ramp to `bank:$0400` and
+reading it back, with a **single-byte counter and NO upper bound** — it only stops
+when a bank fails readback. Our SuperRAM echoes ALL 256 banks, so the counter wraps
+$FF→$00 → reports 0. Real HW reserves high banks ($F0-$FF) as bootmap ROM (non-
+echoing), so the probe terminates there.
+
+**Fix:** `c64.sv:1117-1170` `SIMM_CAP` — SCPU CPU reads of SuperRAM banks $F0-$FE
+return a sentinel (latency-matched via `is_capped_q`, same pattern as the bank-$00
+BRAM override). Probe then stops at $F0 = **240 banks / 15360 KB**. Only
+`sdram_data_eff` (CPU/cart read) is gated; VIC reads raw `sdram_data`. Gated
+`~io_cycle & ~ext_cycle` so the REU doom.reu load and the loader's $FF DMA table read
+are untouched. NOT the reverted `simm_remap_bank` mechanism (`81af800`, kickstart ROM).
+
+**Two builds — the sentinel value matters:**
+- Build #1 `4a7b171b` (sentinel **$FF**): SynthMark64 FIXED (240 BANKS confirmed) but
+  **REGRESSED DOOM**. A/B vs control `41944346` decisive: control UART PC=`2C0Cxx`
+  (Doom engine, bank $2C); $FF build PC stuck bank $00/$FF, never reached $2C. The
+  doom_loader reads a high-bank byte and got $FF instead of the $00 empty banks hold
+  → bad pointer → wedge.
+- Build #2 `4c9cd300` (sentinel **$00**): BOTH PASS. SynthMark64 reads 240 BANKS /
+  15360 KB; Doom runs (UART PC cycling banks $23/$25 = SuperRAM engine, like control).
+  $00 = the real (zero) content of empty $F0-$FE → cap is a behavioral no-op for any
+  reader that doesn't write-then-read those banks (only the detection probe does), so
+  Doom v2 ≡ control bit-for-bit on every read it makes.
+- **Lorenz:** in progress (scpu, task `b6ejbxx5i`). Structural argument: `is_capped`
+  needs a 65C816 long access to bank $F0-$FE = impossible in emu mode, so unreachable
+  during Lorenz (6502 emu-mode tests); t65 inert (supercpu_enable=0).
+- Memory: `project_simm_detect_256bank_wraparound.md`. Deploy: `4c9cd300` on `_Test`.
+- **COMMIT when Lorenz green.** Files: `c64.sv` (SIMM_CAP), `tools/synthmark_detect_probe.py`.
+
+## Prior state (2026-06-14, iter-31b)
 
 **The authoritative bank-$00 BRAM fast-fire speed lever LANDED and is HW-validated —
 the first speed lever to ship after the long dead set.**

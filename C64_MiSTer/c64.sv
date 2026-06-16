@@ -1114,6 +1114,26 @@ wire        sdram_eff_we   = io_cycle ? (cart_mem_req ? cart_we     : io_cycle_w
 wire  [7:0] sdram_eff_din  = io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : ext_cycle ? reu_ram_dout : cart_wrdata;
 wire        is_bank00      = (sdram_eff_addr[24:16] == 9'b0);
 
+// SIMM-detect cap (iter-33c, 2026-06-16): make SCPU CPU reads of SuperRAM banks
+// $F0-$FE return a non-echoing sentinel so a bank-walk RAM-size probe TERMINATES.
+// WHY: SuperCPU-aware software (SynthMark64, likely GEOS et al.) sizes SuperRAM by
+// writing a ramp to bank:$0400 of ascending banks and reading it back, counting
+// banks-until-fail with a single-byte counter and NO upper bound. Our SuperRAM
+// echoes ALL 256 banks => the counter wraps $FF->$00 => "0 KB (0 BANKS)". Real HW
+// reserves high banks ($F0-$FF) for bootmap ROM (non-echoing), so the probe stops.
+// Capping $F0-$FE => probe stops at $F0 => reports 240 banks / 15360 KB.
+// SAFE: doom.reu banks $F0-$FE are entirely empty (verified) and Doom's data lives
+// in $00-$EF + the loader table in $FF (NOT capped), so no validated title is
+// affected. Only the CPU/cartridge read (sdram_data_eff) is gated; VIC uses raw
+// sdram_data and never reads these banks. Latency-matched via is_capped_q like the
+// bank-$00 BRAM override. Gate on the SCPU CPU access (not io/ext DMA) so the REU
+// doom.reu load and the loader's REU-DMA table read in $FF are untouched.
+localparam SIMM_CAP      = 1'b1;
+localparam [7:0] CAP_LO  = 8'hF0;   // first capped bank (probe stops here -> 240 banks)
+localparam [7:0] CAP_HI  = 8'hFE;   // last capped bank ($FF kept for Doom loader table)
+wire is_capped = SIMM_CAP & ~io_cycle & ~ext_cycle & sdram_eff_addr[24]
+               & (sdram_eff_addr[23:16] >= CAP_LO) & (sdram_eff_addr[23:16] <= CAP_HI);
+
 // iter-31 step 6: fast-fire bank-$00 READS 2-apart (BRAM matched latency). Must be
 // kept consistent with fpga64_sid_iec.vhd BANK00_FASTFIRE. Default matches that
 // constant. When 0, the override uses the step-2 ce-gated b00_sel (RBF-equivalent to
@@ -1123,6 +1143,7 @@ localparam BANK00_FASTFIRE = 1'b1;
 (* ramstyle = "M10K" *) reg [7:0] bank00_mem [0:65535];
 reg [7:0] bram_q;       // CONTINUOUS read of BRAM at the live bus address (1-clk64 lat)
 reg       is_bank00_q;  // bank-$00-ness of the address bram_q reflects (FASTFIRE select)
+reg       is_capped_q;  // SIMM-cap-ness of the in-flight read (latency-matched to sdram_data)
 reg       b00_sel;      // step-2 ce-gated bank-$00 READ select (used when FASTFIRE=0)
 always @(posedge clk64) begin
 	// write port (both modes): authoritative bottom-64KB store.
@@ -1133,6 +1154,7 @@ always @(posedge clk64) begin
 	// the 4-apart cadence (the bus addr is stable >=1 clk64 before the consumer latches).
 	bram_q      <= bank00_mem[sdram_eff_addr[15:0]];
 	is_bank00_q <= is_bank00;
+	is_capped_q <= is_capped;
 	// step-2 ce-gated select (only consulted when BANK00_FASTFIRE=0).
 	if (sdram_eff_ce) b00_sel <= is_bank00 & ~sdram_eff_we;
 end
@@ -1143,7 +1165,17 @@ end
 // whenever the override picks bram_q the value is correct; non-bank-$00 reads pick
 // sdram_data unchanged.
 wire b00_override = BANK00_FASTFIRE ? is_bank00_q : b00_sel;
-wire [7:0] sdram_data_eff = (BANK00_BRAM & b00_override) ? bram_q : sdram_data;
+// SIMM-cap sentinel = $00 (NOT $FF). The $FF variant (build 4a7b171b) was HW-
+// FALSIFIED: it regressed Doom — the doom_loader reads a high-bank byte and got
+// $FF instead of the $00 that empty banks $F0-$FE actually hold after a fresh
+// doom.reu load, computed a bad pointer, and wedged striding through bank $FF
+// (control 41944346 reached Doom's bank-$2C engine; the $FF build did not).
+// $00 makes the cap TRANSPARENT to any reader that expects the real (zero) content
+// of the empty high banks, while still terminating a write-then-read RAM-size probe
+// (SynthMark64 writes ramp Y, reads back $00 != Y at Y=1) -> still 240 banks.
+wire [7:0] sdram_data_eff = is_capped_q              ? 8'h00
+                          : (BANK00_BRAM & b00_override) ? bram_q
+                          : sdram_data;
 
 sdram_pm sdram
 (

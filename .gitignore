@@ -192,3 +192,8 @@ tools/vice_oracle/gameplay/
 tools/ghdl_sweep_logs/
 tools/ghdl_compat_sweep_results.txt
 tools/_scpu_disks/
+
+# iter-33c synthmark probe artifacts (16MB doom.reu + screenshots)
+tools/synthmark/*.reu
+tools/synthmark/*.png
+tools/synthmark/*.prg
