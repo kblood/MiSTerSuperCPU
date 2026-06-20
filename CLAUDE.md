@@ -183,6 +183,20 @@ CD32/Minimig from `C:\LLM\MiSTer\CD32\`. **Before any disruptive action**
 - A non-empty `/tmp/mister_session.lock` older than 30 min is OK to ignore
 - For long disruptive sessions, write a lockfile:
   `echo "agent=c64 task='...' since=$(date -Iseconds)" > /tmp/mister_session.lock`
+- **Lock only while ACTIVELY using the rig (deploy/screenshot/keys/UART/test) —
+  NOT during a local Quartus build.** A ~35-min build runs on this machine/WSL; the
+  rig is idle the whole time, so holding the lock just blocks the other agent for
+  nothing. Pattern: build with the rig RELEASED; re-claim the lock only when the
+  build finishes and you're about to deploy + test (a few minutes); release again
+  the moment you're done. Don't lock for the duration of work that doesn't touch
+  the rig.
+- **Releasing the core = return the MiSTer to the MENU, not just clear the lock.**
+  When done with the rig, BOTH (a) write a `NOLOCK c64 ... rig free` line to
+  `/tmp/mister_session.lock` AND (b) unload our C64 core back to the menu so the
+  other agent doesn't inherit a loaded C64:
+  `echo load_core /media/fat/menu.rbf > /dev/MiSTer_cmd` (verify
+  `cat /tmp/CORENAME` becomes `MENU`). Leaving CORENAME=C64 is an incomplete
+  release. See memory `feedback_lock_only_during_active_rig_use.md`.
 
 Full protocol: `docs/agent-cooperation.md`. Read it before any cross-slice
 operation (replacing `/media/fat/MiSTer`, killing daemon, etc.).

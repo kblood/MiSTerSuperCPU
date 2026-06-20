@@ -1871,7 +1871,23 @@ constant DEMAND_ARBITER : boolean := false;  -- iter-28: HW-INERT (busy-blocked)
 -- would otherwise be misclassified as a fast read = the dead internal-fast-fire lever.
 -- Default false => RBF-identical (b00_fast_read folds to '0', cpu_cyc/enableCpu
 -- bit-identical to the shipped arbiter).
-constant BANK00_FASTFIRE : boolean := true;  -- iter-31 step 6 UNDER TEST
+constant BANK00_FASTFIRE : boolean := true;   -- shipped (4c9cd300): iter-31 step 6 bank-$00 k=2 fast-fire. (Kicks-intro flicker A/B FALSIFIED cadence-as-cause: uniform 4-apart flickers identically.)
+
+-- 2026-06-19: BADLINE-AWARE bank-$00 fast read (Kicks-intro flicker COMPAT lever).
+-- A real SuperCPU executes from its own SRAM and does NOT stall on C64 VIC badlines
+-- (it is off the C64 bus; it only syncs to 1 MHz for actual bus/I-O accesses). Our
+-- shipped fast path requires baLoc='1' (FAST branch below), so our bank-$00 execution
+-- STALLS every badline = unlike real HW = a jitter source for cycle-timed raster
+-- effects (SCPU-Kicks DMAGIC intro overlay flickers). A bank-$00 BRAM fast READ touches
+-- NO bus (data from on-chip bram_q), so it can safely advance through a badline. When
+-- true, the FAST branch drops the baLoc='1' requirement FOR BANK-$00 FAST READS ONLY
+-- (b00_fast_read='1'); writes/SuperRAM/I-O stay baLoc/cpu_cyc-gated as before. Slot set
+-- is UNCHANGED (even CPU slots CPU0..CPUC) so CPU SDRAM accesses stay slot-separated
+-- from VIC fetches; only the per-badline stall is removed. Default false => RBF-identical
+-- (folds to the shipped baLoc-gated FAST branch). GHDL-prove arbiter-safe
+-- (no spurious cpu_cyc, no sdram_busy_cnt disturbance, no fast fire in a VIC slot)
+-- BEFORE any HW build. Visual flicker + badline fidelity need ONE HW build to confirm.
+constant BANK00_BADLINE_FAST : boolean := false;  -- HW-FALSIFIED 2026-06-19 (build de147ffc): made the Kicks intro flicker WORSE ("really bad" — garbled logo + more all-black frames). Advancing bank-$00 code through badlines DESYNCS the CPU from the VIC raster, moving each cycle-timed $D021 bar write to a more-wrong raster position. The badline stall was partly keeping us CLOSER to raster sync, not adding jitter. Do NOT re-enable.
 
 -- iter-16 (2026-06-03): transaction-matched fill tuple — the Bug 2 fix. See the
 -- rp_fill_addr_r/rp_fill_bank_r decl above. When true (and CACHE_READ_PATH), the
@@ -4033,9 +4049,14 @@ begin
 			-- Advance 2-apart at an even CPU slot, en_gap>=2 (honours C64.sdc -setup 2
 			-- -to *P65C816*). baLoc + cpu816_rdy_to_cpu => a real CPU advance (not a
 			-- VIC-badline / not-ready stall). NOT CPUE (its +2 consume wraps into EXT).
+			-- baLoc gate: shipped path stalls on VIC badlines (baLoc='0'). When
+			-- BANK00_BADLINE_FAST, a bank-$00 BRAM read (no bus access) may advance
+			-- through a badline, matching a real SuperCPU running from SRAM. cpu816_rdy
+			-- still required (a genuine CPU-ready advance). Slots unchanged so CPU SDRAM
+			-- accesses stay slot-separated from VIC fetches.
 			elsif b00_fast_read = '1'
 			      and en_gap >= 2
-			      and baLoc = '1' and cpu816_rdy_to_cpu = '1'
+			      and (baLoc = '1' or BANK00_BADLINE_FAST) and cpu816_rdy_to_cpu = '1'
 			      and ( sysCycle = CYCLE_CPU0 or sysCycle = CYCLE_CPU2
 			            or sysCycle = CYCLE_CPU4 or sysCycle = CYCLE_CPU6
 			            or sysCycle = CYCLE_CPU8 or sysCycle = CYCLE_CPUA

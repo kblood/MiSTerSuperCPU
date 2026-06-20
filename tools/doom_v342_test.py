@@ -77,7 +77,7 @@ def main():
     # another agent. MENU or empty is fine — the test loads C64.rbf via
     # MGL in step 1.
     cn = run(c, 'cat /tmp/CORENAME 2>/dev/null').strip()
-    if cn and cn not in ('C64', 'MENU'):
+    if cn and cn not in ('C64', 'MENU') and not cn.startswith('C64'):
         print('ABORT: /tmp/CORENAME = %r (not C64). Other agent owns MiSTer.' % cn)
         c.close()
         return 2

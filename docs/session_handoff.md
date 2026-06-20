@@ -1,6 +1,118 @@
 # Session handoff
 
-## Latest (2026-06-16, iter-34) — emu bank-$00 fast-fire BUILT, HW-A/B-FALSIFIED, REVERTED
+## CURRENT STATE (2026-06-19, end of session) — Kicks-intro flicker: 2 fixes FALSIFIED + Codex/Explore review → next = read-only $D021/$D011/$D012 timing probe
+
+**One-line:** The SCPU-Kicks DMAGIC intro raster overlay flickers on our core (steady on
+VICE). Two cheap fix attempts both HW-FALSIFIED (cadence-uniformity; badline-independence,
+which made it WORSE). Independent Codex + Explore reviews CONVERGED: root = CPU PHASE vs
+the VIC raster (the $D021/$D011/$D012 write/read timing relative to the beam), not pixels,
+not data. No clean architectural fix exists (k=2 datapath ceiling, pipeline SST-forbidden,
+20MHz unreachable). AGREED next step = a wedge-safe READ-ONLY probe of $D021/$D011/$D012
+per-frame timing to classify the bug, then decide. NOT yet built.
+
+**Tree state:** clean — both experiments reverted behind their gates. `BANK00_FASTFIRE=true`
++ `BANK00_BADLINE_FAST=false` (HW-FALSIFIED comment in source) = shipped `4c9cd300` config.
+Nothing to commit. Builds produced this session: `eb49592e` (FASTFIRE-off A/B) + `de147ffc`
+(badline-fast, falsified) — both archived, neither shipped.
+
+**Rig state:** I released to MENU + cleared my lock when done. As of last check CORENAME=C64
+(re-loaded after me, NOT by me — likely the AO486 sibling agent's "will restore" step) and
+the lockfile is the AO486 agent's `NOLOCK ... rig free`. I hold no lock.
+
+**The read-only timing probe (next build, scoped, wedge-safe):** clone the existing "v267
+$D012 timing" capture (`fpga64_sid_iec.vhd:5094-5100`) for $D021 (`cpuAddr(5:0)="100001"`)
+and $D011 (`"010001"`): per frame capture the raster line (`dbg_raster_y`) of the FIRST bar
+write + the per-frame $D021 write COUNT. Needs the standard dbg-port plumbing (entity ports
+→ c64.sv → a UART slot + parse script); read-only so it folds out of the shipped RBF.
+DECISION RULE: first-write raster line JITTERS frame-to-frame → phase drift → try ONE gated
+phase-bias build (Codex's lever: +1-3 clk32 delay after raster IRQ / selected bank-$00
+reads — but HEURISTIC/demo-specific, NOT architectural fidelity, fixes only THIS demo).
+First-write line STABLE but COUNT drops on bad frames → bar loop misses its deadline (cycle
+budget) → log as a known SuperCPU timing incompat and move to a higher-yield target.
+Codex output: `tools/codex-out/kicks-flicker-review.txt`. Full review: memory
+`project_kicks_intro_raster_flicker` ("Codex + Explore convergent review" section).
+
+**VICE reference (operator asked to keep one):** canonical clean DMAGIC-intro capture saved
+`tools/scpukicks_vice/vref_intro_canonical.png` (steady ~4.5KB/frame = no flicker); no-skip
+capture tool `tools/scpukicks_vice/vice_intro_ref.py` (does NOT poke the $8146 fire-gate,
+which skips the intro). Side-by-side artifact `tools/scpukicks_vice/intro_compare_vice_vs_hw.png`.
+
+**Cooperation-protocol fixes landed this session (CLAUDE.md + memory
+`feedback_lock_only_during_active_rig_use`):** (1) lock the rig ONLY during active use, NOT
+during a ~35-min local build; (2) "releasing the core" = return MiSTer to MENU
+(`echo load_core /media/fat/menu.rbf > /dev/MiSTer_cmd`, verify CORENAME=MENU) AND clear the
+lock — not just clear the lock.
+
+---
+
+## (2026-06-19) — earlier in session: cadence hypothesis FALSIFIED, root refined to bank-$00 cycle-budget+jitter; badline-aware fast read attempt
+
+Operator-driven HW-vs-VICE differential on the SCPU-Kicks DMAGIC title intro (the
+FIRST concrete rendering/timing compat divergence of the fork; see memory
+`project_kicks_intro_raster_flicker`). The intro = greetings TEXT screen + a cycle-timed
+RASTER-BAR overlay. On VICE the overlay is rock-stable; on our core it **flickers**
+(overlay lands on some frames, collapses to plain text on others).
+
+**A/B done (build `eb49592e`, `BANK00_FASTFIRE=false` both files, BRAM kept as data
+source):** uniform 4-apart cadence FLICKERS IDENTICALLY to the shipped bursty k=2
+fast-fire (`4c9cd300`). Operator live: "full text thing again, colors a bit better."
+Capture `tools/scpukicks_vice/hw_intro_noskip.py` → `intro_05.png` (overlay fully landed,
+matches VICE) alternates with `intro_00.png` (overlay collapsed). ⇒ **cadence-uniformity
+is NOT the cause.** Source reverted to shipped `BANK00_FASTFIRE=true` (faster for Doom,
+no compat cost). Rig still has `eb49592e` loaded (both flicker; doesn't matter for live view).
+
+**Refined root cause:** the overlay was written for a real SuperCPU running bank $00 from
+stable SRAM at ~20 MHz. Our bank $00 runs ~4 MHz effective in BOTH arms (~5× cycle-budget
+deficit), and residual jitter (VIC-badline cycle-steal, $D021 I/O writes still on the
+4-apart SDRAM path, IRQ-entry latency) makes per-line raster timing wobble → overlay
+misses on marginal frames. HARD CEILING: 65C816 datapath can't close faster than k=2
+(~8 MHz peak from BRAM; k=1 STA-falsified, pipeline SST-forbidden) — so even a perfect
+bank-$00 SRAM tier stays short of the demo's 20 MHz target. May reduce, not guarantee
+eliminate, the flicker.
+
+**Badline-aware fast read: BUILT + HW-FALSIFIED (build `de147ffc`), REVERTED.** Added
+gated `BANK00_BADLINE_FAST` (bank-$00 BRAM reads advance through VIC badlines). GHDL
+elaborated clean + baseline no-op; build green TNS=0. HW result: WORSE — operator "It
+looks really bad"; the intro logo renders garbled + alternates with fully-black frames.
+Reverted constant to false (HW-FALSIFIED in source); restored shipped `4c9cd300` to rig;
+lock released. WHY it backfired: the bar writes are `$D021` I/O (1 MHz-synced regardless);
+the badline stall on the bank-$00 code *between* them was partly keeping the CPU phase
+CLOSER to the VIC raster — removing it ran the CPU further ahead so each `$D021` landed at
+a more-wrong raster position. ⇒ Both cheap levers (cadence-uniformity A/B; badline-
+independence) FALSIFIED. The flicker is a delicate fast-code/1MHz-I-O-sync dance, not a
+single removable stall. With the k=2 datapath ceiling (<20 MHz) the big bank-$00 SRAM tier
+likely can't fully fix THIS demo either. RECOMMEND: log the Kicks DMAGIC-intro raster
+overlay as a known SuperCPU-timing incompat (the demo RUNS; only the cycle-timed overlay
+flickers) and redirect the loop to a higher-yield compat/speed target. See memory
+`project_kicks_intro_raster_flicker` (full both-falsification record).
+
+**(Original candidate writeup, now falsified, kept for context): badline-aware bank-$00 fast read.** The fast
+path requires `baLoc='1'` (`fpga64_sid_iec.vhd:4038`), so our bank-$00 execution STALLS
+on every VIC badline — UNLIKE a real SuperCPU (off the C64 bus, runs from SRAM through
+badlines). A bank-$00 BRAM fast READ touches no bus, so it could safely advance during a
+badline = more uniform + faster + more faithful, and would help MANY cycle-timed SCPU
+programs (operator: "would help with a lot of other things"). RISK = black-screen class:
+advancing the CPU during a badline shifts the FOLLOWING cycle's timing; if that next
+access is a write/I-O/SuperRAM op it can collide with VIC badline fetches (bank $00 =
+screen/char RAM in shared SDRAM). This is real arbiter surgery, NOT a quick edit.
+
+**GHDL-first plan (the "fix it with sim tests?" answer):** `sim/c64_reduced_harness/
+c64_internal_fastfire_tb.vhd` wraps the REAL `fpga64_sid_iec` (so `baLoc`/badline logic is
+real) and already measures `cpu_cyc` fires, `sdram_busy`, `en_gap`, cadence spacing +
+enforces invariants (no `cpu_cyc` on internal cycles). Use it (with `CLK64_SDRAM=true`,
+faithful `clk64_sdram_model`) to PROVE the badline-aware change is arbiter-safe: no
+spurious `cpu_cyc`, no `sdram_busy_cnt` disturbance, no fast fire landing in a VIC slot.
+Put the change behind a NEW gated constant (default false = RBF-identical) like prior
+levers. Harness GAP: does NOT model the c64.sv BRAM override or VIC-badline *bus
+contention* with real VIC fetches — so the badline-FIDELITY question and the visual
+flicker still need ONE HW build to confirm. SDRAM-busy coupling map (from this session):
+fast reads already skip `cpu_cyc`(`:3829-3832`)/`ramCE`(`:3650`); only residual coupling
+is `sdram_busy_cnt` load at `:3891` (gated on `cpu_cyc='1' and cs_ram='1'`, which fast
+reads don't trigger) — so the read-side hard-split is ~done; the surgery is the badline gate.
+
+---
+
+## (2026-06-16, iter-34) — emu bank-$00 fast-fire BUILT, HW-A/B-FALSIFIED, REVERTED
 
 Acted on the operator's "continue": extended the shipped native-only k=2 bank-$00
 fast-fire to emulation mode (gate `emu_mode_816_i='0'` → `emu_mode_816_i='0' or

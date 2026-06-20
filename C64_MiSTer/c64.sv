@@ -1138,7 +1138,7 @@ wire is_capped = SIMM_CAP & ~io_cycle & ~ext_cycle & sdram_eff_addr[24]
 // kept consistent with fpga64_sid_iec.vhd BANK00_FASTFIRE. Default matches that
 // constant. When 0, the override uses the step-2 ce-gated b00_sel (RBF-equivalent to
 // the HW-validated step-2 build 36a8d12).
-localparam BANK00_FASTFIRE = 1'b1;
+localparam BANK00_FASTFIRE = 1'b1;  // shipped (4c9cd300): native bank-$00 k=2 fast-fire. (Kicks-intro flicker A/B FALSIFIED cadence-as-cause: uniform 4-apart eb49592e flickers identically.)
 
 (* ramstyle = "M10K" *) reg [7:0] bank00_mem [0:65535];
 reg [7:0] bram_q;       // CONTINUOUS read of BRAM at the live bus address (1-clk64 lat)
