@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_5bbed4b2fd_20260531T160835Z_3514fc7d-dirty",
+  "md5": "3514fc7d9d8860194b6a5c12311a46d5",
+  "size_bytes": 4078528,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "5bbed4b2fd",
+  "git_subject": "docs(turbo): iter-7c reframe \u00e2\u20ac\u201d read-path corruption is a MASKED single-cycle timing bug, not functional (GHDL can't reproduce)",
+  "git_dirty": true,
+  "built_utc": "20260531T160835Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

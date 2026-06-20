@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_8770a921a2_20260602T070006Z_f74736f6-dirty",
+  "md5": "f74736f6a700068de4d1e7118f989815",
+  "size_bytes": 4108388,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "8770a921a2",
+  "git_subject": "docs(speed): correct iter-10 speed-lever analysis \u00e2\u20ac\u201d ~8ns is the shared ALU AddSubBCD, not a PC adder",
+  "git_dirty": true,
+  "built_utc": "20260602T070006Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

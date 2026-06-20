@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_def0174e54_20260605T014139Z_ed351d66-dirty",
+  "md5": "ed351d66ca713aa308f0035a842a4be1",
+  "size_bytes": 4123984,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "def0174e54",
+  "git_subject": "test(cache): iter-24 dual-clock GHDL harness proves Bug 2 is a SETUP-TIME class",
+  "git_dirty": true,
+  "built_utc": "20260605T014139Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

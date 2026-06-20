@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_09216b3a0b_20260613T205830Z_700af1f5-dirty",
+  "md5": "700af1f5c071c3158d9c620a640c7912",
+  "size_bytes": 3862644,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "09216b3a0b",
+  "git_subject": "docs: iter-30 correction banner \u00e2\u20ac\u201d speed frontier closed, WriteSmart/Phase-B payoff claims stale (cache path dead)",
+  "git_dirty": true,
+  "built_utc": "20260613T205830Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

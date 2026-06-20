@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_079882a523_20260529T230500Z_fc4e8176-dirty",
+  "md5": "fc4e81769eabae27bf435d3f0e3e37a7",
+  "size_bytes": 3893452,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "079882a523",
+  "git_subject": "sim(turbo): two-domain throughput+correctness bench finds a 2x speed path",
+  "git_dirty": true,
+  "built_utc": "20260529T230500Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

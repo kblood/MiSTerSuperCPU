@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_12309a0ffb_20260531T184342Z_7139db68-dirty",
+  "md5": "7139db68ebdeae83cae290c468682bd2",
+  "size_bytes": 4119144,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "12309a0ffb",
+  "git_subject": "fix(cache): iter-7e bank-switch coherency \u00e2\u20ac\u201d exclude ROM-shadowable bank-$00 from read path; FIRST clean HW boot of cache feeding CPU",
+  "git_dirty": true,
+  "built_utc": "20260531T184342Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

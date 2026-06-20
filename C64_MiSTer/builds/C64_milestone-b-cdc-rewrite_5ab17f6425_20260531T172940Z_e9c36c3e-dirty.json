@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_5ab17f6425_20260531T172940Z_e9c36c3e-dirty",
+  "md5": "e9c36c3ec6aa8392cac7237ba5ebbd57",
+  "size_bytes": 4064296,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "5ab17f6425",
+  "git_subject": "fix(cache): iter-7d register the cpuDi cache-HIT override \u00e2\u20ac\u201d setup-1 STA now +7.8ns (was -0.65ns)",
+  "git_dirty": true,
+  "built_utc": "20260531T172940Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_497071bf28_20260531T080331Z_0228d2b6-dirty",
+  "md5": "0228d2b64cfb88be19117c90c441d785",
+  "size_bytes": 4118244,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "497071bf28",
+  "git_subject": "fix(cache): gate read-path fill on miss-only \u00e2\u20ac\u201d kills fill-on-hit self-corruption",
+  "git_dirty": true,
+  "built_utc": "20260531T080331Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

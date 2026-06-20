@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_5cd57fb7bd_20260613T183710Z_b776750b-dirty",
+  "md5": "b776750bb08c1f1f0b29683e04cbdee1",
+  "size_bytes": 3810108,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "5cd57fb7bd",
+  "git_subject": "perf(scpu): iter-29 page-hit GATE measured on HW \u00e2\u20ac\u201d page-mode SDRAM DROPPED (~54% per-bank = near break-even)",
+  "git_dirty": true,
+  "built_utc": "20260613T183710Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

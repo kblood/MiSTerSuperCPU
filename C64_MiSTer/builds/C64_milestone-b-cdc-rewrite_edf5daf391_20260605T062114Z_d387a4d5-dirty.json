@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_edf5daf391_20260605T062114Z_d387a4d5-dirty",
+  "md5": "d387a4d5c9e88f1387e07b901de6f0ea",
+  "size_bytes": 3954416,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "edf5daf391",
+  "git_subject": "fix(65c816): iter-25 RTI cycle-exact \u00e2\u20ac\u201d 40.e/40.n SST 0-fail both modes",
+  "git_dirty": true,
+  "built_utc": "20260605T062114Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

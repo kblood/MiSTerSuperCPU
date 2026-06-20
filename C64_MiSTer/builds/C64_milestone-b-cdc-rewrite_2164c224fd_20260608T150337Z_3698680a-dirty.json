@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_2164c224fd_20260608T150337Z_3698680a-dirty",
+  "md5": "3698680a244b52da5fe43d67d0c03249",
+  "size_bytes": 3965436,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "2164c224fd",
+  "git_subject": "docs(handoff): iter-25 RTI cycle-exact shipped; SST compat sweep is the live vein",
+  "git_dirty": true,
+  "built_utc": "20260608T150337Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

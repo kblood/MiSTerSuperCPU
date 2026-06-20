@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_c4cf4cdb8b_20260530T230403Z_e0e83e5c-dirty",
+  "md5": "e0e83e5c8a88777e8fa206c9c505504b",
+  "size_bytes": 4070004,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "c4cf4cdb8b",
+  "git_subject": "test(turbo): iter-7 RDY-handshake HW-FALSIFIED \u00e2\u20ac\u201d Build-1 wedges boot at $FCE5",
+  "git_dirty": true,
+  "built_utc": "20260530T230403Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

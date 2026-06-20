@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_c258e2910f_20260528T232222Z_79cd45bd-dirty",
+  "md5": "79cd45bda59074d94347b6e0ae2d433c",
+  "size_bytes": 3859140,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "c258e2910f",
+  "git_subject": "test(sim): GHDL CPU compat sweep + fix REP bench false-alarm",
+  "git_dirty": true,
+  "built_utc": "20260528T232222Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

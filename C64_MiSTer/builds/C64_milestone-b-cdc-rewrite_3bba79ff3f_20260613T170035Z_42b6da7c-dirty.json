@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_3bba79ff3f_20260613T170035Z_42b6da7c-dirty",
+  "md5": "42b6da7cda8e0beabb890926ad60ea83",
+  "size_bytes": 3825828,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "3bba79ff3f",
+  "git_subject": "docs(handoff): page-mode lever entry point = measure Doom page-hit rate first (GOAL-A gate)",
+  "git_dirty": true,
+  "built_utc": "20260613T170035Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

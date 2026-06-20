@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_4136f780ce_20260613T195259Z_c7407490-dirty",
+  "md5": "c74074905b9b2fe4ae53f3b384c8f1e6",
+  "size_bytes": 3854608,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "4136f780ce",
+  "git_subject": "perf(scpu): iter-30 WRITEFRAC gate \u00e2\u20ac\u201d posted-write buffer DROPPED (Doom SuperRAM ~0.7% writes)",
+  "git_dirty": true,
+  "built_utc": "20260613T195259Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_2dd7f7a72a_20260603T203130Z_394f476d-dirty",
+  "md5": "394f476d1b284e43bc57c06b9b593dce",
+  "size_bytes": 4088644,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "2dd7f7a72a",
+  "git_subject": "test(cache): iter-17 Build D HW-PROVEN \u00e2\u20ac\u201d cache FOOTPRINT INNOCENT, Doom-on-cache crashes are 2 FUNCTIONAL bugs",
+  "git_dirty": true,
+  "built_utc": "20260603T203130Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

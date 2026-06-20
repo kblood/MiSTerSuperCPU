@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_0deb09327d_20260602T191210Z_9c809b0b-dirty",
+  "md5": "9c809b0b1e1c2d8aa0b492f2b8095380",
+  "size_bytes": 4082688,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "0deb09327d",
+  "git_subject": "feat(speed): iter-15 same-line 2x alt-fire enable scheduler \u00e2\u20ac\u201d HW-PROVEN 3.0x SuperRAM speedup, Lorenz clean",
+  "git_dirty": true,
+  "built_utc": "20260602T191210Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

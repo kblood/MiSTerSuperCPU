@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_b37bb8db86_20260529T054221Z_97392a1f-dirty",
+  "md5": "97392a1ffab4472d849a99b64adc05ea",
+  "size_bytes": 3844816,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "b37bb8db86",
+  "git_subject": "docs(loop): iter4 findings \u00e2\u20ac\u201d asterix benches are fault-injection probes; 4MHz ceiling is architectural",
+  "git_dirty": true,
+  "built_utc": "20260529T054221Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

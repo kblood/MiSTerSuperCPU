@@ -2,6 +2,16 @@
 
 | Built (UTC)        | Branch              | SHA        | MD5 (short) | Subject                                    | Dirty |
 |--------------------|---------------------|------------|-------------|--------------------------------------------|-------|
+| 20260619 220140 | milestone-b-cdc-rew | 8658b796bb | de147ffc    | docs(session): iter-34 emu bank-$00 fast-f | yes   |
+| 20260619 212532 | milestone-b-cdc-rew | 8658b796bb | eb49592e    | docs(session): iter-34 emu bank-$00 fast-f | yes   |
+| 20260616 083028 | milestone-b-cdc-rew | 42a901da64 | f0e8be5b    | docs(session): iter-33c follow-up — Synt | yes   |
+| 20260616 040858 | milestone-b-cdc-rew | fb8543fbd0 | 4c9cd300    | docs(scpu): CORRECT iter-33b emu-speed fin | yes   |
+| 20260616 033739 | milestone-b-cdc-rew | fb8543fbd0 | 4a7b171b    | docs(scpu): CORRECT iter-33b emu-speed fin | yes   |
+| 20260614 010740 | milestone-b-cdc-rew | 36a8d12c6a | 41944346    | perf(scpu): iter-31 authoritative bank-$00 | yes   |
+| 20260613 233941 | milestone-b-cdc-rew | 36a8d12c6a | 03d9f2ee    | perf(scpu): iter-31 authoritative bank-$00 | yes   |
+| 20260613 222213 | milestone-b-cdc-rew | bffd2e4590 | 476e1a5d    | perf(scpu): iter-31 BANKFRAC observer —  | yes   |
+| 20260613 214500 | milestone-b-cdc-rew | 2ee3947c44 | 20520ae5    | docs(handoff): iter-31 — both funded spe | yes   |
+| 20260613 205830 | milestone-b-cdc-rew | 09216b3a0b | 700af1f5    | docs: iter-30 correction banner — speed  | yes   |
 | 20260613 195259 | milestone-b-cdc-rew | 4136f780ce | c7407490    | perf(scpu): iter-30 WRITEFRAC gate — pos | yes   |
 | 20260613 183710 | milestone-b-cdc-rew | 5cd57fb7bd | b776750b    | perf(scpu): iter-29 page-hit GATE measured | yes   |
 | 20260613 172946 | milestone-b-cdc-rew | 3bba79ff3f | 2d5c79f9    | docs(handoff): page-mode lever entry point | yes   |

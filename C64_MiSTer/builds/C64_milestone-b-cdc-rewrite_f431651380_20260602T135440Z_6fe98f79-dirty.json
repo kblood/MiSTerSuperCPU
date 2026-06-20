@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_f431651380_20260602T135440Z_6fe98f79-dirty",
+  "md5": "6fe98f791c717a1545ae0771c7f0dc8a",
+  "size_bytes": 4092484,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "f431651380",
+  "git_subject": "sim(cache): iter-15 faithful registered-enable scheduler bench proves LIVE gate, falsifies _d1",
+  "git_dirty": true,
+  "built_utc": "20260602T135440Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

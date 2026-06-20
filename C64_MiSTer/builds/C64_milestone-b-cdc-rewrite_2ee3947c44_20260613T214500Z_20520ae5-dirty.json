@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_2ee3947c44_20260613T214500Z_20520ae5-dirty",
+  "md5": "20520ae5e00916bd85341ac4e7fa2ac6",
+  "size_bytes": 3857272,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "2ee3947c44",
+  "git_subject": "docs(handoff): iter-31 \u00e2\u20ac\u201d both funded speed paths blocked by SDRAM wall (datapath surgery STA-falsified, dual-mode is category error)",
+  "git_dirty": true,
+  "built_utc": "20260613T214500Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

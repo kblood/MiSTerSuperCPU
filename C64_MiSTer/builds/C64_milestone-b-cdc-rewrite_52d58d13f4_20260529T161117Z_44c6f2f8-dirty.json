@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_52d58d13f4_20260529T161117Z_44c6f2f8-dirty",
+  "md5": "44c6f2f862bff9a31f30b25c6c0ffa9a",
+  "size_bytes": 3850348,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "52d58d13f4",
+  "git_subject": "test(scpu): SCPU-library compat harness + first 3rd-party title finds a render bug",
+  "git_dirty": true,
+  "built_utc": "20260529T161117Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

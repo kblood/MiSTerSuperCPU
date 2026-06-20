@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_58b308a5bd_20260604T044358Z_4671ecfc-dirty",
+  "md5": "4671ecfc57ed0d0692e3dc45548bc45d",
+  "size_bytes": 3969828,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "58b308a5bd",
+  "git_subject": "fix(65c816): iter-20 emu-mode stack page-cross + JMP-indirect \u00e2\u20ac\u201d 11 SST opcodes 0-fail",
+  "git_dirty": true,
+  "built_utc": "20260604T044358Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

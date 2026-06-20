@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_c3a070d4c5_20260603T090735Z_48730a04-dirty",
+  "md5": "48730a04656e4e16364dce87cc675dd8",
+  "size_bytes": 4120180,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "c3a070d4c5",
+  "git_subject": "test(cache): iter-16 FILL_TXMATCH HW-FALSIFIED \u00e2\u20ac\u201d fill-skew is not Bug 2",
+  "git_dirty": true,
+  "built_utc": "20260603T090735Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

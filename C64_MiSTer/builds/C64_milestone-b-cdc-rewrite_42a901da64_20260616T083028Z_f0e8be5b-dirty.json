@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_42a901da64_20260616T083028Z_f0e8be5b-dirty",
+  "md5": "f0e8be5bb4fa64d7eef8a82e935795ab",
+  "size_bytes": 4006544,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "42a901da64",
+  "git_subject": "docs(session): iter-33c follow-up \u00e2\u20ac\u201d SynthMark64 speed differential vs VICE (2.85x turbo / 0.94x default / 14.75x VICE); gap localized to bank-$00 SDRAM-passthrough, emu-mode BRAM identified as top lever",
+  "git_dirty": true,
+  "built_utc": "20260616T083028Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

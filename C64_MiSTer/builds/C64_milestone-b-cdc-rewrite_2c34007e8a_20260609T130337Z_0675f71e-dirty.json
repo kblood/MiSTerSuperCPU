@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_2c34007e8a_20260609T130337Z_0675f71e-dirty",
+  "md5": "0675f71e835dcb860d6b03e9da40a25f",
+  "size_bytes": 3975804,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "2c34007e8a",
+  "git_subject": "test(sst): garbage-internal D_IN injection proves CPU ignores bus on internal cycles",
+  "git_dirty": true,
+  "built_utc": "20260609T130337Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_8ea2a8f733_20260603T075530Z_af834bf9-dirty",
+  "md5": "af834bf908dd6be2bb97808f3cb7fcb0",
+  "size_bytes": 4192940,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "8ea2a8f733",
+  "git_subject": "sim(cache): iter-16 emergent Bug-2 skew bench \u00e2\u20ac\u201d BUGGY=63 FIXED=0",
+  "git_dirty": true,
+  "built_utc": "20260603T075530Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

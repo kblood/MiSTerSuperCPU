@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_36a8d12c6a_20260613T233941Z_03d9f2ee-dirty",
+  "md5": "03d9f2ee6f96d875586b6a8961dd5909",
+  "size_bytes": 4007680,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "36a8d12c6a",
+  "git_subject": "perf(scpu): iter-31 authoritative bank-$00 BRAM (steps 2-5) \u00e2\u20ac\u201d HW-VALIDATED equivalent at 4-apart, foundation for the fast-fire speed lever",
+  "git_dirty": true,
+  "built_utc": "20260613T233941Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

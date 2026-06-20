@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_32789a434d_20260529T004322Z_ba9ec7b5-dirty",
+  "md5": "ba9ec7b5779dce2561ac63bc9efda26a",
+  "size_bytes": 3837352,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "32789a434d",
+  "git_subject": "perf(scpu): native-mode max-turbo (4x) by default",
+  "git_dirty": true,
+  "built_utc": "20260529T004322Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

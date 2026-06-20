@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_fb8543fbd0_20260616T033739Z_4a7b171b-dirty",
+  "md5": "4a7b171b77771f7d7b977b74e1269191",
+  "size_bytes": 4001472,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "fb8543fbd0",
+  "git_subject": "docs(scpu): CORRECT iter-33b emu-speed finding \u00e2\u20ac\u201d turbo is opt-in, not absent",
+  "git_dirty": true,
+  "built_utc": "20260616T033739Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

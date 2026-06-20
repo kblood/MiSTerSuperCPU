@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_8658b796bb_20260619T220140Z_de147ffc-dirty",
+  "md5": "de147ffcbe2709ac9ff6357f70fa7f48",
+  "size_bytes": 3990468,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "8658b796bb",
+  "git_subject": "docs(session): iter-34 emu bank-$00 fast-fire HW-A/B-FALSIFIED (-6%, 2.67x vs 2.85x control) \u00e2\u20ac\u201d reverted; emu fetch stream on the 2-apart FAST branch is slower than 4-apart turbo cpu_cyc",
+  "git_dirty": true,
+  "built_utc": "20260619T220140Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

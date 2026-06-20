@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_e087279c01_20260530T205142Z_03ec86cf-dirty",
+  "md5": "03ec86cf84c69de81ffdf57e1d16ee54",
+  "size_bytes": 4098244,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "e087279c01",
+  "git_subject": "feat(cache): gated read-path wiring (cache feeds CPU) \u00e2\u20ac\u201d GHDL functionally proven",
+  "git_dirty": true,
+  "built_utc": "20260530T205142Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

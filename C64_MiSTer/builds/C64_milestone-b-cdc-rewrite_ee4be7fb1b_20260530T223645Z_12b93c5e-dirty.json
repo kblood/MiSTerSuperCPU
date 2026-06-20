@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_ee4be7fb1b_20260530T223645Z_12b93c5e-dirty",
+  "md5": "12b93c5eafe459604499d04ce5c9cb30",
+  "size_bytes": 4097456,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "ee4be7fb1b",
+  "git_subject": "docs(turbo): iter-7 Build 1 in flight \u00e2\u20ac\u201d RDY_HANDSHAKE+CACHE_READ_PATH isolation (alt_fire off)",
+  "git_dirty": true,
+  "built_utc": "20260530T223645Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

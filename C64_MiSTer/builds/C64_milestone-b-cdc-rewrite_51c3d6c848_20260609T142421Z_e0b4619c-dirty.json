@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_51c3d6c848_20260609T142421Z_e0b4619c-dirty",
+  "md5": "e0b4619c8e130380c0386b710b7dcb72",
+  "size_bytes": 3946916,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "51c3d6c848",
+  "git_subject": "perf(scpu): iter-27 internal-cycle fast-fire HW-FALSIFIED \u00e2\u20ac\u201d lever joins HW-dead set",
+  "git_dirty": true,
+  "built_utc": "20260609T142421Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

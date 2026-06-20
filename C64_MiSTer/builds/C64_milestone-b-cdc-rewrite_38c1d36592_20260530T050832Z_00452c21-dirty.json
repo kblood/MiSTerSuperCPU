@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_38c1d36592_20260530T050832Z_00452c21-dirty",
+  "md5": "00452c21d9a2443adf98c52808830066",
+  "size_bytes": 3849140,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "38c1d36592",
+  "git_subject": "sim(milestone-b): SuperRAM long store/load across the MCP bridge at 64MHz \u00e2\u20ac\u201d PASS",
+  "git_dirty": true,
+  "built_utc": "20260530T050832Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_e7e3d3eabf_20260530T152005Z_e5e899fc-dirty",
+  "md5": "e5e899fcbf340cfbf47aa06bcf4bfafe",
+  "size_bytes": 3881528,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "e7e3d3eabf",
+  "git_subject": "build(turbo): add cpu_cache.vhd to QSF for the iter-4d hit-rate observer",
+  "git_dirty": true,
+  "built_utc": "20260530T152005Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

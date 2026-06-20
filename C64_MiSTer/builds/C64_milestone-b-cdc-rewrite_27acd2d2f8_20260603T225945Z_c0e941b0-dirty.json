@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_27acd2d2f8_20260603T225945Z_c0e941b0-dirty",
+  "md5": "c0e941b09397113621e8e2806b3fd230",
+  "size_bytes": 3970072,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "27acd2d2f8",
+  "git_subject": "docs(cache): iter-18 close \u00e2\u20ac\u201d decisive A/B parks the cache-read-path override lever",
+  "git_dirty": true,
+  "built_utc": "20260603T225945Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

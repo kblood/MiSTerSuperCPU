@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_84ddf8fa5d_20260530T095410Z_abf8ff88-dirty",
+  "md5": "abf8ff88f22154299546d6e849897557",
+  "size_bytes": 3852936,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "84ddf8fa5d",
+  "git_subject": "revert(milestone-b): clk64 HW-FALSIFIED (Lorenz wedge) \u00e2\u20ac\u201d default back to MILESTONE_B=0",
+  "git_dirty": true,
+  "built_utc": "20260530T095410Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

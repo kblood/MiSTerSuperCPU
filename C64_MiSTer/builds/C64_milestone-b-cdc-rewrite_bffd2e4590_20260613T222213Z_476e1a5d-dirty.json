@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_bffd2e4590_20260613T222213Z_476e1a5d-dirty",
+  "md5": "476e1a5d2c9190207fc7af38d09f8401",
+  "size_bytes": 4000568,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "bffd2e4590",
+  "git_subject": "perf(scpu): iter-31 BANKFRAC observer \u00e2\u20ac\u201d Doom bank-$00 fraction = 38.8% (sizes authoritative bank-$00 BRAM lever)",
+  "git_dirty": true,
+  "built_utc": "20260613T222213Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

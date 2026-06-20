@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_49262b1775_20260530T112029Z_1a88abb8-dirty",
+  "md5": "1a88abb8fe4ffce72aea5fbc943b761b",
+  "size_bytes": 3811776,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "49262b1775",
+  "git_subject": "docs(milestone-b): clk48 HW-FALSIFIED \u00e2\u20ac\u201d timing closes honestly but functional/CDC crash; pivot to Milestone C",
+  "git_dirty": true,
+  "built_utc": "20260530T112029Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

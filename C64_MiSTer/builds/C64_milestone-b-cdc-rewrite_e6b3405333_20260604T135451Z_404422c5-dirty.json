@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_e6b3405333_20260604T135451Z_404422c5-dirty",
+  "md5": "404422c587a14f8a9d35aebf9aeb139f",
+  "size_bytes": 4114944,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "e6b3405333",
+  "git_subject": "fix(65c816): iter-21 MVN/MVP emu-mode block-move address-high bug",
+  "git_dirty": true,
+  "built_utc": "20260604T135451Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}
