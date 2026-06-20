@@ -50,9 +50,12 @@ unlocked Doom rendering on MiSTer might unlock Doom *playable* on U64.
    Quartus toolchain and resource budget knowledge transfers. If it's
    ECP5 / Xilinx, we'd be learning a new toolchain.
 
-4. **License compatibility.** Most of our 65C816 work derives from the
-   SNES core (MIT-ish). MiSTer C64 core is GPL. Mixing with U64's
-   license needs verification.
+4. **License compatibility.** Our 65C816 core derives from the
+   `MiSTer-devel/SNES_MiSTer` VHDL 65C816 core, which is **GPL-3.0** (verified
+   June 2026 — the earlier "MIT-ish" note was wrong). We back-port fixes from
+   `pcornier/iigs_simulation` (an unlicensed Verilog port of the same SNES core),
+   used only as a reference. The MiSTer C64 core is also GPL, so our stack is
+   GPL-consistent; mixing with U64's license needs verification by Gideon.
 
 ## What transfers from MiSTer work
 

@@ -110,9 +110,20 @@ thing we could not do on our FPGA.
 
 ## Licensing / provenance (please read before redistribution)
 
-- **`rtl/65C816/`** derives from the open SNES-core P65C816 lineage. We have
-  extended/fixed it (BCD, XCE mode flags, addressing). Check the upstream SNES
-  core license for redistribution terms; treat our deltas as offered for reuse.
+- **`rtl/65C816/`** is the **VHDL 65C816 core from `MiSTer-devel/SNES_MiSTer`
+  (`rtl/65C816/`, GPL-3.0)** — verified June 2026 against the upstream repo. We
+  extended/fixed it (BCD, XCE/emulation mode flags, page-1 SP wrap, JMP `($xxFF)`
+  NMOS quirk, addressing). We also **cross-reference and back-port bug fixes from
+  `pcornier/iigs_simulation`** — pcornier's Apple-IIgs core, which is itself a
+  *Verilog* port of "the SNES VHDL 65C816 core" (per its README) and carries **no
+  declared license**. So: the *code* you'd reuse is GPL-3.0 (the SNES VHDL core);
+  the *IIgs repo* is only a reference we compared against (see
+  `docs/cpu_iigs_p65c816_comparison.md` in our tree), not a source you redistribute.
+  Net effect: treat `rtl/65C816/` as **GPL-3.0** — same license family as the
+  MiSTer C64 core, so the whole stack is GPL-consistent. Our deltas are offered for
+  reuse under the same terms.
+  *(Earlier internal notes called this "SNES core, MIT-ish" — that was wrong; it is
+  GPL-3.0.)*
 - **`rtl/cpu_cache.vhd`** and the integration logic were written for the MiSTer
   C64 core, which is **GPL**. The MiSTer C64 core itself is not included here.
 - **`roms/scpu64.mif`** is the **SOCI/SINGULAR** open SuperCPU ROM (the same
