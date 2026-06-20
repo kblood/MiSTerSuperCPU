@@ -1,6 +1,36 @@
 # Session handoff
 
-## CURRENT STATE (2026-06-19, end of session) — Kicks-intro flicker: 2 fixes FALSIFIED + Codex/Explore review → next = read-only $D021/$D011/$D012 timing probe
+## CURRENT STATE (2026-06-21) — Gideon / Ultimate-64 knowledge-transfer package SHIPPED + committed + pushed
+
+**One-line:** Assembled a self-contained handoff package for Gideon Zweijtzer
+(Ultimate-64 author) so he can add 65C816 SuperCPU support to the C64U — because
+the U64 FPGA bitstream is closed to us (firmware-only repo; no CPU integration
+point). We hand off findings + reusable RTL + ROM instead of forking.
+
+**Package:** `C64U/for-gideon/` (1.4 MB, sendable). Cover `README.md` +
+`docs/00_PORTING_GUIDE.md` (= `docs/supercpu_for_c64_ultimate.md`) +
+NEW `docs/06_LATEST_FINDINGS.md` (VICE 14.75× vs our 2.85× gap = bank-$00 memory
+tier; k=2 datapath floor; SST forbids pipelining; Kicks-intro flicker; 1MHz-default
+CMD contract; SIMM-detect fix) + NEW `docs/07_REGISTER_DECODE.md` (literal
+$D07x/$D0Bx/$D27x/native-vector decode) + docs 01-05 (arch ref, feature status,
+changes-vs-upstream, diagrams, VICE-differential methodology) + `rtl/65C816/` +
+`rtl/cpu_cache.vhd` + `roms/scpu64.mif`. `C64U/README.md` updated to reflect the
+closed-investigation pivot. Memory: `project_for_gideon_handoff_package`.
+
+**Git:** 3 commits this session — (1) BANK00_BADLINE_FAST falsified record +
+cooperation-protocol CLAUDE.md + doom_v342 guard fix; (2) build archive metadata +
+prune stale `tools/doom_full/`; (3) the Gideon package. **PUSHED** to
+`origin/milestone-b-cdc-rewrite` (tip `fde5850`, upstream now set; user-authorized).
+Reverted build-tool noise (C64.qpf regen, pagehit_uart.txt). Left regenerated
+lorenz_run PNGs + scratch tcl/txt uncommitted (test-artifact churn, not relevant).
+
+**Tree state:** clean for source/docs. `BANK00_FASTFIRE=true` +
+`BANK00_BADLINE_FAST=false` (shipped `4c9cd300` config). The RTL line below this
+section is the prior (still-valid) Kicks-flicker investigation state.
+
+---
+
+## PRIOR STATE (2026-06-19, end of session) — Kicks-intro flicker: 2 fixes FALSIFIED + Codex/Explore review → next = read-only $D021/$D011/$D012 timing probe
 
 **One-line:** The SCPU-Kicks DMAGIC intro raster overlay flickers on our core (steady on
 VICE). Two cheap fix attempts both HW-FALSIFIED (cadence-uniformity; badline-independence,
