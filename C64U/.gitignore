@@ -1,0 +1,12 @@
+# Don't commit cloned upstream repos
+repos/
+# Scratch experiments are local
+scratch/
+# Build outputs
+*.bit
+*.sof
+*.rbf
+*.bin
+output_files/
+incremental_db/
+db/
