@@ -4617,15 +4617,55 @@ begin
 				end if;
 				-- v247: $005B + $0080-$008B byte capture
 				if cpuAddr_pre = x"005B" then mem_5B_r <= std_logic_vector(cpuDi); end if;
-				if cpuAddr_pre = x"0080" then mem_80_r <= std_logic_vector(cpuDi); end if;
-				if cpuAddr_pre = x"0081" then mem_81_r <= std_logic_vector(cpuDi); end if;
-				if cpuAddr_pre = x"0082" then mem_82_r <= std_logic_vector(cpuDi); end if;
-				if cpuAddr_pre = x"0083" then mem_83_r <= std_logic_vector(cpuDi); end if;
-				if cpuAddr_pre = x"0084" then mem_84_r <= std_logic_vector(cpuDi); end if;
-				if cpuAddr_pre = x"0085" then mem_85_r <= std_logic_vector(cpuDi); end if;
-				if cpuAddr_pre = x"0086" then mem_86_r <= std_logic_vector(cpuDi); end if;
-				if cpuAddr_pre = x"0087" then mem_87_r <= std_logic_vector(cpuDi); end if;
-				if cpuAddr_pre = x"0088" then mem_88_r <= std_logic_vector(cpuDi); end if;
+				-- 2026-08-24 Wolf3D bank-$28-freeze probe: HW-vs-VICE byte
+				-- compare at the $0AC0-$0B10 trampoline/scatter routine
+				-- (REU-DMA-installed, not part of loader.prg's own bytes).
+				-- VICE reference values (known-good, from wolf3d_vice_probe.py
+				-- snapshot): 0AC0=$97 0AC8=$A0 0AD0=$00 0AE0=$97 0AF0=$17
+				-- 0B00=$FF 0B10=$20. See
+				-- project_wolf3d_postreu_bank28_freeze_regression.md.
+				-- (Supersedes the prior Asterix $0300-$4000 round-2 probe.)
+				if cpuAddr_pre = x"0AC0" then mem_80_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0AC8" then mem_81_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0AD0" then mem_82_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0AE0" then mem_83_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0AF0" then mem_84_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0B00" then mem_85_r <= std_logic_vector(cpuDi); end if;
+				if cpuAddr_pre = x"0B10" then mem_86_r <= std_logic_vector(cpuDi); end if;
+				-- 2026-08-24 Wolf3D write-attribution bitmaps (repurposing the
+				-- dead $0087/$0088 value-snoop, freed since v254's JSR ring
+				-- replaced the row that used to display them). Post-mux
+				-- cpuAddr/cpuWe (NOT the _pre variants) so a REU-FETCH write
+				-- is visible here: dma_active='1' means cpuAddr/cpuWe were
+				-- overridden with dma_addr/dma_we (fpga64:4133-4135). Bit N
+				-- set = checkpoint N (same 7 addresses/order as the ZP= grid:
+				-- $0AC0,$0AC8,$0AD0,$0AE0,$0AF0,$0B00,$0B10) was EVER written
+				-- by that source this run. mem_87=DMA-sourced, mem_88=CPU-
+				-- store-sourced. See
+				-- project_wolf3d_postreu_bank28_freeze_regression.md.
+				if cpuWe = '1' then
+					if cpuAddr = x"0AC0" then
+						if dma_active = '1' then mem_87_r(0) <= '1'; else mem_88_r(0) <= '1'; end if;
+					end if;
+					if cpuAddr = x"0AC8" then
+						if dma_active = '1' then mem_87_r(1) <= '1'; else mem_88_r(1) <= '1'; end if;
+					end if;
+					if cpuAddr = x"0AD0" then
+						if dma_active = '1' then mem_87_r(2) <= '1'; else mem_88_r(2) <= '1'; end if;
+					end if;
+					if cpuAddr = x"0AE0" then
+						if dma_active = '1' then mem_87_r(3) <= '1'; else mem_88_r(3) <= '1'; end if;
+					end if;
+					if cpuAddr = x"0AF0" then
+						if dma_active = '1' then mem_87_r(4) <= '1'; else mem_88_r(4) <= '1'; end if;
+					end if;
+					if cpuAddr = x"0B00" then
+						if dma_active = '1' then mem_87_r(5) <= '1'; else mem_88_r(5) <= '1'; end if;
+					end if;
+					if cpuAddr = x"0B10" then
+						if dma_active = '1' then mem_87_r(6) <= '1'; else mem_88_r(6) <= '1'; end if;
+					end if;
+				end if;
 				if cpuAddr_pre = x"0089" then mem_89_r <= std_logic_vector(cpuDi); end if;
 				if cpuAddr_pre = x"008A" then mem_8A_r <= std_logic_vector(cpuDi); end if;
 				if cpuAddr_pre = x"008B" then mem_8B_r <= std_logic_vector(cpuDi); end if;

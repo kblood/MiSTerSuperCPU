@@ -297,13 +297,17 @@ module debug_overlay_format
 				default: glyph_id = G_SP;
 			endcase
 
-			// ===== Row 8: 80=[14 hex chars = 7 bytes $0080..$0086] ====
-			// v247: rest of the IRQ stub's REU dispatch routine. v246
-			// captured up to $007F (LDA $5B); these bytes show the next
-			// STA $DFxx that uses A and any subsequent ops.
+			// ===== Row 8: ZP=[14 hex chars = 7 bytes, bisection grid] ====
+			// v247 (superseded 2026-08-24): was the IRQ stub's REU dispatch
+			// routine at $0080-$0086 (Doom-era, now dead/uncompiled path).
+			// Repurposed as a zero-page/low-RAM bisection grid for the
+			// Asterix low-RAM-zeroed bug: mem_80..mem_86 registers (same
+			// wiring) now snoop $0002, $0030, $0060, $0090, $00C0, $00F0,
+			// $0200 respectively. See
+			// project_asterix_postspace_lowram_zeroed_root_cause.md.
 			4'd8: case (cell_x)
-				5'd0:  glyph_id = 6'd8;       // '8'
-				5'd1:  glyph_id = 6'd0;       // '0'
+				5'd0:  glyph_id = 6'd35;      // 'Z'
+				5'd1:  glyph_id = 6'd25;      // 'P'
 				5'd2:  glyph_id = G_EQ;
 				5'd3:  glyph_id = hex(pool.mem_80[7:4]);
 				5'd4:  glyph_id = hex(pool.mem_80[3:0]);
@@ -319,6 +323,28 @@ module debug_overlay_format
 				5'd14: glyph_id = hex(pool.mem_85[3:0]);
 				5'd15: glyph_id = hex(pool.mem_86[7:4]);
 				5'd16: glyph_id = hex(pool.mem_86[3:0]);
+				// 2026-08-24 Wolf3D write-attribution bitmaps (repurposing
+				// the previously-dead mem_87/mem_88 fields, Doom-era "Row 9:
+				// 87=" leftover — never displayed since v254's JSR-ring
+				// took over row 9). Bit N (N=0..6) of mem_87 = "checkpoint N
+				// was EVER written with dma_active=1" (REU-sourced); mem_88
+				// = same but for CPU-store writes (dma_active=0, cpuWe=1).
+				// Checkpoint order matches the ZP= grid above: N=0:$0AC0,
+				// 1:$0AC8, 2:$0AD0, 3:$0AE0, 4:$0AF0, 5:$0B00, 6:$0B10.
+				// See project_wolf3d_postreu_bank28_freeze_regression.md.
+				// NOTE: the overlay box is only 22 cells wide (cell_x 0..21,
+				// debug_overlay_renderer.sv X_LO=4/X_HI=114 => 110px/5px =
+				// 22 cells) -- the first attempt at this probe (cells
+				// 17-24, with " D=xx C=xx" labels) silently clipped
+				// cells 22-24 (cell_x itself never reaches them; "in_box_x"
+				// gates the counter). Fixed here: no labels/spaces, just
+				// the two raw hex bytes back-to-back (mem_87 then mem_88),
+				// fits exactly in the remaining 5 cells (17-21).
+				5'd17: glyph_id = hex(pool.mem_87[7:4]);
+				5'd18: glyph_id = hex(pool.mem_87[3:0]);
+				5'd19: glyph_id = hex(pool.mem_88[7:4]);
+				5'd20: glyph_id = hex(pool.mem_88[3:0]);
+				5'd21: glyph_id = G_SP;
 				default: glyph_id = G_SP;
 			endcase
 
