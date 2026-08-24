@@ -1337,6 +1337,7 @@ wire [3:0] scpu_dbg_call_depth_maxabs;
 wire [15:0] scpu_dbg_vecfetch_addr;
 wire [7:0] scpu_dbg_jmlvec_hi;
 wire [7:0] scpu_dbg_jmlvec_bank;
+wire [7:0] scpu_dbg_last_07b9;
 wire [15:0] scpu_dbg_d019_wr_count;
 wire [15:0] scpu_dbg_dc0d_rd_count;
 wire [15:0] scpu_dbg_irq_fall_count;
@@ -1788,6 +1789,7 @@ assign dbg_pool.call_depth_maxabs = scpu_dbg_call_depth_maxabs;
 assign dbg_pool.vecfetch_addr  = scpu_dbg_vecfetch_addr;
 assign dbg_pool.jmlvec_hi      = scpu_dbg_jmlvec_hi;
 assign dbg_pool.jmlvec_bank    = scpu_dbg_jmlvec_bank;
+assign dbg_pool.last_07b9      = scpu_dbg_last_07b9;
 assign dbg_pool.d019_wr_count  = scpu_dbg_d019_wr_count;
 assign dbg_pool.dc0d_rd_count  = scpu_dbg_dc0d_rd_count;
 assign dbg_pool.irq_fall_count = scpu_dbg_irq_fall_count;
@@ -2259,6 +2261,7 @@ fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64
 	.dbg_vecfetch_addr    (scpu_dbg_vecfetch_addr),
 	.dbg_jmlvec_hi        (scpu_dbg_jmlvec_hi),
 	.dbg_jmlvec_bank      (scpu_dbg_jmlvec_bank),
+	.dbg_last_07b9        (scpu_dbg_last_07b9),
 	.dbg_d019_wr_count    (scpu_dbg_d019_wr_count),
 	.dbg_dc0d_rd_count    (scpu_dbg_dc0d_rd_count),
 	.dbg_irq_fall_count   (scpu_dbg_irq_fall_count),

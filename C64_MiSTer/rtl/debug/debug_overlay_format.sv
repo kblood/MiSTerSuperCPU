@@ -515,11 +515,18 @@ module debug_overlay_format
 				// IRQ despite I=1 -- an emulation-mode interrupt-masking
 				// bug in its own right.
 				// See project_wolf3d_postreu_bank28_freeze_regression.md.
-				5'd17: glyph_id = G_I;
-				5'd18: glyph_id = G_V;
-				5'd19: glyph_id = G_EQ;
-				5'd20: glyph_id = hex(pool.irq_vec_count[7:4]);
-				5'd21: glyph_id = hex(pool.irq_vec_count[3:0]);
+				// 18th/19th pass: irq_vec_count settled at 0 throughout
+				// every capture this saga (SEI-correctness confirmed, no
+				// masked-interrupt bug) -- question answered, cell freed.
+				// Now shows last_07b9: the last-read value of C64 RAM
+				// $07B9 (skip-table REU source mid-byte), disambiguating
+				// the jmlvec HW/VICE divergence (see jmlvec_hi_r comment
+				// in fpga64_sid_iec.vhd).
+				5'd17: glyph_id = hex(4'd9);     // '9'
+				5'd18: glyph_id = G_EQ;
+				5'd19: glyph_id = hex(pool.last_07b9[7:4]);
+				5'd20: glyph_id = hex(pool.last_07b9[3:0]);
+				5'd21: glyph_id = G_SP;
 				default: glyph_id = G_SP;
 			endcase
 

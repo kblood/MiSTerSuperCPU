@@ -252,6 +252,13 @@ typedef struct packed {
   logic [7:0] jmlvec_hi;
   logic [7:0] jmlvec_bank;
 
+  // 2026-08-24 (19th pass): last-read $07B9 value (skip-table REU source
+  // mid-byte). Near $FF at freeze time => HW read the same REU offset as
+  // VICE but got wrong data (REU-FETCH data-integrity bug); far from $FF
+  // => HW's loop terminated after a different iteration count than VICE
+  // (control-flow/cycle-count divergence). See jmlvec_hi comment above.
+  logic [7:0] last_07b9;
+
   // v230: source-ack discrimination.
   // d019_wr_count = CPU writes to $D019 (VIC IRQ ack write-1-clear)
   // dc0d_rd_count = CPU reads of $DC0D (CIA1 ICR read-clear)

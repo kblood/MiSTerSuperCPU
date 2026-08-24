@@ -298,6 +298,9 @@ port(
 	-- project_wolf3d_postreu_bank28_freeze_regression.md 18th-pass update.
 	dbg_jmlvec_hi        : out std_logic_vector(7 downto 0);
 	dbg_jmlvec_bank      : out std_logic_vector(7 downto 0);
+	-- 2026-08-24 (19th pass): last-read $07B9 value (skip-table REU
+	-- source mid-byte), rezeroed at loader.prg entry ($0700).
+	dbg_last_07b9        : out std_logic_vector(7 downto 0);
 	-- v230: source-ack discrimination. d019_wr_count counts CPU
 	-- writes to $D019 (VIC IRQ status, write-1-to-clear). dc0d_rd_count
 	-- counts $DC0D reads (CIA1 ICR, read-to-ack). T65 should hit
@@ -1139,6 +1142,11 @@ signal vecfetch_addr_r : std_logic_vector(15 downto 0) := (others => '0');
 -- for $04FD (hi) / $04FE (bank) is $00/$20 (target $20:0000, clean boot).
 signal jmlvec_hi_r      : std_logic_vector(7 downto 0) := (others => '0');
 signal jmlvec_bank_r    : std_logic_vector(7 downto 0) := (others => '0');
+-- 19th pass (2026-08-24): last-read value of C64 RAM $07B9 (skip-table
+-- REU source mid-byte) -- disambiguates the jmlvec divergence between a
+-- wrong-REU-offset-read (control-flow) and right-offset-wrong-data
+-- (REU-FETCH data integrity) cause. See jmlvec_hi_r comment above.
+signal last_07b9_read_r : std_logic_vector(7 downto 0) := (others => '0');
 -- v13 (2026-05-24) $DC0D write count for phantom-write detection
 signal dc0d_wr_count_r  : unsigned(15 downto 0) := (others => '0');
 -- v231 IRQ source-level falling-edge counter
@@ -4287,6 +4295,7 @@ begin
 			vecfetch_addr_r      <= (others => '0');
 			jmlvec_hi_r          <= (others => '0');
 			jmlvec_bank_r        <= (others => '0');
+			last_07b9_read_r     <= (others => '0');
 			d019_wr_count_r      <= (others => '0');
 			dc0d_rd_count_r      <= (others => '0');
 			dc0d_wr_count_r      <= (others => '0');
@@ -5187,6 +5196,24 @@ begin
 				end if;
 			end if;
 
+			-- 19th pass: snoop the value of C64 RAM $07B9 (the skip-table's
+			-- REU source mid-byte, per the loader.prg disassembly) each
+			-- time the CPU reads it, to disambiguate the jmlvec divergence:
+			-- if this settles near $FF (a near-complete 256-bank sweep),
+			-- HW believes it read the same REU offset VICE did and the
+			-- delivered DATA was wrong (REU-FETCH data-integrity bug); if
+			-- it settles far from $FF, HW's own loop terminated after a
+			-- different number of iterations than VICE's (a control-flow/
+			-- cycle-count divergence). See jmlvec_hi_r comment and
+			-- project_wolf3d_postreu_bank28_freeze_regression.md 19th-pass
+			-- update. Rezeroed on the same $0700 entry trigger.
+			if opcode_fetch_pulse = '1' and cpu_pc_now = x"000700" then
+				last_07b9_read_r <= (others => '0');
+			elsif supercpu_en = '1' and cpu816_we_raw = '0' and cpu816_vda_raw = '1'
+					and cpu816_addr_raw = x"07B9" then
+				last_07b9_read_r <= std_logic_vector(cpu816_di_to_cpu);
+			end if;
+
 			-- v230: $D019 write count (VIC IRQ ack). cs_vic gated to
 			-- VIC chip-select; cpuWe = active write; offset $19 = D019.
 			-- v270: also latch writer PC and OR cpuDo into a sticky
@@ -6077,6 +6104,7 @@ dbg_call_depth_maxabs <= std_logic_vector(call_depth_maxabs_r);
 dbg_vecfetch_addr    <= vecfetch_addr_r;
 dbg_jmlvec_hi        <= jmlvec_hi_r;
 dbg_jmlvec_bank      <= jmlvec_bank_r;
+dbg_last_07b9        <= last_07b9_read_r;
 dbg_d019_wr_count    <= std_logic_vector(d019_wr_count_r);
 dbg_dc0d_rd_count    <= std_logic_vector(dc0d_rd_count_r);
 dbg_irq_fall_count   <= std_logic_vector(irq_fall_count_r);
