@@ -286,6 +286,12 @@ port(
 	-- mid-handler re-entry; NMI count > 0 indicates NMI path active.
 	dbg_rti_count        : out std_logic_vector(15 downto 0);
 	dbg_nmi_vec_count    : out std_logic_vector(15 downto 0);
+	-- 2026-08-24: signed JSR/JSL vs RTS/RTL call-depth drift counter.
+	dbg_call_depth       : out std_logic_vector(15 downto 0);
+	dbg_call_depth_maxabs : out std_logic_vector(3 downto 0);
+	-- 2026-08-24 (15th pass): last vector-fetch address (low 16 bits,
+	-- bank always $00), rezeroed at loader.prg entry ($0700).
+	dbg_vecfetch_addr    : out std_logic_vector(15 downto 0);
 	-- v230: source-ack discrimination. d019_wr_count counts CPU
 	-- writes to $D019 (VIC IRQ status, write-1-to-clear). dc0d_rd_count
 	-- counts $DC0D reads (CIA1 ICR, read-to-ack). T65 should hit
@@ -1076,6 +1082,50 @@ signal nmi_vec_count_r  : unsigned(15 downto 0) := (others => '0');
 -- v230
 signal d019_wr_count_r  : unsigned(15 downto 0) := (others => '0');
 signal dc0d_rd_count_r  : unsigned(15 downto 0) := (others => '0');
+-- 2026-08-24 Wolf3D wild-jump investigation: JSR/RTS call-depth drift
+-- detector. Hardware-IRQ theory falsified this pass (irq_vec_count flat
+-- at $34 through the whole t=15-30s divergence window); next suspect is
+-- an unbalanced JSR/JSL vs RTS/RTL pair inside loader.prg's REU-poll
+-- loop walking SP toward $01FF via repeated RTS/RTL pulls with no
+-- matching push. call_depth_r increments on JSR($20)/JSL($22) opcode
+-- fetch, decrements on RTS($60)/RTL($6B) opcode fetch. A flat loop
+-- should hover near a small constant; sustained drift = confirmed.
+-- Signed so a net-negative drift (more returns than calls) is visible
+-- as the top bit set / large hex value rather than wrapping silently.
+signal call_depth_r     : signed(15 downto 0) := (others => '0');
+-- 2026-08-24 (14th pass): raw call_depth_r nibble sampled at 7
+-- timepoints came back A,6,D,7,8,6,6 -- neither flat nor monotone,
+-- but a 4-bit *signed* sample of a value that may have wrapped past
+-- +-15 many times is fundamentally ambiguous (true depth 7 and true
+-- depth 23 both show as hex 7). call_depth_maxabs_r is a saturating
+-- (clamped at 15, never decrements) magnitude tracker instead: its
+-- value across the same 7 timestamped samples is monotonic non-
+-- decreasing, so the *trajectory* (not just one noisy sample) shows
+-- whether abnormal depth appears specifically during the t=15-30s
+-- divergence window or was already present at t=5s (normal nesting).
+signal call_depth_maxabs_r : unsigned(3 downto 0) := (others => '0');
+-- 2026-08-24 (15th pass): call_depth_maxabs_r saturated at $F from t=5s
+-- even after the $0700-entry rezero -- consistent with the loader's own
+-- code containing ordinary (benign) JSR-call/JMP-exit asymmetry, which
+-- at MHz-order execution rates saturates a maxabs-15 tracker within
+-- milliseconds regardless of zero point. Falsifies the COUNTER as a
+-- diagnostic, not the underlying theory. Pivoted to a more direct
+-- signal: the P65C816 core's VPB (vector pull) output plus the address
+-- bus during vector-fetch cycles directly identifies which interrupt
+-- vector (if any) fires and when, rather than inferring it indirectly
+-- from call/return balance. Latches the low 16 bits of the last
+-- vector-fetch address (bank is always $00 for all vector classes) any
+-- time VPB pulses low, rezeroed at the same $00:0700 loader-entry PC as
+-- call_depth. A nonzero final value after the run means at least one
+-- vector pull happened after the loader took over; the specific value
+-- (per P65C816.vhd:780-794's ADDR_BUS(3 downto 0) encoding) identifies
+-- which vector class: $FFE4/5=COP(native) $FFE6/7=BRK(native)
+-- $FFE8/9=ABORT(native) $FFEA/B=NMI(native) $FFEC/D=RESET(native, should
+-- never occur post-boot) $FFEE/F=IRQ(native); $FFF4/5=COP(emu)
+-- $FFF8/9=ABORT(emu) $FFFA/B=NMI(emu) $FFFC/D=RESET(emu) $FFFE/F=
+-- IRQ/BRK(emu, both native BRK and emu BRK/IRQ share this address --
+-- distinguish via the live E= overlay field at the same timestamp).
+signal vecfetch_addr_r : std_logic_vector(15 downto 0) := (others => '0');
 -- v13 (2026-05-24) $DC0D write count for phantom-write detection
 signal dc0d_wr_count_r  : unsigned(15 downto 0) := (others => '0');
 -- v231 IRQ source-level falling-edge counter
@@ -1318,6 +1368,11 @@ signal t65_regs         : std_logic_vector(63 downto 0)  := (others => '0');
 signal dbg_x_816_i      : unsigned(15 downto 0);
 signal dbg_y_816_i      : unsigned(15 downto 0);
 signal dbg_sp_816_i     : unsigned(15 downto 0);
+-- 2026-08-24 (15th pass): VPB (vector pull, active low) raw output from
+-- the P65C816 core via cpu_65c816.vhd's new dbg_vpb port -- asserts low
+-- exactly on cycles where the address bus carries a vector-fetch
+-- address (P65C816.vhd:819-823, combinational on MC.ADDR_BUS="1111").
+signal dbg_vpb_816_i    : std_logic;
 -- Muxed CPU X/Y at current cycle (zero-extends 8-bit T65 values).
 signal cpu_x_now        : std_logic_vector(7 downto 0);
 signal cpu_y_now        : std_logic_vector(7 downto 0);
@@ -3516,7 +3571,8 @@ port map (
 	dbg_x     => dbg_x_816_i,
 	dbg_y     => dbg_y_816_i,
 	dbg_d     => open,
-	dbg_state => open
+	dbg_state => open,
+	dbg_vpb   => dbg_vpb_816_i
 );
 
 -- D4.2 (2026-05-21): CACHE_ACTIVE='1' wedges KERNAL with $AB on every ZP
@@ -4170,6 +4226,9 @@ port map (
 -- bus snooping needed.
 -- ----------------------------------------------------------------------
 process(clk32)
+	-- 2026-08-24 (14th pass): scratch var for call_depth_maxabs_r update
+	variable call_depth_next : signed(15 downto 0);
+	variable call_depth_mag  : unsigned(15 downto 0);
 begin
 	if rising_edge(clk32) then
 		if reset = '1' then
@@ -4210,6 +4269,9 @@ begin
 			min_p_r              <= x"FF";
 			rti_count_r          <= (others => '0');
 			nmi_vec_count_r      <= (others => '0');
+			call_depth_r         <= (others => '0');
+			call_depth_maxabs_r  <= (others => '0');
+			vecfetch_addr_r      <= (others => '0');
 			d019_wr_count_r      <= (others => '0');
 			dc0d_rd_count_r      <= (others => '0');
 			dc0d_wr_count_r      <= (others => '0');
@@ -5039,6 +5101,54 @@ begin
 			-- re-enters mid-execution = tail-chain bug.
 			if opcode_fetch_pulse = '1' and cpuDi = x"40" then
 				rti_count_r <= rti_count_r + 1;
+			end if;
+
+			-- 2026-08-24 Wolf3D wild-jump investigation: call-depth
+			-- drift. $20=JSR, $22=JSL, $60=RTS, $6B=RTL.
+			-- 15th pass: call_depth_maxabs_r saturated at $F by t=5s
+			-- in HW (before loader.prg's SEI even runs) -- ordinary
+			-- KERNAL/BASIC boot nesting alone exceeds 15 levels, so a
+			-- "since reset" counter is uninformative for this bug.
+			-- Rezero both counters the moment PC reaches loader.prg's
+			-- relocated entry point ($00:0700, confirmed from the
+			-- disassembly in the 11th-pass memory update) so depth is
+			-- measured from the loader taking over, not from boot.
+			if opcode_fetch_pulse = '1' then
+				if cpu_pc_now = x"000700" then
+					call_depth_r        <= (others => '0');
+					call_depth_maxabs_r <= (others => '0');
+				else
+					call_depth_next := call_depth_r;
+					if cpuDi = x"20" or cpuDi = x"22" then
+						call_depth_next := call_depth_r + 1;
+					elsif cpuDi = x"60" or cpuDi = x"6B" then
+						call_depth_next := call_depth_r - 1;
+					end if;
+					call_depth_r <= call_depth_next;
+					-- 14th pass: saturating (never-decrementing)
+					-- magnitude tracker -- see declaration comment.
+					if call_depth_next(15) = '1' then
+						call_depth_mag := unsigned(-call_depth_next);
+					else
+						call_depth_mag := unsigned(call_depth_next);
+					end if;
+					if call_depth_mag > 15 then
+						call_depth_maxabs_r <= x"F";
+					elsif call_depth_mag(3 downto 0) > call_depth_maxabs_r then
+						call_depth_maxabs_r <= call_depth_mag(3 downto 0);
+					end if;
+				end if;
+			end if;
+
+			-- 15th pass: direct vector-fetch capture (see vecfetch_addr_r
+			-- declaration comment). Rezeroed on the same $0700 loader-entry
+			-- trigger as call_depth; latched independently of
+			-- opcode_fetch_pulse since VPB asserts during the address-bus
+			-- phase of interrupt entry, not an opcode fetch.
+			if opcode_fetch_pulse = '1' and cpu_pc_now = x"000700" then
+				vecfetch_addr_r <= (others => '0');
+			elsif supercpu_en = '1' and dbg_vpb_816_i = '0' then
+				vecfetch_addr_r <= std_logic_vector(cpu816_addr_raw);
 			end if;
 
 			-- v230: $D019 write count (VIC IRQ ack). cs_vic gated to
@@ -5926,6 +6036,9 @@ dbg_irq_vec_count    <= std_logic_vector(irq_vec_count_r);
 dbg_min_p            <= min_p_r;
 dbg_rti_count        <= std_logic_vector(rti_count_r);
 dbg_nmi_vec_count    <= std_logic_vector(nmi_vec_count_r);
+dbg_call_depth       <= std_logic_vector(call_depth_r);
+dbg_call_depth_maxabs <= std_logic_vector(call_depth_maxabs_r);
+dbg_vecfetch_addr    <= vecfetch_addr_r;
 dbg_d019_wr_count    <= std_logic_vector(d019_wr_count_r);
 dbg_dc0d_rd_count    <= std_logic_vector(dc0d_rd_count_r);
 dbg_irq_fall_count   <= std_logic_vector(irq_fall_count_r);

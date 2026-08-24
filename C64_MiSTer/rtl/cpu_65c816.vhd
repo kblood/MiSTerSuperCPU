@@ -48,7 +48,11 @@ entity cpu_65c816 is
 		dbg_x         : out unsigned(15 downto 0);
 		dbg_y         : out unsigned(15 downto 0);
 		dbg_d         : out unsigned(15 downto 0);
-		dbg_state     : out unsigned(3 downto 0)
+		dbg_state     : out unsigned(3 downto 0);
+		-- 2026-08-24: VPB (vector pull, active low) passthrough -- localVPB
+		-- already existed internally for nmi_ack generation, just wasn't
+		-- exposed. Asserts low on vector-fetch address-bus cycles.
+		dbg_vpb       : out std_logic
 	);
 end cpu_65c816;
 
@@ -202,5 +206,6 @@ accessIO <= '1' when localA(23 downto 1) = "00000000000000000000000" else '0';
 	dbg_y   <= unsigned(localY);
 	dbg_d   <= unsigned(localD);
 	dbg_state <= unsigned(localSTATE);
+	dbg_vpb <= localVPB;
 
 end architecture;

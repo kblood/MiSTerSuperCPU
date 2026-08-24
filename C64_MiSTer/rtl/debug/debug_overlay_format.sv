@@ -323,27 +323,24 @@ module debug_overlay_format
 				5'd14: glyph_id = hex(pool.mem_85[3:0]);
 				5'd15: glyph_id = hex(pool.mem_86[7:4]);
 				5'd16: glyph_id = hex(pool.mem_86[3:0]);
-				// 2026-08-24 Wolf3D write-attribution bitmaps (repurposing
-				// the previously-dead mem_87/mem_88 fields, Doom-era "Row 9:
-				// 87=" leftover — never displayed since v254's JSR-ring
-				// took over row 9). Bit N (N=0..6) of mem_87 = "checkpoint N
-				// was EVER written with dma_active=1" (REU-sourced); mem_88
-				// = same but for CPU-store writes (dma_active=0, cpuWe=1).
-				// Checkpoint order matches the ZP= grid above: N=0:$0AC0,
-				// 1:$0AC8, 2:$0AD0, 3:$0AE0, 4:$0AF0, 5:$0B00, 6:$0B10.
-				// See project_wolf3d_postreu_bank28_freeze_regression.md.
-				// NOTE: the overlay box is only 22 cells wide (cell_x 0..21,
-				// debug_overlay_renderer.sv X_LO=4/X_HI=114 => 110px/5px =
-				// 22 cells) -- the first attempt at this probe (cells
-				// 17-24, with " D=xx C=xx" labels) silently clipped
-				// cells 22-24 (cell_x itself never reaches them; "in_box_x"
-				// gates the counter). Fixed here: no labels/spaces, just
-				// the two raw hex bytes back-to-back (mem_87 then mem_88),
-				// fits exactly in the remaining 5 cells (17-21).
-				5'd17: glyph_id = hex(pool.mem_87[7:4]);
-				5'd18: glyph_id = hex(pool.mem_87[3:0]);
-				5'd19: glyph_id = hex(pool.mem_88[7:4]);
-				5'd20: glyph_id = hex(pool.mem_88[3:0]);
+				// 2026-08-24 (15th pass): cells 17-20 repurposed again.
+				// The write-attribution bitmaps that lived here (mem_87/
+				// mem_88, decisively read as $00/$00 — neither REU DMA nor
+				// a CPU store ever touched the $0AC0-$0B10 checkpoint
+				// range) already answered their question; that data isn't
+				// needed live anymore (still in mem_87/mem_88 if a future
+				// pass wants it back). Now shows vecfetch_addr: the last
+				// P65C816 vector-fetch address (low 16 bits, bank always
+				// $00), rezeroed at loader.prg's $0700 entry alongside
+				// call_depth. A nonzero value after the run means at
+				// least one interrupt/reset vector was fetched post-
+				// loader-entry — see fpga64_sid_iec.vhd's vecfetch_addr_r
+				// comment for the address->vector-class table. See
+				// project_wolf3d_postreu_bank28_freeze_regression.md.
+				5'd17: glyph_id = hex(pool.vecfetch_addr[15:12]);
+				5'd18: glyph_id = hex(pool.vecfetch_addr[11:8]);
+				5'd19: glyph_id = hex(pool.vecfetch_addr[7:4]);
+				5'd20: glyph_id = hex(pool.vecfetch_addr[3:0]);
 				5'd21: glyph_id = G_SP;
 				default: glyph_id = G_SP;
 			endcase
@@ -590,6 +587,21 @@ module debug_overlay_format
 				5'd18: glyph_id = hex(pool.rti_pc[11:8]);
 				5'd19: glyph_id = hex(pool.rti_pc[7:4]);
 				5'd20: glyph_id = hex(pool.rti_pc[3:0]);
+				// 2026-08-24 (14th pass): raw call_depth[3:0] nibble
+				// sampled A,6,D,7,8,6,6 across t=5..90s -- noisy, not
+				// flat, but ambiguous (a wrapped signed nibble can't
+				// distinguish true depth 7 from true depth 23).
+				// Replaced with call_depth_maxabs: a saturating (never
+				// decrements, clamped at 15) magnitude tracker. Its
+				// value across the same 7 timestamped samples is
+				// monotonic non-decreasing, so the *trajectory* pins
+				// down whether abnormal depth appears specifically
+				// during the t=15-30s divergence window (would jump
+				// there and not before) versus already being present
+				// at t=5s from ordinary KERNAL/IRQ nesting (flat from
+				// the start). See
+				// project_wolf3d_postreu_bank28_freeze_regression.md.
+				5'd21: glyph_id = hex(pool.call_depth_maxabs);
 				default: glyph_id = G_SP;
 			endcase
 

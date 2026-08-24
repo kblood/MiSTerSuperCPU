@@ -211,6 +211,39 @@ typedef struct packed {
   logic [15:0] rti_count;
   logic [15:0] nmi_vec_count;
 
+  // 2026-08-24 Wolf3D wild-jump investigation: signed JSR/JSL vs
+  // RTS/RTL call-depth drift counter (see fpga64_sid_iec.vhd
+  // call_depth_r). Hardware-IRQ theory falsified (irq_vec_count flat
+  // through the divergence window) -- this tests whether an unbalanced
+  // call/return inside loader.prg's REU-poll loop walks SP toward
+  // $01FF instead.
+  logic [15:0] call_depth;
+  // 14th pass: saturating (sticky, never-decrements) |call_depth|
+  // tracker, clamped at 15. A single noisy nibble sample of the raw
+  // signed call_depth wrapped ambiguously (true depth 7 and depth 23
+  // both read as hex 7); this field's value across timestamped
+  // samples is monotonic non-decreasing, so its growth trajectory
+  // pins down whether abnormal depth appears during the t=15-30s
+  // divergence window specifically.
+  // 15th pass: HW showed this pinned at $F from t=5s onward -- a
+  // "since reset" counter saturates on ordinary KERNAL/BASIC boot
+  // nesting alone. Both call_depth and call_depth_maxabs now rezero
+  // when PC reaches loader.prg's relocated entry ($00:0700), so the
+  // trajectory reflects drift from the loader taking over, not boot.
+  logic [3:0] call_depth_maxabs;
+  // 15th pass: call_depth_maxabs saturated at $F even measured from the
+  // loader's own entry -- consistent with benign JSR/JMP-tail asymmetry
+  // in ordinary code saturating a maxabs-15 tracker within milliseconds
+  // at MHz execution rates, not a diagnosable signal at any zero point.
+  // Pivoted to a direct P65C816 VPB (vector pull) snoop instead: last
+  // vector-fetch address (low 16 bits, bank always $00), rezeroed at the
+  // same $0700 loader-entry trigger. A nonzero final value means at
+  // least one interrupt/reset vector was fetched after the loader took
+  // over; the specific address identifies which vector class (see
+  // fpga64_sid_iec.vhd's vecfetch_addr_r declaration comment for the
+  // full address-to-vector-class table).
+  logic [15:0] vecfetch_addr;
+
   // v230: source-ack discrimination.
   // d019_wr_count = CPU writes to $D019 (VIC IRQ ack write-1-clear)
   // dc0d_rd_count = CPU reads of $DC0D (CIA1 ICR read-clear)

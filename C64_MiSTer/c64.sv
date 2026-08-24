@@ -1332,6 +1332,9 @@ wire [15:0] scpu_dbg_irq_vec_count;
 wire  [7:0] scpu_dbg_min_p;
 wire [15:0] scpu_dbg_rti_count;
 wire [15:0] scpu_dbg_nmi_vec_count;
+wire [15:0] scpu_dbg_call_depth;
+wire [3:0] scpu_dbg_call_depth_maxabs;
+wire [15:0] scpu_dbg_vecfetch_addr;
 wire [15:0] scpu_dbg_d019_wr_count;
 wire [15:0] scpu_dbg_dc0d_rd_count;
 wire [15:0] scpu_dbg_irq_fall_count;
@@ -1778,6 +1781,9 @@ assign dbg_pool.irq_vec_count  = scpu_dbg_irq_vec_count;
 assign dbg_pool.min_p          = scpu_dbg_min_p;
 assign dbg_pool.rti_count      = scpu_dbg_rti_count;
 assign dbg_pool.nmi_vec_count  = scpu_dbg_nmi_vec_count;
+assign dbg_pool.call_depth     = scpu_dbg_call_depth;
+assign dbg_pool.call_depth_maxabs = scpu_dbg_call_depth_maxabs;
+assign dbg_pool.vecfetch_addr  = scpu_dbg_vecfetch_addr;
 assign dbg_pool.d019_wr_count  = scpu_dbg_d019_wr_count;
 assign dbg_pool.dc0d_rd_count  = scpu_dbg_dc0d_rd_count;
 assign dbg_pool.irq_fall_count = scpu_dbg_irq_fall_count;
@@ -2244,6 +2250,9 @@ fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64
 	.dbg_min_p            (scpu_dbg_min_p),
 	.dbg_rti_count        (scpu_dbg_rti_count),
 	.dbg_nmi_vec_count    (scpu_dbg_nmi_vec_count),
+	.dbg_call_depth       (scpu_dbg_call_depth),
+	.dbg_call_depth_maxabs (scpu_dbg_call_depth_maxabs),
+	.dbg_vecfetch_addr    (scpu_dbg_vecfetch_addr),
 	.dbg_d019_wr_count    (scpu_dbg_d019_wr_count),
 	.dbg_dc0d_rd_count    (scpu_dbg_dc0d_rd_count),
 	.dbg_irq_fall_count   (scpu_dbg_irq_fall_count),
