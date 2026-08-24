@@ -329,18 +329,20 @@ module debug_overlay_format
 				// a CPU store ever touched the $0AC0-$0B10 checkpoint
 				// range) already answered their question; that data isn't
 				// needed live anymore (still in mem_87/mem_88 if a future
-				// pass wants it back). Now shows vecfetch_addr: the last
-				// P65C816 vector-fetch address (low 16 bits, bank always
-				// $00), rezeroed at loader.prg's $0700 entry alongside
-				// call_depth. A nonzero value after the run means at
-				// least one interrupt/reset vector was fetched post-
-				// loader-entry — see fpga64_sid_iec.vhd's vecfetch_addr_r
-				// comment for the address->vector-class table. See
-				// project_wolf3d_postreu_bank28_freeze_regression.md.
-				5'd17: glyph_id = hex(pool.vecfetch_addr[15:12]);
-				5'd18: glyph_id = hex(pool.vecfetch_addr[11:8]);
-				5'd19: glyph_id = hex(pool.vecfetch_addr[7:4]);
-				5'd20: glyph_id = hex(pool.vecfetch_addr[3:0]);
+				// pass wants it back). vecfetch_addr's own question is now
+				// also settled (confirmed $FFE7 native BRK vector, 17th
+				// pass) so this cell group is repurposed again (18th pass)
+				// to show jmlvec_hi/jmlvec_bank: the actual CPU-bus-read
+				// bytes at $04FD/$04FE, i.e. loader.prg's JML ($04FC) exit
+				// vector's hi+bank bytes. VICE ground truth is $00/$20
+				// (target $20:0000, boots clean) — see
+				// project_wolf3d_postreu_bank28_freeze_regression.md
+				// 18th-pass update. If HW disagrees, the REU/SuperRAM
+				// write path for the skip-flag table is the bug.
+				5'd17: glyph_id = hex(pool.jmlvec_hi[7:4]);
+				5'd18: glyph_id = hex(pool.jmlvec_hi[3:0]);
+				5'd19: glyph_id = hex(pool.jmlvec_bank[7:4]);
+				5'd20: glyph_id = hex(pool.jmlvec_bank[3:0]);
 				5'd21: glyph_id = G_SP;
 				default: glyph_id = G_SP;
 			endcase

@@ -292,6 +292,12 @@ port(
 	-- 2026-08-24 (15th pass): last vector-fetch address (low 16 bits,
 	-- bank always $00), rezeroed at loader.prg entry ($0700).
 	dbg_vecfetch_addr    : out std_logic_vector(15 downto 0);
+	-- 2026-08-24 (18th pass): actual CPU-bus-read bytes at $04FD/$04FE
+	-- (hi/bank of loader.prg's JML ($04FC) exit vector), rezeroed at
+	-- loader.prg entry ($0700). See vecfetch_addr comment above and
+	-- project_wolf3d_postreu_bank28_freeze_regression.md 18th-pass update.
+	dbg_jmlvec_hi        : out std_logic_vector(7 downto 0);
+	dbg_jmlvec_bank      : out std_logic_vector(7 downto 0);
 	-- v230: source-ack discrimination. d019_wr_count counts CPU
 	-- writes to $D019 (VIC IRQ status, write-1-to-clear). dc0d_rd_count
 	-- counts $DC0D reads (CIA1 ICR, read-to-ack). T65 should hit
@@ -1126,6 +1132,13 @@ signal call_depth_maxabs_r : unsigned(3 downto 0) := (others => '0');
 -- IRQ/BRK(emu, both native BRK and emu BRK/IRQ share this address --
 -- distinguish via the live E= overlay field at the same timestamp).
 signal vecfetch_addr_r : std_logic_vector(15 downto 0) := (others => '0');
+-- 18th pass (2026-08-24): loader.prg's JML ($04FC) exit-vector bytes, as
+-- actually read off the CPU data bus (not inferred from static REU-file
+-- offsets, which proved unreliable -- see
+-- project_wolf3d_postreu_bank28_freeze_regression.md). VICE ground truth
+-- for $04FD (hi) / $04FE (bank) is $00/$20 (target $20:0000, clean boot).
+signal jmlvec_hi_r      : std_logic_vector(7 downto 0) := (others => '0');
+signal jmlvec_bank_r    : std_logic_vector(7 downto 0) := (others => '0');
 -- v13 (2026-05-24) $DC0D write count for phantom-write detection
 signal dc0d_wr_count_r  : unsigned(15 downto 0) := (others => '0');
 -- v231 IRQ source-level falling-edge counter
@@ -4272,6 +4285,8 @@ begin
 			call_depth_r         <= (others => '0');
 			call_depth_maxabs_r  <= (others => '0');
 			vecfetch_addr_r      <= (others => '0');
+			jmlvec_hi_r          <= (others => '0');
+			jmlvec_bank_r        <= (others => '0');
 			d019_wr_count_r      <= (others => '0');
 			dc0d_rd_count_r      <= (others => '0');
 			dc0d_wr_count_r      <= (others => '0');
@@ -5149,6 +5164,27 @@ begin
 				vecfetch_addr_r <= (others => '0');
 			elsif supercpu_en = '1' and dbg_vpb_816_i = '0' then
 				vecfetch_addr_r <= std_logic_vector(cpu816_addr_raw);
+			end if;
+
+			-- 18th pass: snoop the actual bytes the CPU reads at $04FD/$04FE
+			-- (the hi-byte and bank-byte of loader.prg's JML ($04FC) exit
+			-- vector). VICE ground truth for this exact loader+REU pairing
+			-- reads 00 20 there (target $20:0000, same convention as Doom's
+			-- JML $20:0000) and boots cleanly -- see
+			-- project_wolf3d_postreu_bank28_freeze_regression.md 18th-pass
+			-- update. If HW reads something else here, the REU/SuperRAM
+			-- write path for the skip-flag table is corrupting data; if it
+			-- matches, the bug is downstream of the JML itself. Rezeroed on
+			-- the same $0700 entry trigger as vecfetch_addr/call_depth.
+			if opcode_fetch_pulse = '1' and cpu_pc_now = x"000700" then
+				jmlvec_hi_r   <= (others => '0');
+				jmlvec_bank_r <= (others => '0');
+			elsif supercpu_en = '1' and cpu816_we_raw = '0' and cpu816_vda_raw = '1' then
+				if cpu816_addr_raw = x"04FD" then
+					jmlvec_hi_r <= std_logic_vector(cpu816_di_to_cpu);
+				elsif cpu816_addr_raw = x"04FE" then
+					jmlvec_bank_r <= std_logic_vector(cpu816_di_to_cpu);
+				end if;
 			end if;
 
 			-- v230: $D019 write count (VIC IRQ ack). cs_vic gated to
@@ -6039,6 +6075,8 @@ dbg_nmi_vec_count    <= std_logic_vector(nmi_vec_count_r);
 dbg_call_depth       <= std_logic_vector(call_depth_r);
 dbg_call_depth_maxabs <= std_logic_vector(call_depth_maxabs_r);
 dbg_vecfetch_addr    <= vecfetch_addr_r;
+dbg_jmlvec_hi        <= jmlvec_hi_r;
+dbg_jmlvec_bank      <= jmlvec_bank_r;
 dbg_d019_wr_count    <= std_logic_vector(d019_wr_count_r);
 dbg_dc0d_rd_count    <= std_logic_vector(dc0d_rd_count_r);
 dbg_irq_fall_count   <= std_logic_vector(irq_fall_count_r);

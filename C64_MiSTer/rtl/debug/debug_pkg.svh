@@ -244,6 +244,14 @@ typedef struct packed {
   // full address-to-vector-class table).
   logic [15:0] vecfetch_addr;
 
+  // 2026-08-24 (18th pass): actual CPU-bus-read bytes at $04FD/$04FE --
+  // the hi/bank bytes of loader.prg's JML ($04FC) exit vector -- rezeroed
+  // at loader.prg entry ($0700). VICE ground truth for this exact
+  // loader+REU pairing is $00/$20 (target $20:0000, boots clean). See
+  // project_wolf3d_postreu_bank28_freeze_regression.md 18th-pass update.
+  logic [7:0] jmlvec_hi;
+  logic [7:0] jmlvec_bank;
+
   // v230: source-ack discrimination.
   // d019_wr_count = CPU writes to $D019 (VIC IRQ ack write-1-clear)
   // dc0d_rd_count = CPU reads of $DC0D (CIA1 ICR read-clear)
