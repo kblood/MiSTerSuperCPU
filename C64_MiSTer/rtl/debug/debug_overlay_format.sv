@@ -407,6 +407,24 @@ module debug_overlay_format
 				5'd11: glyph_id = hex(pool.wr_df01_pc[11:8]);
 				5'd12: glyph_id = hex(pool.wr_df01_pc[7:4]);
 				5'd13: glyph_id = hex(pool.wr_df01_pc[3:0]);
+				// 2026-08-24 Wolf3D wild-jump investigation: SP=####
+				// packed into this row's 8 free cells (14-21).
+				// cpu_sp (already wired end-to-end since v280 Doom
+				// triage, never displayed on an overlay row) is the
+				// live 16-bit P65C816 stack pointer. NMI is ruled out
+				// (N=0000 confirmed at all 7 timeline timepoints) --
+				// this checks the alternative theory: stack corruption
+				// causing an accidental RTI/RTL that pops a garbage
+				// E-equivalent bit and/or a garbage return address.
+				// See project_wolf3d_postreu_bank28_freeze_regression.md.
+				5'd14: glyph_id = G_SP;
+				5'd15: glyph_id = G_S;
+				5'd16: glyph_id = G_P;
+				5'd17: glyph_id = G_EQ;
+				5'd18: glyph_id = hex(pool.cpu_sp[15:12]);
+				5'd19: glyph_id = hex(pool.cpu_sp[11:8]);
+				5'd20: glyph_id = hex(pool.cpu_sp[7:4]);
+				5'd21: glyph_id = hex(pool.cpu_sp[3:0]);
 				default: glyph_id = G_SP;
 			endcase
 
@@ -432,6 +450,22 @@ module debug_overlay_format
 				5'd12: glyph_id = hex(pool.cnt_wr02_chg[11:8]);
 				5'd13: glyph_id = hex(pool.cnt_wr02_chg[7:4]);
 				5'd14: glyph_id = hex(pool.cnt_wr02_chg[3:0]);
+				// 2026-08-24 Wolf3D wild-jump investigation: N=####
+				// packed into this row's 7 free cells (15-21).
+				// nmi_vec_count (already wired end-to-end, dbg_pool
+				// -> c64.sv -> fpga64_sid_iec.vhd nmi_vec_count_r,
+				// previously uncaptured on any overlay row) counts
+				// every native-mode NMI vector fetch since reset.
+				// >0 during the t=15-30s wild-jump window would
+				// confirm a spurious NMI as the E-flag-flip trigger.
+				// See project_wolf3d_postreu_bank28_freeze_regression.md.
+				5'd15: glyph_id = G_SP;
+				5'd16: glyph_id = G_N;
+				5'd17: glyph_id = G_EQ;
+				5'd18: glyph_id = hex(pool.nmi_vec_count[15:12]);
+				5'd19: glyph_id = hex(pool.nmi_vec_count[11:8]);
+				5'd20: glyph_id = hex(pool.nmi_vec_count[7:4]);
+				5'd21: glyph_id = hex(pool.nmi_vec_count[3:0]);
 				default: glyph_id = G_SP;
 			endcase
 
