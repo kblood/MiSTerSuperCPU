@@ -495,6 +495,32 @@ module debug_overlay_format
 				5'd14: glyph_id = G_F;
 				5'd15: glyph_id = G_EQ;
 				5'd16: glyph_id = hex({3'b000, pool.trace_frozen});
+				// 2026-08-24 Wolf3D wild-jump investigation: IV=##
+				// packed into this row's 5 free cells (17-21). Second
+				// placement attempt -- row 7 (where V=#### already
+				// lives) turned out to sit inside Wolf3D's dithered 3D
+				// viewport texture at every sampled timepoint (t=5..90s),
+				// making anything placed there unreadable regardless of
+				// content -- confirmed by diffing raw (unfiltered) row-7
+				// crops across timepoints and finding a static dithered
+				// checkerboard, not overlay glyphs. Row 12 (this row)
+				// sits in the status-bar band and read cleanly at every
+				// timepoint including t=90s. irq_vec_count[7:0] (lower
+				// byte only -- 5 free cells isn't enough for the full
+				// 16-bit field, but zero-vs-incrementing is all this
+				// probe needs) counts CPU reads at $FFFE/$FFFF (the
+				// emulation-mode IRQ/BRK vector). loader.prg executes SEI
+				// as its first instruction with no CLI after, so IV=00
+				// throughout is the SEI-correctness prediction; any
+				// nonzero/incrementing value means the core dispatches an
+				// IRQ despite I=1 -- an emulation-mode interrupt-masking
+				// bug in its own right.
+				// See project_wolf3d_postreu_bank28_freeze_regression.md.
+				5'd17: glyph_id = G_I;
+				5'd18: glyph_id = G_V;
+				5'd19: glyph_id = G_EQ;
+				5'd20: glyph_id = hex(pool.irq_vec_count[7:4]);
+				5'd21: glyph_id = hex(pool.irq_vec_count[3:0]);
 				default: glyph_id = G_SP;
 			endcase
 
