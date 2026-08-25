@@ -47,8 +47,17 @@ The real CMD SuperCPU has 128KB SRAM (banks $00-$01), a 1-byte write buffer
 ("CacheWrite"), and SuperRAM starting at bank $02. Key differences from our
 MiSTer implementation:
 - **Real HW**: 128KB SRAM (full bank $00+$01 mirror). **MiSTer**: bank $00 is
-  SDRAM-backed (NOT BRAM — the `c64_ram64k`/`cpu_cache` files are DEAD/uncompiled,
-  verified 2026-05-29); the CPU runs in SDRAM passthrough via `scpu_async_bridge`.
+  BRAM-backed as of 2026-06-14 (`BANK00_BRAM=1`, on-chip `bank00_mem[0:65535]`
+  array in `c64.sv:1143`, iter-31 "bank00-bram lever", commit `48b6f3c`
+  — memory `project_bank00_bram_lever_sized_go.md`). SDRAM is still written
+  in parallel but bank-$00 CPU/VIC/REU reads are served from the BRAM
+  (`bram_q`), not `sdram_data`. Same-cycle write+read of one address reads
+  old data (no write-forward mux), but real CPU write-then-read pairs are
+  always several clk64 apart, so no practical RAW hazard has been found
+  there (checked 2026-08-24). This supersedes the older "SDRAM passthrough
+  via `scpu_async_bridge`, `c64_ram64k`/`cpu_cache` DEAD" note (still true
+  that those two *files* are dead — only the SDRAM-passthrough claim itself
+  is stale). `c64_ram64k.vhd`/`cpu_cache.vhd` remain DEAD/uncompiled.
 - **Real HW**: Bank $01 = SRAM (ROM shadows). **MiSTer**: bank $01 is aliased onto
   bank $00 SDRAM via `bank01_mirror_to_00` (c64.sv:1114, v345) — RAM-correct; only
   ROM-shadow *reads* are missing (deferred, no known consumer).
@@ -163,12 +172,29 @@ verify GHDL-first where possible (`sim/p65c816_tb`, `sim/scpu_sysram_tb`,
 on the MiSTer (respect the shared-MiSTer ownership protocol below); (4) commit
 when green (pushes still gated); (5) record state in `docs/session_handoff.md`;
 (6) schedule the next iteration. Keep a running compat/speed baseline (Lorenz
-pass-rate + effective MHz) so each change is measured, not assumed. Standing
-backlog toward the goal (re-prioritize freely): bank-$00 speed (the CPU runs in
-SDRAM passthrough — `cpu_cache.vhd` is dead; a working cache/write-buffer is the
-big speed lever but historically caused black screens, so GHDL-prove first);
-WriteSmart register decode ($D074-$D077/$D0B3); SCPU library compatibility sweep;
-Lorenz must stay 100% in both t65 and scpu modes.
+pass-rate + effective MHz) so each change is measured, not assumed.
+
+**Speed frontier is CLOSED** (iter-30 2026-06-13, `docs/supercpu_feature_status.md`
+top-of-file correction + memory `project_speed_frontier_closed_compat_pivot.md`):
+every cheap memory-wall lever (cache/write-buffer, page-mode, demand arbiter,
+internal-cycle fast-fire, cpuDi-mux hoist, BCD-adder, Milestone B) is FALSIFIED
+or DROPPED; `cpu_cache.vhd`/`c64_ram64k.vhd` remain dead/uncompiled — do not
+re-attempt without new evidence. The one speed lever that DID ship is the
+bank-$00 BRAM fast-fire (`project_bank00_bram_lever_sized_go.md`, commit
+`48b6f3c`, native-only k=2 — architectural floor, not a starting point for
+further tuning). WriteSmart ($D074-$D077/$D0B3) is STUB-COMPLETE (register
+decode only, no functional mirroring) and explicitly deprioritized — its
+payoff was tied to the dead cache path; do not implement further.
+
+Standing backlog toward the goal is therefore **compat-only** (re-prioritize
+freely within it): SCPU library compatibility sweep (run real SCPU software
+on HW, triage failures — see `docs/supercpu_feature_status.md` "live
+frontier"); the open Wolf3D bank-$28 freeze
+(`project_wolf3d_postreu_bank28_freeze_regression.md`) and Dragon's Lair
+slow-settle (`project_dlair_v272_regression_far_slower_than_baseline.md`)
+regressions, both implicating the REU-to-SuperRAM transfer path and both
+currently blocked on HW access; Lorenz must stay 100% in both t65 and scpu
+modes at all times.
 
 ## Shared MiSTer cooperation
 The MiSTer at 192.168.50.130 is shared with another Claude agent working on
