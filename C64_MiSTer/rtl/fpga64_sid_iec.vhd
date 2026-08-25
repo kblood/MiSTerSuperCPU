@@ -251,6 +251,12 @@ port(
 	dbg_trace_op2        : out std_logic_vector(7 downto 0);
 	dbg_trace_op3        : out std_logic_vector(7 downto 0);
 	dbg_trace_frozen     : out std_logic;
+	-- 29th pass: 2 post-trigger ring slots, UART-only (see trace_pc4_r
+	-- declaration comment).
+	dbg_trace_pc4        : out std_logic_vector(23 downto 0);
+	dbg_trace_pc5        : out std_logic_vector(23 downto 0);
+	dbg_trace_op4        : out std_logic_vector(7 downto 0);
+	dbg_trace_op5        : out std_logic_vector(7 downto 0);
 	-- v254: 4-deep JSR ring (lower-16-bit PC of last JSR / JSL fetched).
 	-- Independent of trace_frozen. Reveals upstream callers of writer.
 	dbg_jsr_pc_t0        : out std_logic_vector(15 downto 0);
@@ -1033,6 +1039,20 @@ signal trace_op1_r : std_logic_vector(7 downto 0) := (others => '0');
 signal trace_op2_r : std_logic_vector(7 downto 0) := (others => '0');
 signal trace_op3_r : std_logic_vector(7 downto 0) := (others => '0');
 signal trace_frozen_r : std_logic := '0';
+-- 29th pass (Wolf3D bank-$28 freeze): 2 extra post-trigger ring slots.
+-- trace_pc3_r/trace_op3_r stay exactly as before -- the fetch that MET
+-- the freeze-trigger condition (unchanged capture logic below). Once
+-- the trigger has been seen, trig_seen_r gates a small counter that
+-- captures the NEXT 2 opcode fetches into pc4/pc5 (1 and 2 fetches
+-- past the landing PC) before trace_frozen_r finally latches. UART-
+-- only readout (debug_uart_pool_fmt.sv) -- overlay cell space is
+-- fully exhausted (see debug_overlay_format.sv row 12/14 comments).
+signal trig_seen_r      : std_logic := '0';
+signal post_trig_cnt_r  : unsigned(1 downto 0) := (others => '0');
+signal trace_pc4_r : std_logic_vector(23 downto 0) := (others => '0');
+signal trace_pc5_r : std_logic_vector(23 downto 0) := (others => '0');
+signal trace_op4_r : std_logic_vector(7 downto 0) := (others => '0');
+signal trace_op5_r : std_logic_vector(7 downto 0) := (others => '0');
 -- v254: JSR ring. Pushes cpu_pc_now (lower 16 bits) on opcode_fetch_pulse
 -- when cpuDi = $20 (JSR abs) or $22 (JSL abslong). Independent of trace
 -- freeze. Captures the upstream callers that JSR'd into the writer.
@@ -4294,6 +4314,12 @@ begin
 			trace_op2_r          <= (others => '0');
 			trace_op3_r          <= (others => '0');
 			trace_frozen_r       <= '0';
+			trig_seen_r          <= '0';
+			post_trig_cnt_r      <= (others => '0');
+			trace_pc4_r          <= (others => '0');
+			trace_pc5_r          <= (others => '0');
+			trace_op4_r          <= (others => '0');
+			trace_op5_r          <= (others => '0');
 			-- v250: skip first 32 STA $DF01 writes so trace ring captures
 			-- steady-state IRQ-handler call chain, not the loader's
 			-- one-shot setup writes.
@@ -5229,14 +5255,21 @@ begin
 				last_07b9_read_r <= std_logic_vector(cpu816_di_to_cpu);
 			end if;
 
-			-- 20th pass: freeze the v250 trace_pc/trace_op ring the first
-			-- time an OPCODE FETCH (not a data read) lands outside
-			-- loader.prg's own $0700-$07DB code footprint, once armed.
-			if trace_frozen_r = '0' and loader_armed_r = '1'
+			-- 20th pass: latch trig_seen_r the first time an OPCODE FETCH
+			-- (not a data read) lands outside loader.prg's own
+			-- $0700-$07DB code footprint, once armed. 29th pass: renamed
+			-- from directly setting trace_frozen_r -- the actual freeze
+			-- is now deferred 2 more opcode fetches (see the post-trigger
+			-- ring-shift block below) so trace_pc4/pc5 can capture what
+			-- happens right after the landing PC. trace_pc3_r/op3_r still
+			-- capture this exact triggering fetch unchanged, since this
+			-- block and the ring-shift block both read the OLD (pre-edge)
+			-- value of trig_seen_r/trace_frozen_r within the same cycle.
+			if trig_seen_r = '0' and loader_armed_r = '1'
 			   and opcode_fetch_pulse = '1'
 			   and cpu_pc_now(23 downto 16) = x"00"
 			   and unsigned(cpu_pc_now(15 downto 0)) > x"07DB" then
-				trace_frozen_r <= '1';
+				trig_seen_r <= '1';
 			end if;
 
 			-- v230: $D019 write count (VIC IRQ ack). cs_vic gated to
@@ -5423,19 +5456,36 @@ begin
 			-- not frozen. cpu_pc_now / opcode_fetch_pulse are concurrent.
 			-- v223: parallel opcode-byte ring captures cpuDi at the same
 			-- edge. {pcN, opN} are paired entries.
+			-- 29th pass: once trig_seen_r is set (from the SAME cycle
+			-- onward -- trig_seen_r reads as the OLD value here, so the
+			-- triggering fetch itself still falls into the pre-trigger
+			-- branch and lands in trace_pc3/op3 exactly as before), stop
+			-- shifting pc0..pc3 and instead capture the next 2 opcode
+			-- fetches into pc4/pc5, then finally latch trace_frozen_r.
 			if trace_frozen_r = '0' and opcode_fetch_pulse = '1' then
-				trace_pc0_r <= trace_pc1_r;
-				trace_pc1_r <= trace_pc2_r;
-				trace_pc2_r <= trace_pc3_r;
-				trace_pc3_r <= cpu_pc_now;
-				trace_op0_r <= trace_op1_r;
-				trace_op1_r <= trace_op2_r;
-				-- (continued below; trace_op2_r / trace_op3_r assignment kept
-				-- adjacent in original block; the v254 JSR ring is updated
-				-- BELOW, after this block, so it lives independent of the
-				-- trace_frozen gate.)
-				trace_op2_r <= trace_op3_r;
-				trace_op3_r <= std_logic_vector(cpuDi);
+				if trig_seen_r = '0' then
+					trace_pc0_r <= trace_pc1_r;
+					trace_pc1_r <= trace_pc2_r;
+					trace_pc2_r <= trace_pc3_r;
+					trace_pc3_r <= cpu_pc_now;
+					trace_op0_r <= trace_op1_r;
+					trace_op1_r <= trace_op2_r;
+					-- (continued below; trace_op2_r / trace_op3_r assignment kept
+					-- adjacent in original block; the v254 JSR ring is updated
+					-- BELOW, after this block, so it lives independent of the
+					-- trace_frozen gate.)
+					trace_op2_r <= trace_op3_r;
+					trace_op3_r <= std_logic_vector(cpuDi);
+				elsif post_trig_cnt_r = 0 then
+					trace_pc4_r     <= cpu_pc_now;
+					trace_op4_r     <= std_logic_vector(cpuDi);
+					post_trig_cnt_r <= to_unsigned(1, 2);
+				elsif post_trig_cnt_r = 1 then
+					trace_pc5_r     <= cpu_pc_now;
+					trace_op5_r     <= std_logic_vector(cpuDi);
+					post_trig_cnt_r <= to_unsigned(2, 2);
+					trace_frozen_r  <= '1';
+				end if;
 			end if;
 			-- v254: JSR ring. Always-live (NOT gated by trace_frozen_r), so
 			-- each screenshot captures the *most recent* 4 JSRs even after
@@ -6104,6 +6154,10 @@ dbg_trace_op1        <= trace_op1_r;
 dbg_trace_op2        <= trace_op2_r;
 dbg_trace_op3        <= trace_op3_r;
 dbg_trace_frozen     <= trace_frozen_r;
+dbg_trace_pc4        <= trace_pc4_r;
+dbg_trace_pc5        <= trace_pc5_r;
+dbg_trace_op4        <= trace_op4_r;
+dbg_trace_op5        <= trace_op5_r;
 -- v254: JSR ring outputs (lower 16 bits of last 4 JSR/JSL fetches)
 dbg_jsr_pc_t0        <= jsr_pc_t0_r;
 dbg_jsr_pc_t1        <= jsr_pc_t1_r;

@@ -1312,6 +1312,10 @@ wire  [7:0] scpu_dbg_trace_op1;
 wire  [7:0] scpu_dbg_trace_op2;
 wire  [7:0] scpu_dbg_trace_op3;
 wire        scpu_dbg_trace_frozen;
+wire [23:0] scpu_dbg_trace_pc4;
+wire [23:0] scpu_dbg_trace_pc5;
+wire  [7:0] scpu_dbg_trace_op4;
+wire  [7:0] scpu_dbg_trace_op5;
 // v254: JSR ring (lower-16-bit PCs of last 4 JSR/JSL fetches)
 wire [15:0] scpu_dbg_jsr_pc_t0;
 wire [15:0] scpu_dbg_jsr_pc_t1;
@@ -1654,6 +1658,10 @@ cap_vic_wr u_cap_vic_wr (
 	.in_trace_op2     (scpu_dbg_trace_op2),
 	.in_trace_op3     (scpu_dbg_trace_op3),
 	.in_trace_frozen  (scpu_dbg_trace_frozen),
+	.in_trace_pc4     (scpu_dbg_trace_pc4),
+	.in_trace_pc5     (scpu_dbg_trace_pc5),
+	.in_trace_op4     (scpu_dbg_trace_op4),
+	.in_trace_op5     (scpu_dbg_trace_op5),
 	.in_jsr_pc_t0     (scpu_dbg_jsr_pc_t0),
 	.in_jsr_pc_t1     (scpu_dbg_jsr_pc_t1),
 	.in_jsr_pc_t2     (scpu_dbg_jsr_pc_t2),
@@ -1696,6 +1704,10 @@ cap_vic_wr u_cap_vic_wr (
 	.o_trace_op2      (dbg_pool.trace_op2),
 	.o_trace_op3      (dbg_pool.trace_op3),
 	.o_trace_frozen   (dbg_pool.trace_frozen),
+	.o_trace_pc4      (dbg_pool.trace_pc4),
+	.o_trace_pc5      (dbg_pool.trace_pc5),
+	.o_trace_op4      (dbg_pool.trace_op4),
+	.o_trace_op5      (dbg_pool.trace_op5),
 	.o_jsr_pc_t0      (dbg_pool.jsr_pc_t0),
 	.o_jsr_pc_t1      (dbg_pool.jsr_pc_t1),
 	.o_jsr_pc_t2      (dbg_pool.jsr_pc_t2),
@@ -1740,6 +1752,10 @@ assign dbg_pool.trace_op1        = '0;
 assign dbg_pool.trace_op2        = '0;
 assign dbg_pool.trace_op3        = '0;
 assign dbg_pool.trace_frozen     = '0;
+assign dbg_pool.trace_pc4        = '0;
+assign dbg_pool.trace_pc5        = '0;
+assign dbg_pool.trace_op4        = '0;
+assign dbg_pool.trace_op5        = '0;
 assign dbg_pool.jsr_pc_t0        = '0;
 assign dbg_pool.jsr_pc_t1        = '0;
 assign dbg_pool.jsr_pc_t2        = '0;
@@ -2238,6 +2254,10 @@ fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64
 	.dbg_trace_op2        (scpu_dbg_trace_op2),
 	.dbg_trace_op3        (scpu_dbg_trace_op3),
 	.dbg_trace_frozen     (scpu_dbg_trace_frozen),
+	.dbg_trace_pc4        (scpu_dbg_trace_pc4),
+	.dbg_trace_pc5        (scpu_dbg_trace_pc5),
+	.dbg_trace_op4        (scpu_dbg_trace_op4),
+	.dbg_trace_op5        (scpu_dbg_trace_op5),
 	.dbg_jsr_pc_t0        (scpu_dbg_jsr_pc_t0),
 	.dbg_jsr_pc_t1        (scpu_dbg_jsr_pc_t1),
 	.dbg_jsr_pc_t2        (scpu_dbg_jsr_pc_t2),

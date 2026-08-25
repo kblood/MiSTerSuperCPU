@@ -153,6 +153,20 @@ typedef struct packed {
   logic  [7:0] trace_op3;
   logic        trace_frozen;
 
+  // 29th pass (Wolf3D bank-$28 freeze, 2026-08-25): 2 extra ring slots
+  // capturing the 2 opcode fetches AFTER trace_pc3 (the wild-jump
+  // landing PC). trace_pc3/op3 stay exactly as before (the trigger
+  // fetch itself, unchanged); pc4/op4 = 1st fetch past the landing,
+  // pc5/op5 = 2nd fetch past it. Answers whether execution at the
+  // landing address continues as ordinary code or misbehaves
+  // immediately. UART-only (no overlay display -- rows 0-15/cell_x
+  // 0-21 are fully packed, see debug_overlay_format.sv row 12/14
+  // comments), read via debug_uart_pool_fmt.sv.
+  logic [23:0] trace_pc4;
+  logic [23:0] trace_pc5;
+  logic  [7:0] trace_op4;
+  logic  [7:0] trace_op5;
+
   // v254: 4-deep JSR ring. Lower 16 bits of the PC of the last 4 JSR
   // ($20) or JSL ($22) opcode fetches. Independent of trace_frozen.
   // Each captured screenshot reveals the most recent 4 callers — the

@@ -2,6 +2,7 @@
 
 | Built (UTC)        | Branch              | SHA        | MD5 (short) | Subject                                    | Dirty |
 |--------------------|---------------------|------------|-------------|--------------------------------------------|-------|
+| 20260825 115933 | milestone-b-cdc-rew | effeb35e6b | 297ad0e1    | chore(builds): archive build 54c56e9 (Wolf | yes   |
 | 20260825 070708 | milestone-b-cdc-rew | 54c56e9467 | f37d560d    | debug(scpu): display bank nibble of trace- | yes   |
 | 20260824 220551 | milestone-b-cdc-rew | 6ad4329543 | 9706e1fb    | debug(scpu): capture last-read $07B9 skip- | yes   |
 | 20260824 190826 | milestone-b-cdc-rew | 766ea80a5b | 7122dadd    | debug(scpu): capture loader.prg's JML($04F | yes   |

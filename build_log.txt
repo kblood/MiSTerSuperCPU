@@ -43,34 +43,45 @@ Info: Running Quartus Prime Shell
     Info: devices manufactured by Intel and sold by Intel or its 
     Info: authorized distributors.  Please refer to the applicable 
     Info: agreement for further details.
-    Info: Processing started: Tue Aug 25 08:50:23 2026
+    Info: Processing started: Tue Aug 25 13:44:26 2026
 Info: Command: quartus_sh --flow compile C64 -c C64
 Info: Quartus(args): compile C64 -c C64
 Info: Project Name = /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/C64
 Info: Revision Name = C64
 Info (293032): Detected changes in source files.
-    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_overlay_format.sv has changed.
+    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd has changed.
+    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/capture/cap_vic_wr.sv has changed.
+    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv has changed.
+    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv has changed.
+    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_pkg.svh has changed.
 Info (293032): Detected changes in source files.
-    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_overlay_format.sv has changed.
+    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd has changed.
+    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/capture/cap_vic_wr.sv has changed.
+    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv has changed.
+    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv has changed.
+    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_pkg.svh has changed.
 Info (293032): Detected changes in source files.
-    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_overlay_format.sv has changed.
+    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd has changed.
+    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/capture/cap_vic_wr.sv has changed.
+    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv has changed.
+    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv has changed.
+    Info (293027): Source file: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_pkg.svh has changed.
 Info: *******************************************************************
 Info: Running Quartus Prime Shell
     Info: Version 17.0.2 Build 602 07/19/2017 SJ Lite Edition
-    Info: Processing started: Tue Aug 25 08:50:38 2026
+    Info: Processing started: Tue Aug 25 13:44:42 2026
 Info: Command: quartus_sh -t sys/build_id.tcl compile C64 C64
 Info: Quartus(args): compile C64 C64
-Info: Generated: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/build_id.v: `define BUILD_DATE "260825"
 Info (23030): Evaluation of Tcl script sys/build_id.tcl was successful
 Info: Quartus Prime Shell was successful. 0 errors, 0 warnings
-    Info: Peak virtual memory: 767 megabytes
-    Info: Processing ended: Tue Aug 25 08:50:40 2026
+    Info: Peak virtual memory: 780 megabytes
+    Info: Processing ended: Tue Aug 25 13:44:44 2026
     Info: Elapsed time: 00:00:02
     Info: Total CPU time (on all processors): 00:00:01
 Info: *******************************************************************
 Info: Running Quartus Prime Analysis & Synthesis
     Info: Version 17.0.2 Build 602 07/19/2017 SJ Lite Edition
-    Info: Processing started: Tue Aug 25 08:50:42 2026
+    Info: Processing started: Tue Aug 25 13:44:47 2026
 Info: Command: quartus_map --read_settings_files=on --write_settings_files=off C64 -c C64
 Info (16303): High Performance Effort optimization mode selected -- timing performance will be prioritized at the potential cost of increased compilation time
 Info (20032): Parallel compilation is enabled and will use up to 4 processors
@@ -339,7 +350,7 @@ Info (12021): Found 2 design units, including 1 entities, in source file rtl/fpg
     Info (12022): Found design unit 1: fpga64_buslogic-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 110
     Info (12023): Found entity 1: fpga64_buslogic File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 25
 Info (12021): Found 2 design units, including 1 entities, in source file rtl/fpga64_sid_iec.vhd
-    Info (12022): Found design unit 1: fpga64_sid_iec-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 781
+    Info (12022): Found design unit 1: fpga64_sid_iec-rtl File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 787
     Info (12023): Found entity 1: fpga64_sid_iec File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 43
 Info (12021): Found 1 design units, including 1 entities, in source file rtl/debug/capture/cap_reu.sv
     Info (12023): Found entity 1: cap_reu File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/capture/cap_reu.sv Line: 10
@@ -1025,46 +1036,46 @@ Info (10264): Verilog HDL Case Statement information at am29f040.sv(165): all ca
 Info (12128): Elaborating entity "reu" for hierarchy "emu:emu|reu:reu" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 724
 Warning (10230): Verilog HDL assignment warning at reu.v(136): truncated value with size 32 to match size of target (2) File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/reu.v Line: 136
 Info (12128): Elaborating entity "sdram_pm" for hierarchy "emu:emu|sdram_pm:sdram" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1210
-Info (12128): Elaborating entity "cap_reu" for hierarchy "emu:emu|cap_reu:u_cap_reu" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1615
-Info (12128): Elaborating entity "cap_vic_wr" for hierarchy "emu:emu|cap_vic_wr:u_cap_vic_wr" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1712
-Info (12128): Elaborating entity "cap_cpu_state" for hierarchy "emu:emu|cap_cpu_state:u_cap_cpu_state" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1773
-Info (12128): Elaborating entity "cap_frame" for hierarchy "emu:emu|cap_frame:u_cap_frame" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2075
-Info (12128): Elaborating entity "fpga64_sid_iec" for hierarchy "emu:emu|fpga64_sid_iec:fpga64" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2513
-Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(899): object "sdram_pred_bank" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 899
-Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(900): object "sdram_pred_row" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 900
-Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(901): object "sdram_pred_valid" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 901
-Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(964): object "cpu816_dbg_is_slow" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 964
-Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1328): object "first_w6c03_latched_r" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1328
-Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1335): object "wr90_F7_pc_r" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1335
-Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1411): object "cpu_x_now" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1411
-Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1412): object "cpu_y_now" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1412
-Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1418): object "vec_lo_grab_d" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1418
-Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1430): object "trigger_skip_r" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1430
-Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1555): object "scpu_nmi_vec_lo" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1555
-Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1556): object "scpu_nmi_vec_hi" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1556
-Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1651): object "cobs_di" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1651
-Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1767): used explicit default value for signal "rp_cache_hit" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1767
-Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1768): object "rp_cacheable" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1768
-Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1774): used explicit default value for signal "rp_same_line" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1774
-Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1788): used explicit default value for signal "rp_cache_di_d1" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1788
-Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1789): used explicit default value for signal "rp_cache_hit_d1" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1789
-Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1801): used explicit default value for signal "diag_mm_count" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1801
-Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1802): used explicit default value for signal "diag_mm_addr" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1802
-Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1803): used explicit default value for signal "diag_mm_bank" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1803
-Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1804): used explicit default value for signal "diag_mm_cache" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1804
-Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1805): used explicit default value for signal "diag_mm_sdram" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1805
-Warning (10445): VHDL Subtype or Type Declaration warning at fpga64_sid_iec.vhd(5686): subtype or type has null range File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 5686
-Info (12128): Elaborating entity "spram" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|spram:colorram" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 2263
-Info (12128): Elaborating entity "fpga64_buslogic" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 2279
+Info (12128): Elaborating entity "cap_reu" for hierarchy "emu:emu|cap_reu:u_cap_reu" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1619
+Info (12128): Elaborating entity "cap_vic_wr" for hierarchy "emu:emu|cap_vic_wr:u_cap_vic_wr" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1724
+Info (12128): Elaborating entity "cap_cpu_state" for hierarchy "emu:emu|cap_cpu_state:u_cap_cpu_state" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 1789
+Info (12128): Elaborating entity "cap_frame" for hierarchy "emu:emu|cap_frame:u_cap_frame" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2091
+Info (12128): Elaborating entity "fpga64_sid_iec" for hierarchy "emu:emu|fpga64_sid_iec:fpga64" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2533
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(905): object "sdram_pred_bank" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 905
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(906): object "sdram_pred_row" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 906
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(907): object "sdram_pred_valid" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 907
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(970): object "cpu816_dbg_is_slow" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 970
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1348): object "first_w6c03_latched_r" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1348
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1355): object "wr90_F7_pc_r" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1355
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1431): object "cpu_x_now" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1431
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1432): object "cpu_y_now" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1432
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1438): object "vec_lo_grab_d" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1438
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1450): object "trigger_skip_r" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1450
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1575): object "scpu_nmi_vec_lo" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1575
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1576): object "scpu_nmi_vec_hi" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1576
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1671): object "cobs_di" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1671
+Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1787): used explicit default value for signal "rp_cache_hit" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1787
+Warning (10036): Verilog HDL or VHDL warning at fpga64_sid_iec.vhd(1788): object "rp_cacheable" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1788
+Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1794): used explicit default value for signal "rp_same_line" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1794
+Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1808): used explicit default value for signal "rp_cache_di_d1" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1808
+Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1809): used explicit default value for signal "rp_cache_hit_d1" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1809
+Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1821): used explicit default value for signal "diag_mm_count" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1821
+Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1822): used explicit default value for signal "diag_mm_addr" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1822
+Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1823): used explicit default value for signal "diag_mm_bank" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1823
+Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1824): used explicit default value for signal "diag_mm_cache" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1824
+Warning (10540): VHDL Signal Declaration warning at fpga64_sid_iec.vhd(1825): used explicit default value for signal "diag_mm_sdram" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 1825
+Warning (10445): VHDL Subtype or Type Declaration warning at fpga64_sid_iec.vhd(5736): subtype or type has null range File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 5736
+Info (12128): Elaborating entity "spram" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|spram:colorram" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 2283
+Info (12128): Elaborating entity "fpga64_buslogic" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 2299
 Warning (10036): Verilog HDL or VHDL warning at fpga64_buslogic.vhd(150): object "scpu_rom_en" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 150
 Warning (10036): Verilog HDL or VHDL warning at fpga64_buslogic.vhd(151): object "scpu_sysram_cs" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 151
 Warning (10036): Verilog HDL or VHDL warning at fpga64_buslogic.vhd(152): object "scpu_sysram_data" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 152
 Info (12128): Elaborating entity "dprom" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:chargen" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 157
 Info (12128): Elaborating entity "dprom" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:kernel_c64" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 170
 Info (12128): Elaborating entity "dprom" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:scpu_rom" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_buslogic.vhd Line: 201
-Info (12128): Elaborating entity "video_vicii_656x" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|video_vicii_656x:vic" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 3152
-Info (12128): Elaborating entity "fpga64_rgbcolor" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_rgbcolor:c64colors" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 3208
-Info (12128): Elaborating entity "sid_top" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 3295
+Info (12128): Elaborating entity "video_vicii_656x" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|video_vicii_656x:vic" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 3172
+Info (12128): Elaborating entity "fpga64_rgbcolor" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_rgbcolor:c64colors" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 3228
+Info (12128): Elaborating entity "sid_top" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 3315
 Info (12128): Elaborating entity "sid_voice" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_voice:chip[0].v1" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_top.sv Line: 111
 Info (10264): Verilog HDL Case Statement information at sid_voice.sv(139): all case item expressions in this case statement are onehot File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_voice.sv Line: 139
 Info (12128): Elaborating entity "sid_envelope" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_voice:chip[0].v1|sid_envelope:adsr" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_voice.sv Line: 61
@@ -1073,12 +1084,12 @@ Info (12128): Elaborating entity "sid_dac" for hierarchy "emu:emu|fpga64_sid_iec
 Info (12128): Elaborating entity "sid_tables" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_tables:sid_tables" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_top.sv Line: 247
 Info (12128): Elaborating entity "sid_dac" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_tables:sid_tables|sid_dac:fc_dac" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_tables.sv Line: 765
 Info (12128): Elaborating entity "sid_filter" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_filter:sid_filter" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/sid/sid_top.sv Line: 301
-Info (12128): Elaborating entity "mos6526" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|mos6526:cia1" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 3340
-Info (12128): Elaborating entity "cpu_6510" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_6510:cpu_6510_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 3542
+Info (12128): Elaborating entity "mos6526" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|mos6526:cia1" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 3360
+Info (12128): Elaborating entity "cpu_6510" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_6510:cpu_6510_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 3562
 Info (12128): Elaborating entity "T65" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_6510:cpu_6510_inst|T65:cpu" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/cpu_6510.vhd Line: 67
 Info (12128): Elaborating entity "T65_MCode" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_6510:cpu_6510_inst|T65:cpu|T65_MCode:mcode" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/t65/T65.vhd Line: 277
 Info (12128): Elaborating entity "T65_ALU" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_6510:cpu_6510_inst|T65:cpu|T65_ALU:alu" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/t65/T65.vhd Line: 314
-Info (12128): Elaborating entity "cpu_65c816" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 3563
+Info (12128): Elaborating entity "cpu_65c816" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 3583
 Info (12128): Elaborating entity "P65C816" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|P65C816:cpu" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/cpu_65c816.vhd Line: 98
 Warning (10036): Verilog HDL or VHDL warning at P65C816.vhd(50): object "oldXF" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/P65C816.vhd Line: 50
 Info (12128): Elaborating entity "MCode" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|P65C816:cpu|MCode:MCode" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/P65C816.vhd Line: 197
@@ -1088,20 +1099,20 @@ Info (12128): Elaborating entity "AddSubBCD" for hierarchy "emu:emu|fpga64_sid_i
 Info (12128): Elaborating entity "BCDAdder" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|P65C816:cpu|ALU:ALU|AddSubBCD:AddSub|BCDAdder:add0" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/AddSubBCD.vhd Line: 28
 Info (12128): Elaborating entity "adder4" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|P65C816:cpu|ALU:ALU|AddSubBCD:AddSub|BCDAdder:add0|adder4:bin_adder" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/BCDAdder.vhd Line: 108
 Info (12128): Elaborating entity "bit_adder" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|P65C816:cpu|ALU:ALU|AddSubBCD:AddSub|BCDAdder:add0|adder4:bin_adder|bit_adder:b_add0" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/65C816/BCDAdder.vhd Line: 67
-Info (12128): Elaborating entity "scpu_async_bridge" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|scpu_async_bridge:scpu_async_bridge_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 3624
+Info (12128): Elaborating entity "scpu_async_bridge" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|scpu_async_bridge:scpu_async_bridge_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 3644
 Warning (11000): VHDL warning at scpu_async_bridge.vhd(366): can't infer memory for variable 'cache_data' with attribute '"MLAB, no_rw_check"'. File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/scpu_async_bridge.vhd Line: 366
 Warning (10540): VHDL Signal Declaration warning at scpu_async_bridge.vhd(369): used explicit default value for signal "cache_dout" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/scpu_async_bridge.vhd Line: 369
 Warning (10540): VHDL Signal Declaration warning at scpu_async_bridge.vhd(370): used explicit default value for signal "cache_valid_dout" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/scpu_async_bridge.vhd Line: 370
 Warning (10540): VHDL Signal Declaration warning at scpu_async_bridge.vhd(372): used explicit default value for signal "flush_active" because signal was never assigned a value File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/scpu_async_bridge.vhd Line: 372
 Warning (10036): Verilog HDL or VHDL warning at scpu_async_bridge.vhd(379): object "access_pulse" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/scpu_async_bridge.vhd Line: 379
-Info (12128): Elaborating entity "fpga64_keyboard" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_keyboard:Keyboard" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 4234
-Info (12128): Elaborating entity "cpu_cache" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_cache:cache_observer" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 5592
+Info (12128): Elaborating entity "fpga64_keyboard" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|fpga64_keyboard:Keyboard" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 4254
+Info (12128): Elaborating entity "cpu_cache" for hierarchy "emu:emu|fpga64_sid_iec:fpga64|cpu_cache:cache_observer" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/fpga64_sid_iec.vhd Line: 5642
 Warning (11000): VHDL warning at cpu_cache.vhd(91): can't infer memory for variable 'tag_mem' with attribute '"MLAB, no_rw_check"'. File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/cpu_cache.vhd Line: 91
 Warning (10036): Verilog HDL or VHDL warning at cpu_cache.vhd(126): object "wb_full_i" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/cpu_cache.vhd Line: 126
 Warning (10036): Verilog HDL or VHDL warning at cpu_cache.vhd(160): object "cpu_wr_addr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/cpu_cache.vhd Line: 160
 Warning (10036): Verilog HDL or VHDL warning at cpu_cache.vhd(164): object "cpu_wr_tag" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/cpu_cache.vhd Line: 164
-Info (12128): Elaborating entity "c1351" for hierarchy "emu:emu|c1351:mouse" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2529
-Info (12128): Elaborating entity "iec_drive" for hierarchy "emu:emu|iec_drive:iec_drive" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2609
+Info (12128): Elaborating entity "c1351" for hierarchy "emu:emu|c1351:mouse" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2549
+Info (12128): Elaborating entity "iec_drive" for hierarchy "emu:emu|iec_drive:iec_drive" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2629
 Info (12128): Elaborating entity "c1541_multi" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/iec_drive.sv Line: 135
 Info (12128): Elaborating entity "iecdrv_sync" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|iecdrv_sync:atn_sync" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_multi.sv Line: 65
 Info (12128): Elaborating entity "iecdrv_sync" for hierarchy "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|iecdrv_sync:rst_sync" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/c1541_multi.sv Line: 70
@@ -1132,13 +1143,13 @@ Info (10264): Verilog HDL Case Statement information at fdc1772.v(572): all case
 Info (10264): Verilog HDL Case Statement information at fdc1772.v(610): all case item expressions in this case statement are onehot File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 610
 Info (12128): Elaborating entity "floppy" for hierarchy "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc|floppy:fdd[0].floppy" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 289
 Info (12128): Elaborating entity "fdc1772_dpram" for hierarchy "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc|fdc1772_dpram:fifo" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 742
-Info (12128): Elaborating entity "video_sync" for hierarchy "emu:emu|video_sync:sync" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2678
-Info (12128): Elaborating entity "video_freak" for hierarchy "emu:emu|video_freak:video_freak" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2763
+Info (12128): Elaborating entity "video_sync" for hierarchy "emu:emu|video_sync:sync" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2698
+Info (12128): Elaborating entity "video_freak" for hierarchy "emu:emu|video_freak:video_freak" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2783
 Info (12128): Elaborating entity "video_scale_int" for hierarchy "emu:emu|video_freak:video_freak|video_scale_int:scale" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_freak.sv Line: 136
-Info (12128): Elaborating entity "debug_overlay_renderer" for hierarchy "emu:emu|debug_overlay_renderer:u_dbg_overlay" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2803
+Info (12128): Elaborating entity "debug_overlay_renderer" for hierarchy "emu:emu|debug_overlay_renderer:u_dbg_overlay" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2823
 Info (12128): Elaborating entity "debug_overlay_format" for hierarchy "emu:emu|debug_overlay_renderer:u_dbg_overlay|debug_overlay_format:u_fmt" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_overlay_renderer.sv Line: 138
 Info (12128): Elaborating entity "debug_font_4x6" for hierarchy "emu:emu|debug_overlay_renderer:u_dbg_overlay|debug_font_4x6:u_font" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_overlay_renderer.sv Line: 144
-Info (12128): Elaborating entity "debug_uart_pool_fmt" for hierarchy "emu:emu|debug_uart_pool_fmt:u_dbg_uart_fmt" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2835
+Info (12128): Elaborating entity "debug_uart_pool_fmt" for hierarchy "emu:emu|debug_uart_pool_fmt:u_dbg_uart_fmt" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2855
 Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(68): object "lat_frame" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 68
 Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(69): object "lat_pc" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 69
 Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(70): object "lat_p" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 70
@@ -1152,88 +1163,92 @@ Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(73): obje
 Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(74): object "lat_wp" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 74
 Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(75): object "lat_cg" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 75
 Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(82): object "lat_w1" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 82
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(83): object "lat_cy" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 83
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(84): object "lat_jsr0" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 84
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(84): object "lat_jsr1" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 84
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(84): object "lat_jsr2" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 84
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(84): object "lat_jsr3" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 84
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(85): object "lat_jmp0" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 85
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(85): object "lat_jmp1" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 85
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(85): object "lat_jmp2" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 85
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(85): object "lat_jmp3" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 85
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(86): object "lat_m40" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 86
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(86): object "lat_m44" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 86
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(86): object "lat_m5c" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 86
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(87): object "lat_pc_main" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 87
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(87): object "lat_pc_irq" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 87
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(88): object "lat_m45" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 88
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(89): object "lat_c30" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 89
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(89): object "lat_c97" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 89
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(91): object "lat_d000" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 91
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(91): object "lat_d001" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 91
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(91): object "lat_d002" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 91
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(91): object "lat_d003" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 91
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(92): object "lat_w5c0" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 92
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(92): object "lat_w5c1" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 92
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(92): object "lat_w5c2" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 92
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(92): object "lat_w5c3" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 92
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(93): object "lat_w5cN" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 93
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(95): object "lat_irq_fall" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 95
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(96): object "lat_irq_vec" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 96
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(98): object "lat_rd07addr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 98
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(99): object "lat_rd07data" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 99
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(100): object "lat_d019_rd" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 100
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(101): object "lat_d019_seen" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 101
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(103): object "lat_d012_wc" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 103
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(104): object "lat_d012_rr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 104
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(105): object "lat_d012_dv" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 105
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(107): object "lat_irq_rise_combined" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 107
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(108): object "lat_irq_rise_vic" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 108
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(112): object "lat_vic_d019_wr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 112
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(113): object "lat_vic_resetraster" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 113
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(117): object "lat_dc0d_rd" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 117
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(118): object "lat_d019_wr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 118
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(120): object "lat_irq_cia1_fall" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 120
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(122): object "lat_cia1_imr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 122
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(123): object "lat_cia1_cra" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 123
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(124): object "lat_cia2_imr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 124
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(125): object "lat_cia2_cra" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 125
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(126): object "lat_cia2_pra" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 126
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(127): object "lat_cia2_prb" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 127
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(128): object "lat_cia2_ddra" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 128
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(129): object "lat_cia2_ddrb" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 129
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(133): object "lat_bridge_fsm_state" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 133
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(134): object "lat_bridge_last_bus_di" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 134
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(135): object "lat_bridge_req_count" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 135
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(136): object "lat_bridge_ack_count" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 136
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(137): object "lat_bridge_vec_fetch_count" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 137
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(139): object "lat_bridge_wait_dwell_max" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 139
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(140): object "lat_bridge_activity_flags" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 140
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(141): object "lat_bridge_gap_max" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 141
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(142): object "lat_iec_lines" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 142
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(144): object "lat_cia1_timer_a" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 144
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(145): object "lat_cia1_timer_a_latch" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 145
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(146): object "lat_cia1_icr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 146
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(148): object "lat_brk_vec_lo" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 148
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(149): object "lat_brk_vec_hi" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 149
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(151): object "lat_d019_pc" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 151
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(152): object "lat_d019_val" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 152
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(153): object "lat_d019_seen_w" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 153
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(155): object "lat_d019_ack_count" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 155
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(156): object "lat_d019_ack_pc" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 156
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(162): object "lat_d011v" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 162
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(163): object "lat_d018v" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 163
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(164): object "lat_dd00v" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 164
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(171): object "lat_m1d02" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 171
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(172): object "lat_m1d04" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 172
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(173): object "lat_d016v" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 173
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(175): object "lat_vic_di_or" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 175
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(179): object "lat_bm1_writes" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 179
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(180): object "lat_bm3_writes" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 180
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(184): object "lat_cache_hr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 184
-Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(185): object "lat_cache_hw" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 185
-Info (12128): Elaborating entity "debug_uart_tx" for hierarchy "emu:emu|debug_uart_tx:u_dbg_uart_tx" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2845
-Info (12128): Elaborating entity "video_mixer" for hierarchy "emu:emu|video_mixer:video_mixer" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2880
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(86): object "lat_tr_pc4" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 86
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(86): object "lat_tr_pc5" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 86
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(87): object "lat_tr_op4" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 87
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(87): object "lat_tr_op5" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 87
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(88): object "lat_cy" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 88
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(89): object "lat_jsr0" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 89
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(89): object "lat_jsr1" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 89
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(89): object "lat_jsr2" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 89
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(89): object "lat_jsr3" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 89
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(90): object "lat_jmp0" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 90
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(90): object "lat_jmp1" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 90
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(90): object "lat_jmp2" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 90
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(90): object "lat_jmp3" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 90
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(91): object "lat_m40" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 91
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(91): object "lat_m44" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 91
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(91): object "lat_m5c" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 91
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(92): object "lat_pc_main" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 92
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(92): object "lat_pc_irq" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 92
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(93): object "lat_m45" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 93
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(94): object "lat_c30" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 94
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(94): object "lat_c97" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 94
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(96): object "lat_d000" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 96
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(96): object "lat_d001" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 96
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(96): object "lat_d002" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 96
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(96): object "lat_d003" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 96
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(97): object "lat_w5c0" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 97
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(97): object "lat_w5c1" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 97
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(97): object "lat_w5c2" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 97
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(97): object "lat_w5c3" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 97
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(98): object "lat_w5cN" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 98
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(100): object "lat_irq_fall" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 100
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(101): object "lat_irq_vec" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 101
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(103): object "lat_rd07addr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 103
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(104): object "lat_rd07data" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 104
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(105): object "lat_d019_rd" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 105
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(106): object "lat_d019_seen" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 106
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(108): object "lat_d012_wc" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 108
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(109): object "lat_d012_rr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 109
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(110): object "lat_d012_dv" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 110
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(112): object "lat_irq_rise_combined" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 112
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(113): object "lat_irq_rise_vic" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 113
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(117): object "lat_vic_d019_wr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 117
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(118): object "lat_vic_resetraster" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 118
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(122): object "lat_dc0d_rd" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 122
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(123): object "lat_d019_wr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 123
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(125): object "lat_irq_cia1_fall" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 125
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(127): object "lat_cia1_imr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 127
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(128): object "lat_cia1_cra" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 128
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(129): object "lat_cia2_imr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 129
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(130): object "lat_cia2_cra" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 130
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(131): object "lat_cia2_pra" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 131
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(132): object "lat_cia2_prb" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 132
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(133): object "lat_cia2_ddra" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 133
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(134): object "lat_cia2_ddrb" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 134
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(138): object "lat_bridge_fsm_state" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 138
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(139): object "lat_bridge_last_bus_di" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 139
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(140): object "lat_bridge_req_count" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 140
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(141): object "lat_bridge_ack_count" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 141
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(142): object "lat_bridge_vec_fetch_count" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 142
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(144): object "lat_bridge_wait_dwell_max" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 144
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(145): object "lat_bridge_activity_flags" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 145
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(146): object "lat_bridge_gap_max" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 146
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(147): object "lat_iec_lines" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 147
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(149): object "lat_cia1_timer_a" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 149
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(150): object "lat_cia1_timer_a_latch" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 150
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(151): object "lat_cia1_icr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 151
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(153): object "lat_brk_vec_lo" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 153
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(154): object "lat_brk_vec_hi" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 154
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(156): object "lat_d019_pc" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 156
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(157): object "lat_d019_val" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 157
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(158): object "lat_d019_seen_w" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 158
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(160): object "lat_d019_ack_count" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 160
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(161): object "lat_d019_ack_pc" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 161
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(167): object "lat_d011v" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 167
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(168): object "lat_d018v" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 168
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(169): object "lat_dd00v" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 169
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(176): object "lat_m1d02" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 176
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(177): object "lat_m1d04" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 177
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(178): object "lat_d016v" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 178
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(180): object "lat_vic_di_or" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 180
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(184): object "lat_bm1_writes" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 184
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(185): object "lat_bm3_writes" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 185
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(189): object "lat_cache_hr" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 189
+Warning (10036): Verilog HDL or VHDL warning at debug_uart_pool_fmt.sv(190): object "lat_cache_hw" assigned a value but never read File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/debug/debug_uart_pool_fmt.sv Line: 190
+Info (12128): Elaborating entity "debug_uart_tx" for hierarchy "emu:emu|debug_uart_tx:u_dbg_uart_tx" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2865
+Info (12128): Elaborating entity "video_mixer" for hierarchy "emu:emu|video_mixer:video_mixer" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2900
 Info (12128): Elaborating entity "video_freezer" for hierarchy "emu:emu|video_mixer:video_mixer|video_freezer:freezer" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_mixer.sv Line: 81
 Info (12128): Elaborating entity "sync_lock" for hierarchy "emu:emu|video_mixer:video_mixer|video_freezer:freezer|sync_lock:vs_lock" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_freezer.sv Line: 47
 Info (12128): Elaborating entity "sync_lock" for hierarchy "emu:emu|video_mixer:video_mixer|video_freezer:freezer|sync_lock:hs_lock" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/video_freezer.sv Line: 59
@@ -1245,7 +1260,7 @@ Info (12128): Elaborating entity "Blend" for hierarchy "emu:emu|video_mixer:vide
 Info (12128): Elaborating entity "hq2x_in" for hierarchy "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_in:hq2x_in" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hq2x.sv Line: 115
 Info (12128): Elaborating entity "hq2x_buf" for hierarchy "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_in:hq2x_in|hq2x_buf:buf0" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hq2x.sv Line: 245
 Info (12128): Elaborating entity "hq2x_buf" for hierarchy "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_buf:hq2x_out" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/hq2x.sv Line: 136
-Info (12128): Elaborating entity "opl3" for hierarchy "emu:emu|opl3:opl_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2897
+Info (12128): Elaborating entity "opl3" for hierarchy "emu:emu|opl3:opl_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 2917
 Info (12128): Elaborating entity "timer" for hierarchy "emu:emu|opl3:opl_inst|timer:timer1" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3.sv Line: 83
 Info (12128): Elaborating entity "opl3sw" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3.sv Line: 146
 Info (12128): Elaborating entity "opl3_mem" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_mem:ram" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/opl3fm.sv Line: 81
@@ -1310,7 +1325,7 @@ Info (12128): Elaborating entity "RegSelect" for hierarchy "emu:emu|opl3:opl_ins
 Info (12128): Elaborating entity "ALU8" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|NextZ80:Z80|ALU8:CPU_ALU8" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/NextZ80CPU.v Line: 159
 Info (12128): Elaborating entity "daa" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|NextZ80:Z80|ALU8:CPU_ALU8|daa:daa_adjust" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/NextZ80ALU.v Line: 100
 Info (12128): Elaborating entity "ALU16" for hierarchy "emu:emu|opl3:opl_inst|opl3sw:opl3|NextZ80:Z80|ALU16:CPU_ALU16" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/opl3/NextZ80CPU.v Line: 166
-Info (12128): Elaborating entity "c1530" for hierarchy "emu:emu|c1530:c1530" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 3057
+Info (12128): Elaborating entity "c1530" for hierarchy "emu:emu|c1530:c1530" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 3077
 Info (12128): Elaborating entity "tap_fifo" for hierarchy "emu:emu|c1530:c1530|tap_fifo:tap_fifo_inst" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/c1530.vhd Line: 76
 Info (12128): Elaborating entity "scfifo" for hierarchy "emu:emu|c1530:c1530|tap_fifo:tap_fifo_inst|scfifo:scfifo_component" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/c1530.vhd Line: 321
 Info (12130): Elaborated megafunction instantiation "emu:emu|c1530:c1530|tap_fifo:tap_fifo_inst|scfifo:scfifo_component" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/c1530.vhd Line: 321
@@ -1343,9 +1358,9 @@ Info (12128): Elaborating entity "altsyncram_2os1" for hierarchy "emu:emu|c1530:
 Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_jgb.tdf
     Info (12023): Found entity 1: cntr_jgb File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cntr_jgb.tdf Line: 26
 Info (12128): Elaborating entity "cntr_jgb" for hierarchy "emu:emu|c1530:c1530|tap_fifo:tap_fifo_inst|scfifo:scfifo_component|scfifo_pl91:auto_generated|a_dpfifo_0s91:dpfifo|cntr_jgb:rd_ptr_count" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/a_dpfifo_0s91.tdf Line: 44
-Info (12128): Elaborating entity "ltc2308_tape" for hierarchy "emu:emu|ltc2308_tape:ltc2308_tape" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 3083
+Info (12128): Elaborating entity "ltc2308_tape" for hierarchy "emu:emu|ltc2308_tape:ltc2308_tape" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 3103
 Info (12128): Elaborating entity "ltc2308" for hierarchy "emu:emu|ltc2308_tape:ltc2308_tape|ltc2308:adc" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/ltc2308.sv Line: 125
-Info (12128): Elaborating entity "rtcF83" for hierarchy "emu:emu|rtcF83:rtcF83" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 3171
+Info (12128): Elaborating entity "rtcF83" for hierarchy "emu:emu|rtcF83:rtcF83" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/c64.sv Line: 3191
 Warning (14284): Synthesized away the following node(s):
     Warning (14285): Synthesized away the following LCELL buffer node(s):
         Warning (14320): Synthesized away node "emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|cntsel_temp[4]" File: /home/caldor/intelFPGA_lite/17.0/quartus/libraries/megafunctions/altera_pll.v Line: 425
@@ -1982,28 +1997,6 @@ Info (19000): Inferred 46 megafunctions from design logic
         Info (286033): Parameter TAP_DISTANCE set to 3
         Info (286033): Parameter WIDTH set to 31
         Info (286033): Parameter POWER_UP_STATE set to DONT_CARE
-Info (12130): Elaborated megafunction instantiation "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[1].c1581_drv|fdc1772:fdc|fdc1772_dpram:fifo|altsyncram:ram_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[1].c1581_drv|fdc1772:fdc|fdc1772_dpram:fifo|altsyncram:ram_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "BIDIR_DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "8"
-    Info (12134): Parameter "WIDTH_B" = "8"
-    Info (12134): Parameter "WIDTHAD_A" = "10"
-    Info (12134): Parameter "WIDTHAD_B" = "10"
-    Info (12134): Parameter "NUMWORDS_A" = "1024"
-    Info (12134): Parameter "NUMWORDS_B" = "1024"
-    Info (12134): Parameter "OUTDATA_REG_A" = "UNREGISTERED"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
-    Info (12134): Parameter "INDATA_REG_B" = "CLOCK0"
-    Info (12134): Parameter "WRCONTROL_WRADDRESS_REG_B" = "CLOCK0"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_if12.tdf
-    Info (12023): Found entity 1: altsyncram_if12 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_if12.tdf Line: 28
 Info (12130): Elaborated megafunction instantiation "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[1].c1581_drv|iecdrv_mem:ram|altsyncram:ram_rtl_0"
 Info (12133): Instantiated megafunction "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[1].c1581_drv|iecdrv_mem:ram|altsyncram:ram_rtl_0" with the following parameter:
     Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
@@ -2078,20 +2071,6 @@ Info (12021): Found 1 design units, including 1 entities, in source file db/deco
     Info (12023): Found entity 1: decode_61a File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/decode_61a.tdf Line: 23
 Info (12021): Found 1 design units, including 1 entities, in source file db/mux_tfb.tdf
     Info (12023): Found entity 1: mux_tfb File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/mux_tfb.tdf Line: 23
-Info (12130): Elaborated megafunction instantiation "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:chargen|altsyncram:ram_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:chargen|altsyncram:ram_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "ROM"
-    Info (12134): Parameter "WIDTH_A" = "8"
-    Info (12134): Parameter "WIDTHAD_A" = "12"
-    Info (12134): Parameter "NUMWORDS_A" = "4096"
-    Info (12134): Parameter "OUTDATA_REG_A" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-    Info (12134): Parameter "INIT_FILE" = "rtl/roms/chargen.mif"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_9kb1.tdf
-    Info (12023): Found entity 1: altsyncram_9kb1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_9kb1.tdf Line: 28
 Info (12130): Elaborated megafunction instantiation "emu:emu|fpga64_sid_iec:fpga64|spram:colorram|altsyncram:ram_rtl_0"
 Info (12133): Instantiated megafunction "emu:emu|fpga64_sid_iec:fpga64|spram:colorram|altsyncram:ram_rtl_0" with the following parameter:
     Info (12134): Parameter "OPERATION_MODE" = "SINGLE_PORT"
@@ -2123,6 +2102,144 @@ Info (12133): Instantiated megafunction "osd:hdmi_osd|altsyncram:osd_buffer_rtl_
     Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
 Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_i6k1.tdf
     Info (12023): Found entity 1: altsyncram_i6k1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_i6k1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "emu:emu|fpga64_sid_iec:fpga64|video_vicii_656x:vic|altshift_taps:charStore_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|fpga64_sid_iec:fpga64|video_vicii_656x:vic|altshift_taps:charStore_rtl_0" with the following parameter:
+    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
+    Info (12134): Parameter "TAP_DISTANCE" = "39"
+    Info (12134): Parameter "WIDTH" = "12"
+    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_vhv.tdf
+    Info (12023): Found entity 1: shift_taps_vhv File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/shift_taps_vhv.tdf Line: 27
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_5v91.tdf
+    Info (12023): Found entity 1: altsyncram_5v91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_5v91.tdf Line: 28
+Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_ljf.tdf
+    Info (12023): Found entity 1: cntr_ljf File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cntr_ljf.tdf Line: 28
+Info (12021): Found 1 design units, including 1 entities, in source file db/cmpr_e9c.tdf
+    Info (12023): Found entity 1: cmpr_e9c File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cmpr_e9c.tdf Line: 23
+Info (12130): Elaborated megafunction instantiation "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[1].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|random:lfsr|altshift_taps:lfsr_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[1].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|random:lfsr|altshift_taps:lfsr_rtl_0" with the following parameter:
+    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
+    Info (12134): Parameter "TAP_DISTANCE" = "20"
+    Info (12134): Parameter "WIDTH" = "2"
+    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_nuu.tdf
+    Info (12023): Found entity 1: shift_taps_nuu File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/shift_taps_nuu.tdf Line: 27
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_er91.tdf
+    Info (12023): Found entity 1: altsyncram_er91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_er91.tdf Line: 28
+Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_ajf.tdf
+    Info (12023): Found entity 1: cntr_ajf File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cntr_ajf.tdf Line: 28
+Info (12021): Found 1 design units, including 1 entities, in source file db/cmpr_d9c.tdf
+    Info (12023): Found entity 1: cmpr_d9c File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cmpr_d9c.tdf Line: 23
+Info (12130): Elaborated megafunction instantiation "vga_out:vga_scaler_out|altshift_taps:din1_rtl_0"
+Info (12133): Instantiated megafunction "vga_out:vga_scaler_out|altshift_taps:din1_rtl_0" with the following parameter:
+    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
+    Info (12134): Parameter "TAP_DISTANCE" = "3"
+    Info (12134): Parameter "WIDTH" = "31"
+    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_quu.tdf
+    Info (12023): Found entity 1: shift_taps_quu File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/shift_taps_quu.tdf Line: 27
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_dr91.tdf
+    Info (12023): Found entity 1: altsyncram_dr91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_dr91.tdf Line: 28
+Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_ohf.tdf
+    Info (12023): Found entity 1: cntr_ohf File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cntr_ohf.tdf Line: 28
+Info (12021): Found 1 design units, including 1 entities, in source file db/cmpr_a9c.tdf
+    Info (12023): Found entity 1: cmpr_a9c File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cmpr_a9c.tdf Line: 23
+Info (12130): Elaborated megafunction instantiation "emu:emu|altsyncram:bank00_mem_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|altsyncram:bank00_mem_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "8"
+    Info (12134): Parameter "WIDTHAD_A" = "16"
+    Info (12134): Parameter "NUMWORDS_A" = "65536"
+    Info (12134): Parameter "WIDTH_B" = "8"
+    Info (12134): Parameter "WIDTHAD_B" = "16"
+    Info (12134): Parameter "NUMWORDS_B" = "65536"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+    Info (12134): Parameter "RAM_BLOCK_TYPE" = "M10K"
+    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_lap1.tdf
+    Info (12023): Found entity 1: altsyncram_lap1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_lap1.tdf Line: 32
+Info (12021): Found 1 design units, including 1 entities, in source file db/decode_dla.tdf
+    Info (12023): Found entity 1: decode_dla File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/decode_dla.tdf Line: 23
+Info (12130): Elaborated megafunction instantiation "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_buf:hq2x_out|altsyncram:ram_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_buf:hq2x_out|altsyncram:ram_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "96"
+    Info (12134): Parameter "WIDTHAD_A" = "11"
+    Info (12134): Parameter "NUMWORDS_A" = "1536"
+    Info (12134): Parameter "WIDTH_B" = "96"
+    Info (12134): Parameter "WIDTHAD_B" = "11"
+    Info (12134): Parameter "NUMWORDS_B" = "1536"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_0dn1.tdf
+    Info (12023): Found entity 1: altsyncram_0dn1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_0dn1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_in:hq2x_in|hq2x_buf:buf1|altsyncram:ram_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_in:hq2x_in|hq2x_buf:buf1|altsyncram:ram_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "24"
+    Info (12134): Parameter "WIDTHAD_A" = "10"
+    Info (12134): Parameter "NUMWORDS_A" = "768"
+    Info (12134): Parameter "WIDTH_B" = "24"
+    Info (12134): Parameter "WIDTHAD_B" = "10"
+    Info (12134): Parameter "NUMWORDS_B" = "768"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_o9n1.tdf
+    Info (12023): Found entity 1: altsyncram_o9n1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_o9n1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "emu:emu|video_mixer:video_mixer|gamma_corr:gamma|altsyncram:gamma_curve_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|video_mixer:video_mixer|gamma_corr:gamma|altsyncram:gamma_curve_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "8"
+    Info (12134): Parameter "WIDTHAD_A" = "10"
+    Info (12134): Parameter "NUMWORDS_A" = "768"
+    Info (12134): Parameter "WIDTH_B" = "8"
+    Info (12134): Parameter "WIDTHAD_B" = "10"
+    Info (12134): Parameter "NUMWORDS_B" = "768"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_2aj1.tdf
+    Info (12023): Found entity 1: altsyncram_2aj1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_2aj1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "shadowmask:HDMI_shadowmask|altsyncram:mask_lut_rtl_0"
+Info (12133): Instantiated megafunction "shadowmask:HDMI_shadowmask|altsyncram:mask_lut_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "11"
+    Info (12134): Parameter "WIDTHAD_A" = "8"
+    Info (12134): Parameter "NUMWORDS_A" = "256"
+    Info (12134): Parameter "WIDTH_B" = "11"
+    Info (12134): Parameter "WIDTHAD_B" = "8"
+    Info (12134): Parameter "NUMWORDS_B" = "256"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_k9j1.tdf
+    Info (12023): Found entity 1: altsyncram_k9j1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_k9j1.tdf Line: 28
 Info (12130): Elaborated megafunction instantiation "ascal:ascal|altsyncram:i_dpram_rtl_0"
 Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:i_dpram_rtl_0" with the following parameter:
     Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
@@ -2141,6 +2258,112 @@ Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:i_dpram_rtl_0" w
     Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
 Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_g9j1.tdf
     Info (12023): Found entity 1: altsyncram_g9j1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_g9j1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "yc_out:yc_out|altshift_taps:phase[1].y_rtl_0"
+Info (12133): Instantiated megafunction "yc_out:yc_out|altshift_taps:phase[1].y_rtl_0" with the following parameter:
+    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
+    Info (12134): Parameter "TAP_DISTANCE" = "5"
+    Info (12134): Parameter "WIDTH" = "12"
+    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_ruu.tdf
+    Info (12023): Found entity 1: shift_taps_ruu File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/shift_taps_ruu.tdf Line: 27
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_hr91.tdf
+    Info (12023): Found entity 1: altsyncram_hr91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_hr91.tdf Line: 28
+Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_rhf.tdf
+    Info (12023): Found entity 1: cntr_rhf File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cntr_rhf.tdf Line: 28
+Info (12021): Found 1 design units, including 1 entities, in source file db/cmpr_b9c.tdf
+    Info (12023): Found entity 1: cmpr_b9c File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cmpr_b9c.tdf Line: 23
+Info (12130): Elaborated megafunction instantiation "shadowmask:HDMI_shadowmask|altshift_taps:vid_rtl_0"
+Info (12133): Instantiated megafunction "shadowmask:HDMI_shadowmask|altshift_taps:vid_rtl_0" with the following parameter:
+    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
+    Info (12134): Parameter "TAP_DISTANCE" = "4"
+    Info (12134): Parameter "WIDTH" = "81"
+    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_0vu.tdf
+    Info (12023): Found entity 1: shift_taps_0vu File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/shift_taps_0vu.tdf Line: 27
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_pr91.tdf
+    Info (12023): Found entity 1: altsyncram_pr91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_pr91.tdf Line: 28
+Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_phf.tdf
+    Info (12023): Found entity 1: cntr_phf File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cntr_phf.tdf Line: 26
+Info (12130): Elaborated megafunction instantiation "altshift_taps:dv_d1_rtl_0"
+Info (12133): Instantiated megafunction "altshift_taps:dv_d1_rtl_0" with the following parameter:
+    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
+    Info (12134): Parameter "TAP_DISTANCE" = "3"
+    Info (12134): Parameter "WIDTH" = "77"
+    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_4vu.tdf
+    Info (12023): Found entity 1: shift_taps_4vu File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/shift_taps_4vu.tdf Line: 27
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_1s91.tdf
+    Info (12023): Found entity 1: altsyncram_1s91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_1s91.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[1].c1581_drv|fdc1772:fdc|fdc1772_dpram:fifo|altsyncram:ram_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[1].c1581_drv|fdc1772:fdc|fdc1772_dpram:fifo|altsyncram:ram_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "BIDIR_DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "8"
+    Info (12134): Parameter "WIDTH_B" = "8"
+    Info (12134): Parameter "WIDTHAD_A" = "10"
+    Info (12134): Parameter "WIDTHAD_B" = "10"
+    Info (12134): Parameter "NUMWORDS_A" = "1024"
+    Info (12134): Parameter "NUMWORDS_B" = "1024"
+    Info (12134): Parameter "OUTDATA_REG_A" = "UNREGISTERED"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
+    Info (12134): Parameter "INDATA_REG_B" = "CLOCK0"
+    Info (12134): Parameter "WRCONTROL_WRADDRESS_REG_B" = "CLOCK0"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_if12.tdf
+    Info (12023): Found entity 1: altsyncram_if12 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_if12.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "ascal:ascal|altsyncram:o_h_poly_mem_rtl_0"
+Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:o_h_poly_mem_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "40"
+    Info (12134): Parameter "WIDTHAD_A" = "8"
+    Info (12134): Parameter "NUMWORDS_A" = "256"
+    Info (12134): Parameter "WIDTH_B" = "40"
+    Info (12134): Parameter "WIDTHAD_B" = "8"
+    Info (12134): Parameter "NUMWORDS_B" = "256"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_o9j1.tdf
+    Info (12023): Found entity 1: altsyncram_o9j1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_o9j1.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "ascal:ascal|altshift_taps:o_vpix_inner[2].r_rtl_0"
+Info (12133): Instantiated megafunction "ascal:ascal|altshift_taps:o_vpix_inner[2].r_rtl_0" with the following parameter:
+    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
+    Info (12134): Parameter "TAP_DISTANCE" = "4"
+    Info (12134): Parameter "WIDTH" = "24"
+    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
+Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_agv.tdf
+    Info (12023): Found entity 1: shift_taps_agv File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/shift_taps_agv.tdf Line: 27
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_jr91.tdf
+    Info (12023): Found entity 1: altsyncram_jr91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_jr91.tdf Line: 28
+Info (12130): Elaborated megafunction instantiation "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[1].c1541_drv|c1541_logic:c1541_logic|iecdrv_mem:ram|altsyncram:ram_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[1].c1541_drv|c1541_logic:c1541_logic|iecdrv_mem:ram|altsyncram:ram_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+    Info (12134): Parameter "WIDTH_A" = "8"
+    Info (12134): Parameter "WIDTHAD_A" = "11"
+    Info (12134): Parameter "NUMWORDS_A" = "2048"
+    Info (12134): Parameter "WIDTH_B" = "8"
+    Info (12134): Parameter "WIDTHAD_B" = "11"
+    Info (12134): Parameter "NUMWORDS_B" = "2048"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
+    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
+    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
+    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
+    Info (12134): Parameter "INIT_FILE" = " "
+    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_g9n1.tdf
+    Info (12023): Found entity 1: altsyncram_g9n1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_g9n1.tdf Line: 28
 Info (12130): Elaborated megafunction instantiation "ascal:ascal|altsyncram:pal1_mem_rtl_0"
 Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:pal1_mem_rtl_0" with the following parameter:
     Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
@@ -2177,132 +2400,6 @@ Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:o_dpram_rtl_0" w
     Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
 Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_32k1.tdf
     Info (12023): Found entity 1: altsyncram_32k1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_32k1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "emu:emu|fpga64_sid_iec:fpga64|video_vicii_656x:vic|altshift_taps:charStore_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|fpga64_sid_iec:fpga64|video_vicii_656x:vic|altshift_taps:charStore_rtl_0" with the following parameter:
-    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
-    Info (12134): Parameter "TAP_DISTANCE" = "39"
-    Info (12134): Parameter "WIDTH" = "12"
-    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_vhv.tdf
-    Info (12023): Found entity 1: shift_taps_vhv File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/shift_taps_vhv.tdf Line: 27
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_5v91.tdf
-    Info (12023): Found entity 1: altsyncram_5v91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_5v91.tdf Line: 28
-Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_ljf.tdf
-    Info (12023): Found entity 1: cntr_ljf File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cntr_ljf.tdf Line: 28
-Info (12021): Found 1 design units, including 1 entities, in source file db/cmpr_e9c.tdf
-    Info (12023): Found entity 1: cmpr_e9c File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cmpr_e9c.tdf Line: 23
-Info (12130): Elaborated megafunction instantiation "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[1].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|random:lfsr|altshift_taps:lfsr_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[1].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|random:lfsr|altshift_taps:lfsr_rtl_0" with the following parameter:
-    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
-    Info (12134): Parameter "TAP_DISTANCE" = "20"
-    Info (12134): Parameter "WIDTH" = "2"
-    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_nuu.tdf
-    Info (12023): Found entity 1: shift_taps_nuu File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/shift_taps_nuu.tdf Line: 27
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_er91.tdf
-    Info (12023): Found entity 1: altsyncram_er91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_er91.tdf Line: 28
-Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_ajf.tdf
-    Info (12023): Found entity 1: cntr_ajf File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cntr_ajf.tdf Line: 28
-Info (12021): Found 1 design units, including 1 entities, in source file db/cmpr_d9c.tdf
-    Info (12023): Found entity 1: cmpr_d9c File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cmpr_d9c.tdf Line: 23
-Info (12130): Elaborated megafunction instantiation "shadowmask:HDMI_shadowmask|altsyncram:mask_lut_rtl_0"
-Info (12133): Instantiated megafunction "shadowmask:HDMI_shadowmask|altsyncram:mask_lut_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "11"
-    Info (12134): Parameter "WIDTHAD_A" = "8"
-    Info (12134): Parameter "NUMWORDS_A" = "256"
-    Info (12134): Parameter "WIDTH_B" = "11"
-    Info (12134): Parameter "WIDTHAD_B" = "8"
-    Info (12134): Parameter "NUMWORDS_B" = "256"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_k9j1.tdf
-    Info (12023): Found entity 1: altsyncram_k9j1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_k9j1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "ascal:ascal|altsyncram:o_h_poly_mem_rtl_0"
-Info (12133): Instantiated megafunction "ascal:ascal|altsyncram:o_h_poly_mem_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "40"
-    Info (12134): Parameter "WIDTHAD_A" = "8"
-    Info (12134): Parameter "NUMWORDS_A" = "256"
-    Info (12134): Parameter "WIDTH_B" = "40"
-    Info (12134): Parameter "WIDTHAD_B" = "8"
-    Info (12134): Parameter "NUMWORDS_B" = "256"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_o9j1.tdf
-    Info (12023): Found entity 1: altsyncram_o9j1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_o9j1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "shadowmask:HDMI_shadowmask|altshift_taps:vid_rtl_0"
-Info (12133): Instantiated megafunction "shadowmask:HDMI_shadowmask|altshift_taps:vid_rtl_0" with the following parameter:
-    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
-    Info (12134): Parameter "TAP_DISTANCE" = "4"
-    Info (12134): Parameter "WIDTH" = "81"
-    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_0vu.tdf
-    Info (12023): Found entity 1: shift_taps_0vu File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/shift_taps_0vu.tdf Line: 27
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_pr91.tdf
-    Info (12023): Found entity 1: altsyncram_pr91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_pr91.tdf Line: 28
-Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_phf.tdf
-    Info (12023): Found entity 1: cntr_phf File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cntr_phf.tdf Line: 26
-Info (12130): Elaborated megafunction instantiation "ascal:ascal|altshift_taps:o_vpix_inner[2].r_rtl_0"
-Info (12133): Instantiated megafunction "ascal:ascal|altshift_taps:o_vpix_inner[2].r_rtl_0" with the following parameter:
-    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
-    Info (12134): Parameter "TAP_DISTANCE" = "4"
-    Info (12134): Parameter "WIDTH" = "24"
-    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_agv.tdf
-    Info (12023): Found entity 1: shift_taps_agv File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/shift_taps_agv.tdf Line: 27
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_jr91.tdf
-    Info (12023): Found entity 1: altsyncram_jr91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_jr91.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "vga_out:vga_scaler_out|altshift_taps:din1_rtl_0"
-Info (12133): Instantiated megafunction "vga_out:vga_scaler_out|altshift_taps:din1_rtl_0" with the following parameter:
-    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
-    Info (12134): Parameter "TAP_DISTANCE" = "3"
-    Info (12134): Parameter "WIDTH" = "31"
-    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_quu.tdf
-    Info (12023): Found entity 1: shift_taps_quu File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/shift_taps_quu.tdf Line: 27
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_dr91.tdf
-    Info (12023): Found entity 1: altsyncram_dr91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_dr91.tdf Line: 28
-Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_ohf.tdf
-    Info (12023): Found entity 1: cntr_ohf File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cntr_ohf.tdf Line: 28
-Info (12021): Found 1 design units, including 1 entities, in source file db/cmpr_a9c.tdf
-    Info (12023): Found entity 1: cmpr_a9c File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cmpr_a9c.tdf Line: 23
-Info (12130): Elaborated megafunction instantiation "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[1].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|iecdrv_bitmem:buffer|altsyncram:ram_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[1].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|iecdrv_bitmem:buffer|altsyncram:ram_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "BIDIR_DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "8"
-    Info (12134): Parameter "WIDTH_B" = "1"
-    Info (12134): Parameter "WIDTHAD_A" = "13"
-    Info (12134): Parameter "WIDTHAD_B" = "16"
-    Info (12134): Parameter "NUMWORDS_A" = "8192"
-    Info (12134): Parameter "NUMWORDS_B" = "65536"
-    Info (12134): Parameter "OUTDATA_REG_A" = "UNREGISTERED"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
-    Info (12134): Parameter "INDATA_REG_B" = "CLOCK0"
-    Info (12134): Parameter "WRCONTROL_WRADDRESS_REG_B" = "CLOCK0"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_3i12.tdf
-    Info (12023): Found entity 1: altsyncram_3i12 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_3i12.tdf Line: 34
-Info (12021): Found 1 design units, including 1 entities, in source file db/decode_dla.tdf
-    Info (12023): Found entity 1: decode_dla File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/decode_dla.tdf Line: 23
-Info (12021): Found 1 design units, including 1 entities, in source file db/mux_mfb.tdf
-    Info (12023): Found entity 1: mux_mfb File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/mux_mfb.tdf Line: 23
 Info (12130): Elaborated megafunction instantiation "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|iecdrv_mem:rom|altsyncram:ram_rtl_0"
 Info (12133): Instantiated megafunction "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|iecdrv_mem:rom|altsyncram:ram_rtl_0" with the following parameter:
     Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
@@ -2386,92 +2483,44 @@ Info (12021): Found 1 design units, including 1 entities, in source file db/alts
     Info (12023): Found entity 1: altsyncram_8ql1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_8ql1.tdf Line: 34
 Info (12021): Found 1 design units, including 1 entities, in source file db/decode_5la.tdf
     Info (12023): Found entity 1: decode_5la File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/decode_5la.tdf Line: 23
-Info (12130): Elaborated megafunction instantiation "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_buf:hq2x_out|altsyncram:ram_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_buf:hq2x_out|altsyncram:ram_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "96"
-    Info (12134): Parameter "WIDTHAD_A" = "11"
-    Info (12134): Parameter "NUMWORDS_A" = "1536"
-    Info (12134): Parameter "WIDTH_B" = "96"
-    Info (12134): Parameter "WIDTHAD_B" = "11"
-    Info (12134): Parameter "NUMWORDS_B" = "1536"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_0dn1.tdf
-    Info (12023): Found entity 1: altsyncram_0dn1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_0dn1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_in:hq2x_in|hq2x_buf:buf1|altsyncram:ram_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_in:hq2x_in|hq2x_buf:buf1|altsyncram:ram_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "24"
-    Info (12134): Parameter "WIDTHAD_A" = "10"
-    Info (12134): Parameter "NUMWORDS_A" = "768"
-    Info (12134): Parameter "WIDTH_B" = "24"
-    Info (12134): Parameter "WIDTHAD_B" = "10"
-    Info (12134): Parameter "NUMWORDS_B" = "768"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_o9n1.tdf
-    Info (12023): Found entity 1: altsyncram_o9n1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_o9n1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[1].c1541_drv|c1541_logic:c1541_logic|iecdrv_mem:ram|altsyncram:ram_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[1].c1541_drv|c1541_logic:c1541_logic|iecdrv_mem:ram|altsyncram:ram_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
+Info (12130): Elaborated megafunction instantiation "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[1].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|iecdrv_bitmem:buffer|altsyncram:ram_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[1].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|iecdrv_bitmem:buffer|altsyncram:ram_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "BIDIR_DUAL_PORT"
     Info (12134): Parameter "WIDTH_A" = "8"
-    Info (12134): Parameter "WIDTHAD_A" = "11"
-    Info (12134): Parameter "NUMWORDS_A" = "2048"
-    Info (12134): Parameter "WIDTH_B" = "8"
-    Info (12134): Parameter "WIDTHAD_B" = "11"
-    Info (12134): Parameter "NUMWORDS_B" = "2048"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "WIDTH_B" = "1"
+    Info (12134): Parameter "WIDTHAD_A" = "13"
+    Info (12134): Parameter "WIDTHAD_B" = "16"
+    Info (12134): Parameter "NUMWORDS_A" = "8192"
+    Info (12134): Parameter "NUMWORDS_B" = "65536"
+    Info (12134): Parameter "OUTDATA_REG_A" = "UNREGISTERED"
     Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
     Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
+    Info (12134): Parameter "INDATA_REG_B" = "CLOCK0"
+    Info (12134): Parameter "WRCONTROL_WRADDRESS_REG_B" = "CLOCK0"
     Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
     Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-    Info (12134): Parameter "INIT_FILE" = " "
-    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_g9n1.tdf
-    Info (12023): Found entity 1: altsyncram_g9n1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_g9n1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "emu:emu|video_mixer:video_mixer|gamma_corr:gamma|altsyncram:gamma_curve_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|video_mixer:video_mixer|gamma_corr:gamma|altsyncram:gamma_curve_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "8"
-    Info (12134): Parameter "WIDTHAD_A" = "10"
-    Info (12134): Parameter "NUMWORDS_A" = "768"
-    Info (12134): Parameter "WIDTH_B" = "8"
-    Info (12134): Parameter "WIDTHAD_B" = "10"
-    Info (12134): Parameter "NUMWORDS_B" = "768"
     Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
     Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
     Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK1"
+    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_3i12.tdf
+    Info (12023): Found entity 1: altsyncram_3i12 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_3i12.tdf Line: 34
+Info (12021): Found 1 design units, including 1 entities, in source file db/mux_mfb.tdf
+    Info (12023): Found entity 1: mux_mfb File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/mux_mfb.tdf Line: 23
+Info (12130): Elaborated megafunction instantiation "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:chargen|altsyncram:ram_rtl_0"
+Info (12133): Instantiated megafunction "emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:chargen|altsyncram:ram_rtl_0" with the following parameter:
+    Info (12134): Parameter "OPERATION_MODE" = "ROM"
+    Info (12134): Parameter "WIDTH_A" = "8"
+    Info (12134): Parameter "WIDTHAD_A" = "12"
+    Info (12134): Parameter "NUMWORDS_A" = "4096"
+    Info (12134): Parameter "OUTDATA_REG_A" = "UNREGISTERED"
+    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
+    Info (12134): Parameter "OUTDATA_ACLR_A" = "NONE"
     Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
     Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_2aj1.tdf
-    Info (12023): Found entity 1: altsyncram_2aj1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_2aj1.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "altshift_taps:dv_d1_rtl_0"
-Info (12133): Instantiated megafunction "altshift_taps:dv_d1_rtl_0" with the following parameter:
-    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
-    Info (12134): Parameter "TAP_DISTANCE" = "3"
-    Info (12134): Parameter "WIDTH" = "77"
-    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_4vu.tdf
-    Info (12023): Found entity 1: shift_taps_4vu File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/shift_taps_4vu.tdf Line: 27
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_1s91.tdf
-    Info (12023): Found entity 1: altsyncram_1s91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_1s91.tdf Line: 28
+    Info (12134): Parameter "INIT_FILE" = "rtl/roms/chargen.mif"
+Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_9kb1.tdf
+    Info (12023): Found entity 1: altsyncram_9kb1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_9kb1.tdf Line: 28
 Info (12130): Elaborated megafunction instantiation "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_tables:sid_tables|altsyncram:Mux16_rtl_0"
 Info (12133): Instantiated megafunction "emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_tables:sid_tables|altsyncram:Mux16_rtl_0" with the following parameter:
     Info (12134): Parameter "OPERATION_MODE" = "ROM"
@@ -2494,40 +2543,6 @@ Info (12133): Instantiated megafunction "emu:emu|fpga64_sid_iec:fpga64|sid_top:s
     Info (12134): Parameter "INIT_FILE" = "C64.sys_top1.rtl.mif"
 Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_6e51.tdf
     Info (12023): Found entity 1: altsyncram_6e51 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_6e51.tdf Line: 28
-Info (12130): Elaborated megafunction instantiation "yc_out:yc_out|altshift_taps:phase[1].y_rtl_0"
-Info (12133): Instantiated megafunction "yc_out:yc_out|altshift_taps:phase[1].y_rtl_0" with the following parameter:
-    Info (12134): Parameter "NUMBER_OF_TAPS" = "1"
-    Info (12134): Parameter "TAP_DISTANCE" = "5"
-    Info (12134): Parameter "WIDTH" = "12"
-    Info (12134): Parameter "POWER_UP_STATE" = "DONT_CARE"
-Info (12021): Found 1 design units, including 1 entities, in source file db/shift_taps_ruu.tdf
-    Info (12023): Found entity 1: shift_taps_ruu File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/shift_taps_ruu.tdf Line: 27
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_hr91.tdf
-    Info (12023): Found entity 1: altsyncram_hr91 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_hr91.tdf Line: 28
-Info (12021): Found 1 design units, including 1 entities, in source file db/cntr_rhf.tdf
-    Info (12023): Found entity 1: cntr_rhf File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cntr_rhf.tdf Line: 28
-Info (12021): Found 1 design units, including 1 entities, in source file db/cmpr_b9c.tdf
-    Info (12023): Found entity 1: cmpr_b9c File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/cmpr_b9c.tdf Line: 23
-Info (12130): Elaborated megafunction instantiation "emu:emu|altsyncram:bank00_mem_rtl_0"
-Info (12133): Instantiated megafunction "emu:emu|altsyncram:bank00_mem_rtl_0" with the following parameter:
-    Info (12134): Parameter "OPERATION_MODE" = "DUAL_PORT"
-    Info (12134): Parameter "WIDTH_A" = "8"
-    Info (12134): Parameter "WIDTHAD_A" = "16"
-    Info (12134): Parameter "NUMWORDS_A" = "65536"
-    Info (12134): Parameter "WIDTH_B" = "8"
-    Info (12134): Parameter "WIDTHAD_B" = "16"
-    Info (12134): Parameter "NUMWORDS_B" = "65536"
-    Info (12134): Parameter "ADDRESS_ACLR_A" = "NONE"
-    Info (12134): Parameter "OUTDATA_REG_B" = "UNREGISTERED"
-    Info (12134): Parameter "ADDRESS_ACLR_B" = "NONE"
-    Info (12134): Parameter "OUTDATA_ACLR_B" = "NONE"
-    Info (12134): Parameter "ADDRESS_REG_B" = "CLOCK0"
-    Info (12134): Parameter "INDATA_ACLR_A" = "NONE"
-    Info (12134): Parameter "WRCONTROL_ACLR_A" = "NONE"
-    Info (12134): Parameter "RAM_BLOCK_TYPE" = "M10K"
-    Info (12134): Parameter "READ_DURING_WRITE_MODE_MIXED_PORTS" = "OLD_DATA"
-Info (12021): Found 1 design units, including 1 entities, in source file db/altsyncram_lap1.tdf
-    Info (12023): Found entity 1: altsyncram_lap1 File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/db/altsyncram_lap1.tdf Line: 32
 Info (12130): Elaborated megafunction instantiation "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3seq:opl3seq|sampler:sampler_inst|altsyncram:sin_tab_rtl_0"
 Info (12133): Instantiated megafunction "emu:emu|opl3:opl_inst|opl3sw:opl3|opl3seq:opl3seq|sampler:sampler_inst|altsyncram:sin_tab_rtl_0" with the following parameter:
     Info (12134): Parameter "OPERATION_MODE" = "ROM"
@@ -2614,7 +2629,7 @@ Warning (13050): Open-drain buffer(s) that do not directly drive top-level pin(s
 Warning (13024): Output pins are stuck at VCC or GND
     Warning (13410): Pin "SDRAM_nCS" is stuck at GND File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 54
     Warning (13410): Pin "SDRAM_CKE" is stuck at VCC File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 57
-Info (17049): 1285 registers lost all their fanouts during netlist optimizations.
+Info (17049): 1274 registers lost all their fanouts during netlist optimizations.
 Info (17016): Found the following redundant logic cells in design
     Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|generic_lcell_comb:lcell_dprio_read|combout" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
     Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|dyn_phase_shift:dyn_phase_shift_inst|generic_lcell_comb:lcell_cnt_sel_0|combout" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 2179
@@ -2634,14 +2649,14 @@ Info (17016): Found the following redundant logic cells in design
     Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|phase_en" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 195
     Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|dprio_ser_shift_load" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 188
     Info (17048): Logic cell "emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|dyn_phase_shift:dyn_phase_shift_inst|gnd" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/altera_pll_reconfig_core.v Line: 1919
-    Info (17048): Logic cell "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[1].c1581_drv|fdc1772:fdc|status[7]" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 917
-    Info (17048): Logic cell "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[1].c1581_drv|fdc1772:fdc|status[4]" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 917
-    Info (17048): Logic cell "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[1].c1581_drv|fdc1772:fdc|status[0]" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 917
-    Info (17048): Logic cell "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[1].c1581_drv|fdc1772:fdc|status[3]" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 917
     Info (17048): Logic cell "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc|status[7]" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 917
-    Info (17048): Logic cell "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc|status[4]" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 917
-    Info (17048): Logic cell "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc|status[0]" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 917
     Info (17048): Logic cell "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc|status[3]" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 917
+    Info (17048): Logic cell "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc|status[0]" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 917
+    Info (17048): Logic cell "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc|status[4]" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 917
+    Info (17048): Logic cell "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[1].c1581_drv|fdc1772:fdc|status[7]" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 917
+    Info (17048): Logic cell "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[1].c1581_drv|fdc1772:fdc|status[3]" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 917
+    Info (17048): Logic cell "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[1].c1581_drv|fdc1772:fdc|status[0]" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 917
+    Info (17048): Logic cell "emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[1].c1581_drv|fdc1772:fdc|status[4]" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/rtl/iec_drive/fdc1772.v Line: 917
     Info (17048): Logic cell "pll_cfg_hdmi:pll_cfg_hdmi|up_dn" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/pll_cfg_hdmi.v Line: 167
     Info (17048): Logic cell "pll_cfg_hdmi:pll_cfg_hdmi|phase_en" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/pll_cfg_hdmi.v Line: 166
     Info (17048): Logic cell "pll_cfg_hdmi:pll_cfg_hdmi|dprio_ser_shift_load" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/pll_cfg/pll_cfg_hdmi.v Line: 159
@@ -2652,23 +2667,23 @@ Info (16010): Generating hard_block partition "hard_block:auto_generated_inst"
 Warning (21074): Design contains 2 input pin(s) that do not drive logic
     Warning (15610): No output dependent on input pin "HDMI_TX_INT" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 44
     Warning (15610): No output dependent on input pin "SD_SPI_MISO" File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 100
-Info (21057): Implemented 62123 device resources after synthesis - the final resource count might be different
+Info (21057): Implemented 62548 device resources after synthesis - the final resource count might be different
     Info (21058): Implemented 16 input pins
     Info (21059): Implemented 97 output pins
     Info (21060): Implemented 32 bidirectional pins
-    Info (21061): Implemented 60375 logic cells
+    Info (21061): Implemented 60800 logic cells
     Info (21064): Implemented 1524 RAM segments
     Info (21065): Implemented 1 PLLs
     Info (21062): Implemented 51 DSP elements
-Info: Quartus Prime Analysis & Synthesis was successful. 0 errors, 178 warnings
-    Info: Peak virtual memory: 2153 megabytes
-    Info: Processing ended: Tue Aug 25 08:53:35 2026
-    Info: Elapsed time: 00:02:53
-    Info: Total CPU time (on all processors): 00:03:20
+Info: Quartus Prime Analysis & Synthesis was successful. 0 errors, 182 warnings
+    Info: Peak virtual memory: 2150 megabytes
+    Info: Processing ended: Tue Aug 25 13:47:30 2026
+    Info: Elapsed time: 00:02:43
+    Info: Total CPU time (on all processors): 00:03:06
 Info: *******************************************************************
 Info: Running Quartus Prime Fitter
     Info: Version 17.0.2 Build 602 07/19/2017 SJ Lite Edition
-    Info: Processing started: Tue Aug 25 08:53:44 2026
+    Info: Processing started: Tue Aug 25 13:47:39 2026
 Info: Command: quartus_fit --read_settings_files=off --write_settings_files=off C64 -c C64
 Info: qfit2_default_script.tcl version: #1
 Info: Project  = C64
@@ -2685,12 +2700,12 @@ Warning (15714): Some pins have incomplete I/O assignments. Refer to the I/O Ass
 Info (176045): Design uses memory blocks. Violating setup or hold times of memory block address registers for either read or write operations could cause memory contents to be corrupted. Make sure that all memory block address registers meet the setup and hold time requirements.
 Info (184020): Starting Fitter periphery placement operations
 Info (11178): Promoted 10 clocks (9 global, 1 regional)
-    Info (11162): sysmem_lite:sysmem|sysmem_HPS_fpga_interfaces:fpga_interfaces|h2f_rst_n[0]~CLKENA0 with 32 fanout uses global clock CLKCTRL_G9
+    Info (11162): sysmem_lite:sysmem|sysmem_HPS_fpga_interfaces:fpga_interfaces|h2f_rst_n[0]~CLKENA0 with 33 fanout uses global clock CLKCTRL_G9
     Info (11162): sysmem_lite:sysmem|sysmem_HPS_fpga_interfaces:fpga_interfaces|h2f_user0_clk[0]~CLKENA0 with 937 fanout uses global clock CLKCTRL_G8
     Info (11162): aspi_sck~CLKENA0 with 129 fanout uses regional clock CLKCTRL_R80
         Info (11177): Node drives Regional Clock Region 2 from (45, 0) to (89, 36)
     Info (11162): emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll|divclk[1]~CLKENA0 with 5831 fanout uses global clock CLKCTRL_G4
-    Info (11162): emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll|divclk[2]~CLKENA0 with 16176 fanout uses global clock CLKCTRL_G11
+    Info (11162): emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll|divclk[2]~CLKENA0 with 16316 fanout uses global clock CLKCTRL_G11
     Info (11162): hdmi_tx_clk~CLKENA0 with 84 fanout uses global clock CLKCTRL_G7
     Info (11162): pll_hdmi:pll_hdmi|pll_hdmi_0002:pll_hdmi_inst|altera_pll:altera_pll_i|altera_cyclonev_pll:cyclonev_pll|divclk[0]~CLKENA0 with 4957 fanout uses global clock CLKCTRL_G5
     Info (11162): vga_tx_clk~CLKENA0 with 3 fanout uses global clock CLKCTRL_G6
@@ -2710,8 +2725,8 @@ Info (332164): Evaluating HDL-embedded SDC commands
 Info (332104): Reading SDC File: 'C64.sdc'
 Info (332110): Deriving PLL clocks
     Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|vco0ph[0]} -divide_by 9 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk}
-    Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|vco0ph[0]} -divide_by 18 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk}
     Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|refclkin} -divide_by 512 -multiply_by 5811 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]}
+    Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|vco0ph[0]} -divide_by 18 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk}
     Info (332110): create_generated_clock -source {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|vco0ph[0]} -divide_by 3 -duty_cycle 50.00 -name {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk} {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk}
     Info (332110): create_generated_clock -source {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|refclkin} -divide_by 512 -multiply_by 4563 -duty_cycle 50.00 -name {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]} {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]}
     Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|vco0ph[0]} -divide_by 12 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk}
@@ -2732,12 +2747,12 @@ Warning (332049): Ignored set_false_path at C64.sdc(105): Argument <from> is an 
                -to   [get_clocks {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk}] File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/C64.sdc Line: 105
 Info (332104): Reading SDC File: 'sys/sys_top.sdc'
 Info (332151): Clock uncertainty is not calculated until you update the timing netlist.
-Warning (332060): Node: emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|ioDir[7] was determined to be a clock but was found without an associated clock assignment.
-    Info (13166): Latch emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|doIO[7]~5 is being clocked by emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|ioDir[7]
 Warning (332060): Node: emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|ioDir[3] was determined to be a clock but was found without an associated clock assignment.
     Info (13166): Latch emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|doIO[3]~6 is being clocked by emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|ioDir[3]
 Warning (332060): Node: emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|ioDir[6] was determined to be a clock but was found without an associated clock assignment.
     Info (13166): Latch emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|doIO[6]~7 is being clocked by emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|ioDir[6]
+Warning (332060): Node: emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|ioDir[7] was determined to be a clock but was found without an associated clock assignment.
+    Info (13166): Latch emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|doIO[7]~5 is being clocked by emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|ioDir[7]
 Warning (332060): Node: emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|ioDir[5] was determined to be a clock but was found without an associated clock assignment.
     Info (13166): Latch emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|doIO[5]~4 is being clocked by emu:emu|fpga64_sid_iec:fpga64|cpu_65c816:cpu_65c816_inst|ioDir[5]
 Info (332097): The following timing edges are non-unate.  TimeQuest will assume pos-unate behavior for these edges in the clock network.
@@ -2785,68 +2800,68 @@ Warning (176251): Ignoring some wildcard destinations of fast I/O register assig
     Info (176252): Wildcard assignment "Fast Output Register=ON" to "SDRAM_*" matches multiple destination nodes -- some destinations are not valid targets for this assignment
 Info (176235): Finished register packing
     Extra Info (176218): Packed 59 registers into blocks of type Block RAM
-    Extra Info (176218): Packed 928 registers into blocks of type DSP block
+    Extra Info (176218): Packed 936 registers into blocks of type DSP block
     Extra Info (176218): Packed 16 registers into blocks of type I/O input buffer
     Extra Info (176218): Packed 79 registers into blocks of type I/O output buffer
     Extra Info (176220): Created 226 register duplicates
 Info (128000): Starting physical synthesis optimizations for speed
 Info (128002): Starting physical synthesis algorithm register retiming
-Info (128003): Physical synthesis algorithm register retiming complete: estimated slack improvement of 253 ps
+Info (128003): Physical synthesis algorithm register retiming complete: estimated slack improvement of 663 ps
 Info (128002): Starting physical synthesis algorithm combinational resynthesis using boolean division
-Info (128003): Physical synthesis algorithm combinational resynthesis using boolean division complete: estimated slack improvement of 2495 ps
+Info (128003): Physical synthesis algorithm combinational resynthesis using boolean division complete: estimated slack improvement of 1571 ps
 Info (128002): Starting physical synthesis algorithm register retiming
-Info (128003): Physical synthesis algorithm register retiming complete: estimated slack improvement of 2004 ps
+Info (128003): Physical synthesis algorithm register retiming complete: estimated slack improvement of 1837 ps
 Info (128002): Starting physical synthesis algorithm combinational resynthesis using boolean division
-Info (128003): Physical synthesis algorithm combinational resynthesis using boolean division complete: estimated slack improvement of 870 ps
-Info (128001): Physical synthesis optimizations for speed complete: elapsed time is 00:02:13
+Info (128003): Physical synthesis algorithm combinational resynthesis using boolean division complete: estimated slack improvement of 0 ps
+Info (128001): Physical synthesis optimizations for speed complete: elapsed time is 00:01:55
 Info (176233): Starting register packing
 Info (176235): Finished register packing
     Extra Info (176218): Packed 228 registers into blocks of type DSP block
     Extra Info (176220): Created 156 register duplicates
-Info (11798): Fitter preparation operations ending: elapsed time is 00:02:54
+Info (11798): Fitter preparation operations ending: elapsed time is 00:02:33
 Info (170189): Fitter placement preparation operations beginning
 Info (14951): The Fitter is using Advanced Physical Optimization.
-Info (170190): Fitter placement preparation operations ending: elapsed time is 00:01:19
+Info (170190): Fitter placement preparation operations ending: elapsed time is 00:01:10
 Info (170191): Fitter placement operations beginning
 Info (170137): Fitter placement was successful
-Info (170192): Fitter placement operations ending: elapsed time is 00:02:05
+Info (170192): Fitter placement operations ending: elapsed time is 00:01:42
 Info (170193): Fitter routing operations beginning
-Info (170089): 4e+03 ns of routing delay (approximately 1.9% of available device routing delay) has been added to meet hold timing. For more information, refer to the Estimated Delay Added for Hold Timing section in the Fitter report.
+Info (170089): 4e+03 ns of routing delay (approximately 2.1% of available device routing delay) has been added to meet hold timing. For more information, refer to the Estimated Delay Added for Hold Timing section in the Fitter report.
 Info (170195): Router estimated average interconnect usage is 20% of the available device resources
-    Info (170196): Router estimated peak interconnect usage is 30% of the available device resources in the region that extends from location X56_Y11 to location X66_Y22
-Info (170194): Fitter routing operations ending: elapsed time is 00:02:34
-Info (11888): Total time spent on timing analysis during the Fitter is 132.75 seconds.
+    Info (170196): Router estimated peak interconnect usage is 31% of the available device resources in the region that extends from location X56_Y11 to location X66_Y22
+Info (170194): Fitter routing operations ending: elapsed time is 00:02:19
+Info (11888): Total time spent on timing analysis during the Fitter is 116.89 seconds.
 Info (334003): Started post-fitting delay annotation
 Info (334004): Delay annotation completed successfully
 Info (334003): Started post-fitting delay annotation
 Info (334004): Delay annotation completed successfully
-Info (11801): Fitter post-fit operations ending: elapsed time is 00:01:18
+Info (11801): Fitter post-fit operations ending: elapsed time is 00:01:15
 Warning (171167): Found invalid Fitter assignments. See the Ignored Assignments panel in the Fitter Compilation Report for more information.
 Warning (169064): Following 2 pins have no output enable or a GND or VCC output enable - later changes to this connectivity may change fitting results
     Info (169065): Pin USER_IO[0] has a permanently disabled output enable File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 125
     Info (169065): Pin USER_IO[6] has a permanently disabled output enable File: /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/sys/sys_top.v Line: 125
 Info (144001): Generated suppressed messages file /mnt/c/LLM/C64/MiSTerSuperCPU/C64_MiSTer/output_files/C64.fit.smsg
 Info: Quartus Prime Fitter was successful. 0 errors, 18 warnings
-    Info: Peak virtual memory: 4498 megabytes
-    Info: Processing ended: Tue Aug 25 09:06:13 2026
-    Info: Elapsed time: 00:12:29
-    Info: Total CPU time (on all processors): 00:24:22
+    Info: Peak virtual memory: 4447 megabytes
+    Info: Processing ended: Tue Aug 25 13:58:43 2026
+    Info: Elapsed time: 00:11:04
+    Info: Total CPU time (on all processors): 00:21:25
 Info: *******************************************************************
 Info: Running Quartus Prime Assembler
     Info: Version 17.0.2 Build 602 07/19/2017 SJ Lite Edition
-    Info: Processing started: Tue Aug 25 09:06:23 2026
+    Info: Processing started: Tue Aug 25 13:58:52 2026
 Info: Command: quartus_asm --read_settings_files=off --write_settings_files=off C64 -c C64
 Info (115030): Assembler is generating device programming files
 Info: Quartus Prime Assembler was successful. 0 errors, 0 warnings
     Info: Peak virtual memory: 1406 megabytes
-    Info: Processing ended: Tue Aug 25 09:06:44 2026
-    Info: Elapsed time: 00:00:21
-    Info: Total CPU time (on all processors): 00:00:18
+    Info: Processing ended: Tue Aug 25 13:59:11 2026
+    Info: Elapsed time: 00:00:19
+    Info: Total CPU time (on all processors): 00:00:16
 Info (293026): Skipped module PowerPlay Power Analyzer due to the assignment FLOW_ENABLE_POWER_ANALYZER
 Info: *******************************************************************
 Info: Running Quartus Prime TimeQuest Timing Analyzer
     Info: Version 17.0.2 Build 602 07/19/2017 SJ Lite Edition
-    Info: Processing started: Tue Aug 25 09:06:46 2026
+    Info: Processing started: Tue Aug 25 13:59:14 2026
 Info: Command: quartus_sta C64 -c C64
 Info: qsta_default_script.tcl version: #1
 Info (20032): Parallel compilation is enabled and will use up to 4 processors
@@ -2862,8 +2877,8 @@ Info (332164): Evaluating HDL-embedded SDC commands
 Info (332104): Reading SDC File: 'C64.sdc'
 Info (332110): Deriving PLL clocks
     Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|vco0ph[0]} -divide_by 9 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk}
-    Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|vco0ph[0]} -divide_by 18 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk}
     Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|refclkin} -divide_by 512 -multiply_by 5811 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]}
+    Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|vco0ph[0]} -divide_by 18 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk}
     Info (332110): create_generated_clock -source {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|vco0ph[0]} -divide_by 3 -duty_cycle 50.00 -name {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk} {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk}
     Info (332110): create_generated_clock -source {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|refclkin} -divide_by 512 -multiply_by 4563 -duty_cycle 50.00 -name {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]} {pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]}
     Info (332110): create_generated_clock -source {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|vco0ph[0]} -divide_by 12 -duty_cycle 50.00 -name {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk} {emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk}
@@ -2914,74 +2929,74 @@ Info (332097): The following timing edges are non-unate.  TimeQuest will assume 
     Info (332098): From: sysmem|fpga_interfaces|f2sdram|wr_clk_3  to: sysmem_lite:sysmem|sysmem_HPS_fpga_interfaces:fpga_interfaces|f2sdram~FF_0
 Info (332123): Deriving Clock Uncertainty. Please refer to report_sdc in TimeQuest to see clock uncertainties.
 Info: Found TIMEQUEST_REPORT_SCRIPT_INCLUDE_DEFAULT_ANALYSIS = ON
-Info (332146): Worst-case setup slack is 0.532
+Info (332146): Worst-case setup slack is 0.647
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
-    Info (332119):     0.532               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
-    Info (332119):     3.870               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
-    Info (332119):     3.933               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
-    Info (332119):     4.235               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
-    Info (332119):     5.798               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk 
-    Info (332119):     5.821               0.000 spi_sck 
-    Info (332119):     5.857               0.000 FPGA_CLK2_50 
-    Info (332119):     8.126               0.000 FPGA_CLK1_50 
-    Info (332119):    15.139               0.000 pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk 
-Info (332146): Worst-case hold slack is 0.186
+    Info (332119):     0.647               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
+    Info (332119):     3.089               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
+    Info (332119):     3.655               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
+    Info (332119):     4.190               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk 
+    Info (332119):     4.401               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
+    Info (332119):     6.111               0.000 FPGA_CLK2_50 
+    Info (332119):     6.247               0.000 spi_sck 
+    Info (332119):     8.057               0.000 FPGA_CLK1_50 
+    Info (332119):    15.725               0.000 pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk 
+Info (332146): Worst-case hold slack is 0.165
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
-    Info (332119):     0.186               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
-    Info (332119):     0.242               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk 
-    Info (332119):     0.246               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
-    Info (332119):     0.259               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
-    Info (332119):     0.260               0.000 FPGA_CLK2_50 
-    Info (332119):     0.271               0.000 pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk 
-    Info (332119):     0.275               0.000 FPGA_CLK1_50 
-    Info (332119):     0.375               0.000 spi_sck 
-    Info (332119):     0.378               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
-Info (332146): Worst-case recovery slack is 4.599
+    Info (332119):     0.165               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
+    Info (332119):     0.244               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk 
+    Info (332119):     0.254               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
+    Info (332119):     0.257               0.000 pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk 
+    Info (332119):     0.261               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
+    Info (332119):     0.372               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
+    Info (332119):     0.417               0.000 FPGA_CLK1_50 
+    Info (332119):     0.418               0.000 FPGA_CLK2_50 
+    Info (332119):     0.455               0.000 spi_sck 
+Info (332146): Worst-case recovery slack is 3.616
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
-    Info (332119):     4.599               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
-    Info (332119):     5.393               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
-    Info (332119):     6.214               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
-    Info (332119):    12.260               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
-    Info (332119):    16.471               0.000 FPGA_CLK1_50 
-    Info (332119):    17.166               0.000 FPGA_CLK2_50 
-    Info (332119):    22.672               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk 
-Info (332146): Worst-case removal slack is 0.624
+    Info (332119):     3.616               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
+    Info (332119):     3.892               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
+    Info (332119):     7.671               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
+    Info (332119):    12.014               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
+    Info (332119):    17.432               0.000 FPGA_CLK1_50 
+    Info (332119):    17.773               0.000 FPGA_CLK2_50 
+    Info (332119):    23.444               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk 
+Info (332146): Worst-case removal slack is 0.589
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
-    Info (332119):     0.624               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
-    Info (332119):     0.700               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk 
-    Info (332119):     1.011               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
-    Info (332119):     1.059               0.000 FPGA_CLK2_50 
-    Info (332119):     1.629               0.000 FPGA_CLK1_50 
-    Info (332119):     1.766               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
-    Info (332119):     1.779               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
+    Info (332119):     0.589               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
+    Info (332119):     0.680               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk 
+    Info (332119):     1.086               0.000 FPGA_CLK1_50 
+    Info (332119):     1.317               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
+    Info (332119):     1.403               0.000 FPGA_CLK2_50 
+    Info (332119):     1.502               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
+    Info (332119):     1.924               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
 Info (332146): Worst-case minimum pulse width slack is 0.881
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
     Info (332119):     0.881               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0] 
     Info (332119):     1.122               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0] 
     Info (332119):     1.196               0.000 pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~FRACTIONAL_PLL|vcoph[0] 
-    Info (332119):     1.937               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
-    Info (332119):     3.581               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
-    Info (332119):     4.261               0.000 spi_sck 
+    Info (332119):     1.931               0.000 pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
+    Info (332119):     3.584               0.000 sysmem|fpga_interfaces|clocks_resets|h2f_user0_clk 
+    Info (332119):     4.259               0.000 spi_sck 
     Info (332119):     6.494               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk 
-    Info (332119):     9.136               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
-    Info (332119):     9.212               0.000 FPGA_CLK2_50 
-    Info (332119):     9.218               0.000 FPGA_CLK1_50 
+    Info (332119):     9.150               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk 
+    Info (332119):     9.200               0.000 FPGA_CLK1_50 
+    Info (332119):     9.211               0.000 FPGA_CLK2_50 
     Info (332119):     9.730               0.000 FPGA_CLK3_50 
     Info (332119):    14.414               0.000 emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk 
-    Info (332119):    18.925               0.000 pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk 
-Info (332114): Report Metastability: Found 414 synchronizer chains.
+    Info (332119):    18.928               0.000 pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk 
+Info (332114): Report Metastability: Found 416 synchronizer chains.
     Info (332114): Worst-Case MTBF of Design is 1e+09 years or 3.15e+16 seconds.
     Info (332114): Typical MTBF of Design is 1e+09 years or 3.15e+16 seconds.
 
-    Info (332114): Number of Synchronizer Chains Found: 414
+    Info (332114): Number of Synchronizer Chains Found: 416
     Info (332114): Shortest Synchronizer Chain: 2 Registers
     Info (332114): Fraction of Chains for which MTBFs Could Not be Calculated: 0.930
-    Info (332114): Worst Case Available Settling Time: 3.801 ns
+    Info (332114): Worst Case Available Settling Time: 2.981 ns
     Info (332114): Worst-Case MTBF values are calculated based on the worst-case silicon characteristics, with worst-case operating conditions.
     Info (332114):   - Under worst-case conditions, an increase of 100ps in available settling time will increase MTBF values by a factor of 8.0
     Info (332114): Typical MTBF values are calculated based on the nominal silicon characteristics, at nominal operating conditions.
@@ -2989,37 +3004,37 @@ Info (332114): Report Metastability: Found 414 synchronizer chains.
 Info (332102): Design is not fully constrained for setup requirements
 Info (332102): Design is not fully constrained for hold requirements
 Info: Quartus Prime TimeQuest Timing Analyzer was successful. 0 errors, 11 warnings
-    Info: Peak virtual memory: 1785 megabytes
-    Info: Processing ended: Tue Aug 25 09:07:03 2026
-    Info: Elapsed time: 00:00:17
-    Info: Total CPU time (on all processors): 00:00:17
-Info (293000): Quartus Prime Full Compilation was successful. 0 errors, 207 warnings
+    Info: Peak virtual memory: 1794 megabytes
+    Info: Processing ended: Tue Aug 25 13:59:29 2026
+    Info: Elapsed time: 00:00:15
+    Info: Total CPU time (on all processors): 00:00:15
+Info (293000): Quartus Prime Full Compilation was successful. 0 errors, 211 warnings
 Info (23030): Evaluation of Tcl script /home/caldor/intelFPGA_lite/17.0/quartus/common/tcl/internal/qsh_flow.tcl was successful
-Info: Quartus Prime Shell was successful. 0 errors, 207 warnings
-    Info: Peak virtual memory: 798 megabytes
-    Info: Processing ended: Tue Aug 25 09:07:06 2026
-    Info: Elapsed time: 00:16:43
-    Info: Total CPU time (on all processors): 00:28:31
+Info: Quartus Prime Shell was successful. 0 errors, 211 warnings
+    Info: Peak virtual memory: 878 megabytes
+    Info: Processing ended: Tue Aug 25 13:59:32 2026
+    Info: Elapsed time: 00:15:06
+    Info: Total CPU time (on all processors): 00:25:19
   Restored original QSF (debug macros)
 
 
 === BUILD SUCCESSFUL ===
-  Elapsed: 16:43
-  Output:  C:\LLM\C64\MiSTerSuperCPU\C64_MiSTer\output_files\C64.rbf (3.79 MB)
+  Elapsed: 15:06
+  Output:  C:\LLM\C64\MiSTerSuperCPU\C64_MiSTer\output_files\C64.rbf (3.83 MB)
   Copied:  C:\LLM\C64\MiSTerSuperCPU\C64.rbf
-Archived RBF -> C64_MiSTer\builds\C64_milestone-b-cdc-rewrite_54c56e9467_20260825T070708Z_f37d560d-dirty.rbf (md5=f37d560d6bfa9dd0849466db6e4120ec, size=3.79 MB)
-INDEX.md updated (230 builds tracked)
+Archived RBF -> C64_MiSTer\builds\C64_milestone-b-cdc-rewrite_effeb35e6b_20260825T115933Z_297ad0e1-dirty.rbf (md5=297ad0e1f2103e04529262dc2fa7f8c7, size=3.83 MB)
+INDEX.md updated (231 builds tracked)
 
   Resource Summary:
-    Fitter Status : Successful - Tue Aug 25 09:05:57 2026
+    Fitter Status : Successful - Tue Aug 25 13:58:28 2026
     Quartus Prime Version : 17.0.2 Build 602 07/19/2017 SJ Lite Edition
     Revision Name : C64
     Top-level Entity Name : sys_top
     Family : Cyclone V
     Device : 5CSEBA6U23I7
     Timing Models : Final
-    Logic utilization (in ALMs) : 27,625 / 41,910 ( 66 % )
-    Total registers : 31603
+    Logic utilization (in ALMs) : 27,997 / 41,910 ( 67 % )
+    Total registers : 31629
     Total pins : 145 / 314 ( 46 % )
     Total virtual pins : 0
     Total block memory bits : 3,633,440 / 5,662,720 ( 64 % )

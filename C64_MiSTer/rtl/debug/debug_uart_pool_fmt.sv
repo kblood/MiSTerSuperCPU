@@ -80,6 +80,11 @@ module debug_uart_pool_fmt
 	// instruction or a frozen latch. Doom doesn't write $D001, so dropping
 	// the d001_last_pc display loses no useful Doom signal.
 	reg [15:0] lat_w1;     // now: {trace_op2, trace_op3} — opcode bytes
+	// 29th pass (Wolf3D bank-$28 freeze, 2026-08-25): 2 post-trigger ring
+	// slots (see debug_pkg.svh trace_pc4/trace_pc5 comment). UART-only —
+	// overlay cell space is fully exhausted.
+	reg [23:0] lat_tr_pc4, lat_tr_pc5;
+	reg  [7:0] lat_tr_op4, lat_tr_op5;
 	reg [15:0] lat_cy;
 	reg [15:0] lat_jsr0, lat_jsr1, lat_jsr2, lat_jsr3;
 	reg [15:0] lat_jmp0, lat_jmp1, lat_jmp2, lat_jmp3;
@@ -207,7 +212,7 @@ module debug_uart_pool_fmt
 	// New tail uses bytes 369..390; IE field at 391..396.
 	// more-turbo iter-4d (2026-05-30): append " HR:## HW:##" (12 bytes) at
 	// 397..408 for the read-only cpu_cache hit-rate observer; newline at 409.
-	localparam LINE_LEN = 9'd410;
+	localparam LINE_LEN = 9'd442;
 
 	reg [8:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -782,7 +787,44 @@ module debug_uart_pool_fmt
 			9'd406: line_byte = ":";
 			9'd407: line_byte = hex_nibble(lat_cache_hw[7:4]);
 			9'd408: line_byte = hex_nibble(lat_cache_hw[3:0]);
-			9'd409: line_byte = 8'h0A;
+
+			// 29th pass (Wolf3D bank-$28 freeze, 2026-08-25): trace_pc4/pc5
+			// + trace_op4/op5, the 2 opcode fetches captured right after
+			// the trace-ring's freeze-trigger landing PC (trace_pc3).
+			// UART-only field -- see lat_tr_pc4 declaration comment.
+			9'd409: line_byte = " ";
+			9'd410: line_byte = "P";
+			9'd411: line_byte = "4";
+			9'd412: line_byte = ":";
+			9'd413: line_byte = hex_nibble(lat_tr_pc4[23:20]);
+			9'd414: line_byte = hex_nibble(lat_tr_pc4[19:16]);
+			9'd415: line_byte = hex_nibble(lat_tr_pc4[15:12]);
+			9'd416: line_byte = hex_nibble(lat_tr_pc4[11:8]);
+			9'd417: line_byte = hex_nibble(lat_tr_pc4[7:4]);
+			9'd418: line_byte = hex_nibble(lat_tr_pc4[3:0]);
+			9'd419: line_byte = " ";
+			9'd420: line_byte = "O";
+			9'd421: line_byte = "4";
+			9'd422: line_byte = ":";
+			9'd423: line_byte = hex_nibble(lat_tr_op4[7:4]);
+			9'd424: line_byte = hex_nibble(lat_tr_op4[3:0]);
+			9'd425: line_byte = " ";
+			9'd426: line_byte = "P";
+			9'd427: line_byte = "5";
+			9'd428: line_byte = ":";
+			9'd429: line_byte = hex_nibble(lat_tr_pc5[23:20]);
+			9'd430: line_byte = hex_nibble(lat_tr_pc5[19:16]);
+			9'd431: line_byte = hex_nibble(lat_tr_pc5[15:12]);
+			9'd432: line_byte = hex_nibble(lat_tr_pc5[11:8]);
+			9'd433: line_byte = hex_nibble(lat_tr_pc5[7:4]);
+			9'd434: line_byte = hex_nibble(lat_tr_pc5[3:0]);
+			9'd435: line_byte = " ";
+			9'd436: line_byte = "O";
+			9'd437: line_byte = "5";
+			9'd438: line_byte = ":";
+			9'd439: line_byte = hex_nibble(lat_tr_op5[7:4]);
+			9'd440: line_byte = hex_nibble(lat_tr_op5[3:0]);
+			9'd441: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -815,6 +857,10 @@ module debug_uart_pool_fmt
 				lat_wp    <= pool.wr02_pc;
 				lat_cg    <= pool.cnt_wr02_chg;
 				lat_w1    <= {pool.trace_op2, pool.trace_op3};  // OP probe (2026-05-10)
+				lat_tr_pc4 <= pool.trace_pc4;
+				lat_tr_pc5 <= pool.trace_pc5;
+				lat_tr_op4 <= pool.trace_op4;
+				lat_tr_op5 <= pool.trace_op5;
 				lat_cy    <= pool.cnt_wr02;
 				lat_jsr0  <= pool.jsr_pc_t0;
 				lat_jsr1  <= pool.jsr_pc_t1;
