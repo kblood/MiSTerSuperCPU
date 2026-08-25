@@ -2,6 +2,27 @@
 
 | Built (UTC)        | Branch              | SHA        | MD5 (short) | Subject                                    | Dirty |
 |--------------------|---------------------|------------|-------------|--------------------------------------------|-------|
+| 20260825 070708 | milestone-b-cdc-rew | 54c56e9467 | f37d560d    | debug(scpu): display bank nibble of trace- | yes   |
+| 20260824 220551 | milestone-b-cdc-rew | 6ad4329543 | 9706e1fb    | debug(scpu): capture last-read $07B9 skip- | yes   |
+| 20260824 190826 | milestone-b-cdc-rew | 766ea80a5b | 7122dadd    | debug(scpu): capture loader.prg's JML($04F | yes   |
+| 20260824 184119 | milestone-b-cdc-rew | f4047c6ae5 | ebf11686    | debug(scpu): call_depth_maxabs + P65C816 v | yes   |
+| 20260824 175426 | milestone-b-cdc-rew | b5281c996e | 31b238a0    | debug(overlay): add IV=## IRQ-vector-fetch | yes   |
+| 20260824 165217 | milestone-b-cdc-rew | b5281c996e | 6ef9eab8    | debug(overlay): add IV=## IRQ-vector-fetch | yes   |
+| 20260824 153838 | milestone-b-cdc-rew | b5281c996e | a00ffaaf    | debug(overlay): add IV=## IRQ-vector-fetch | yes   |
+| 20260824 141829 | milestone-b-cdc-rew | b5281c996e | 38c70d87    | debug(overlay): add IV=## IRQ-vector-fetch | yes   |
+| 20260824 133546 | milestone-b-cdc-rew | 0ba2e88f27 | d99e7379    | debug(overlay): Wolf3D wild-jump probe fie | yes   |
+| 20260824 125057 | milestone-b-cdc-rew | 0ba2e88f27 | 08db60a5    | debug(overlay): Wolf3D wild-jump probe fie | yes   |
+| 20260824 120832 | milestone-b-cdc-rew | a6d837511c | 1dbbb8d6    | debug(overlay): Wolf3D write-attribution b | yes   |
+| 20260824 113536 | milestone-b-cdc-rew | a6d837511c | 4868f4cc    | debug(overlay): Wolf3D write-attribution b | yes   |
+| 20260824 104840 | milestone-b-cdc-rew | f219567fd1 | f4723998    | docs(c64u): correct 65C816 core provenance | yes   |
+| 20260824 094017 | milestone-b-cdc-rew | f219567fd1 | 4a8b73ba    | docs(c64u): correct 65C816 core provenance | yes   |
+| 20260824 082359 | milestone-b-cdc-rew | f219567fd1 | 1b4f84fd    | docs(c64u): correct 65C816 core provenance | yes   |
+| 20260824 063430 | milestone-b-cdc-rew | f219567fd1 | 19a971b2    | docs(c64u): correct 65C816 core provenance | yes   |
+| 20260822 191915 | milestone-b-cdc-rew | f219567fd1 | b4f4709d    | docs(c64u): correct 65C816 core provenance | yes   |
+| 20260822 190154 | milestone-b-cdc-rew | f219567fd1 | ca8a2158    | docs(c64u): correct 65C816 core provenance | yes   |
+| 20260822 184356 | milestone-b-cdc-rew | f219567fd1 | 95ee3467    | docs(c64u): correct 65C816 core provenance | yes   |
+| 20260822 175751 | milestone-b-cdc-rew | f219567fd1 | cdcd4043    | docs(c64u): correct 65C816 core provenance | yes   |
+| 20260822 160552 | milestone-b-cdc-rew | f219567fd1 | c112b73f    | docs(c64u): correct 65C816 core provenance | yes   |
 | 20260619 220140 | milestone-b-cdc-rew | 8658b796bb | de147ffc    | docs(session): iter-34 emu bank-$00 fast-f | yes   |
 | 20260619 212532 | milestone-b-cdc-rew | 8658b796bb | eb49592e    | docs(session): iter-34 emu bank-$00 fast-f | yes   |
 | 20260616 083028 | milestone-b-cdc-rew | 42a901da64 | f0e8be5b    | docs(session): iter-33c follow-up — Synt | yes   |
