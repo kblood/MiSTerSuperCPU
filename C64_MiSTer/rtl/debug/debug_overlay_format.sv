@@ -531,7 +531,24 @@ module debug_overlay_format
 				5'd18: glyph_id = G_EQ;
 				5'd19: glyph_id = hex(pool.last_07b9[7:4]);
 				5'd20: glyph_id = hex(pool.last_07b9[3:0]);
-				5'd21: glyph_id = G_SP;
+				// 26th pass (2026-08-25): last free cell in this row.
+				// trace_pc0/pc3 are already full 24-bit (PBR:PC) internally
+				// (see trace_pc0_r in fpga64_sid_iec.vhd) but row 14 below
+				// only ever displayed the low 16 bits, so the bank byte of
+				// the 3 pre-trigger ring entries was invisible even though
+				// it was already captured -- this is a display-only fix,
+				// no new capture RTL. Shows trace_pc0[19:16] (bank nibble
+				// of the FIRST pre-trigger opcode fetch) paired with row
+				// 14 cell 21 below (trace_pc2[19:16], the LAST pre-trigger
+				// fetch) to answer: was the whole ring already in bank 0
+				// (fitting "REU-transfer-loop exits early"), or did it
+				// start in a different bank (e.g. $2 for bank $20,
+				// legitimate native game code) and only cross into bank 0
+				// at the trigger? No label fits in 1 cell -- position is
+				// fixed, read by row/cell like the rest of this ring. See
+				// project_wolf3d_postreu_bank28_freeze_regression.md 26th
+				// pass "Next step".
+				5'd21: glyph_id = hex(pool.trace_pc0[19:16]);
 				default: glyph_id = G_SP;
 			endcase
 
@@ -654,6 +671,17 @@ module debug_overlay_format
 				5'd18: glyph_id = hex(pool.trace_pc3[11:8]);
 				5'd19: glyph_id = hex(pool.trace_pc3[7:4]);
 				5'd20: glyph_id = hex(pool.trace_pc3[3:0]);
+				// 26th pass (2026-08-25): last free cell in this row.
+				// Pairs with row 12 cell 21 (trace_pc0[19:16]) -- see that
+				// comment for the full rationale. This is trace_pc2's bank
+				// nibble: trace_pc2 is the LAST pre-trigger opcode fetch
+				// (immediately before trace_pc3, the triggering fetch that
+				// crossed $07DB), so this cell is the single most
+				// diagnostic bit of new data for the "same bank throughout
+				// vs. cross-bank wild jump" question. trace_pc0..pc3 are
+				// already 24-bit internally (see trace_pc0_r in
+				// fpga64_sid_iec.vhd) -- this is a display-only addition.
+				5'd21: glyph_id = hex(pool.trace_pc2[19:16]);
 				default: glyph_id = G_SP;
 			endcase
 
