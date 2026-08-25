@@ -470,12 +470,17 @@ module debug_overlay_format
 
 			// ===== Row 12: O=## ## ## ## F=#  v250 trace ring opcodes ====
 			// v250: row 12 repurposed. trace_op0..op3 = opcode bytes at
-			// each PC in the trace ring. trace_op3 = the opcode at the
-			// STA $DF01 trigger (should be $8D = STA absolute). F=1 once
-			// the ring has frozen on the 33rd STA $DF01 write (skip 32
-			// to clear loader/setup writes and land in steady-state IRQ
-			// handler). v249 confirmed mem_8C/02/03 identical T65/SCPU
-			// so this row is freed for trace-ring data.
+			// each PC in the trace ring. F=1 once frozen.
+			// 20th pass (2026-08-24, Wolf3D wild-jump investigation): the
+			// freeze trigger is now the FIRST opcode fetch with PC bank=0,
+			// PC>$07DB after loader.prg's $0700 entry (see loader_armed_r,
+			// fpga64_sid_iec.vhd) -- i.e. the moment execution leaves
+			// loader.prg's own 220-byte relocated code block. trace_op3 =
+			// opcode byte AT that moment; trace_op0..op2 = the 3 opcodes
+			// immediately before it. The old $DF01-write/Doom-dispatcher
+			// trigger this row/row 14 used through v249-v287 doesn't fire
+			// in the Wolf3D flow and is superseded here (still described
+			// in git history if ever needed again for that investigation).
 			4'd12: case (cell_x)
 				5'd0:  glyph_id = 6'd24;         // 'O'   (G_O = 24)
 				5'd1:  glyph_id = G_EQ;
@@ -615,17 +620,18 @@ module debug_overlay_format
 			endcase
 
 			// ===== Row 14: T=#### #### #### #### v250 trace ring PCs =====
-			// v250: trace_pc0..pc3 = PCs at the last 4 opcode_fetch_pulses
-			// before STA $DF01 fired (frozen on the 33rd DF01 write — see
-			// row 12 F flag). Bank=0 in emu mode so we show only the
-			// lower 16 bits. Reading order trace_pc0 (oldest) -> trace_pc3
-			// (= STA $DF01 PC). trace_pc2 = LDA #imm (A9 immediate value
-			// fed to STA $DF01); trace_pc1 = JSR/JMP/branch into the
-			// routine. T65 expected to land on $852B/$8835/$805F (FF00-
-			// triggered FETCH cmd $FD); SCPU stuck at $8D2A (immediate-
-			// fire FETCH cmd $A1). The trace_pc1 difference IS the
-			// divergent caller. v249 confirmed wr02/wr03 PCs identical
-			// so this row is freed for trace-ring data.
+			// v250: trace_pc0..pc3 = PCs at the last 4 opcode_fetch_pulses.
+			// 20th pass (2026-08-24): see row 12's updated comment -- ring
+			// now freezes on the first opcode fetch outside loader.prg's
+			// own $0700-$07DB footprint (PC bank=0, PC>$07DB, after
+			// arming at the $0700 entry). trace_pc3 = the PC AT that
+			// moment (should read >$07DB if this fires as designed);
+			// trace_pc0..pc2 = the 3 PCs immediately before it, which
+			// should still read <=$07DB if this is a legitimate
+			// straight-line fall-through off the end of loader.prg's own
+			// code (relocation-copy bounds bug), or could jump around
+			// erratically even before crossing $07DB if it's a genuine
+			// wild branch triggered from inside the loader's own code.
 			4'd14: case (cell_x)
 				5'd0:  glyph_id = 6'd29;         // 'T'   (G_T = 29)
 				5'd1:  glyph_id = G_EQ;

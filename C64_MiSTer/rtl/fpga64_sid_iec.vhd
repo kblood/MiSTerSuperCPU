@@ -1147,6 +1147,19 @@ signal jmlvec_bank_r    : std_logic_vector(7 downto 0) := (others => '0');
 -- wrong-REU-offset-read (control-flow) and right-offset-wrong-data
 -- (REU-FETCH data integrity) cause. See jmlvec_hi_r comment above.
 signal last_07b9_read_r : std_logic_vector(7 downto 0) := (others => '0');
+-- 20th pass (2026-08-24): repurposes the existing v250 trace_pc/trace_op
+-- ring (rows 14/12) with a NEW freeze trigger. The old $DF01-write
+-- trigger is Doom-dispatcher-specific and effectively dead for Wolf3D.
+-- loader_armed_r goes high once execution reaches loader.prg's
+-- relocated entry ($0700) and stays high; once armed, the FIRST
+-- opcode fetch with PC bank=0 and PC>$07DB (past loader.prg's own
+-- 220-byte code footprint, which spans exactly $0700-$07DB) freezes
+-- the ring. This captures the exact 4 PC/opcode pairs straddling the
+-- moment execution leaves loader.prg's own code -- distinguishing a
+-- relocation-copy bounds bug (falls straight off $07DB) from a wild
+-- branch elsewhere. See project_wolf3d_postreu_bank28_freeze_regression.md
+-- 20th-pass update.
+signal loader_armed_r   : std_logic := '0';
 -- v13 (2026-05-24) $DC0D write count for phantom-write detection
 signal dc0d_wr_count_r  : unsigned(15 downto 0) := (others => '0');
 -- v231 IRQ source-level falling-edge counter
@@ -4296,6 +4309,7 @@ begin
 			jmlvec_hi_r          <= (others => '0');
 			jmlvec_bank_r        <= (others => '0');
 			last_07b9_read_r     <= (others => '0');
+			loader_armed_r       <= '0';
 			d019_wr_count_r      <= (others => '0');
 			dc0d_rd_count_r      <= (others => '0');
 			dc0d_wr_count_r      <= (others => '0');
@@ -5209,9 +5223,20 @@ begin
 			-- update. Rezeroed on the same $0700 entry trigger.
 			if opcode_fetch_pulse = '1' and cpu_pc_now = x"000700" then
 				last_07b9_read_r <= (others => '0');
+				loader_armed_r   <= '1';
 			elsif supercpu_en = '1' and cpu816_we_raw = '0' and cpu816_vda_raw = '1'
 					and cpu816_addr_raw = x"07B9" then
 				last_07b9_read_r <= std_logic_vector(cpu816_di_to_cpu);
+			end if;
+
+			-- 20th pass: freeze the v250 trace_pc/trace_op ring the first
+			-- time an OPCODE FETCH (not a data read) lands outside
+			-- loader.prg's own $0700-$07DB code footprint, once armed.
+			if trace_frozen_r = '0' and loader_armed_r = '1'
+			   and opcode_fetch_pulse = '1'
+			   and cpu_pc_now(23 downto 16) = x"00"
+			   and unsigned(cpu_pc_now(15 downto 0)) > x"07DB" then
+				trace_frozen_r <= '1';
 			end if;
 
 			-- v230: $D019 write count (VIC IRQ ack). cs_vic gated to
