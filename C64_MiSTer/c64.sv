@@ -1316,6 +1316,8 @@ wire [23:0] scpu_dbg_trace_pc4;
 wire [23:0] scpu_dbg_trace_pc5;
 wire  [7:0] scpu_dbg_trace_op4;
 wire  [7:0] scpu_dbg_trace_op5;
+wire [23:0] scpu_dbg_scr_write_pc;
+wire  [7:0] scpu_dbg_scr_write_count;
 // v254: JSR ring (lower-16-bit PCs of last 4 JSR/JSL fetches)
 wire [15:0] scpu_dbg_jsr_pc_t0;
 wire [15:0] scpu_dbg_jsr_pc_t1;
@@ -1662,6 +1664,8 @@ cap_vic_wr u_cap_vic_wr (
 	.in_trace_pc5     (scpu_dbg_trace_pc5),
 	.in_trace_op4     (scpu_dbg_trace_op4),
 	.in_trace_op5     (scpu_dbg_trace_op5),
+	.in_scr_write_pc     (scpu_dbg_scr_write_pc),
+	.in_scr_write_count  (scpu_dbg_scr_write_count),
 	.in_jsr_pc_t0     (scpu_dbg_jsr_pc_t0),
 	.in_jsr_pc_t1     (scpu_dbg_jsr_pc_t1),
 	.in_jsr_pc_t2     (scpu_dbg_jsr_pc_t2),
@@ -1708,6 +1712,8 @@ cap_vic_wr u_cap_vic_wr (
 	.o_trace_pc5      (dbg_pool.trace_pc5),
 	.o_trace_op4      (dbg_pool.trace_op4),
 	.o_trace_op5      (dbg_pool.trace_op5),
+	.o_scr_write_pc      (dbg_pool.scr_write_pc),
+	.o_scr_write_count   (dbg_pool.scr_write_count),
 	.o_jsr_pc_t0      (dbg_pool.jsr_pc_t0),
 	.o_jsr_pc_t1      (dbg_pool.jsr_pc_t1),
 	.o_jsr_pc_t2      (dbg_pool.jsr_pc_t2),
@@ -1756,6 +1762,8 @@ assign dbg_pool.trace_pc4        = '0;
 assign dbg_pool.trace_pc5        = '0;
 assign dbg_pool.trace_op4        = '0;
 assign dbg_pool.trace_op5        = '0;
+assign dbg_pool.scr_write_pc     = '0;
+assign dbg_pool.scr_write_count  = '0;
 assign dbg_pool.jsr_pc_t0        = '0;
 assign dbg_pool.jsr_pc_t1        = '0;
 assign dbg_pool.jsr_pc_t2        = '0;
@@ -2258,6 +2266,8 @@ fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64
 	.dbg_trace_pc5        (scpu_dbg_trace_pc5),
 	.dbg_trace_op4        (scpu_dbg_trace_op4),
 	.dbg_trace_op5        (scpu_dbg_trace_op5),
+	.dbg_scr_write_pc     (scpu_dbg_scr_write_pc),
+	.dbg_scr_write_count  (scpu_dbg_scr_write_count),
 	.dbg_jsr_pc_t0        (scpu_dbg_jsr_pc_t0),
 	.dbg_jsr_pc_t1        (scpu_dbg_jsr_pc_t1),
 	.dbg_jsr_pc_t2        (scpu_dbg_jsr_pc_t2),

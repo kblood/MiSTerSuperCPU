@@ -167,6 +167,13 @@ typedef struct packed {
   logic  [7:0] trace_op4;
   logic  [7:0] trace_op5;
 
+  // 31st pass (Wolf3D freeze, 2026-08-25): screen-RAM ($0400-$07E7,
+  // bank $00) write observer. Answers whether ANYTHING still writes
+  // to screen RAM after the loader arms, once the plain-playthrough
+  // hang-check confirmed a real ~10-min visual freeze. UART-only.
+  logic [23:0] scr_write_pc;
+  logic  [7:0] scr_write_count;
+
   // v254: 4-deep JSR ring. Lower 16 bits of the PC of the last 4 JSR
   // ($20) or JSL ($22) opcode fetches. Independent of trace_frozen.
   // Each captured screenshot reveals the most recent 4 callers — the

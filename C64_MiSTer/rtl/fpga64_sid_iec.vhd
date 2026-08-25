@@ -257,6 +257,10 @@ port(
 	dbg_trace_pc5        : out std_logic_vector(23 downto 0);
 	dbg_trace_op4        : out std_logic_vector(7 downto 0);
 	dbg_trace_op5        : out std_logic_vector(7 downto 0);
+	-- 31st pass: screen-RAM ($0400-$07E7, bank $00) write observer
+	-- (see dbg_scr_write_pc_r declaration comment).
+	dbg_scr_write_pc     : out std_logic_vector(23 downto 0);
+	dbg_scr_write_count  : out std_logic_vector(7 downto 0);
 	-- v254: 4-deep JSR ring (lower-16-bit PC of last JSR / JSL fetched).
 	-- Independent of trace_frozen. Reveals upstream callers of writer.
 	dbg_jsr_pc_t0        : out std_logic_vector(15 downto 0);
@@ -1022,6 +1026,14 @@ signal dbg_d018_count_r    : std_logic_vector(7 downto 0)  := (others => '0');
 signal dbg_d018_bad_pc_r   : std_logic_vector(23 downto 0) := (others => '0');
 signal dbg_d018_bad_count_r: std_logic_vector(7 downto 0)  := (others => '0');
 signal dbg_d018_bad_value_r: std_logic_vector(7 downto 0)  := (others => '0');
+-- 31st pass (Wolf3D freeze, 2026-08-25): screen-RAM ($0400-$07E7,
+-- bank $00) write observer. The plain-playthrough hang-check confirmed
+-- a real visual freeze (screen 99.7%+ pixel-identical for ~10 min post
+-- bank-$28 landing) -- this tracks whether ANYTHING still writes to
+-- screen RAM after the loader arms, or whether the screen-update
+-- routine simply stops being called. Mirrors the d018 observer above.
+signal dbg_scr_write_pc_r    : std_logic_vector(23 downto 0) := (others => '0');
+signal dbg_scr_write_count_r : std_logic_vector(7 downto 0)  := (others => '0');
 -- v211: 4-deep PC ring buffer, frozen on first D018 != $18 write
 signal trace_pc0_r : std_logic_vector(23 downto 0) := (others => '0');
 signal trace_pc1_r : std_logic_vector(23 downto 0) := (others => '0');
@@ -4305,6 +4317,8 @@ begin
 			dbg_d018_bad_pc_r    <= (others => '0');
 			dbg_d018_bad_count_r <= (others => '0');
 			dbg_d018_bad_value_r <= (others => '0');
+			dbg_scr_write_pc_r    <= (others => '0');
+			dbg_scr_write_count_r <= (others => '0');
 			trace_pc0_r          <= (others => '0');
 			trace_pc1_r          <= (others => '0');
 			trace_pc2_r          <= (others => '0');
@@ -4543,6 +4557,23 @@ begin
 					dbg_d016_r <= std_logic_vector(cpuDo);
 				elsif cpuAddr(5 downto 0) = "010001" then
 					dbg_d011_r <= std_logic_vector(cpuDo);
+				end if;
+			end if;
+
+			-- 31st pass: screen-RAM write observer (bank $00 $0400-$07E7).
+			-- Independent of cs_vic -- this is a plain RAM write, not a
+			-- register write, so it needs its own address-range check.
+			-- Gated on loader_armed_r so boot-time BASIC/KERNAL screen
+			-- writes (before the loader even starts) don't pollute the
+			-- count; gated on bank $00 (addr_hi_816) so a native-mode
+			-- write to some OTHER bank's $xx:04xx-$xx:07E7 doesn't
+			-- falsely count as a screen write.
+			if loader_armed_r = '1' and cpuWe = '1'
+			   and (supercpu_en = '0' or addr_hi_816 = x"00")
+			   and cpuAddr >= x"0400" and cpuAddr <= x"07E7" then
+				dbg_scr_write_pc_r <= cpu_pc_now;
+				if unsigned(dbg_scr_write_count_r) /= x"FF" then
+					dbg_scr_write_count_r <= std_logic_vector(unsigned(dbg_scr_write_count_r) + 1);
 				end if;
 			end if;
 
@@ -6167,6 +6198,8 @@ dbg_trace_pc4        <= trace_pc4_r;
 dbg_trace_pc5        <= trace_pc5_r;
 dbg_trace_op4        <= trace_op4_r;
 dbg_trace_op5        <= trace_op5_r;
+dbg_scr_write_pc     <= dbg_scr_write_pc_r;
+dbg_scr_write_count  <= dbg_scr_write_count_r;
 -- v254: JSR ring outputs (lower 16 bits of last 4 JSR/JSL fetches)
 dbg_jsr_pc_t0        <= jsr_pc_t0_r;
 dbg_jsr_pc_t1        <= jsr_pc_t1_r;

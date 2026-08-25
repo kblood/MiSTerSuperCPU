@@ -85,6 +85,10 @@ module debug_uart_pool_fmt
 	// overlay cell space is fully exhausted.
 	reg [23:0] lat_tr_pc4, lat_tr_pc5;
 	reg  [7:0] lat_tr_op4, lat_tr_op5;
+	// 31st pass (Wolf3D freeze, 2026-08-25): screen-RAM write observer
+	// (see debug_pkg.svh scr_write_pc comment). UART-only.
+	reg [23:0] lat_scr_write_pc;
+	reg  [7:0] lat_scr_write_count;
 	reg [15:0] lat_cy;
 	reg [15:0] lat_jsr0, lat_jsr1, lat_jsr2, lat_jsr3;
 	reg [15:0] lat_jmp0, lat_jmp1, lat_jmp2, lat_jmp3;
@@ -212,7 +216,7 @@ module debug_uart_pool_fmt
 	// New tail uses bytes 369..390; IE field at 391..396.
 	// more-turbo iter-4d (2026-05-30): append " HR:## HW:##" (12 bytes) at
 	// 397..408 for the read-only cpu_cache hit-rate observer; newline at 409.
-	localparam LINE_LEN = 9'd442;
+	localparam LINE_LEN = 9'd458;
 
 	reg [8:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -824,7 +828,30 @@ module debug_uart_pool_fmt
 			9'd438: line_byte = ":";
 			9'd439: line_byte = hex_nibble(lat_tr_op5[7:4]);
 			9'd440: line_byte = hex_nibble(lat_tr_op5[3:0]);
-			9'd441: line_byte = 8'h0A;
+
+			// 31st pass (Wolf3D freeze, 2026-08-25): screen-RAM write
+			// observer -- SW = PC of last write into $0400-$07E7 bank $00
+			// since loader_armed_r; SC = saturating write count. Answers
+			// whether anything still writes to screen RAM during the
+			// confirmed ~10-min visual freeze (see
+			// project_wolf3d_postreu_bank28_freeze_regression.md).
+			9'd441: line_byte = " ";
+			9'd442: line_byte = "S";
+			9'd443: line_byte = "W";
+			9'd444: line_byte = ":";
+			9'd445: line_byte = hex_nibble(lat_scr_write_pc[23:20]);
+			9'd446: line_byte = hex_nibble(lat_scr_write_pc[19:16]);
+			9'd447: line_byte = hex_nibble(lat_scr_write_pc[15:12]);
+			9'd448: line_byte = hex_nibble(lat_scr_write_pc[11:8]);
+			9'd449: line_byte = hex_nibble(lat_scr_write_pc[7:4]);
+			9'd450: line_byte = hex_nibble(lat_scr_write_pc[3:0]);
+			9'd451: line_byte = " ";
+			9'd452: line_byte = "S";
+			9'd453: line_byte = "C";
+			9'd454: line_byte = ":";
+			9'd455: line_byte = hex_nibble(lat_scr_write_count[7:4]);
+			9'd456: line_byte = hex_nibble(lat_scr_write_count[3:0]);
+			9'd457: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -861,6 +888,8 @@ module debug_uart_pool_fmt
 				lat_tr_pc5 <= pool.trace_pc5;
 				lat_tr_op4 <= pool.trace_op4;
 				lat_tr_op5 <= pool.trace_op5;
+				lat_scr_write_pc    <= pool.scr_write_pc;
+				lat_scr_write_count <= pool.scr_write_count;
 				lat_cy    <= pool.cnt_wr02;
 				lat_jsr0  <= pool.jsr_pc_t0;
 				lat_jsr1  <= pool.jsr_pc_t1;
