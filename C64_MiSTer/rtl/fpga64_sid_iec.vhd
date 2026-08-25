@@ -5265,10 +5265,19 @@ begin
 			-- capture this exact triggering fetch unchanged, since this
 			-- block and the ring-shift block both read the OLD (pre-edge)
 			-- value of trig_seen_r/trace_frozen_r within the same cycle.
+			-- 30th pass (2026-08-25): retargeted from "bank $00 past the
+			-- loader footprint" (26th-29th passes: caught an unrelated,
+			-- apparently-benign bank-$0C->bank-$00 hop, 2 fetches past
+			-- landing showed ordinary LDA/STA/LDA dp code) to "first
+			-- opcode fetch in bank $28 after arming" -- bank $28 is the
+			-- ORIGINALLY-reported hang bank ($28:$3BB6, 12th-pass era)
+			-- that this whole 20-pass trace-ring lineage has never once
+			-- observed. If this never fires, P4/P5 stay all-zero, which
+			-- itself is the answer: bank $28 is not reached at all in
+			-- the current HEAD run.
 			if trig_seen_r = '0' and loader_armed_r = '1'
 			   and opcode_fetch_pulse = '1'
-			   and cpu_pc_now(23 downto 16) = x"00"
-			   and unsigned(cpu_pc_now(15 downto 0)) > x"07DB" then
+			   and cpu_pc_now(23 downto 16) = x"28" then
 				trig_seen_r <= '1';
 			end if;
 
