@@ -174,6 +174,13 @@ typedef struct packed {
   logic [23:0] scr_write_pc;
   logic  [7:0] scr_write_count;
 
+  // 32nd pass: 2 more post-trigger ring slots (pc6/pc7), extending
+  // the 29th pass's pc4/pc5 to 4 total post-landing fetches.
+  logic [23:0] trace_pc6;
+  logic [23:0] trace_pc7;
+  logic  [7:0] trace_op6;
+  logic  [7:0] trace_op7;
+
   // v254: 4-deep JSR ring. Lower 16 bits of the PC of the last 4 JSR
   // ($20) or JSL ($22) opcode fetches. Independent of trace_frozen.
   // Each captured screenshot reveals the most recent 4 callers — the

@@ -261,6 +261,12 @@ port(
 	-- (see dbg_scr_write_pc_r declaration comment).
 	dbg_scr_write_pc     : out std_logic_vector(23 downto 0);
 	dbg_scr_write_count  : out std_logic_vector(7 downto 0);
+	-- 32nd pass: 2 more post-trigger ring slots (see trace_pc6_r
+	-- declaration comment).
+	dbg_trace_pc6        : out std_logic_vector(23 downto 0);
+	dbg_trace_pc7        : out std_logic_vector(23 downto 0);
+	dbg_trace_op6        : out std_logic_vector(7 downto 0);
+	dbg_trace_op7        : out std_logic_vector(7 downto 0);
 	-- v254: 4-deep JSR ring (lower-16-bit PC of last JSR / JSL fetched).
 	-- Independent of trace_frozen. Reveals upstream callers of writer.
 	dbg_jsr_pc_t0        : out std_logic_vector(15 downto 0);
@@ -1065,6 +1071,15 @@ signal trace_pc4_r : std_logic_vector(23 downto 0) := (others => '0');
 signal trace_pc5_r : std_logic_vector(23 downto 0) := (others => '0');
 signal trace_op4_r : std_logic_vector(7 downto 0) := (others => '0');
 signal trace_op5_r : std_logic_vector(7 downto 0) := (others => '0');
+-- 32nd pass (Wolf3D freeze, 2026-08-25): 2 more post-trigger slots
+-- (pc6/pc7), reusing the same post_trig_cnt_r counter (2-bit already
+-- supports states 0-3, no width change needed) -- 4 fetches past the
+-- bank-$28 landing instead of 2, to see further past the generic
+-- LDA/STA/LDA idiom the 29th/30th passes found there.
+signal trace_pc6_r : std_logic_vector(23 downto 0) := (others => '0');
+signal trace_pc7_r : std_logic_vector(23 downto 0) := (others => '0');
+signal trace_op6_r : std_logic_vector(7 downto 0) := (others => '0');
+signal trace_op7_r : std_logic_vector(7 downto 0) := (others => '0');
 -- v254: JSR ring. Pushes cpu_pc_now (lower 16 bits) on opcode_fetch_pulse
 -- when cpuDi = $20 (JSR abs) or $22 (JSL abslong). Independent of trace
 -- freeze. Captures the upstream callers that JSR'd into the writer.
@@ -4334,6 +4349,10 @@ begin
 			trace_pc5_r          <= (others => '0');
 			trace_op4_r          <= (others => '0');
 			trace_op5_r          <= (others => '0');
+			trace_pc6_r          <= (others => '0');
+			trace_pc7_r          <= (others => '0');
+			trace_op6_r          <= (others => '0');
+			trace_op7_r          <= (others => '0');
 			-- v250: skip first 32 STA $DF01 writes so trace ring captures
 			-- steady-state IRQ-handler call chain, not the loader's
 			-- one-shot setup writes.
@@ -5524,6 +5543,13 @@ begin
 					trace_pc5_r     <= cpu_pc_now;
 					trace_op5_r     <= std_logic_vector(cpuDi);
 					post_trig_cnt_r <= to_unsigned(2, 2);
+				elsif post_trig_cnt_r = 2 then
+					trace_pc6_r     <= cpu_pc_now;
+					trace_op6_r     <= std_logic_vector(cpuDi);
+					post_trig_cnt_r <= to_unsigned(3, 2);
+				elsif post_trig_cnt_r = 3 then
+					trace_pc7_r     <= cpu_pc_now;
+					trace_op7_r     <= std_logic_vector(cpuDi);
 					trace_frozen_r  <= '1';
 				end if;
 			end if;
@@ -6200,6 +6226,10 @@ dbg_trace_op4        <= trace_op4_r;
 dbg_trace_op5        <= trace_op5_r;
 dbg_scr_write_pc     <= dbg_scr_write_pc_r;
 dbg_scr_write_count  <= dbg_scr_write_count_r;
+dbg_trace_pc6        <= trace_pc6_r;
+dbg_trace_pc7        <= trace_pc7_r;
+dbg_trace_op6        <= trace_op6_r;
+dbg_trace_op7        <= trace_op7_r;
 -- v254: JSR ring outputs (lower 16 bits of last 4 JSR/JSL fetches)
 dbg_jsr_pc_t0        <= jsr_pc_t0_r;
 dbg_jsr_pc_t1        <= jsr_pc_t1_r;

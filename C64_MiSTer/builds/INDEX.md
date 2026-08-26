@@ -2,6 +2,7 @@
 
 | Built (UTC)        | Branch              | SHA        | MD5 (short) | Subject                                    | Dirty |
 |--------------------|---------------------|------------|-------------|--------------------------------------------|-------|
+| 20260825 144154 | milestone-b-cdc-rew | 44149e4187 | 2510cae5    | debug(scpu): add screen-RAM write observer | yes   |
 | 20260825 140802 | milestone-b-cdc-rew | e40158ff88 | 7d220521    | debug(scpu): retarget Wolf3D trace-ring tr | yes   |
 | 20260825 122412 | milestone-b-cdc-rew | ffb9cfac5e | f083798c    | debug(scpu): extend Wolf3D trace ring with | yes   |
 | 20260825 115933 | milestone-b-cdc-rew | effeb35e6b | 297ad0e1    | chore(builds): archive build 54c56e9 (Wolf | yes   |

@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_44149e4187_20260825T144154Z_2510cae5-dirty",
+  "md5": "2510cae50e870253de6e3621d3734340",
+  "size_bytes": 4002928,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "44149e4187",
+  "git_subject": "debug(scpu): add screen-RAM write observer for Wolf3D freeze (31st pass)",
+  "git_dirty": true,
+  "built_utc": "20260825T144154Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

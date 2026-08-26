@@ -1318,6 +1318,10 @@ wire  [7:0] scpu_dbg_trace_op4;
 wire  [7:0] scpu_dbg_trace_op5;
 wire [23:0] scpu_dbg_scr_write_pc;
 wire  [7:0] scpu_dbg_scr_write_count;
+wire [23:0] scpu_dbg_trace_pc6;
+wire [23:0] scpu_dbg_trace_pc7;
+wire  [7:0] scpu_dbg_trace_op6;
+wire  [7:0] scpu_dbg_trace_op7;
 // v254: JSR ring (lower-16-bit PCs of last 4 JSR/JSL fetches)
 wire [15:0] scpu_dbg_jsr_pc_t0;
 wire [15:0] scpu_dbg_jsr_pc_t1;
@@ -1666,6 +1670,10 @@ cap_vic_wr u_cap_vic_wr (
 	.in_trace_op5     (scpu_dbg_trace_op5),
 	.in_scr_write_pc     (scpu_dbg_scr_write_pc),
 	.in_scr_write_count  (scpu_dbg_scr_write_count),
+	.in_trace_pc6     (scpu_dbg_trace_pc6),
+	.in_trace_pc7     (scpu_dbg_trace_pc7),
+	.in_trace_op6     (scpu_dbg_trace_op6),
+	.in_trace_op7     (scpu_dbg_trace_op7),
 	.in_jsr_pc_t0     (scpu_dbg_jsr_pc_t0),
 	.in_jsr_pc_t1     (scpu_dbg_jsr_pc_t1),
 	.in_jsr_pc_t2     (scpu_dbg_jsr_pc_t2),
@@ -1714,6 +1722,10 @@ cap_vic_wr u_cap_vic_wr (
 	.o_trace_op5      (dbg_pool.trace_op5),
 	.o_scr_write_pc      (dbg_pool.scr_write_pc),
 	.o_scr_write_count   (dbg_pool.scr_write_count),
+	.o_trace_pc6      (dbg_pool.trace_pc6),
+	.o_trace_pc7      (dbg_pool.trace_pc7),
+	.o_trace_op6      (dbg_pool.trace_op6),
+	.o_trace_op7      (dbg_pool.trace_op7),
 	.o_jsr_pc_t0      (dbg_pool.jsr_pc_t0),
 	.o_jsr_pc_t1      (dbg_pool.jsr_pc_t1),
 	.o_jsr_pc_t2      (dbg_pool.jsr_pc_t2),
@@ -1764,6 +1776,10 @@ assign dbg_pool.trace_op4        = '0;
 assign dbg_pool.trace_op5        = '0;
 assign dbg_pool.scr_write_pc     = '0;
 assign dbg_pool.scr_write_count  = '0;
+assign dbg_pool.trace_pc6        = '0;
+assign dbg_pool.trace_pc7        = '0;
+assign dbg_pool.trace_op6        = '0;
+assign dbg_pool.trace_op7        = '0;
 assign dbg_pool.jsr_pc_t0        = '0;
 assign dbg_pool.jsr_pc_t1        = '0;
 assign dbg_pool.jsr_pc_t2        = '0;
@@ -2268,6 +2284,10 @@ fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64
 	.dbg_trace_op5        (scpu_dbg_trace_op5),
 	.dbg_scr_write_pc     (scpu_dbg_scr_write_pc),
 	.dbg_scr_write_count  (scpu_dbg_scr_write_count),
+	.dbg_trace_pc6        (scpu_dbg_trace_pc6),
+	.dbg_trace_pc7        (scpu_dbg_trace_pc7),
+	.dbg_trace_op6        (scpu_dbg_trace_op6),
+	.dbg_trace_op7        (scpu_dbg_trace_op7),
 	.dbg_jsr_pc_t0        (scpu_dbg_jsr_pc_t0),
 	.dbg_jsr_pc_t1        (scpu_dbg_jsr_pc_t1),
 	.dbg_jsr_pc_t2        (scpu_dbg_jsr_pc_t2),

@@ -89,6 +89,10 @@ module debug_uart_pool_fmt
 	// (see debug_pkg.svh scr_write_pc comment). UART-only.
 	reg [23:0] lat_scr_write_pc;
 	reg  [7:0] lat_scr_write_count;
+	// 32nd pass (Wolf3D freeze, 2026-08-25): 2 more post-trigger ring
+	// slots (see debug_pkg.svh trace_pc6/trace_pc7 comment). UART-only.
+	reg [23:0] lat_tr_pc6, lat_tr_pc7;
+	reg  [7:0] lat_tr_op6, lat_tr_op7;
 	reg [15:0] lat_cy;
 	reg [15:0] lat_jsr0, lat_jsr1, lat_jsr2, lat_jsr3;
 	reg [15:0] lat_jmp0, lat_jmp1, lat_jmp2, lat_jmp3;
@@ -216,7 +220,7 @@ module debug_uart_pool_fmt
 	// New tail uses bytes 369..390; IE field at 391..396.
 	// more-turbo iter-4d (2026-05-30): append " HR:## HW:##" (12 bytes) at
 	// 397..408 for the read-only cpu_cache hit-rate observer; newline at 409.
-	localparam LINE_LEN = 9'd458;
+	localparam LINE_LEN = 9'd490;
 
 	reg [8:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -851,7 +855,45 @@ module debug_uart_pool_fmt
 			9'd454: line_byte = ":";
 			9'd455: line_byte = hex_nibble(lat_scr_write_count[7:4]);
 			9'd456: line_byte = hex_nibble(lat_scr_write_count[3:0]);
-			9'd457: line_byte = 8'h0A;
+
+			// 32nd pass (Wolf3D freeze, 2026-08-25): 2 more post-trigger
+			// ring slots (pc6/pc7), extending the 29th pass's pc4/pc5 to
+			// 4 total post-landing fetches (see trace_frozen_r comment
+			// in fpga64_sid_iec.vhd).
+			9'd457: line_byte = " ";
+			9'd458: line_byte = "P";
+			9'd459: line_byte = "6";
+			9'd460: line_byte = ":";
+			9'd461: line_byte = hex_nibble(lat_tr_pc6[23:20]);
+			9'd462: line_byte = hex_nibble(lat_tr_pc6[19:16]);
+			9'd463: line_byte = hex_nibble(lat_tr_pc6[15:12]);
+			9'd464: line_byte = hex_nibble(lat_tr_pc6[11:8]);
+			9'd465: line_byte = hex_nibble(lat_tr_pc6[7:4]);
+			9'd466: line_byte = hex_nibble(lat_tr_pc6[3:0]);
+			9'd467: line_byte = " ";
+			9'd468: line_byte = "O";
+			9'd469: line_byte = "6";
+			9'd470: line_byte = ":";
+			9'd471: line_byte = hex_nibble(lat_tr_op6[7:4]);
+			9'd472: line_byte = hex_nibble(lat_tr_op6[3:0]);
+
+			9'd473: line_byte = " ";
+			9'd474: line_byte = "P";
+			9'd475: line_byte = "7";
+			9'd476: line_byte = ":";
+			9'd477: line_byte = hex_nibble(lat_tr_pc7[23:20]);
+			9'd478: line_byte = hex_nibble(lat_tr_pc7[19:16]);
+			9'd479: line_byte = hex_nibble(lat_tr_pc7[15:12]);
+			9'd480: line_byte = hex_nibble(lat_tr_pc7[11:8]);
+			9'd481: line_byte = hex_nibble(lat_tr_pc7[7:4]);
+			9'd482: line_byte = hex_nibble(lat_tr_pc7[3:0]);
+			9'd483: line_byte = " ";
+			9'd484: line_byte = "O";
+			9'd485: line_byte = "7";
+			9'd486: line_byte = ":";
+			9'd487: line_byte = hex_nibble(lat_tr_op7[7:4]);
+			9'd488: line_byte = hex_nibble(lat_tr_op7[3:0]);
+			9'd489: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -890,6 +932,10 @@ module debug_uart_pool_fmt
 				lat_tr_op5 <= pool.trace_op5;
 				lat_scr_write_pc    <= pool.scr_write_pc;
 				lat_scr_write_count <= pool.scr_write_count;
+				lat_tr_pc6 <= pool.trace_pc6;
+				lat_tr_pc7 <= pool.trace_pc7;
+				lat_tr_op6 <= pool.trace_op6;
+				lat_tr_op7 <= pool.trace_op7;
 				lat_cy    <= pool.cnt_wr02;
 				lat_jsr0  <= pool.jsr_pc_t0;
 				lat_jsr1  <= pool.jsr_pc_t1;
