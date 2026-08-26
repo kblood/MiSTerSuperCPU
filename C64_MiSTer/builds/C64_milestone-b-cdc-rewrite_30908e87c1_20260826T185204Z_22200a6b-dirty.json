@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_30908e87c1_20260826T185204Z_22200a6b-dirty",
+  "md5": "22200a6b496916ddce43703058e4cbe9",
+  "size_bytes": 4030596,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "30908e87c1",
+  "git_subject": "debug(wolf3d): 44th-pass W3 write-bus snoop for $292E/$2930",
+  "git_dirty": true,
+  "built_utc": "20260826T185204Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}
