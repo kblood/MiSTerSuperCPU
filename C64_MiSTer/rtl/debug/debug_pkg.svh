@@ -298,6 +298,10 @@ typedef struct packed {
   logic  [7:0] wloop_rb36;
   logic  [7:0] wloop_d292e;
   logic  [7:0] wloop_d2930;
+  logic  [7:0] wloop_w292e_cnt;
+  logic  [7:0] wloop_w292e_val;
+  logic  [7:0] wloop_w2930_cnt;
+  logic  [7:0] wloop_w2930_val;
 
   // v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag was ever
   // observed at 0 (CLI / PLP cleared it). irq_vec_count = 16-bit count

@@ -396,6 +396,12 @@ port(
 	-- the frozen $2906 STA via ADC.
 	dbg_wloop_d292e      : out std_logic_vector(7 downto 0);
 	dbg_wloop_d2930      : out std_logic_vector(7 downto 0);
+	-- 44th pass: write-bus-gated proof of whether $292E/$2930 (the
+	-- frozen step-table deltas) are EVER written during the run.
+	dbg_wloop_w292e_cnt  : out std_logic_vector(7 downto 0);
+	dbg_wloop_w292e_val  : out std_logic_vector(7 downto 0);
+	dbg_wloop_w2930_cnt  : out std_logic_vector(7 downto 0);
+	dbg_wloop_w2930_val  : out std_logic_vector(7 downto 0);
 	-- v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag ever
 	-- observed at 0; irq_vec_count counts $FFFE/$FFFF reads (IRQ
 	-- vector fetches); min_p = lowest dbg_p_816 ever observed.
@@ -1310,6 +1316,10 @@ signal wloop_rb35_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_rb36_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_d292e_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_d2930_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_w292e_cnt_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_w292e_val_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_w2930_cnt_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_w2930_val_r : std_logic_vector(7 downto 0) := (others => '0');
 -- v228: I-flag diagnostics for SCPU.
 --  scpu_iclr_r = '1' once dbg_p_816(2) was ever observed = 0 with SCPU
 --                active. If stays '0', SCPU never reaches I=0 — IRQ off.
@@ -5144,6 +5154,24 @@ begin
 					end if;
 					wloop_w2906_val_r <= std_logic_vector(cpuDo_pre);
 				end if;
+				-- 44th pass: same write-bus-gated technique applied to
+				-- the two step-table deltas the 43rd pass proved read
+				-- back frozen at $00 -- direct proof of whether the
+				-- loader ever writes them at all.
+				if cpuAddr_pre = x"292E"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					if wloop_w292e_cnt_r /= x"FF" then
+						wloop_w292e_cnt_r <= std_logic_vector(unsigned(wloop_w292e_cnt_r) + 1);
+					end if;
+					wloop_w292e_val_r <= std_logic_vector(cpuDo_pre);
+				end if;
+				if cpuAddr_pre = x"2930"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					if wloop_w2930_cnt_r /= x"FF" then
+						wloop_w2930_cnt_r <= std_logic_vector(unsigned(wloop_w2930_cnt_r) + 1);
+					end if;
+					wloop_w2930_val_r <= std_logic_vector(cpuDo_pre);
+				end if;
 				if cpuAddr_pre = x"DF01" then
 					wr_df01_pc_r  <= cpu_pc_now;
 					wr_df01_val_r <= std_logic_vector(cpuDo_pre);
@@ -6809,6 +6837,10 @@ dbg_wloop_rb35       <= wloop_rb35_r;
 dbg_wloop_rb36       <= wloop_rb36_r;
 dbg_wloop_d292e      <= wloop_d292e_r;
 dbg_wloop_d2930      <= wloop_d2930_r;
+dbg_wloop_w292e_cnt  <= wloop_w292e_cnt_r;
+dbg_wloop_w292e_val  <= wloop_w292e_val_r;
+dbg_wloop_w2930_cnt  <= wloop_w2930_cnt_r;
+dbg_wloop_w2930_val  <= wloop_w2930_val_r;
 dbg_scpu_iclr        <= scpu_iclr_r;
 dbg_irq_vec_count    <= std_logic_vector(irq_vec_count_r);
 dbg_min_p            <= min_p_r;

@@ -164,6 +164,10 @@ module debug_uart_pool_fmt
 	reg  [7:0] lat_wloop_rb36;
 	reg  [7:0] lat_wloop_d292e;
 	reg  [7:0] lat_wloop_d2930;
+	reg  [7:0] lat_wloop_w292e_cnt;
+	reg  [7:0] lat_wloop_w292e_val;
+	reg  [7:0] lat_wloop_w2930_cnt;
+	reg  [7:0] lat_wloop_w2930_val;
 	reg [15:0] lat_cy;
 	reg [15:0] lat_jsr0, lat_jsr1, lat_jsr2, lat_jsr3;
 	reg [15:0] lat_jmp0, lat_jmp1, lat_jmp2, lat_jmp3;
@@ -298,7 +302,7 @@ module debug_uart_pool_fmt
 	// LINE_LEN=512 fits as a literal. Existing case items keep their
 	// 9'd literals unchanged; Verilog zero-extends them for the
 	// comparison, so no risk there.
-	localparam LINE_LEN = 10'd709;
+	localparam LINE_LEN = 10'd721;
 
 	reg [9:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -1220,7 +1224,21 @@ module debug_uart_pool_fmt
 			10'd705: line_byte = hex_nibble(lat_wloop_d292e[3:0]);
 			10'd706: line_byte = hex_nibble(lat_wloop_d2930[7:4]);
 			10'd707: line_byte = hex_nibble(lat_wloop_d2930[3:0]);
-			10'd708: line_byte = 8'h0A;
+			// 44th pass: write-bus-gated proof of whether $292E/$2930
+			// are EVER written -- cnt/val pairs for each address.
+			10'd708: line_byte = " ";
+			10'd709: line_byte = "W";
+			10'd710: line_byte = "3";
+			10'd711: line_byte = ":";
+			10'd712: line_byte = hex_nibble(lat_wloop_w292e_cnt[7:4]);
+			10'd713: line_byte = hex_nibble(lat_wloop_w292e_cnt[3:0]);
+			10'd714: line_byte = hex_nibble(lat_wloop_w292e_val[7:4]);
+			10'd715: line_byte = hex_nibble(lat_wloop_w292e_val[3:0]);
+			10'd716: line_byte = hex_nibble(lat_wloop_w2930_cnt[7:4]);
+			10'd717: line_byte = hex_nibble(lat_wloop_w2930_cnt[3:0]);
+			10'd718: line_byte = hex_nibble(lat_wloop_w2930_val[7:4]);
+			10'd719: line_byte = hex_nibble(lat_wloop_w2930_val[3:0]);
+			10'd720: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -1330,6 +1348,10 @@ module debug_uart_pool_fmt
 				lat_wloop_rb36    <= pool.wloop_rb36;
 				lat_wloop_d292e   <= pool.wloop_d292e;
 				lat_wloop_d2930   <= pool.wloop_d2930;
+				lat_wloop_w292e_cnt <= pool.wloop_w292e_cnt;
+				lat_wloop_w292e_val <= pool.wloop_w292e_val;
+				lat_wloop_w2930_cnt <= pool.wloop_w2930_cnt;
+				lat_wloop_w2930_val <= pool.wloop_w2930_val;
 				lat_cy    <= pool.cnt_wr02;
 				lat_jsr0  <= pool.jsr_pc_t0;
 				lat_jsr1  <= pool.jsr_pc_t1;

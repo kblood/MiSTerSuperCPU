@@ -1404,6 +1404,10 @@ wire  [7:0] scpu_dbg_wloop_rb35;
 wire  [7:0] scpu_dbg_wloop_rb36;
 wire  [7:0] scpu_dbg_wloop_d292e;
 wire  [7:0] scpu_dbg_wloop_d2930;
+wire  [7:0] scpu_dbg_wloop_w292e_cnt;
+wire  [7:0] scpu_dbg_wloop_w292e_val;
+wire  [7:0] scpu_dbg_wloop_w2930_cnt;
+wire  [7:0] scpu_dbg_wloop_w2930_val;
 wire        scpu_dbg_scpu_iclr;
 wire [15:0] scpu_dbg_irq_vec_count;
 wire  [7:0] scpu_dbg_min_p;
@@ -1821,6 +1825,10 @@ cap_vic_wr u_cap_vic_wr (
 	.in_wloop_rb36    (scpu_dbg_wloop_rb36),
 	.in_wloop_d292e   (scpu_dbg_wloop_d292e),
 	.in_wloop_d2930   (scpu_dbg_wloop_d2930),
+	.in_wloop_w292e_cnt (scpu_dbg_wloop_w292e_cnt),
+	.in_wloop_w292e_val (scpu_dbg_wloop_w292e_val),
+	.in_wloop_w2930_cnt (scpu_dbg_wloop_w2930_cnt),
+	.in_wloop_w2930_val (scpu_dbg_wloop_w2930_val),
 	.o_d018        (dbg_pool.vic_d018),
 	.o_d016        (dbg_pool.vic_d016),
 	.o_dd00        (dbg_pool.vic_dd00),
@@ -1939,7 +1947,11 @@ cap_vic_wr u_cap_vic_wr (
 	.o_wloop_rb35     (dbg_pool.wloop_rb35),
 	.o_wloop_rb36     (dbg_pool.wloop_rb36),
 	.o_wloop_d292e    (dbg_pool.wloop_d292e),
-	.o_wloop_d2930    (dbg_pool.wloop_d2930)
+	.o_wloop_d2930    (dbg_pool.wloop_d2930),
+	.o_wloop_w292e_cnt (dbg_pool.wloop_w292e_cnt),
+	.o_wloop_w292e_val (dbg_pool.wloop_w292e_val),
+	.o_wloop_w2930_cnt (dbg_pool.wloop_w2930_cnt),
+	.o_wloop_w2930_val (dbg_pool.wloop_w2930_val)
 );
 `else
 assign dbg_pool.vic_d018         = '0;
@@ -2061,6 +2073,10 @@ assign dbg_pool.wloop_rb35       = '0;
 assign dbg_pool.wloop_rb36       = '0;
 assign dbg_pool.wloop_d292e      = '0;
 assign dbg_pool.wloop_d2930      = '0;
+assign dbg_pool.wloop_w292e_cnt  = '0;
+assign dbg_pool.wloop_w292e_val  = '0;
+assign dbg_pool.wloop_w2930_cnt  = '0;
+assign dbg_pool.wloop_w2930_val  = '0;
 `endif
 
 `ifdef DBG_CAP_CPU_STATE
@@ -2636,6 +2652,10 @@ fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64
 	.dbg_wloop_rb36       (scpu_dbg_wloop_rb36),
 	.dbg_wloop_d292e      (scpu_dbg_wloop_d292e),
 	.dbg_wloop_d2930      (scpu_dbg_wloop_d2930),
+	.dbg_wloop_w292e_cnt  (scpu_dbg_wloop_w292e_cnt),
+	.dbg_wloop_w292e_val  (scpu_dbg_wloop_w292e_val),
+	.dbg_wloop_w2930_cnt  (scpu_dbg_wloop_w2930_cnt),
+	.dbg_wloop_w2930_val  (scpu_dbg_wloop_w2930_val),
 	.dbg_scpu_iclr        (scpu_dbg_scpu_iclr),
 	.dbg_irq_vec_count    (scpu_dbg_irq_vec_count),
 	.dbg_min_p            (scpu_dbg_min_p),
