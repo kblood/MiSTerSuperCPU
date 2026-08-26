@@ -267,6 +267,10 @@ port(
 	dbg_trace_pc7        : out std_logic_vector(23 downto 0);
 	dbg_trace_op6        : out std_logic_vector(7 downto 0);
 	dbg_trace_op7        : out std_logic_vector(7 downto 0);
+	-- 33rd pass: JSR-ring snapshot at the moment of the last screen
+	-- write (see scr_write_jsr_a_r declaration comment).
+	dbg_scr_write_jsr_a  : out std_logic_vector(15 downto 0);
+	dbg_scr_write_jsr_b  : out std_logic_vector(15 downto 0);
 	-- v254: 4-deep JSR ring (lower-16-bit PC of last JSR / JSL fetched).
 	-- Independent of trace_frozen. Reveals upstream callers of writer.
 	dbg_jsr_pc_t0        : out std_logic_vector(15 downto 0);
@@ -1040,6 +1044,16 @@ signal dbg_d018_bad_value_r: std_logic_vector(7 downto 0)  := (others => '0');
 -- routine simply stops being called. Mirrors the d018 observer above.
 signal dbg_scr_write_pc_r    : std_logic_vector(23 downto 0) := (others => '0');
 signal dbg_scr_write_count_r : std_logic_vector(7 downto 0)  := (others => '0');
+-- 33rd pass (Wolf3D freeze, 2026-08-26): snapshot the 2 newest entries
+-- of the always-live JSR ring (jsr_pc_t3_r/t2_r) at the exact moment
+-- the screen-write observer above fires. The JSR ring keeps updating
+-- after the freeze (any periodic IRQ's own JSRs overwrite it), so a
+-- live read during the freeze doesn't show who called the LAST real
+-- screen write -- this latches that context right when it happens.
+-- _a = newest call site (t3, direct caller of the writer or a routine
+-- on its way there), _b = next-newest (t2, its caller).
+signal scr_write_jsr_a_r : std_logic_vector(15 downto 0) := (others => '0');
+signal scr_write_jsr_b_r : std_logic_vector(15 downto 0) := (others => '0');
 -- v211: 4-deep PC ring buffer, frozen on first D018 != $18 write
 signal trace_pc0_r : std_logic_vector(23 downto 0) := (others => '0');
 signal trace_pc1_r : std_logic_vector(23 downto 0) := (others => '0');
@@ -4334,6 +4348,8 @@ begin
 			dbg_d018_bad_value_r <= (others => '0');
 			dbg_scr_write_pc_r    <= (others => '0');
 			dbg_scr_write_count_r <= (others => '0');
+			scr_write_jsr_a_r     <= (others => '0');
+			scr_write_jsr_b_r     <= (others => '0');
 			trace_pc0_r          <= (others => '0');
 			trace_pc1_r          <= (others => '0');
 			trace_pc2_r          <= (others => '0');
@@ -4594,6 +4610,11 @@ begin
 				if unsigned(dbg_scr_write_count_r) /= x"FF" then
 					dbg_scr_write_count_r <= std_logic_vector(unsigned(dbg_scr_write_count_r) + 1);
 				end if;
+				-- 33rd pass: snapshot the JSR ring's 2 newest entries (their
+				-- pre-this-edge values) so the LAST real screen write's call
+				-- context survives even though the ring itself keeps moving.
+				scr_write_jsr_a_r <= jsr_pc_t3_r;
+				scr_write_jsr_b_r <= jsr_pc_t2_r;
 			end if;
 
 			-- v219: opcode-fetch throughput counter. Free-running 24-bit;
@@ -6230,6 +6251,8 @@ dbg_trace_pc6        <= trace_pc6_r;
 dbg_trace_pc7        <= trace_pc7_r;
 dbg_trace_op6        <= trace_op6_r;
 dbg_trace_op7        <= trace_op7_r;
+dbg_scr_write_jsr_a  <= scr_write_jsr_a_r;
+dbg_scr_write_jsr_b  <= scr_write_jsr_b_r;
 -- v254: JSR ring outputs (lower 16 bits of last 4 JSR/JSL fetches)
 dbg_jsr_pc_t0        <= jsr_pc_t0_r;
 dbg_jsr_pc_t1        <= jsr_pc_t1_r;

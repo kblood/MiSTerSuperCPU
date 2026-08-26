@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_f0a8c57b65_20260826T064338Z_3a9dc98c-dirty",
+  "md5": "3a9dc98cd13894e22cb29505abf7e941",
+  "size_bytes": 3999996,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "f0a8c57b65",
+  "git_subject": "debug(scpu): extend Wolf3D trace ring to 4 post-freeze opcode fetches (32nd pass)",
+  "git_dirty": true,
+  "built_utc": "20260826T064338Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

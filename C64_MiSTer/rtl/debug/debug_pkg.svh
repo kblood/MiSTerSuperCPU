@@ -180,6 +180,9 @@ typedef struct packed {
   logic [23:0] trace_pc7;
   logic  [7:0] trace_op6;
   logic  [7:0] trace_op7;
+  // 33rd pass: JSR-ring snapshot at the moment of the last screen write.
+  logic [15:0] scr_write_jsr_a;
+  logic [15:0] scr_write_jsr_b;
 
   // v254: 4-deep JSR ring. Lower 16 bits of the PC of the last 4 JSR
   // ($20) or JSL ($22) opcode fetches. Independent of trace_frozen.

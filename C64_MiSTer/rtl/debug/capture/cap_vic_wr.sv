@@ -48,6 +48,8 @@ module cap_vic_wr (
 	input  logic [23:0] in_trace_pc7,
 	input  logic  [7:0] in_trace_op6,
 	input  logic  [7:0] in_trace_op7,
+	input  logic [15:0] in_scr_write_jsr_a,
+	input  logic [15:0] in_scr_write_jsr_b,
 	input  logic [15:0] in_jsr_pc_t0,
 	input  logic [15:0] in_jsr_pc_t1,
 	input  logic [15:0] in_jsr_pc_t2,
@@ -101,6 +103,8 @@ module cap_vic_wr (
 	output logic [23:0] o_trace_pc7,
 	output logic  [7:0] o_trace_op6,
 	output logic  [7:0] o_trace_op7,
+	output logic [15:0] o_scr_write_jsr_a,
+	output logic [15:0] o_scr_write_jsr_b,
 	output logic [15:0] o_jsr_pc_t0,
 	output logic [15:0] o_jsr_pc_t1,
 	output logic [15:0] o_jsr_pc_t2,
@@ -155,6 +159,8 @@ module cap_vic_wr (
 	assign o_trace_pc7      = in_trace_pc7;
 	assign o_trace_op6      = in_trace_op6;
 	assign o_trace_op7      = in_trace_op7;
+	assign o_scr_write_jsr_a = in_scr_write_jsr_a;
+	assign o_scr_write_jsr_b = in_scr_write_jsr_b;
 	assign o_jsr_pc_t0      = in_jsr_pc_t0;
 	assign o_jsr_pc_t1      = in_jsr_pc_t1;
 	assign o_jsr_pc_t2      = in_jsr_pc_t2;
