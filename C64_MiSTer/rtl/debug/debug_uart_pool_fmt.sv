@@ -106,6 +106,9 @@ module debug_uart_pool_fmt
 	reg  [7:0] lat_wloop_sbc_hi;
 	reg  [7:0] lat_wloop_ldx_lo;
 	reg  [7:0] lat_wloop_ldx_hi;
+	reg  [7:0] lat_wloop_val_2906;
+	reg  [7:0] lat_wloop_val_4903;
+	reg  [7:0] lat_wloop_val_f634;
 	reg [15:0] lat_cy;
 	reg [15:0] lat_jsr0, lat_jsr1, lat_jsr2, lat_jsr3;
 	reg [15:0] lat_jmp0, lat_jmp1, lat_jmp2, lat_jmp3;
@@ -240,7 +243,7 @@ module debug_uart_pool_fmt
 	// LINE_LEN=512 fits as a literal. Existing case items keep their
 	// 9'd literals unchanged; Verilog zero-extends them for the
 	// comparison, so no risk there.
-	localparam LINE_LEN = 10'd536;
+	localparam LINE_LEN = 10'd554;
 
 	reg [9:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -971,7 +974,28 @@ module debug_uart_pool_fmt
 			10'd532: line_byte = hex_nibble(lat_wloop_ldx_hi[3:0]);
 			10'd533: line_byte = hex_nibble(lat_wloop_ldx_lo[7:4]);
 			10'd534: line_byte = hex_nibble(lat_wloop_ldx_lo[3:0]);
-			10'd535: line_byte = 8'h0A;
+			// 37th pass: runtime values at the loop's compare/index
+			// addresses (VL:=value at LA addr, VS:=value at SB addr,
+			// VX:=value at LX addr).
+			10'd535: line_byte = " ";
+			10'd536: line_byte = "V";
+			10'd537: line_byte = "L";
+			10'd538: line_byte = ":";
+			10'd539: line_byte = hex_nibble(lat_wloop_val_2906[7:4]);
+			10'd540: line_byte = hex_nibble(lat_wloop_val_2906[3:0]);
+			10'd541: line_byte = " ";
+			10'd542: line_byte = "V";
+			10'd543: line_byte = "S";
+			10'd544: line_byte = ":";
+			10'd545: line_byte = hex_nibble(lat_wloop_val_4903[7:4]);
+			10'd546: line_byte = hex_nibble(lat_wloop_val_4903[3:0]);
+			10'd547: line_byte = " ";
+			10'd548: line_byte = "V";
+			10'd549: line_byte = "X";
+			10'd550: line_byte = ":";
+			10'd551: line_byte = hex_nibble(lat_wloop_val_f634[7:4]);
+			10'd552: line_byte = hex_nibble(lat_wloop_val_f634[3:0]);
+			10'd553: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -1023,6 +1047,9 @@ module debug_uart_pool_fmt
 				lat_wloop_sbc_hi <= pool.wloop_sbc_hi;
 				lat_wloop_ldx_lo <= pool.wloop_ldx_lo;
 				lat_wloop_ldx_hi <= pool.wloop_ldx_hi;
+				lat_wloop_val_2906 <= pool.wloop_val_2906;
+				lat_wloop_val_4903 <= pool.wloop_val_4903;
+				lat_wloop_val_f634 <= pool.wloop_val_f634;
 				lat_cy    <= pool.cnt_wr02;
 				lat_jsr0  <= pool.jsr_pc_t0;
 				lat_jsr1  <= pool.jsr_pc_t1;

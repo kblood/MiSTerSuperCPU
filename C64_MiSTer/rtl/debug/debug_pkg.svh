@@ -234,6 +234,10 @@ typedef struct packed {
   logic  [7:0] wloop_sbc_hi;
   logic  [7:0] wloop_ldx_lo;
   logic  [7:0] wloop_ldx_hi;
+  // 37th pass: runtime values at $2906/$4903/$F634.
+  logic  [7:0] wloop_val_2906;
+  logic  [7:0] wloop_val_4903;
+  logic  [7:0] wloop_val_f634;
 
   // v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag was ever
   // observed at 0 (CLI / PLP cleared it). irq_vec_count = 16-bit count

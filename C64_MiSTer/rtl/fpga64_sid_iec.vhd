@@ -307,6 +307,13 @@ port(
 	dbg_wloop_sbc_hi     : out std_logic_vector(7 downto 0);
 	dbg_wloop_ldx_lo     : out std_logic_vector(7 downto 0);
 	dbg_wloop_ldx_hi     : out std_logic_vector(7 downto 0);
+	-- 37th pass (Wolf3D freeze, 2026-08-26): runtime VALUES at the
+	-- compare/index addresses found by the 36th pass ($2906, $4903,
+	-- $F634) -- tells us whether the loop's compare inputs and X-reload
+	-- source are moving or frozen during the observed freeze window.
+	dbg_wloop_val_2906   : out std_logic_vector(7 downto 0);
+	dbg_wloop_val_4903   : out std_logic_vector(7 downto 0);
+	dbg_wloop_val_f634   : out std_logic_vector(7 downto 0);
 	-- v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag ever
 	-- observed at 0; irq_vec_count counts $FFFE/$FFFF reads (IRQ
 	-- vector fetches); min_p = lowest dbg_p_816 ever observed.
@@ -1157,6 +1164,10 @@ signal wloop_sbc_lo_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_sbc_hi_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_ldx_lo_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_ldx_hi_r : std_logic_vector(7 downto 0) := (others => '0');
+-- 37th pass: runtime values at $2906/$4903/$F634.
+signal wloop_val_2906_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_val_4903_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_val_f634_r : std_logic_vector(7 downto 0) := (others => '0');
 -- v228: I-flag diagnostics for SCPU.
 --  scpu_iclr_r = '1' once dbg_p_816(2) was ever observed = 0 with SCPU
 --                active. If stays '0', SCPU never reaches I=0 — IRQ off.
@@ -5686,6 +5697,21 @@ begin
 				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
 					wloop_ldx_hi_r <= std_logic_vector(cpuDi);
 				end if;
+				-- 37th pass: runtime values at the loop's compare/index
+				-- addresses (the CPU already reads these every
+				-- iteration via LDA $2906/SBC $4903/LDX $F634).
+				if cpuAddr_pre = x"2906"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_val_2906_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"4903"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_val_4903_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"F634"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_val_f634_r <= std_logic_vector(cpuDi);
+				end if;
 				-- v341 doom bitmap probe: latch reads of $00:$1D02/$1D04
 				-- (page-flip handshake). Gate to bank $00 in SCPU mode so
 				-- bank-$XX:$1D02 in JIT code doesn't shadow these.
@@ -6342,6 +6368,9 @@ dbg_wloop_sbc_lo     <= wloop_sbc_lo_r;
 dbg_wloop_sbc_hi     <= wloop_sbc_hi_r;
 dbg_wloop_ldx_lo     <= wloop_ldx_lo_r;
 dbg_wloop_ldx_hi     <= wloop_ldx_hi_r;
+dbg_wloop_val_2906   <= wloop_val_2906_r;
+dbg_wloop_val_4903   <= wloop_val_4903_r;
+dbg_wloop_val_f634   <= wloop_val_f634_r;
 dbg_scpu_iclr        <= scpu_iclr_r;
 dbg_irq_vec_count    <= std_logic_vector(irq_vec_count_r);
 dbg_min_p            <= min_p_r;
