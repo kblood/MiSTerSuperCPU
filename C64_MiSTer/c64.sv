@@ -1349,6 +1349,12 @@ wire  [7:0] scpu_dbg_wloop_ldx_hi;
 wire  [7:0] scpu_dbg_wloop_val_2906;
 wire  [7:0] scpu_dbg_wloop_val_4903;
 wire  [7:0] scpu_dbg_wloop_val_f634;
+wire  [7:0] scpu_dbg_wloop_sta1_lo;
+wire  [7:0] scpu_dbg_wloop_sta1_hi;
+wire  [7:0] scpu_dbg_wloop_sta2_lo;
+wire  [7:0] scpu_dbg_wloop_sta2_hi;
+wire  [7:0] scpu_dbg_wloop_sta3_lo;
+wire  [7:0] scpu_dbg_wloop_sta3_hi;
 wire        scpu_dbg_scpu_iclr;
 wire [15:0] scpu_dbg_irq_vec_count;
 wire  [7:0] scpu_dbg_min_p;
@@ -1711,6 +1717,12 @@ cap_vic_wr u_cap_vic_wr (
 	.in_wloop_val_2906 (scpu_dbg_wloop_val_2906),
 	.in_wloop_val_4903 (scpu_dbg_wloop_val_4903),
 	.in_wloop_val_f634 (scpu_dbg_wloop_val_f634),
+	.in_wloop_sta1_lo (scpu_dbg_wloop_sta1_lo),
+	.in_wloop_sta1_hi (scpu_dbg_wloop_sta1_hi),
+	.in_wloop_sta2_lo (scpu_dbg_wloop_sta2_lo),
+	.in_wloop_sta2_hi (scpu_dbg_wloop_sta2_hi),
+	.in_wloop_sta3_lo (scpu_dbg_wloop_sta3_lo),
+	.in_wloop_sta3_hi (scpu_dbg_wloop_sta3_hi),
 	.o_d018        (dbg_pool.vic_d018),
 	.o_d016        (dbg_pool.vic_d016),
 	.o_dd00        (dbg_pool.vic_dd00),
@@ -1774,7 +1786,13 @@ cap_vic_wr u_cap_vic_wr (
 	.o_wloop_ldx_hi   (dbg_pool.wloop_ldx_hi),
 	.o_wloop_val_2906 (dbg_pool.wloop_val_2906),
 	.o_wloop_val_4903 (dbg_pool.wloop_val_4903),
-	.o_wloop_val_f634 (dbg_pool.wloop_val_f634)
+	.o_wloop_val_f634 (dbg_pool.wloop_val_f634),
+	.o_wloop_sta1_lo  (dbg_pool.wloop_sta1_lo),
+	.o_wloop_sta1_hi  (dbg_pool.wloop_sta1_hi),
+	.o_wloop_sta2_lo  (dbg_pool.wloop_sta2_lo),
+	.o_wloop_sta2_hi  (dbg_pool.wloop_sta2_hi),
+	.o_wloop_sta3_lo  (dbg_pool.wloop_sta3_lo),
+	.o_wloop_sta3_hi  (dbg_pool.wloop_sta3_hi)
 );
 `else
 assign dbg_pool.vic_d018         = '0;
@@ -1841,6 +1859,12 @@ assign dbg_pool.wloop_ldx_hi     = '0;
 assign dbg_pool.wloop_val_2906   = '0;
 assign dbg_pool.wloop_val_4903   = '0;
 assign dbg_pool.wloop_val_f634   = '0;
+assign dbg_pool.wloop_sta1_lo    = '0;
+assign dbg_pool.wloop_sta1_hi    = '0;
+assign dbg_pool.wloop_sta2_lo    = '0;
+assign dbg_pool.wloop_sta2_hi    = '0;
+assign dbg_pool.wloop_sta3_lo    = '0;
+assign dbg_pool.wloop_sta3_hi    = '0;
 `endif
 
 `ifdef DBG_CAP_CPU_STATE
@@ -2361,6 +2385,12 @@ fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64
 	.dbg_wloop_val_2906   (scpu_dbg_wloop_val_2906),
 	.dbg_wloop_val_4903   (scpu_dbg_wloop_val_4903),
 	.dbg_wloop_val_f634   (scpu_dbg_wloop_val_f634),
+	.dbg_wloop_sta1_lo    (scpu_dbg_wloop_sta1_lo),
+	.dbg_wloop_sta1_hi    (scpu_dbg_wloop_sta1_hi),
+	.dbg_wloop_sta2_lo    (scpu_dbg_wloop_sta2_lo),
+	.dbg_wloop_sta2_hi    (scpu_dbg_wloop_sta2_hi),
+	.dbg_wloop_sta3_lo    (scpu_dbg_wloop_sta3_lo),
+	.dbg_wloop_sta3_hi    (scpu_dbg_wloop_sta3_hi),
 	.dbg_scpu_iclr        (scpu_dbg_scpu_iclr),
 	.dbg_irq_vec_count    (scpu_dbg_irq_vec_count),
 	.dbg_min_p            (scpu_dbg_min_p),

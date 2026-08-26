@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_5faee26dcf_20260826T124622Z_de0e3e2a-dirty",
+  "md5": "de0e3e2a5c1958715dd2af4ddcfafdaf",
+  "size_bytes": 4031960,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "5faee26dcf",
+  "git_subject": "debug(scpu): snoop Wolf3D freeze-loop compare/index runtime values (37th pass)",
+  "git_dirty": true,
+  "built_utc": "20260826T124622Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

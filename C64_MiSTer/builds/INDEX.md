@@ -2,6 +2,7 @@
 
 | Built (UTC)        | Branch              | SHA        | MD5 (short) | Subject                                    | Dirty |
 |--------------------|---------------------|------------|-------------|--------------------------------------------|-------|
+| 20260826 124622 | milestone-b-cdc-rew | 5faee26dcf | de0e3e2a    | debug(scpu): snoop Wolf3D freeze-loop comp | yes   |
 | 20260826 084608 | milestone-b-cdc-rew | 3d65cd5102 | 0d36ee0c    | debug(scpu): snoop Wolf3D freeze-loop comp | yes   |
 | 20260826 081405 | milestone-b-cdc-rew | 0e48c028d0 | b1ebe567    | debug(scpu): add always-live current-opcod | yes   |
 | 20260826 073453 | milestone-b-cdc-rew | 1fb08c7b5c | 9b1ddfaf    | debug(scpu): latch JSR-ring snapshot at la | yes   |

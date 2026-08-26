@@ -109,6 +109,12 @@ module debug_uart_pool_fmt
 	reg  [7:0] lat_wloop_val_2906;
 	reg  [7:0] lat_wloop_val_4903;
 	reg  [7:0] lat_wloop_val_f634;
+	reg  [7:0] lat_wloop_sta1_lo;
+	reg  [7:0] lat_wloop_sta1_hi;
+	reg  [7:0] lat_wloop_sta2_lo;
+	reg  [7:0] lat_wloop_sta2_hi;
+	reg  [7:0] lat_wloop_sta3_lo;
+	reg  [7:0] lat_wloop_sta3_hi;
 	reg [15:0] lat_cy;
 	reg [15:0] lat_jsr0, lat_jsr1, lat_jsr2, lat_jsr3;
 	reg [15:0] lat_jmp0, lat_jmp1, lat_jmp2, lat_jmp3;
@@ -243,7 +249,7 @@ module debug_uart_pool_fmt
 	// LINE_LEN=512 fits as a literal. Existing case items keep their
 	// 9'd literals unchanged; Verilog zero-extends them for the
 	// comparison, so no risk there.
-	localparam LINE_LEN = 10'd554;
+	localparam LINE_LEN = 10'd578;
 
 	reg [9:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -995,7 +1001,33 @@ module debug_uart_pool_fmt
 			10'd550: line_byte = ":";
 			10'd551: line_byte = hex_nibble(lat_wloop_val_f634[7:4]);
 			10'd552: line_byte = hex_nibble(lat_wloop_val_f634[3:0]);
-			10'd553: line_byte = 8'h0A;
+			// 38th pass: STA abs operand addresses (S1:/S2:/S3: for
+			// the loop's three STA abs instructions in program order).
+			10'd553: line_byte = " ";
+			10'd554: line_byte = "S";
+			10'd555: line_byte = "1";
+			10'd556: line_byte = ":";
+			10'd557: line_byte = hex_nibble(lat_wloop_sta1_hi[7:4]);
+			10'd558: line_byte = hex_nibble(lat_wloop_sta1_hi[3:0]);
+			10'd559: line_byte = hex_nibble(lat_wloop_sta1_lo[7:4]);
+			10'd560: line_byte = hex_nibble(lat_wloop_sta1_lo[3:0]);
+			10'd561: line_byte = " ";
+			10'd562: line_byte = "S";
+			10'd563: line_byte = "2";
+			10'd564: line_byte = ":";
+			10'd565: line_byte = hex_nibble(lat_wloop_sta2_hi[7:4]);
+			10'd566: line_byte = hex_nibble(lat_wloop_sta2_hi[3:0]);
+			10'd567: line_byte = hex_nibble(lat_wloop_sta2_lo[7:4]);
+			10'd568: line_byte = hex_nibble(lat_wloop_sta2_lo[3:0]);
+			10'd569: line_byte = " ";
+			10'd570: line_byte = "S";
+			10'd571: line_byte = "3";
+			10'd572: line_byte = ":";
+			10'd573: line_byte = hex_nibble(lat_wloop_sta3_hi[7:4]);
+			10'd574: line_byte = hex_nibble(lat_wloop_sta3_hi[3:0]);
+			10'd575: line_byte = hex_nibble(lat_wloop_sta3_lo[7:4]);
+			10'd576: line_byte = hex_nibble(lat_wloop_sta3_lo[3:0]);
+			10'd577: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -1050,6 +1082,12 @@ module debug_uart_pool_fmt
 				lat_wloop_val_2906 <= pool.wloop_val_2906;
 				lat_wloop_val_4903 <= pool.wloop_val_4903;
 				lat_wloop_val_f634 <= pool.wloop_val_f634;
+				lat_wloop_sta1_lo <= pool.wloop_sta1_lo;
+				lat_wloop_sta1_hi <= pool.wloop_sta1_hi;
+				lat_wloop_sta2_lo <= pool.wloop_sta2_lo;
+				lat_wloop_sta2_hi <= pool.wloop_sta2_hi;
+				lat_wloop_sta3_lo <= pool.wloop_sta3_lo;
+				lat_wloop_sta3_hi <= pool.wloop_sta3_hi;
 				lat_cy    <= pool.cnt_wr02;
 				lat_jsr0  <= pool.jsr_pc_t0;
 				lat_jsr1  <= pool.jsr_pc_t1;

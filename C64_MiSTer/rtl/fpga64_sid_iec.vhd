@@ -314,6 +314,16 @@ port(
 	dbg_wloop_val_2906   : out std_logic_vector(7 downto 0);
 	dbg_wloop_val_4903   : out std_logic_vector(7 downto 0);
 	dbg_wloop_val_f634   : out std_logic_vector(7 downto 0);
+	-- 38th pass (Wolf3D freeze, 2026-08-26): operand-address bytes of
+	-- the loop's 3 STA abs instructions ($0AF6/$0AFF/$0B0E), to check
+	-- whether any of them writes back to $2906/$4903/$F634 (self-update
+	-- bug) or none do (external state never seeded).
+	dbg_wloop_sta1_lo    : out std_logic_vector(7 downto 0);
+	dbg_wloop_sta1_hi    : out std_logic_vector(7 downto 0);
+	dbg_wloop_sta2_lo    : out std_logic_vector(7 downto 0);
+	dbg_wloop_sta2_hi    : out std_logic_vector(7 downto 0);
+	dbg_wloop_sta3_lo    : out std_logic_vector(7 downto 0);
+	dbg_wloop_sta3_hi    : out std_logic_vector(7 downto 0);
 	-- v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag ever
 	-- observed at 0; irq_vec_count counts $FFFE/$FFFF reads (IRQ
 	-- vector fetches); min_p = lowest dbg_p_816 ever observed.
@@ -1168,6 +1178,13 @@ signal wloop_ldx_hi_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_val_2906_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_val_4903_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_val_f634_r : std_logic_vector(7 downto 0) := (others => '0');
+-- 38th pass: STA abs operand-address bytes ($0AF6/$0AFF/$0B0E).
+signal wloop_sta1_lo_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_sta1_hi_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_sta2_lo_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_sta2_hi_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_sta3_lo_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_sta3_hi_r : std_logic_vector(7 downto 0) := (others => '0');
 -- v228: I-flag diagnostics for SCPU.
 --  scpu_iclr_r = '1' once dbg_p_816(2) was ever observed = 0 with SCPU
 --                active. If stays '0', SCPU never reaches I=0 — IRQ off.
@@ -5712,6 +5729,34 @@ begin
 				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
 					wloop_val_f634_r <= std_logic_vector(cpuDi);
 				end if;
+				-- 38th pass: STA abs operand-address bytes ($0AF6's
+				-- operand at $0AF7/$0AF8, $0AFF's at $0B00/$0B01,
+				-- $0B0E's at $0B0F/$0B10). Operand bytes are fetched
+				-- as reads regardless of the instruction being a store.
+				if cpuAddr_pre = x"0AF7"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_sta1_lo_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AF8"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_sta1_hi_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B00"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_sta2_lo_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B01"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_sta2_hi_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B0F"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_sta3_lo_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B10"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_sta3_hi_r <= std_logic_vector(cpuDi);
+				end if;
 				-- v341 doom bitmap probe: latch reads of $00:$1D02/$1D04
 				-- (page-flip handshake). Gate to bank $00 in SCPU mode so
 				-- bank-$XX:$1D02 in JIT code doesn't shadow these.
@@ -6371,6 +6416,12 @@ dbg_wloop_ldx_hi     <= wloop_ldx_hi_r;
 dbg_wloop_val_2906   <= wloop_val_2906_r;
 dbg_wloop_val_4903   <= wloop_val_4903_r;
 dbg_wloop_val_f634   <= wloop_val_f634_r;
+dbg_wloop_sta1_lo    <= wloop_sta1_lo_r;
+dbg_wloop_sta1_hi    <= wloop_sta1_hi_r;
+dbg_wloop_sta2_lo    <= wloop_sta2_lo_r;
+dbg_wloop_sta2_hi    <= wloop_sta2_hi_r;
+dbg_wloop_sta3_lo    <= wloop_sta3_lo_r;
+dbg_wloop_sta3_hi    <= wloop_sta3_hi_r;
 dbg_scpu_iclr        <= scpu_iclr_r;
 dbg_irq_vec_count    <= std_logic_vector(irq_vec_count_r);
 dbg_min_p            <= min_p_r;
