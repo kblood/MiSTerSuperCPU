@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_6cf0532687_20260826T192459Z_0a445f55-dirty",
+  "md5": "0a445f555fa40bfa72468fabd2371b97",
+  "size_bytes": 4036612,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "6cf0532687",
+  "git_subject": "debug(wolf3d): 45th-pass PE/P9 PC capture for the $292E/$2930 writers",
+  "git_dirty": true,
+  "built_utc": "20260826T192459Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}
