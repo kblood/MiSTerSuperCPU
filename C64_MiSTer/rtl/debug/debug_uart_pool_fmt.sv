@@ -162,6 +162,8 @@ module debug_uart_pool_fmt
 	reg  [7:0] lat_wloop_rb34;
 	reg  [7:0] lat_wloop_rb35;
 	reg  [7:0] lat_wloop_rb36;
+	reg  [7:0] lat_wloop_d292e;
+	reg  [7:0] lat_wloop_d2930;
 	reg [15:0] lat_cy;
 	reg [15:0] lat_jsr0, lat_jsr1, lat_jsr2, lat_jsr3;
 	reg [15:0] lat_jmp0, lat_jmp1, lat_jmp2, lat_jmp3;
@@ -296,7 +298,7 @@ module debug_uart_pool_fmt
 	// LINE_LEN=512 fits as a literal. Existing case items keep their
 	// 9'd literals unchanged; Verilog zero-extends them for the
 	// comparison, so no risk there.
-	localparam LINE_LEN = 10'd701;
+	localparam LINE_LEN = 10'd709;
 
 	reg [9:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -1207,7 +1209,18 @@ module debug_uart_pool_fmt
 			10'd697: line_byte = hex_nibble(lat_wloop_rb35[3:0]);
 			10'd698: line_byte = hex_nibble(lat_wloop_rb36[7:4]);
 			10'd699: line_byte = hex_nibble(lat_wloop_rb36[3:0]);
-			10'd700: line_byte = 8'h0A;
+			// 43rd pass: steady-state values of the two ADC step
+			// deltas ($292E/$2930) implicated by the 42nd pass's
+			// disasm as feeding the frozen $2906 STA.
+			10'd700: line_byte = " ";
+			10'd701: line_byte = "D";
+			10'd702: line_byte = "2";
+			10'd703: line_byte = ":";
+			10'd704: line_byte = hex_nibble(lat_wloop_d292e[7:4]);
+			10'd705: line_byte = hex_nibble(lat_wloop_d292e[3:0]);
+			10'd706: line_byte = hex_nibble(lat_wloop_d2930[7:4]);
+			10'd707: line_byte = hex_nibble(lat_wloop_d2930[3:0]);
+			10'd708: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -1315,6 +1328,8 @@ module debug_uart_pool_fmt
 				lat_wloop_rb34    <= pool.wloop_rb34;
 				lat_wloop_rb35    <= pool.wloop_rb35;
 				lat_wloop_rb36    <= pool.wloop_rb36;
+				lat_wloop_d292e   <= pool.wloop_d292e;
+				lat_wloop_d2930   <= pool.wloop_d2930;
 				lat_cy    <= pool.cnt_wr02;
 				lat_jsr0  <= pool.jsr_pc_t0;
 				lat_jsr1  <= pool.jsr_pc_t1;

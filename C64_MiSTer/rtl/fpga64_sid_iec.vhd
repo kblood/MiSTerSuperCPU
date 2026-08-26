@@ -391,6 +391,11 @@ port(
 	dbg_wloop_rb34       : out std_logic_vector(7 downto 0);
 	dbg_wloop_rb35       : out std_logic_vector(7 downto 0);
 	dbg_wloop_rb36       : out std_logic_vector(7 downto 0);
+	-- 43rd pass: steady-state values of the two step-accumulator
+	-- deltas ($292E/$2930) the 42nd pass's disasm showed feeding
+	-- the frozen $2906 STA via ADC.
+	dbg_wloop_d292e      : out std_logic_vector(7 downto 0);
+	dbg_wloop_d2930      : out std_logic_vector(7 downto 0);
 	-- v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag ever
 	-- observed at 0; irq_vec_count counts $FFFE/$FFFF reads (IRQ
 	-- vector fetches); min_p = lowest dbg_p_816 ever observed.
@@ -1303,6 +1308,8 @@ signal wloop_rb33_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_rb34_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_rb35_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_rb36_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_d292e_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_d2930_r : std_logic_vector(7 downto 0) := (others => '0');
 -- v228: I-flag diagnostics for SCPU.
 --  scpu_iclr_r = '1' once dbg_p_816(2) was ever observed = 0 with SCPU
 --                active. If stays '0', SCPU never reaches I=0 — IRQ off.
@@ -6077,6 +6084,17 @@ begin
 				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
 					wloop_rb36_r <= std_logic_vector(cpuDi);
 				end if;
+				-- 43rd pass: steady-state read snoop of the two
+				-- ADC operands ($292E/$2930) the 42nd pass's
+				-- disasm showed feeding the frozen $2906 STA.
+				if cpuAddr_pre = x"292E"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_d292e_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"2930"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_d2930_r <= std_logic_vector(cpuDi);
+				end if;
 				-- v341 doom bitmap probe: latch reads of $00:$1D02/$1D04
 				-- (page-flip handshake). Gate to bank $00 in SCPU mode so
 				-- bank-$XX:$1D02 in JIT code doesn't shadow these.
@@ -6789,6 +6807,8 @@ dbg_wloop_rb33       <= wloop_rb33_r;
 dbg_wloop_rb34       <= wloop_rb34_r;
 dbg_wloop_rb35       <= wloop_rb35_r;
 dbg_wloop_rb36       <= wloop_rb36_r;
+dbg_wloop_d292e      <= wloop_d292e_r;
+dbg_wloop_d2930      <= wloop_d2930_r;
 dbg_scpu_iclr        <= scpu_iclr_r;
 dbg_irq_vec_count    <= std_logic_vector(irq_vec_count_r);
 dbg_min_p            <= min_p_r;
