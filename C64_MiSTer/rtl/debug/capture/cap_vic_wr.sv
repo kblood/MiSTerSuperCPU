@@ -79,6 +79,14 @@ module cap_vic_wr (
 	input  logic  [7:0] in_wloop_sta2_hi,
 	input  logic  [7:0] in_wloop_sta3_lo,
 	input  logic  [7:0] in_wloop_sta3_hi,
+	input  logic  [7:0] in_wloop_inc_lo,
+	input  logic  [7:0] in_wloop_inc_hi,
+	input  logic  [7:0] in_wloop_lda1_lo,
+	input  logic  [7:0] in_wloop_lda1_hi,
+	input  logic  [7:0] in_wloop_lda2_lo,
+	input  logic  [7:0] in_wloop_lda2_hi,
+	input  logic  [7:0] in_wloop_adc_lo,
+	input  logic  [7:0] in_wloop_adc_hi,
 
 	output logic  [7:0] o_d018,
 	output logic  [7:0] o_d016,
@@ -149,7 +157,15 @@ module cap_vic_wr (
 	output logic  [7:0] o_wloop_sta2_lo,
 	output logic  [7:0] o_wloop_sta2_hi,
 	output logic  [7:0] o_wloop_sta3_lo,
-	output logic  [7:0] o_wloop_sta3_hi
+	output logic  [7:0] o_wloop_sta3_hi,
+	output logic  [7:0] o_wloop_inc_lo,
+	output logic  [7:0] o_wloop_inc_hi,
+	output logic  [7:0] o_wloop_lda1_lo,
+	output logic  [7:0] o_wloop_lda1_hi,
+	output logic  [7:0] o_wloop_lda2_lo,
+	output logic  [7:0] o_wloop_lda2_hi,
+	output logic  [7:0] o_wloop_adc_lo,
+	output logic  [7:0] o_wloop_adc_hi
 );
 
 	assign o_d018        = in_d018;
@@ -222,5 +238,13 @@ module cap_vic_wr (
 	assign o_wloop_sta2_hi  = in_wloop_sta2_hi;
 	assign o_wloop_sta3_lo  = in_wloop_sta3_lo;
 	assign o_wloop_sta3_hi  = in_wloop_sta3_hi;
+	assign o_wloop_inc_lo   = in_wloop_inc_lo;
+	assign o_wloop_inc_hi   = in_wloop_inc_hi;
+	assign o_wloop_lda1_lo  = in_wloop_lda1_lo;
+	assign o_wloop_lda1_hi  = in_wloop_lda1_hi;
+	assign o_wloop_lda2_lo  = in_wloop_lda2_lo;
+	assign o_wloop_lda2_hi  = in_wloop_lda2_hi;
+	assign o_wloop_adc_lo   = in_wloop_adc_lo;
+	assign o_wloop_adc_hi   = in_wloop_adc_hi;
 
 endmodule

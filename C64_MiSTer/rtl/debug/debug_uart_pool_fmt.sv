@@ -115,6 +115,14 @@ module debug_uart_pool_fmt
 	reg  [7:0] lat_wloop_sta2_hi;
 	reg  [7:0] lat_wloop_sta3_lo;
 	reg  [7:0] lat_wloop_sta3_hi;
+	reg  [7:0] lat_wloop_inc_lo;
+	reg  [7:0] lat_wloop_inc_hi;
+	reg  [7:0] lat_wloop_lda1_lo;
+	reg  [7:0] lat_wloop_lda1_hi;
+	reg  [7:0] lat_wloop_lda2_lo;
+	reg  [7:0] lat_wloop_lda2_hi;
+	reg  [7:0] lat_wloop_adc_lo;
+	reg  [7:0] lat_wloop_adc_hi;
 	reg [15:0] lat_cy;
 	reg [15:0] lat_jsr0, lat_jsr1, lat_jsr2, lat_jsr3;
 	reg [15:0] lat_jmp0, lat_jmp1, lat_jmp2, lat_jmp3;
@@ -249,7 +257,7 @@ module debug_uart_pool_fmt
 	// LINE_LEN=512 fits as a literal. Existing case items keep their
 	// 9'd literals unchanged; Verilog zero-extends them for the
 	// comparison, so no risk there.
-	localparam LINE_LEN = 10'd578;
+	localparam LINE_LEN = 10'd610;
 
 	reg [9:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -1027,7 +1035,42 @@ module debug_uart_pool_fmt
 			10'd574: line_byte = hex_nibble(lat_wloop_sta3_hi[3:0]);
 			10'd575: line_byte = hex_nibble(lat_wloop_sta3_lo[7:4]);
 			10'd576: line_byte = hex_nibble(lat_wloop_sta3_lo[3:0]);
-			10'd577: line_byte = 8'h0A;
+			// 39th pass: operand addresses of the arithmetic feeding
+			// STA1 (IC:=INC operand, L1:/L2:=the two LDA operands,
+			// AD:=ADC operand).
+			10'd577: line_byte = " ";
+			10'd578: line_byte = "I";
+			10'd579: line_byte = "C";
+			10'd580: line_byte = ":";
+			10'd581: line_byte = hex_nibble(lat_wloop_inc_hi[7:4]);
+			10'd582: line_byte = hex_nibble(lat_wloop_inc_hi[3:0]);
+			10'd583: line_byte = hex_nibble(lat_wloop_inc_lo[7:4]);
+			10'd584: line_byte = hex_nibble(lat_wloop_inc_lo[3:0]);
+			10'd585: line_byte = " ";
+			10'd586: line_byte = "L";
+			10'd587: line_byte = "1";
+			10'd588: line_byte = ":";
+			10'd589: line_byte = hex_nibble(lat_wloop_lda1_hi[7:4]);
+			10'd590: line_byte = hex_nibble(lat_wloop_lda1_hi[3:0]);
+			10'd591: line_byte = hex_nibble(lat_wloop_lda1_lo[7:4]);
+			10'd592: line_byte = hex_nibble(lat_wloop_lda1_lo[3:0]);
+			10'd593: line_byte = " ";
+			10'd594: line_byte = "L";
+			10'd595: line_byte = "2";
+			10'd596: line_byte = ":";
+			10'd597: line_byte = hex_nibble(lat_wloop_lda2_hi[7:4]);
+			10'd598: line_byte = hex_nibble(lat_wloop_lda2_hi[3:0]);
+			10'd599: line_byte = hex_nibble(lat_wloop_lda2_lo[7:4]);
+			10'd600: line_byte = hex_nibble(lat_wloop_lda2_lo[3:0]);
+			10'd601: line_byte = " ";
+			10'd602: line_byte = "A";
+			10'd603: line_byte = "D";
+			10'd604: line_byte = ":";
+			10'd605: line_byte = hex_nibble(lat_wloop_adc_hi[7:4]);
+			10'd606: line_byte = hex_nibble(lat_wloop_adc_hi[3:0]);
+			10'd607: line_byte = hex_nibble(lat_wloop_adc_lo[7:4]);
+			10'd608: line_byte = hex_nibble(lat_wloop_adc_lo[3:0]);
+			10'd609: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -1088,6 +1131,14 @@ module debug_uart_pool_fmt
 				lat_wloop_sta2_hi <= pool.wloop_sta2_hi;
 				lat_wloop_sta3_lo <= pool.wloop_sta3_lo;
 				lat_wloop_sta3_hi <= pool.wloop_sta3_hi;
+				lat_wloop_inc_lo  <= pool.wloop_inc_lo;
+				lat_wloop_inc_hi  <= pool.wloop_inc_hi;
+				lat_wloop_lda1_lo <= pool.wloop_lda1_lo;
+				lat_wloop_lda1_hi <= pool.wloop_lda1_hi;
+				lat_wloop_lda2_lo <= pool.wloop_lda2_lo;
+				lat_wloop_lda2_hi <= pool.wloop_lda2_hi;
+				lat_wloop_adc_lo  <= pool.wloop_adc_lo;
+				lat_wloop_adc_hi  <= pool.wloop_adc_hi;
 				lat_cy    <= pool.cnt_wr02;
 				lat_jsr0  <= pool.jsr_pc_t0;
 				lat_jsr1  <= pool.jsr_pc_t1;

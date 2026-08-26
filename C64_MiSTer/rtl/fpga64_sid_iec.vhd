@@ -324,6 +324,18 @@ port(
 	dbg_wloop_sta2_hi    : out std_logic_vector(7 downto 0);
 	dbg_wloop_sta3_lo    : out std_logic_vector(7 downto 0);
 	dbg_wloop_sta3_hi    : out std_logic_vector(7 downto 0);
+	-- 39th pass (Wolf3D freeze, 2026-08-26): operand-address bytes of
+	-- the arithmetic feeding STA1 ($2906): INC $0AEC, LDA $0AEE,
+	-- LDA $0AF0, ADC $0AF3. Finds exactly which cells feed the always-
+	-- zero result stored back to $2906.
+	dbg_wloop_inc_lo     : out std_logic_vector(7 downto 0);
+	dbg_wloop_inc_hi     : out std_logic_vector(7 downto 0);
+	dbg_wloop_lda1_lo    : out std_logic_vector(7 downto 0);
+	dbg_wloop_lda1_hi    : out std_logic_vector(7 downto 0);
+	dbg_wloop_lda2_lo    : out std_logic_vector(7 downto 0);
+	dbg_wloop_lda2_hi    : out std_logic_vector(7 downto 0);
+	dbg_wloop_adc_lo     : out std_logic_vector(7 downto 0);
+	dbg_wloop_adc_hi     : out std_logic_vector(7 downto 0);
 	-- v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag ever
 	-- observed at 0; irq_vec_count counts $FFFE/$FFFF reads (IRQ
 	-- vector fetches); min_p = lowest dbg_p_816 ever observed.
@@ -1185,6 +1197,15 @@ signal wloop_sta2_lo_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_sta2_hi_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_sta3_lo_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_sta3_hi_r : std_logic_vector(7 downto 0) := (others => '0');
+-- 39th pass: operand-address bytes of the arithmetic feeding STA1.
+signal wloop_inc_lo_r  : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_inc_hi_r  : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_lda1_lo_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_lda1_hi_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_lda2_lo_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_lda2_hi_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_adc_lo_r  : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_adc_hi_r  : std_logic_vector(7 downto 0) := (others => '0');
 -- v228: I-flag diagnostics for SCPU.
 --  scpu_iclr_r = '1' once dbg_p_816(2) was ever observed = 0 with SCPU
 --                active. If stays '0', SCPU never reaches I=0 — IRQ off.
@@ -5757,6 +5778,41 @@ begin
 				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
 					wloop_sta3_hi_r <= std_logic_vector(cpuDi);
 				end if;
+				-- 39th pass: operand-address bytes of INC $0AEC / LDA
+				-- $0AEE / LDA $0AF0 / ADC $0AF3 (the arithmetic feeding
+				-- the always-zero result stored to $2906).
+				if cpuAddr_pre = x"0AED"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_inc_lo_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AEE"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_inc_hi_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AEF"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_lda1_lo_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AF0"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_lda1_hi_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AF1"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_lda2_lo_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AF2"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_lda2_hi_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AF4"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_adc_lo_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AF5"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_adc_hi_r <= std_logic_vector(cpuDi);
+				end if;
 				-- v341 doom bitmap probe: latch reads of $00:$1D02/$1D04
 				-- (page-flip handshake). Gate to bank $00 in SCPU mode so
 				-- bank-$XX:$1D02 in JIT code doesn't shadow these.
@@ -6422,6 +6478,14 @@ dbg_wloop_sta2_lo    <= wloop_sta2_lo_r;
 dbg_wloop_sta2_hi    <= wloop_sta2_hi_r;
 dbg_wloop_sta3_lo    <= wloop_sta3_lo_r;
 dbg_wloop_sta3_hi    <= wloop_sta3_hi_r;
+dbg_wloop_inc_lo     <= wloop_inc_lo_r;
+dbg_wloop_inc_hi     <= wloop_inc_hi_r;
+dbg_wloop_lda1_lo    <= wloop_lda1_lo_r;
+dbg_wloop_lda1_hi    <= wloop_lda1_hi_r;
+dbg_wloop_lda2_lo    <= wloop_lda2_lo_r;
+dbg_wloop_lda2_hi    <= wloop_lda2_hi_r;
+dbg_wloop_adc_lo     <= wloop_adc_lo_r;
+dbg_wloop_adc_hi     <= wloop_adc_hi_r;
 dbg_scpu_iclr        <= scpu_iclr_r;
 dbg_irq_vec_count    <= std_logic_vector(irq_vec_count_r);
 dbg_min_p            <= min_p_r;

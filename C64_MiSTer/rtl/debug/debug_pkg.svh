@@ -245,6 +245,15 @@ typedef struct packed {
   logic  [7:0] wloop_sta2_hi;
   logic  [7:0] wloop_sta3_lo;
   logic  [7:0] wloop_sta3_hi;
+  // 39th pass: operand-address bytes of INC/LDA/LDA/ADC feeding STA1.
+  logic  [7:0] wloop_inc_lo;
+  logic  [7:0] wloop_inc_hi;
+  logic  [7:0] wloop_lda1_lo;
+  logic  [7:0] wloop_lda1_hi;
+  logic  [7:0] wloop_lda2_lo;
+  logic  [7:0] wloop_lda2_hi;
+  logic  [7:0] wloop_adc_lo;
+  logic  [7:0] wloop_adc_hi;
 
   // v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag was ever
   // observed at 0 (CLI / PLP cleared it). irq_vec_count = 16-bit count
