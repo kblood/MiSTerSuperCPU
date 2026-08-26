@@ -100,6 +100,8 @@ module cap_vic_wr (
 	input  logic  [7:0] in_wloop_rb10,
 	input  logic  [7:0] in_wloop_rb11,
 	input  logic  [7:0] in_wloop_rb12,
+	input  logic  [7:0] in_wloop_w2906_cnt,
+	input  logic  [7:0] in_wloop_w2906_val,
 
 	output logic  [7:0] o_d018,
 	output logic  [7:0] o_d016,
@@ -191,7 +193,9 @@ module cap_vic_wr (
 	output logic  [7:0] o_wloop_rb9,
 	output logic  [7:0] o_wloop_rb10,
 	output logic  [7:0] o_wloop_rb11,
-	output logic  [7:0] o_wloop_rb12
+	output logic  [7:0] o_wloop_rb12,
+	output logic  [7:0] o_wloop_w2906_cnt,
+	output logic  [7:0] o_wloop_w2906_val
 );
 
 	assign o_d018        = in_d018;
@@ -285,5 +289,7 @@ module cap_vic_wr (
 	assign o_wloop_rb10     = in_wloop_rb10;
 	assign o_wloop_rb11     = in_wloop_rb11;
 	assign o_wloop_rb12     = in_wloop_rb12;
+	assign o_wloop_w2906_cnt = in_wloop_w2906_cnt;
+	assign o_wloop_w2906_val = in_wloop_w2906_val;
 
 endmodule

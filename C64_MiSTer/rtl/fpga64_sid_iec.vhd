@@ -355,6 +355,14 @@ port(
 	dbg_wloop_rb10       : out std_logic_vector(7 downto 0);
 	dbg_wloop_rb11       : out std_logic_vector(7 downto 0);
 	dbg_wloop_rb12       : out std_logic_vector(7 downto 0);
+	-- 41st pass (Wolf3D freeze, 2026-08-26): the 40th pass showed $0AF6
+	-- is a READ (LDA $2906), not a write, retracting the 38th pass's
+	-- "self-update" claim. Gate a snoop on the CPU WRITE bus itself
+	-- (not code position) to get an assumption-free answer: is $2906
+	-- EVER written anywhere in the observed run? w2906_cnt saturates
+	-- at $FF (0 = never written); w2906_val is the last write's data.
+	dbg_wloop_w2906_cnt  : out std_logic_vector(7 downto 0);
+	dbg_wloop_w2906_val  : out std_logic_vector(7 downto 0);
 	-- v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag ever
 	-- observed at 0; irq_vec_count counts $FFFE/$FFFF reads (IRQ
 	-- vector fetches); min_p = lowest dbg_p_816 ever observed.
@@ -1239,6 +1247,9 @@ signal wloop_rb9_r  : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_rb10_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_rb11_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_rb12_r : std_logic_vector(7 downto 0) := (others => '0');
+-- 41st pass: write-bus-gated snoop of $2906 (0 count = never written).
+signal wloop_w2906_cnt_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_w2906_val_r : std_logic_vector(7 downto 0) := (others => '0');
 -- v228: I-flag diagnostics for SCPU.
 --  scpu_iclr_r = '1' once dbg_p_816(2) was ever observed = 0 with SCPU
 --                active. If stays '0', SCPU never reaches I=0 — IRQ off.
@@ -5061,6 +5072,18 @@ begin
 					wr5B_pc_r  <= cpu_pc_now;
 					wr5B_val_r <= std_logic_vector(cpuDo_pre);
 				end if;
+				-- 41st pass: write-bus-gated snoop of $2906 (Wolf3D
+				-- freeze) -- direct proof of whether it's ever written
+				-- anywhere, replacing the fragile code-position guessing
+				-- used in the 36th-39th passes. cnt saturates at $FF;
+				-- 0 = never written during the capture window.
+				if cpuAddr_pre = x"2906"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					if wloop_w2906_cnt_r /= x"FF" then
+						wloop_w2906_cnt_r <= std_logic_vector(unsigned(wloop_w2906_cnt_r) + 1);
+					end if;
+					wloop_w2906_val_r <= std_logic_vector(cpuDo_pre);
+				end if;
 				if cpuAddr_pre = x"DF01" then
 					wr_df01_pc_r  <= cpu_pc_now;
 					wr_df01_val_r <= std_logic_vector(cpuDo_pre);
@@ -6588,6 +6611,8 @@ dbg_wloop_rb9        <= wloop_rb9_r;
 dbg_wloop_rb10       <= wloop_rb10_r;
 dbg_wloop_rb11       <= wloop_rb11_r;
 dbg_wloop_rb12       <= wloop_rb12_r;
+dbg_wloop_w2906_cnt  <= wloop_w2906_cnt_r;
+dbg_wloop_w2906_val  <= wloop_w2906_val_r;
 dbg_scpu_iclr        <= scpu_iclr_r;
 dbg_irq_vec_count    <= std_logic_vector(irq_vec_count_r);
 dbg_min_p            <= min_p_r;

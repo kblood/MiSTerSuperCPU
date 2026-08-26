@@ -136,6 +136,8 @@ module debug_uart_pool_fmt
 	reg  [7:0] lat_wloop_rb10;
 	reg  [7:0] lat_wloop_rb11;
 	reg  [7:0] lat_wloop_rb12;
+	reg  [7:0] lat_wloop_w2906_cnt;
+	reg  [7:0] lat_wloop_w2906_val;
 	reg [15:0] lat_cy;
 	reg [15:0] lat_jsr0, lat_jsr1, lat_jsr2, lat_jsr3;
 	reg [15:0] lat_jmp0, lat_jmp1, lat_jmp2, lat_jmp3;
@@ -270,7 +272,7 @@ module debug_uart_pool_fmt
 	// LINE_LEN=512 fits as a literal. Existing case items keep their
 	// 9'd literals unchanged; Verilog zero-extends them for the
 	// comparison, so no risk there.
-	localparam LINE_LEN = 10'd640;
+	localparam LINE_LEN = 10'd648;
 
 	reg [9:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -1115,7 +1117,18 @@ module debug_uart_pool_fmt
 			10'd636: line_byte = hex_nibble(lat_wloop_rb11[3:0]);
 			10'd637: line_byte = hex_nibble(lat_wloop_rb12[7:4]);
 			10'd638: line_byte = hex_nibble(lat_wloop_rb12[3:0]);
-			10'd639: line_byte = 8'h0A;
+			// 41st pass: write-bus-gated $2906 snoop. W2:ccvv where cc
+			// is the saturating write count (0 = never written) and vv
+			// is the last-written value.
+			10'd639: line_byte = " ";
+			10'd640: line_byte = "W";
+			10'd641: line_byte = "2";
+			10'd642: line_byte = ":";
+			10'd643: line_byte = hex_nibble(lat_wloop_w2906_cnt[7:4]);
+			10'd644: line_byte = hex_nibble(lat_wloop_w2906_cnt[3:0]);
+			10'd645: line_byte = hex_nibble(lat_wloop_w2906_val[7:4]);
+			10'd646: line_byte = hex_nibble(lat_wloop_w2906_val[3:0]);
+			10'd647: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -1197,6 +1210,8 @@ module debug_uart_pool_fmt
 				lat_wloop_rb10    <= pool.wloop_rb10;
 				lat_wloop_rb11    <= pool.wloop_rb11;
 				lat_wloop_rb12    <= pool.wloop_rb12;
+				lat_wloop_w2906_cnt <= pool.wloop_w2906_cnt;
+				lat_wloop_w2906_val <= pool.wloop_w2906_val;
 				lat_cy    <= pool.cnt_wr02;
 				lat_jsr0  <= pool.jsr_pc_t0;
 				lat_jsr1  <= pool.jsr_pc_t1;

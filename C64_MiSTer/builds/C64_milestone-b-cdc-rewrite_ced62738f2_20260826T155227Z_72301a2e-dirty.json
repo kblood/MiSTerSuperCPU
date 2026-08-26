@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_ced62738f2_20260826T155227Z_72301a2e-dirty",
+  "md5": "72301a2e189b762857d5de0c3f790e63",
+  "size_bytes": 4001956,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "ced62738f2",
+  "git_subject": "debug(wolf3d): 40th-pass raw byte dump at $0AEC-$0AF8 \u00e2\u20ac\u201d ground truth for the real instruction stream",
+  "git_dirty": true,
+  "built_utc": "20260826T155227Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}
