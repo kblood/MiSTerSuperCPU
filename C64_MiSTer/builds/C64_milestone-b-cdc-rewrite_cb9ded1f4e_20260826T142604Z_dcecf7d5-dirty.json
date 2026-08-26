@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_cb9ded1f4e_20260826T142604Z_dcecf7d5-dirty",
+  "md5": "dcecf7d51960baf345e386ed9fbc82aa",
+  "size_bytes": 4010484,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "cb9ded1f4e",
+  "git_subject": "debug(wolf3d): 39th-pass UART snoop \u00e2\u20ac\u201d INC/LDA/LDA/ADC operands feeding the always-zero $2906 store",
+  "git_dirty": true,
+  "built_utc": "20260826T142604Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

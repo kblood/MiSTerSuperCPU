@@ -1363,6 +1363,19 @@ wire  [7:0] scpu_dbg_wloop_lda2_lo;
 wire  [7:0] scpu_dbg_wloop_lda2_hi;
 wire  [7:0] scpu_dbg_wloop_adc_lo;
 wire  [7:0] scpu_dbg_wloop_adc_hi;
+wire  [7:0] scpu_dbg_wloop_rb0;
+wire  [7:0] scpu_dbg_wloop_rb1;
+wire  [7:0] scpu_dbg_wloop_rb2;
+wire  [7:0] scpu_dbg_wloop_rb3;
+wire  [7:0] scpu_dbg_wloop_rb4;
+wire  [7:0] scpu_dbg_wloop_rb5;
+wire  [7:0] scpu_dbg_wloop_rb6;
+wire  [7:0] scpu_dbg_wloop_rb7;
+wire  [7:0] scpu_dbg_wloop_rb8;
+wire  [7:0] scpu_dbg_wloop_rb9;
+wire  [7:0] scpu_dbg_wloop_rb10;
+wire  [7:0] scpu_dbg_wloop_rb11;
+wire  [7:0] scpu_dbg_wloop_rb12;
 wire        scpu_dbg_scpu_iclr;
 wire [15:0] scpu_dbg_irq_vec_count;
 wire  [7:0] scpu_dbg_min_p;
@@ -1739,6 +1752,19 @@ cap_vic_wr u_cap_vic_wr (
 	.in_wloop_lda2_hi (scpu_dbg_wloop_lda2_hi),
 	.in_wloop_adc_lo  (scpu_dbg_wloop_adc_lo),
 	.in_wloop_adc_hi  (scpu_dbg_wloop_adc_hi),
+	.in_wloop_rb0     (scpu_dbg_wloop_rb0),
+	.in_wloop_rb1     (scpu_dbg_wloop_rb1),
+	.in_wloop_rb2     (scpu_dbg_wloop_rb2),
+	.in_wloop_rb3     (scpu_dbg_wloop_rb3),
+	.in_wloop_rb4     (scpu_dbg_wloop_rb4),
+	.in_wloop_rb5     (scpu_dbg_wloop_rb5),
+	.in_wloop_rb6     (scpu_dbg_wloop_rb6),
+	.in_wloop_rb7     (scpu_dbg_wloop_rb7),
+	.in_wloop_rb8     (scpu_dbg_wloop_rb8),
+	.in_wloop_rb9     (scpu_dbg_wloop_rb9),
+	.in_wloop_rb10    (scpu_dbg_wloop_rb10),
+	.in_wloop_rb11    (scpu_dbg_wloop_rb11),
+	.in_wloop_rb12    (scpu_dbg_wloop_rb12),
 	.o_d018        (dbg_pool.vic_d018),
 	.o_d016        (dbg_pool.vic_d016),
 	.o_dd00        (dbg_pool.vic_dd00),
@@ -1816,7 +1842,20 @@ cap_vic_wr u_cap_vic_wr (
 	.o_wloop_lda2_lo  (dbg_pool.wloop_lda2_lo),
 	.o_wloop_lda2_hi  (dbg_pool.wloop_lda2_hi),
 	.o_wloop_adc_lo   (dbg_pool.wloop_adc_lo),
-	.o_wloop_adc_hi   (dbg_pool.wloop_adc_hi)
+	.o_wloop_adc_hi   (dbg_pool.wloop_adc_hi),
+	.o_wloop_rb0      (dbg_pool.wloop_rb0),
+	.o_wloop_rb1      (dbg_pool.wloop_rb1),
+	.o_wloop_rb2      (dbg_pool.wloop_rb2),
+	.o_wloop_rb3      (dbg_pool.wloop_rb3),
+	.o_wloop_rb4      (dbg_pool.wloop_rb4),
+	.o_wloop_rb5      (dbg_pool.wloop_rb5),
+	.o_wloop_rb6      (dbg_pool.wloop_rb6),
+	.o_wloop_rb7      (dbg_pool.wloop_rb7),
+	.o_wloop_rb8      (dbg_pool.wloop_rb8),
+	.o_wloop_rb9      (dbg_pool.wloop_rb9),
+	.o_wloop_rb10     (dbg_pool.wloop_rb10),
+	.o_wloop_rb11     (dbg_pool.wloop_rb11),
+	.o_wloop_rb12     (dbg_pool.wloop_rb12)
 );
 `else
 assign dbg_pool.vic_d018         = '0;
@@ -1897,6 +1936,19 @@ assign dbg_pool.wloop_lda2_lo    = '0;
 assign dbg_pool.wloop_lda2_hi    = '0;
 assign dbg_pool.wloop_adc_lo     = '0;
 assign dbg_pool.wloop_adc_hi     = '0;
+assign dbg_pool.wloop_rb0        = '0;
+assign dbg_pool.wloop_rb1        = '0;
+assign dbg_pool.wloop_rb2        = '0;
+assign dbg_pool.wloop_rb3        = '0;
+assign dbg_pool.wloop_rb4        = '0;
+assign dbg_pool.wloop_rb5        = '0;
+assign dbg_pool.wloop_rb6        = '0;
+assign dbg_pool.wloop_rb7        = '0;
+assign dbg_pool.wloop_rb8        = '0;
+assign dbg_pool.wloop_rb9        = '0;
+assign dbg_pool.wloop_rb10       = '0;
+assign dbg_pool.wloop_rb11       = '0;
+assign dbg_pool.wloop_rb12       = '0;
 `endif
 
 `ifdef DBG_CAP_CPU_STATE
@@ -2431,6 +2483,19 @@ fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64
 	.dbg_wloop_lda2_hi    (scpu_dbg_wloop_lda2_hi),
 	.dbg_wloop_adc_lo     (scpu_dbg_wloop_adc_lo),
 	.dbg_wloop_adc_hi     (scpu_dbg_wloop_adc_hi),
+	.dbg_wloop_rb0        (scpu_dbg_wloop_rb0),
+	.dbg_wloop_rb1        (scpu_dbg_wloop_rb1),
+	.dbg_wloop_rb2        (scpu_dbg_wloop_rb2),
+	.dbg_wloop_rb3        (scpu_dbg_wloop_rb3),
+	.dbg_wloop_rb4        (scpu_dbg_wloop_rb4),
+	.dbg_wloop_rb5        (scpu_dbg_wloop_rb5),
+	.dbg_wloop_rb6        (scpu_dbg_wloop_rb6),
+	.dbg_wloop_rb7        (scpu_dbg_wloop_rb7),
+	.dbg_wloop_rb8        (scpu_dbg_wloop_rb8),
+	.dbg_wloop_rb9        (scpu_dbg_wloop_rb9),
+	.dbg_wloop_rb10       (scpu_dbg_wloop_rb10),
+	.dbg_wloop_rb11       (scpu_dbg_wloop_rb11),
+	.dbg_wloop_rb12       (scpu_dbg_wloop_rb12),
 	.dbg_scpu_iclr        (scpu_dbg_scpu_iclr),
 	.dbg_irq_vec_count    (scpu_dbg_irq_vec_count),
 	.dbg_min_p            (scpu_dbg_min_p),

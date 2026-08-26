@@ -87,6 +87,19 @@ module cap_vic_wr (
 	input  logic  [7:0] in_wloop_lda2_hi,
 	input  logic  [7:0] in_wloop_adc_lo,
 	input  logic  [7:0] in_wloop_adc_hi,
+	input  logic  [7:0] in_wloop_rb0,
+	input  logic  [7:0] in_wloop_rb1,
+	input  logic  [7:0] in_wloop_rb2,
+	input  logic  [7:0] in_wloop_rb3,
+	input  logic  [7:0] in_wloop_rb4,
+	input  logic  [7:0] in_wloop_rb5,
+	input  logic  [7:0] in_wloop_rb6,
+	input  logic  [7:0] in_wloop_rb7,
+	input  logic  [7:0] in_wloop_rb8,
+	input  logic  [7:0] in_wloop_rb9,
+	input  logic  [7:0] in_wloop_rb10,
+	input  logic  [7:0] in_wloop_rb11,
+	input  logic  [7:0] in_wloop_rb12,
 
 	output logic  [7:0] o_d018,
 	output logic  [7:0] o_d016,
@@ -165,7 +178,20 @@ module cap_vic_wr (
 	output logic  [7:0] o_wloop_lda2_lo,
 	output logic  [7:0] o_wloop_lda2_hi,
 	output logic  [7:0] o_wloop_adc_lo,
-	output logic  [7:0] o_wloop_adc_hi
+	output logic  [7:0] o_wloop_adc_hi,
+	output logic  [7:0] o_wloop_rb0,
+	output logic  [7:0] o_wloop_rb1,
+	output logic  [7:0] o_wloop_rb2,
+	output logic  [7:0] o_wloop_rb3,
+	output logic  [7:0] o_wloop_rb4,
+	output logic  [7:0] o_wloop_rb5,
+	output logic  [7:0] o_wloop_rb6,
+	output logic  [7:0] o_wloop_rb7,
+	output logic  [7:0] o_wloop_rb8,
+	output logic  [7:0] o_wloop_rb9,
+	output logic  [7:0] o_wloop_rb10,
+	output logic  [7:0] o_wloop_rb11,
+	output logic  [7:0] o_wloop_rb12
 );
 
 	assign o_d018        = in_d018;
@@ -246,5 +272,18 @@ module cap_vic_wr (
 	assign o_wloop_lda2_hi  = in_wloop_lda2_hi;
 	assign o_wloop_adc_lo   = in_wloop_adc_lo;
 	assign o_wloop_adc_hi   = in_wloop_adc_hi;
+	assign o_wloop_rb0      = in_wloop_rb0;
+	assign o_wloop_rb1      = in_wloop_rb1;
+	assign o_wloop_rb2      = in_wloop_rb2;
+	assign o_wloop_rb3      = in_wloop_rb3;
+	assign o_wloop_rb4      = in_wloop_rb4;
+	assign o_wloop_rb5      = in_wloop_rb5;
+	assign o_wloop_rb6      = in_wloop_rb6;
+	assign o_wloop_rb7      = in_wloop_rb7;
+	assign o_wloop_rb8      = in_wloop_rb8;
+	assign o_wloop_rb9      = in_wloop_rb9;
+	assign o_wloop_rb10     = in_wloop_rb10;
+	assign o_wloop_rb11     = in_wloop_rb11;
+	assign o_wloop_rb12     = in_wloop_rb12;
 
 endmodule

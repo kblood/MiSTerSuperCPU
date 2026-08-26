@@ -2,6 +2,7 @@
 
 | Built (UTC)        | Branch              | SHA        | MD5 (short) | Subject                                    | Dirty |
 |--------------------|---------------------|------------|-------------|--------------------------------------------|-------|
+| 20260826 142604 | milestone-b-cdc-rew | cb9ded1f4e | dcecf7d5    | debug(wolf3d): 39th-pass UART snoop — IN | yes   |
 | 20260826 132240 | milestone-b-cdc-rew | 71a009d9a1 | 689383b9    | debug(scpu): snoop Wolf3D freeze-loop STA  | yes   |
 | 20260826 124622 | milestone-b-cdc-rew | 5faee26dcf | de0e3e2a    | debug(scpu): snoop Wolf3D freeze-loop comp | yes   |
 | 20260826 084608 | milestone-b-cdc-rew | 3d65cd5102 | 0d36ee0c    | debug(scpu): snoop Wolf3D freeze-loop comp | yes   |

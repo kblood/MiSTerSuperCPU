@@ -254,6 +254,20 @@ typedef struct packed {
   logic  [7:0] wloop_lda2_hi;
   logic  [7:0] wloop_adc_lo;
   logic  [7:0] wloop_adc_hi;
+  // 40th pass: raw code-byte dump at $0AEC-$0AF8 (13 bytes).
+  logic  [7:0] wloop_rb0;
+  logic  [7:0] wloop_rb1;
+  logic  [7:0] wloop_rb2;
+  logic  [7:0] wloop_rb3;
+  logic  [7:0] wloop_rb4;
+  logic  [7:0] wloop_rb5;
+  logic  [7:0] wloop_rb6;
+  logic  [7:0] wloop_rb7;
+  logic  [7:0] wloop_rb8;
+  logic  [7:0] wloop_rb9;
+  logic  [7:0] wloop_rb10;
+  logic  [7:0] wloop_rb11;
+  logic  [7:0] wloop_rb12;
 
   // v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag was ever
   // observed at 0 (CLI / PLP cleared it). irq_vec_count = 16-bit count
