@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_f09041044c_20260826T181943Z_79b4b26d-dirty",
+  "md5": "79b4b26d637204e5aaa716c448a97bc8",
+  "size_bytes": 4006700,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "f09041044c",
+  "git_subject": "debug(wolf3d): 43rd-pass RB2/D2 snoops confirm real STA $2906 at $0AFC",
+  "git_dirty": true,
+  "built_utc": "20260826T181943Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}
