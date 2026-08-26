@@ -1378,6 +1378,30 @@ wire  [7:0] scpu_dbg_wloop_rb11;
 wire  [7:0] scpu_dbg_wloop_rb12;
 wire  [7:0] scpu_dbg_wloop_w2906_cnt;
 wire  [7:0] scpu_dbg_wloop_w2906_val;
+wire  [7:0] scpu_dbg_wloop_rb13;
+wire  [7:0] scpu_dbg_wloop_rb14;
+wire  [7:0] scpu_dbg_wloop_rb15;
+wire  [7:0] scpu_dbg_wloop_rb16;
+wire  [7:0] scpu_dbg_wloop_rb17;
+wire  [7:0] scpu_dbg_wloop_rb18;
+wire  [7:0] scpu_dbg_wloop_rb19;
+wire  [7:0] scpu_dbg_wloop_rb20;
+wire  [7:0] scpu_dbg_wloop_rb21;
+wire  [7:0] scpu_dbg_wloop_rb22;
+wire  [7:0] scpu_dbg_wloop_rb23;
+wire  [7:0] scpu_dbg_wloop_rb24;
+wire  [7:0] scpu_dbg_wloop_rb25;
+wire  [7:0] scpu_dbg_wloop_rb26;
+wire  [7:0] scpu_dbg_wloop_rb27;
+wire  [7:0] scpu_dbg_wloop_rb28;
+wire  [7:0] scpu_dbg_wloop_rb29;
+wire  [7:0] scpu_dbg_wloop_rb30;
+wire  [7:0] scpu_dbg_wloop_rb31;
+wire  [7:0] scpu_dbg_wloop_rb32;
+wire  [7:0] scpu_dbg_wloop_rb33;
+wire  [7:0] scpu_dbg_wloop_rb34;
+wire  [7:0] scpu_dbg_wloop_rb35;
+wire  [7:0] scpu_dbg_wloop_rb36;
 wire        scpu_dbg_scpu_iclr;
 wire [15:0] scpu_dbg_irq_vec_count;
 wire  [7:0] scpu_dbg_min_p;
@@ -1769,6 +1793,30 @@ cap_vic_wr u_cap_vic_wr (
 	.in_wloop_rb12    (scpu_dbg_wloop_rb12),
 	.in_wloop_w2906_cnt (scpu_dbg_wloop_w2906_cnt),
 	.in_wloop_w2906_val (scpu_dbg_wloop_w2906_val),
+	.in_wloop_rb13    (scpu_dbg_wloop_rb13),
+	.in_wloop_rb14    (scpu_dbg_wloop_rb14),
+	.in_wloop_rb15    (scpu_dbg_wloop_rb15),
+	.in_wloop_rb16    (scpu_dbg_wloop_rb16),
+	.in_wloop_rb17    (scpu_dbg_wloop_rb17),
+	.in_wloop_rb18    (scpu_dbg_wloop_rb18),
+	.in_wloop_rb19    (scpu_dbg_wloop_rb19),
+	.in_wloop_rb20    (scpu_dbg_wloop_rb20),
+	.in_wloop_rb21    (scpu_dbg_wloop_rb21),
+	.in_wloop_rb22    (scpu_dbg_wloop_rb22),
+	.in_wloop_rb23    (scpu_dbg_wloop_rb23),
+	.in_wloop_rb24    (scpu_dbg_wloop_rb24),
+	.in_wloop_rb25    (scpu_dbg_wloop_rb25),
+	.in_wloop_rb26    (scpu_dbg_wloop_rb26),
+	.in_wloop_rb27    (scpu_dbg_wloop_rb27),
+	.in_wloop_rb28    (scpu_dbg_wloop_rb28),
+	.in_wloop_rb29    (scpu_dbg_wloop_rb29),
+	.in_wloop_rb30    (scpu_dbg_wloop_rb30),
+	.in_wloop_rb31    (scpu_dbg_wloop_rb31),
+	.in_wloop_rb32    (scpu_dbg_wloop_rb32),
+	.in_wloop_rb33    (scpu_dbg_wloop_rb33),
+	.in_wloop_rb34    (scpu_dbg_wloop_rb34),
+	.in_wloop_rb35    (scpu_dbg_wloop_rb35),
+	.in_wloop_rb36    (scpu_dbg_wloop_rb36),
 	.o_d018        (dbg_pool.vic_d018),
 	.o_d016        (dbg_pool.vic_d016),
 	.o_dd00        (dbg_pool.vic_dd00),
@@ -1861,7 +1909,31 @@ cap_vic_wr u_cap_vic_wr (
 	.o_wloop_rb11     (dbg_pool.wloop_rb11),
 	.o_wloop_rb12     (dbg_pool.wloop_rb12),
 	.o_wloop_w2906_cnt (dbg_pool.wloop_w2906_cnt),
-	.o_wloop_w2906_val (dbg_pool.wloop_w2906_val)
+	.o_wloop_w2906_val (dbg_pool.wloop_w2906_val),
+	.o_wloop_rb13     (dbg_pool.wloop_rb13),
+	.o_wloop_rb14     (dbg_pool.wloop_rb14),
+	.o_wloop_rb15     (dbg_pool.wloop_rb15),
+	.o_wloop_rb16     (dbg_pool.wloop_rb16),
+	.o_wloop_rb17     (dbg_pool.wloop_rb17),
+	.o_wloop_rb18     (dbg_pool.wloop_rb18),
+	.o_wloop_rb19     (dbg_pool.wloop_rb19),
+	.o_wloop_rb20     (dbg_pool.wloop_rb20),
+	.o_wloop_rb21     (dbg_pool.wloop_rb21),
+	.o_wloop_rb22     (dbg_pool.wloop_rb22),
+	.o_wloop_rb23     (dbg_pool.wloop_rb23),
+	.o_wloop_rb24     (dbg_pool.wloop_rb24),
+	.o_wloop_rb25     (dbg_pool.wloop_rb25),
+	.o_wloop_rb26     (dbg_pool.wloop_rb26),
+	.o_wloop_rb27     (dbg_pool.wloop_rb27),
+	.o_wloop_rb28     (dbg_pool.wloop_rb28),
+	.o_wloop_rb29     (dbg_pool.wloop_rb29),
+	.o_wloop_rb30     (dbg_pool.wloop_rb30),
+	.o_wloop_rb31     (dbg_pool.wloop_rb31),
+	.o_wloop_rb32     (dbg_pool.wloop_rb32),
+	.o_wloop_rb33     (dbg_pool.wloop_rb33),
+	.o_wloop_rb34     (dbg_pool.wloop_rb34),
+	.o_wloop_rb35     (dbg_pool.wloop_rb35),
+	.o_wloop_rb36     (dbg_pool.wloop_rb36)
 );
 `else
 assign dbg_pool.vic_d018         = '0;
@@ -1957,6 +2029,30 @@ assign dbg_pool.wloop_rb11       = '0;
 assign dbg_pool.wloop_rb12       = '0;
 assign dbg_pool.wloop_w2906_cnt  = '0;
 assign dbg_pool.wloop_w2906_val  = '0;
+assign dbg_pool.wloop_rb13       = '0;
+assign dbg_pool.wloop_rb14       = '0;
+assign dbg_pool.wloop_rb15       = '0;
+assign dbg_pool.wloop_rb16       = '0;
+assign dbg_pool.wloop_rb17       = '0;
+assign dbg_pool.wloop_rb18       = '0;
+assign dbg_pool.wloop_rb19       = '0;
+assign dbg_pool.wloop_rb20       = '0;
+assign dbg_pool.wloop_rb21       = '0;
+assign dbg_pool.wloop_rb22       = '0;
+assign dbg_pool.wloop_rb23       = '0;
+assign dbg_pool.wloop_rb24       = '0;
+assign dbg_pool.wloop_rb25       = '0;
+assign dbg_pool.wloop_rb26       = '0;
+assign dbg_pool.wloop_rb27       = '0;
+assign dbg_pool.wloop_rb28       = '0;
+assign dbg_pool.wloop_rb29       = '0;
+assign dbg_pool.wloop_rb30       = '0;
+assign dbg_pool.wloop_rb31       = '0;
+assign dbg_pool.wloop_rb32       = '0;
+assign dbg_pool.wloop_rb33       = '0;
+assign dbg_pool.wloop_rb34       = '0;
+assign dbg_pool.wloop_rb35       = '0;
+assign dbg_pool.wloop_rb36       = '0;
 `endif
 
 `ifdef DBG_CAP_CPU_STATE
@@ -2506,6 +2602,30 @@ fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64
 	.dbg_wloop_rb12       (scpu_dbg_wloop_rb12),
 	.dbg_wloop_w2906_cnt  (scpu_dbg_wloop_w2906_cnt),
 	.dbg_wloop_w2906_val  (scpu_dbg_wloop_w2906_val),
+	.dbg_wloop_rb13       (scpu_dbg_wloop_rb13),
+	.dbg_wloop_rb14       (scpu_dbg_wloop_rb14),
+	.dbg_wloop_rb15       (scpu_dbg_wloop_rb15),
+	.dbg_wloop_rb16       (scpu_dbg_wloop_rb16),
+	.dbg_wloop_rb17       (scpu_dbg_wloop_rb17),
+	.dbg_wloop_rb18       (scpu_dbg_wloop_rb18),
+	.dbg_wloop_rb19       (scpu_dbg_wloop_rb19),
+	.dbg_wloop_rb20       (scpu_dbg_wloop_rb20),
+	.dbg_wloop_rb21       (scpu_dbg_wloop_rb21),
+	.dbg_wloop_rb22       (scpu_dbg_wloop_rb22),
+	.dbg_wloop_rb23       (scpu_dbg_wloop_rb23),
+	.dbg_wloop_rb24       (scpu_dbg_wloop_rb24),
+	.dbg_wloop_rb25       (scpu_dbg_wloop_rb25),
+	.dbg_wloop_rb26       (scpu_dbg_wloop_rb26),
+	.dbg_wloop_rb27       (scpu_dbg_wloop_rb27),
+	.dbg_wloop_rb28       (scpu_dbg_wloop_rb28),
+	.dbg_wloop_rb29       (scpu_dbg_wloop_rb29),
+	.dbg_wloop_rb30       (scpu_dbg_wloop_rb30),
+	.dbg_wloop_rb31       (scpu_dbg_wloop_rb31),
+	.dbg_wloop_rb32       (scpu_dbg_wloop_rb32),
+	.dbg_wloop_rb33       (scpu_dbg_wloop_rb33),
+	.dbg_wloop_rb34       (scpu_dbg_wloop_rb34),
+	.dbg_wloop_rb35       (scpu_dbg_wloop_rb35),
+	.dbg_wloop_rb36       (scpu_dbg_wloop_rb36),
 	.dbg_scpu_iclr        (scpu_dbg_scpu_iclr),
 	.dbg_irq_vec_count    (scpu_dbg_irq_vec_count),
 	.dbg_min_p            (scpu_dbg_min_p),

@@ -102,6 +102,30 @@ module cap_vic_wr (
 	input  logic  [7:0] in_wloop_rb12,
 	input  logic  [7:0] in_wloop_w2906_cnt,
 	input  logic  [7:0] in_wloop_w2906_val,
+	input  logic  [7:0] in_wloop_rb13,
+	input  logic  [7:0] in_wloop_rb14,
+	input  logic  [7:0] in_wloop_rb15,
+	input  logic  [7:0] in_wloop_rb16,
+	input  logic  [7:0] in_wloop_rb17,
+	input  logic  [7:0] in_wloop_rb18,
+	input  logic  [7:0] in_wloop_rb19,
+	input  logic  [7:0] in_wloop_rb20,
+	input  logic  [7:0] in_wloop_rb21,
+	input  logic  [7:0] in_wloop_rb22,
+	input  logic  [7:0] in_wloop_rb23,
+	input  logic  [7:0] in_wloop_rb24,
+	input  logic  [7:0] in_wloop_rb25,
+	input  logic  [7:0] in_wloop_rb26,
+	input  logic  [7:0] in_wloop_rb27,
+	input  logic  [7:0] in_wloop_rb28,
+	input  logic  [7:0] in_wloop_rb29,
+	input  logic  [7:0] in_wloop_rb30,
+	input  logic  [7:0] in_wloop_rb31,
+	input  logic  [7:0] in_wloop_rb32,
+	input  logic  [7:0] in_wloop_rb33,
+	input  logic  [7:0] in_wloop_rb34,
+	input  logic  [7:0] in_wloop_rb35,
+	input  logic  [7:0] in_wloop_rb36,
 
 	output logic  [7:0] o_d018,
 	output logic  [7:0] o_d016,
@@ -195,7 +219,31 @@ module cap_vic_wr (
 	output logic  [7:0] o_wloop_rb11,
 	output logic  [7:0] o_wloop_rb12,
 	output logic  [7:0] o_wloop_w2906_cnt,
-	output logic  [7:0] o_wloop_w2906_val
+	output logic  [7:0] o_wloop_w2906_val,
+	output logic  [7:0] o_wloop_rb13,
+	output logic  [7:0] o_wloop_rb14,
+	output logic  [7:0] o_wloop_rb15,
+	output logic  [7:0] o_wloop_rb16,
+	output logic  [7:0] o_wloop_rb17,
+	output logic  [7:0] o_wloop_rb18,
+	output logic  [7:0] o_wloop_rb19,
+	output logic  [7:0] o_wloop_rb20,
+	output logic  [7:0] o_wloop_rb21,
+	output logic  [7:0] o_wloop_rb22,
+	output logic  [7:0] o_wloop_rb23,
+	output logic  [7:0] o_wloop_rb24,
+	output logic  [7:0] o_wloop_rb25,
+	output logic  [7:0] o_wloop_rb26,
+	output logic  [7:0] o_wloop_rb27,
+	output logic  [7:0] o_wloop_rb28,
+	output logic  [7:0] o_wloop_rb29,
+	output logic  [7:0] o_wloop_rb30,
+	output logic  [7:0] o_wloop_rb31,
+	output logic  [7:0] o_wloop_rb32,
+	output logic  [7:0] o_wloop_rb33,
+	output logic  [7:0] o_wloop_rb34,
+	output logic  [7:0] o_wloop_rb35,
+	output logic  [7:0] o_wloop_rb36
 );
 
 	assign o_d018        = in_d018;
@@ -291,5 +339,29 @@ module cap_vic_wr (
 	assign o_wloop_rb12     = in_wloop_rb12;
 	assign o_wloop_w2906_cnt = in_wloop_w2906_cnt;
 	assign o_wloop_w2906_val = in_wloop_w2906_val;
+	assign o_wloop_rb13     = in_wloop_rb13;
+	assign o_wloop_rb14     = in_wloop_rb14;
+	assign o_wloop_rb15     = in_wloop_rb15;
+	assign o_wloop_rb16     = in_wloop_rb16;
+	assign o_wloop_rb17     = in_wloop_rb17;
+	assign o_wloop_rb18     = in_wloop_rb18;
+	assign o_wloop_rb19     = in_wloop_rb19;
+	assign o_wloop_rb20     = in_wloop_rb20;
+	assign o_wloop_rb21     = in_wloop_rb21;
+	assign o_wloop_rb22     = in_wloop_rb22;
+	assign o_wloop_rb23     = in_wloop_rb23;
+	assign o_wloop_rb24     = in_wloop_rb24;
+	assign o_wloop_rb25     = in_wloop_rb25;
+	assign o_wloop_rb26     = in_wloop_rb26;
+	assign o_wloop_rb27     = in_wloop_rb27;
+	assign o_wloop_rb28     = in_wloop_rb28;
+	assign o_wloop_rb29     = in_wloop_rb29;
+	assign o_wloop_rb30     = in_wloop_rb30;
+	assign o_wloop_rb31     = in_wloop_rb31;
+	assign o_wloop_rb32     = in_wloop_rb32;
+	assign o_wloop_rb33     = in_wloop_rb33;
+	assign o_wloop_rb34     = in_wloop_rb34;
+	assign o_wloop_rb35     = in_wloop_rb35;
+	assign o_wloop_rb36     = in_wloop_rb36;
 
 endmodule

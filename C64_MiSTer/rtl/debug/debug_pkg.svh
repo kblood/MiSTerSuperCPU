@@ -271,6 +271,31 @@ typedef struct packed {
   // 41st pass: write-bus-gated snoop of $2906.
   logic  [7:0] wloop_w2906_cnt;
   logic  [7:0] wloop_w2906_val;
+  // 42nd pass: raw code-byte dump at $0AF9-$0B10 (24 bytes).
+  logic  [7:0] wloop_rb13;
+  logic  [7:0] wloop_rb14;
+  logic  [7:0] wloop_rb15;
+  logic  [7:0] wloop_rb16;
+  logic  [7:0] wloop_rb17;
+  logic  [7:0] wloop_rb18;
+  logic  [7:0] wloop_rb19;
+  logic  [7:0] wloop_rb20;
+  logic  [7:0] wloop_rb21;
+  logic  [7:0] wloop_rb22;
+  logic  [7:0] wloop_rb23;
+  logic  [7:0] wloop_rb24;
+  logic  [7:0] wloop_rb25;
+  logic  [7:0] wloop_rb26;
+  logic  [7:0] wloop_rb27;
+  logic  [7:0] wloop_rb28;
+  logic  [7:0] wloop_rb29;
+  logic  [7:0] wloop_rb30;
+  logic  [7:0] wloop_rb31;
+  logic  [7:0] wloop_rb32;
+  logic  [7:0] wloop_rb33;
+  logic  [7:0] wloop_rb34;
+  logic  [7:0] wloop_rb35;
+  logic  [7:0] wloop_rb36;
 
   // v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag was ever
   // observed at 0 (CLI / PLP cleared it). irq_vec_count = 16-bit count

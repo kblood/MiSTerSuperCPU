@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_fe1b700eab_20260826T162534Z_047d7459-dirty",
+  "md5": "047d7459ca86d9a0044371b3c04282a8",
+  "size_bytes": 4045508,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "fe1b700eab",
+  "git_subject": "debug(wolf3d): 41st-pass write-bus-gated snoop of $2906 \u00e2\u20ac\u201d direct proof of never-written vs written",
+  "git_dirty": true,
+  "built_utc": "20260826T162534Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

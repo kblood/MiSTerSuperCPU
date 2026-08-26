@@ -138,6 +138,30 @@ module debug_uart_pool_fmt
 	reg  [7:0] lat_wloop_rb12;
 	reg  [7:0] lat_wloop_w2906_cnt;
 	reg  [7:0] lat_wloop_w2906_val;
+	reg  [7:0] lat_wloop_rb13;
+	reg  [7:0] lat_wloop_rb14;
+	reg  [7:0] lat_wloop_rb15;
+	reg  [7:0] lat_wloop_rb16;
+	reg  [7:0] lat_wloop_rb17;
+	reg  [7:0] lat_wloop_rb18;
+	reg  [7:0] lat_wloop_rb19;
+	reg  [7:0] lat_wloop_rb20;
+	reg  [7:0] lat_wloop_rb21;
+	reg  [7:0] lat_wloop_rb22;
+	reg  [7:0] lat_wloop_rb23;
+	reg  [7:0] lat_wloop_rb24;
+	reg  [7:0] lat_wloop_rb25;
+	reg  [7:0] lat_wloop_rb26;
+	reg  [7:0] lat_wloop_rb27;
+	reg  [7:0] lat_wloop_rb28;
+	reg  [7:0] lat_wloop_rb29;
+	reg  [7:0] lat_wloop_rb30;
+	reg  [7:0] lat_wloop_rb31;
+	reg  [7:0] lat_wloop_rb32;
+	reg  [7:0] lat_wloop_rb33;
+	reg  [7:0] lat_wloop_rb34;
+	reg  [7:0] lat_wloop_rb35;
+	reg  [7:0] lat_wloop_rb36;
 	reg [15:0] lat_cy;
 	reg [15:0] lat_jsr0, lat_jsr1, lat_jsr2, lat_jsr3;
 	reg [15:0] lat_jmp0, lat_jmp1, lat_jmp2, lat_jmp3;
@@ -272,7 +296,7 @@ module debug_uart_pool_fmt
 	// LINE_LEN=512 fits as a literal. Existing case items keep their
 	// 9'd literals unchanged; Verilog zero-extends them for the
 	// comparison, so no risk there.
-	localparam LINE_LEN = 10'd648;
+	localparam LINE_LEN = 10'd701;
 
 	reg [9:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
@@ -1128,7 +1152,62 @@ module debug_uart_pool_fmt
 			10'd644: line_byte = hex_nibble(lat_wloop_w2906_cnt[3:0]);
 			10'd645: line_byte = hex_nibble(lat_wloop_w2906_val[7:4]);
 			10'd646: line_byte = hex_nibble(lat_wloop_w2906_val[3:0]);
-			10'd647: line_byte = 8'h0A;
+			// 42nd pass: raw code-byte dump at $0AF9-$0B10 (24 bytes),
+			// continuing the 40th pass's ground-truth dump forward.
+			10'd647: line_byte = " ";
+			10'd648: line_byte = "R";
+			10'd649: line_byte = "B";
+			10'd650: line_byte = "2";
+			10'd651: line_byte = ":";
+			10'd652: line_byte = hex_nibble(lat_wloop_rb13[7:4]);
+			10'd653: line_byte = hex_nibble(lat_wloop_rb13[3:0]);
+			10'd654: line_byte = hex_nibble(lat_wloop_rb14[7:4]);
+			10'd655: line_byte = hex_nibble(lat_wloop_rb14[3:0]);
+			10'd656: line_byte = hex_nibble(lat_wloop_rb15[7:4]);
+			10'd657: line_byte = hex_nibble(lat_wloop_rb15[3:0]);
+			10'd658: line_byte = hex_nibble(lat_wloop_rb16[7:4]);
+			10'd659: line_byte = hex_nibble(lat_wloop_rb16[3:0]);
+			10'd660: line_byte = hex_nibble(lat_wloop_rb17[7:4]);
+			10'd661: line_byte = hex_nibble(lat_wloop_rb17[3:0]);
+			10'd662: line_byte = hex_nibble(lat_wloop_rb18[7:4]);
+			10'd663: line_byte = hex_nibble(lat_wloop_rb18[3:0]);
+			10'd664: line_byte = hex_nibble(lat_wloop_rb19[7:4]);
+			10'd665: line_byte = hex_nibble(lat_wloop_rb19[3:0]);
+			10'd666: line_byte = hex_nibble(lat_wloop_rb20[7:4]);
+			10'd667: line_byte = hex_nibble(lat_wloop_rb20[3:0]);
+			10'd668: line_byte = hex_nibble(lat_wloop_rb21[7:4]);
+			10'd669: line_byte = hex_nibble(lat_wloop_rb21[3:0]);
+			10'd670: line_byte = hex_nibble(lat_wloop_rb22[7:4]);
+			10'd671: line_byte = hex_nibble(lat_wloop_rb22[3:0]);
+			10'd672: line_byte = hex_nibble(lat_wloop_rb23[7:4]);
+			10'd673: line_byte = hex_nibble(lat_wloop_rb23[3:0]);
+			10'd674: line_byte = hex_nibble(lat_wloop_rb24[7:4]);
+			10'd675: line_byte = hex_nibble(lat_wloop_rb24[3:0]);
+			10'd676: line_byte = hex_nibble(lat_wloop_rb25[7:4]);
+			10'd677: line_byte = hex_nibble(lat_wloop_rb25[3:0]);
+			10'd678: line_byte = hex_nibble(lat_wloop_rb26[7:4]);
+			10'd679: line_byte = hex_nibble(lat_wloop_rb26[3:0]);
+			10'd680: line_byte = hex_nibble(lat_wloop_rb27[7:4]);
+			10'd681: line_byte = hex_nibble(lat_wloop_rb27[3:0]);
+			10'd682: line_byte = hex_nibble(lat_wloop_rb28[7:4]);
+			10'd683: line_byte = hex_nibble(lat_wloop_rb28[3:0]);
+			10'd684: line_byte = hex_nibble(lat_wloop_rb29[7:4]);
+			10'd685: line_byte = hex_nibble(lat_wloop_rb29[3:0]);
+			10'd686: line_byte = hex_nibble(lat_wloop_rb30[7:4]);
+			10'd687: line_byte = hex_nibble(lat_wloop_rb30[3:0]);
+			10'd688: line_byte = hex_nibble(lat_wloop_rb31[7:4]);
+			10'd689: line_byte = hex_nibble(lat_wloop_rb31[3:0]);
+			10'd690: line_byte = hex_nibble(lat_wloop_rb32[7:4]);
+			10'd691: line_byte = hex_nibble(lat_wloop_rb32[3:0]);
+			10'd692: line_byte = hex_nibble(lat_wloop_rb33[7:4]);
+			10'd693: line_byte = hex_nibble(lat_wloop_rb33[3:0]);
+			10'd694: line_byte = hex_nibble(lat_wloop_rb34[7:4]);
+			10'd695: line_byte = hex_nibble(lat_wloop_rb34[3:0]);
+			10'd696: line_byte = hex_nibble(lat_wloop_rb35[7:4]);
+			10'd697: line_byte = hex_nibble(lat_wloop_rb35[3:0]);
+			10'd698: line_byte = hex_nibble(lat_wloop_rb36[7:4]);
+			10'd699: line_byte = hex_nibble(lat_wloop_rb36[3:0]);
+			10'd700: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -1212,6 +1291,30 @@ module debug_uart_pool_fmt
 				lat_wloop_rb12    <= pool.wloop_rb12;
 				lat_wloop_w2906_cnt <= pool.wloop_w2906_cnt;
 				lat_wloop_w2906_val <= pool.wloop_w2906_val;
+				lat_wloop_rb13    <= pool.wloop_rb13;
+				lat_wloop_rb14    <= pool.wloop_rb14;
+				lat_wloop_rb15    <= pool.wloop_rb15;
+				lat_wloop_rb16    <= pool.wloop_rb16;
+				lat_wloop_rb17    <= pool.wloop_rb17;
+				lat_wloop_rb18    <= pool.wloop_rb18;
+				lat_wloop_rb19    <= pool.wloop_rb19;
+				lat_wloop_rb20    <= pool.wloop_rb20;
+				lat_wloop_rb21    <= pool.wloop_rb21;
+				lat_wloop_rb22    <= pool.wloop_rb22;
+				lat_wloop_rb23    <= pool.wloop_rb23;
+				lat_wloop_rb24    <= pool.wloop_rb24;
+				lat_wloop_rb25    <= pool.wloop_rb25;
+				lat_wloop_rb26    <= pool.wloop_rb26;
+				lat_wloop_rb27    <= pool.wloop_rb27;
+				lat_wloop_rb28    <= pool.wloop_rb28;
+				lat_wloop_rb29    <= pool.wloop_rb29;
+				lat_wloop_rb30    <= pool.wloop_rb30;
+				lat_wloop_rb31    <= pool.wloop_rb31;
+				lat_wloop_rb32    <= pool.wloop_rb32;
+				lat_wloop_rb33    <= pool.wloop_rb33;
+				lat_wloop_rb34    <= pool.wloop_rb34;
+				lat_wloop_rb35    <= pool.wloop_rb35;
+				lat_wloop_rb36    <= pool.wloop_rb36;
 				lat_cy    <= pool.cnt_wr02;
 				lat_jsr0  <= pool.jsr_pc_t0;
 				lat_jsr1  <= pool.jsr_pc_t1;

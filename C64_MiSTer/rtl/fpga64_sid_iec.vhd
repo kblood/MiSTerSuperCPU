@@ -363,6 +363,34 @@ port(
 	-- at $FF (0 = never written); w2906_val is the last write's data.
 	dbg_wloop_w2906_cnt  : out std_logic_vector(7 downto 0);
 	dbg_wloop_w2906_val  : out std_logic_vector(7 downto 0);
+	-- 42nd pass (Wolf3D freeze, 2026-08-26): extend the raw-byte
+	-- ground-truth dump forward from where the 40th pass left off
+	-- ($0AEC-$0AF8) to $0AF9-$0B10, to directly locate the real
+	-- STA $2906 the 41st pass proved fires every iteration.
+	dbg_wloop_rb13       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb14       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb15       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb16       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb17       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb18       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb19       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb20       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb21       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb22       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb23       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb24       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb25       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb26       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb27       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb28       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb29       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb30       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb31       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb32       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb33       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb34       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb35       : out std_logic_vector(7 downto 0);
+	dbg_wloop_rb36       : out std_logic_vector(7 downto 0);
 	-- v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag ever
 	-- observed at 0; irq_vec_count counts $FFFE/$FFFF reads (IRQ
 	-- vector fetches); min_p = lowest dbg_p_816 ever observed.
@@ -1250,6 +1278,31 @@ signal wloop_rb12_r : std_logic_vector(7 downto 0) := (others => '0');
 -- 41st pass: write-bus-gated snoop of $2906 (0 count = never written).
 signal wloop_w2906_cnt_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_w2906_val_r : std_logic_vector(7 downto 0) := (others => '0');
+-- 42nd pass: raw code-byte dump at $0AF9-$0B10 (24 bytes).
+signal wloop_rb13_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb14_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb15_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb16_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb17_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb18_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb19_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb20_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb21_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb22_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb23_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb24_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb25_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb26_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb27_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb28_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb29_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb30_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb31_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb32_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb33_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb34_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb35_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_rb36_r : std_logic_vector(7 downto 0) := (others => '0');
 -- v228: I-flag diagnostics for SCPU.
 --  scpu_iclr_r = '1' once dbg_p_816(2) was ever observed = 0 with SCPU
 --                active. If stays '0', SCPU never reaches I=0 — IRQ off.
@@ -5925,6 +5978,105 @@ begin
 				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
 					wloop_rb12_r <= std_logic_vector(cpuDi);
 				end if;
+				-- 42nd pass: raw code-byte dump at $0AF9-$0B10 (24 bytes),
+				-- continuing the 40th pass's ground-truth dump forward to
+				-- locate the real STA $2906.
+				if cpuAddr_pre = x"0AF9"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb13_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AFA"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb14_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AFB"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb15_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AFC"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb16_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AFD"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb17_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AFE"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb18_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AFF"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb19_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B00"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb20_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B01"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb21_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B02"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb22_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B03"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb23_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B04"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb24_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B05"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb25_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B06"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb26_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B07"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb27_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B08"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb28_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B09"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb29_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B0A"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb30_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B0B"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb31_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B0C"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb32_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B0D"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb33_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B0E"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb34_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B0F"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb35_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0B10"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_rb36_r <= std_logic_vector(cpuDi);
+				end if;
 				-- v341 doom bitmap probe: latch reads of $00:$1D02/$1D04
 				-- (page-flip handshake). Gate to bank $00 in SCPU mode so
 				-- bank-$XX:$1D02 in JIT code doesn't shadow these.
@@ -6613,6 +6765,30 @@ dbg_wloop_rb11       <= wloop_rb11_r;
 dbg_wloop_rb12       <= wloop_rb12_r;
 dbg_wloop_w2906_cnt  <= wloop_w2906_cnt_r;
 dbg_wloop_w2906_val  <= wloop_w2906_val_r;
+dbg_wloop_rb13       <= wloop_rb13_r;
+dbg_wloop_rb14       <= wloop_rb14_r;
+dbg_wloop_rb15       <= wloop_rb15_r;
+dbg_wloop_rb16       <= wloop_rb16_r;
+dbg_wloop_rb17       <= wloop_rb17_r;
+dbg_wloop_rb18       <= wloop_rb18_r;
+dbg_wloop_rb19       <= wloop_rb19_r;
+dbg_wloop_rb20       <= wloop_rb20_r;
+dbg_wloop_rb21       <= wloop_rb21_r;
+dbg_wloop_rb22       <= wloop_rb22_r;
+dbg_wloop_rb23       <= wloop_rb23_r;
+dbg_wloop_rb24       <= wloop_rb24_r;
+dbg_wloop_rb25       <= wloop_rb25_r;
+dbg_wloop_rb26       <= wloop_rb26_r;
+dbg_wloop_rb27       <= wloop_rb27_r;
+dbg_wloop_rb28       <= wloop_rb28_r;
+dbg_wloop_rb29       <= wloop_rb29_r;
+dbg_wloop_rb30       <= wloop_rb30_r;
+dbg_wloop_rb31       <= wloop_rb31_r;
+dbg_wloop_rb32       <= wloop_rb32_r;
+dbg_wloop_rb33       <= wloop_rb33_r;
+dbg_wloop_rb34       <= wloop_rb34_r;
+dbg_wloop_rb35       <= wloop_rb35_r;
+dbg_wloop_rb36       <= wloop_rb36_r;
 dbg_scpu_iclr        <= scpu_iclr_r;
 dbg_irq_vec_count    <= std_logic_vector(irq_vec_count_r);
 dbg_min_p            <= min_p_r;
