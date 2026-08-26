@@ -97,6 +97,9 @@ module debug_uart_pool_fmt
 	// at the moment of the last screen write (see debug_pkg.svh
 	// scr_write_jsr_a comment). UART-only.
 	reg [15:0] lat_scr_write_jsr_a, lat_scr_write_jsr_b;
+	// 34th pass (Wolf3D freeze, 2026-08-26): always-live current opcode
+	// byte, paired with the already-live PC field.
+	reg  [7:0] lat_cur_op;
 	reg [15:0] lat_cy;
 	reg [15:0] lat_jsr0, lat_jsr1, lat_jsr2, lat_jsr3;
 	reg [15:0] lat_jmp0, lat_jmp1, lat_jmp2, lat_jmp3;
@@ -224,9 +227,16 @@ module debug_uart_pool_fmt
 	// New tail uses bytes 369..390; IE field at 391..396.
 	// more-turbo iter-4d (2026-05-30): append " HR:## HW:##" (12 bytes) at
 	// 397..408 for the read-only cpu_cache hit-rate observer; newline at 409.
-	localparam LINE_LEN = 9'd506;
+	// 34th pass (2026-08-26): +6 bytes " OP:##" for the always-live
+	// current-opcode field pushes total line length to 512 (LF now at
+	// index 511), exactly at the 9-bit index's representable ceiling
+	// (0..511) -- widened byte_idx/line_byte's index to 10 bits so
+	// LINE_LEN=512 fits as a literal. Existing case items keep their
+	// 9'd literals unchanged; Verilog zero-extends them for the
+	// comparison, so no risk there.
+	localparam LINE_LEN = 10'd512;
 
-	reg [8:0] byte_idx;
+	reg [9:0] byte_idx;
 	reg       byte_pending;     // a byte has been latched but not sent
 
 	function [7:0] hex_nibble(input [3:0] n);
@@ -235,7 +245,7 @@ module debug_uart_pool_fmt
 	endfunction
 
 	// Combinational byte selector — emits the byte for `byte_idx`.
-	function [7:0] line_byte(input [8:0] i);
+	function [7:0] line_byte(input [9:0] i);
 		case (i)
 			// "F:"
 			8'd0:  line_byte = "F";
@@ -917,7 +927,18 @@ module debug_uart_pool_fmt
 			9'd502: line_byte = hex_nibble(lat_scr_write_jsr_b[11:8]);
 			9'd503: line_byte = hex_nibble(lat_scr_write_jsr_b[7:4]);
 			9'd504: line_byte = hex_nibble(lat_scr_write_jsr_b[3:0]);
-			9'd505: line_byte = 8'h0A;
+
+			// 34th pass (Wolf3D freeze, 2026-08-26): always-live current
+			// opcode byte, paired with the already-live PC field so a
+			// stuck loop's per-address opcode can be reconstructed
+			// offline from repeated UART sampling.
+			10'd505: line_byte = " ";
+			10'd506: line_byte = "O";
+			10'd507: line_byte = "P";
+			10'd508: line_byte = ":";
+			10'd509: line_byte = hex_nibble(lat_cur_op[7:4]);
+			10'd510: line_byte = hex_nibble(lat_cur_op[3:0]);
+			10'd511: line_byte = 8'h0A;
 
 			default: line_byte = 8'h20;
 		endcase
@@ -962,6 +983,7 @@ module debug_uart_pool_fmt
 				lat_tr_op7 <= pool.trace_op7;
 				lat_scr_write_jsr_a <= pool.scr_write_jsr_a;
 				lat_scr_write_jsr_b <= pool.scr_write_jsr_b;
+				lat_cur_op <= pool.cur_op;
 				lat_cy    <= pool.cnt_wr02;
 				lat_jsr0  <= pool.jsr_pc_t0;
 				lat_jsr1  <= pool.jsr_pc_t1;

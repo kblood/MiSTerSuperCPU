@@ -225,6 +225,8 @@ typedef struct packed {
   // opcodes per frame. T65 vs SCPU comparison answers "same code,
   // slower" vs "different code path".
   logic [23:0] op_count;
+  // 34th pass: always-live current opcode byte.
+  logic  [7:0] cur_op;
 
   // v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag was ever
   // observed at 0 (CLI / PLP cleared it). irq_vec_count = 16-bit count

@@ -63,6 +63,7 @@ module cap_vic_wr (
 	input  logic  [7:0] in_mem_00,
 	input  logic  [7:0] in_mem_01,
 	input  logic [23:0] in_op_count,
+	input  logic  [7:0] in_cur_op,
 
 	output logic  [7:0] o_d018,
 	output logic  [7:0] o_d016,
@@ -117,7 +118,8 @@ module cap_vic_wr (
 	output logic  [7:0] o_mem_0315,
 	output logic  [7:0] o_mem_00,
 	output logic  [7:0] o_mem_01,
-	output logic [23:0] o_op_count
+	output logic [23:0] o_op_count,
+	output logic  [7:0] o_cur_op
 );
 
 	assign o_d018        = in_d018;
@@ -174,5 +176,6 @@ module cap_vic_wr (
 	assign o_mem_00         = in_mem_00;
 	assign o_mem_01         = in_mem_01;
 	assign o_op_count       = in_op_count;
+	assign o_cur_op         = in_cur_op;
 
 endmodule

@@ -294,6 +294,8 @@ port(
 	-- SCPU comparison answers "same code, slower" (similar deltas) vs
 	-- "different code path" (very different deltas).
 	dbg_op_count         : out std_logic_vector(23 downto 0);
+	-- 34th pass: always-live current opcode byte (see cur_op_r comment).
+	dbg_cur_op           : out std_logic_vector(7 downto 0);
 	-- v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag ever
 	-- observed at 0; irq_vec_count counts $FFFE/$FFFF reads (IRQ
 	-- vector fetches); min_p = lowest dbg_p_816 ever observed.
@@ -1135,6 +1137,8 @@ signal mem_00_r : std_logic_vector(7 downto 0) := (others => '0');
 signal mem_01_r : std_logic_vector(7 downto 0) := (others => '0');
 -- v219: opcode-fetch counter (free-running, never resets in normal op)
 signal op_count_r : unsigned(23 downto 0) := (others => '0');
+-- 34th pass: always-live current opcode byte (see cur_op_r usage comment).
+signal cur_op_r : std_logic_vector(7 downto 0) := (others => '0');
 -- v228: I-flag diagnostics for SCPU.
 --  scpu_iclr_r = '1' once dbg_p_816(2) was ever observed = 0 with SCPU
 --                active. If stays '0', SCPU never reaches I=0 — IRQ off.
@@ -4623,6 +4627,20 @@ begin
 				op_count_r <= op_count_r + 1;
 			end if;
 
+			-- 34th pass (Wolf3D freeze, 2026-08-26): always-live current
+			-- opcode byte, paired with the already-live cpu_pc (dbg PC:
+			-- field) so repeated UART sampling of a stuck loop lets the
+			-- opcode at each visited PC be reconstructed offline without
+			-- needing a dedicated memory-range dump. See
+			-- project_wolf3d_postreu_bank28_freeze_regression.md 33rd/34th
+			-- pass notes -- the live PC was found parked in a tight bank-$00
+			-- loop ($0AC3-$0B10) unrelated to the historical bank-$28 trace
+			-- ring capture, and this loop isn't part of wolf3d_loader.prg
+			-- (confirmed by reading the file: it only spans $0801-$08FD).
+			if opcode_fetch_pulse = '1' then
+				cur_op_r <= std_logic_vector(cpuDi);
+			end if;
+
 			-- v228: track if SCPU's I-flag ever clears, count IRQ vector
 			-- fetches, and track minimum P observed for SCPU.
 			if supercpu_en = '1' then
@@ -6268,6 +6286,7 @@ dbg_mem_0315         <= mem_0315_r;
 dbg_mem_00           <= mem_00_r;
 dbg_mem_01           <= mem_01_r;
 dbg_op_count         <= std_logic_vector(op_count_r);
+dbg_cur_op           <= cur_op_r;
 dbg_scpu_iclr        <= scpu_iclr_r;
 dbg_irq_vec_count    <= std_logic_vector(irq_vec_count_r);
 dbg_min_p            <= min_p_r;

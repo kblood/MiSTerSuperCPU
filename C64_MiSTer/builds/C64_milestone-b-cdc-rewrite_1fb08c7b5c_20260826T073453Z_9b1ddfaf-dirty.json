@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_1fb08c7b5c_20260826T073453Z_9b1ddfaf-dirty",
+  "md5": "9b1ddfaf888fd6f185e4602ba0f3ba85",
+  "size_bytes": 4019380,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "1fb08c7b5c",
+  "git_subject": "debug(scpu): latch JSR-ring snapshot at last screen write (33rd pass)",
+  "git_dirty": true,
+  "built_utc": "20260826T073453Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

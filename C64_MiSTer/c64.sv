@@ -1339,6 +1339,7 @@ wire  [7:0] scpu_dbg_mem_0315;
 wire  [7:0] scpu_dbg_mem_00;
 wire  [7:0] scpu_dbg_mem_01;
 wire [23:0] scpu_dbg_op_count;
+wire  [7:0] scpu_dbg_cur_op;
 wire        scpu_dbg_scpu_iclr;
 wire [15:0] scpu_dbg_irq_vec_count;
 wire  [7:0] scpu_dbg_min_p;
@@ -1691,6 +1692,7 @@ cap_vic_wr u_cap_vic_wr (
 	.in_mem_00        (scpu_dbg_mem_00),
 	.in_mem_01        (scpu_dbg_mem_01),
 	.in_op_count      (scpu_dbg_op_count),
+	.in_cur_op        (scpu_dbg_cur_op),
 	.o_d018        (dbg_pool.vic_d018),
 	.o_d016        (dbg_pool.vic_d016),
 	.o_dd00        (dbg_pool.vic_dd00),
@@ -1744,7 +1746,8 @@ cap_vic_wr u_cap_vic_wr (
 	.o_mem_0315       (dbg_pool.mem_0315),
 	.o_mem_00         (dbg_pool.mem_00),
 	.o_mem_01         (dbg_pool.mem_01),
-	.o_op_count       (dbg_pool.op_count)
+	.o_op_count       (dbg_pool.op_count),
+	.o_cur_op         (dbg_pool.cur_op)
 );
 `else
 assign dbg_pool.vic_d018         = '0;
@@ -1801,6 +1804,7 @@ assign dbg_pool.mem_0315         = '0;
 assign dbg_pool.mem_00           = '0;
 assign dbg_pool.mem_01           = '0;
 assign dbg_pool.op_count         = '0;
+assign dbg_pool.cur_op           = '0;
 `endif
 
 `ifdef DBG_CAP_CPU_STATE
@@ -2311,6 +2315,7 @@ fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64
 	.dbg_mem_00           (scpu_dbg_mem_00),
 	.dbg_mem_01           (scpu_dbg_mem_01),
 	.dbg_op_count         (scpu_dbg_op_count),
+	.dbg_cur_op           (scpu_dbg_cur_op),
 	.dbg_scpu_iclr        (scpu_dbg_scpu_iclr),
 	.dbg_irq_vec_count    (scpu_dbg_irq_vec_count),
 	.dbg_min_p            (scpu_dbg_min_p),
