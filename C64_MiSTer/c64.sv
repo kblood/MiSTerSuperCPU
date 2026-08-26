@@ -1408,6 +1408,8 @@ wire  [7:0] scpu_dbg_wloop_w292e_cnt;
 wire  [7:0] scpu_dbg_wloop_w292e_val;
 wire  [7:0] scpu_dbg_wloop_w2930_cnt;
 wire  [7:0] scpu_dbg_wloop_w2930_val;
+wire [23:0] scpu_dbg_wloop_w292e_pc;
+wire [23:0] scpu_dbg_wloop_w2930_pc;
 wire        scpu_dbg_scpu_iclr;
 wire [15:0] scpu_dbg_irq_vec_count;
 wire  [7:0] scpu_dbg_min_p;
@@ -1829,6 +1831,8 @@ cap_vic_wr u_cap_vic_wr (
 	.in_wloop_w292e_val (scpu_dbg_wloop_w292e_val),
 	.in_wloop_w2930_cnt (scpu_dbg_wloop_w2930_cnt),
 	.in_wloop_w2930_val (scpu_dbg_wloop_w2930_val),
+	.in_wloop_w292e_pc (scpu_dbg_wloop_w292e_pc),
+	.in_wloop_w2930_pc (scpu_dbg_wloop_w2930_pc),
 	.o_d018        (dbg_pool.vic_d018),
 	.o_d016        (dbg_pool.vic_d016),
 	.o_dd00        (dbg_pool.vic_dd00),
@@ -1951,7 +1955,9 @@ cap_vic_wr u_cap_vic_wr (
 	.o_wloop_w292e_cnt (dbg_pool.wloop_w292e_cnt),
 	.o_wloop_w292e_val (dbg_pool.wloop_w292e_val),
 	.o_wloop_w2930_cnt (dbg_pool.wloop_w2930_cnt),
-	.o_wloop_w2930_val (dbg_pool.wloop_w2930_val)
+	.o_wloop_w2930_val (dbg_pool.wloop_w2930_val),
+	.o_wloop_w292e_pc (dbg_pool.wloop_w292e_pc),
+	.o_wloop_w2930_pc (dbg_pool.wloop_w2930_pc)
 );
 `else
 assign dbg_pool.vic_d018         = '0;
@@ -2077,6 +2083,8 @@ assign dbg_pool.wloop_w292e_cnt  = '0;
 assign dbg_pool.wloop_w292e_val  = '0;
 assign dbg_pool.wloop_w2930_cnt  = '0;
 assign dbg_pool.wloop_w2930_val  = '0;
+assign dbg_pool.wloop_w292e_pc   = '0;
+assign dbg_pool.wloop_w2930_pc   = '0;
 `endif
 
 `ifdef DBG_CAP_CPU_STATE
@@ -2656,6 +2664,8 @@ fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64
 	.dbg_wloop_w292e_val  (scpu_dbg_wloop_w292e_val),
 	.dbg_wloop_w2930_cnt  (scpu_dbg_wloop_w2930_cnt),
 	.dbg_wloop_w2930_val  (scpu_dbg_wloop_w2930_val),
+	.dbg_wloop_w292e_pc   (scpu_dbg_wloop_w292e_pc),
+	.dbg_wloop_w2930_pc   (scpu_dbg_wloop_w2930_pc),
 	.dbg_scpu_iclr        (scpu_dbg_scpu_iclr),
 	.dbg_irq_vec_count    (scpu_dbg_irq_vec_count),
 	.dbg_min_p            (scpu_dbg_min_p),

@@ -402,6 +402,10 @@ port(
 	dbg_wloop_w292e_val  : out std_logic_vector(7 downto 0);
 	dbg_wloop_w2930_cnt  : out std_logic_vector(7 downto 0);
 	dbg_wloop_w2930_val  : out std_logic_vector(7 downto 0);
+	-- 45th pass: PC of the STA instructions that write $292E/$2930,
+	-- so the actual source operand feeding them can be located.
+	dbg_wloop_w292e_pc   : out std_logic_vector(23 downto 0);
+	dbg_wloop_w2930_pc   : out std_logic_vector(23 downto 0);
 	-- v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag ever
 	-- observed at 0; irq_vec_count counts $FFFE/$FFFF reads (IRQ
 	-- vector fetches); min_p = lowest dbg_p_816 ever observed.
@@ -1320,6 +1324,8 @@ signal wloop_w292e_cnt_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_w292e_val_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_w2930_cnt_r : std_logic_vector(7 downto 0) := (others => '0');
 signal wloop_w2930_val_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_w292e_pc_r : std_logic_vector(23 downto 0) := (others => '0');
+signal wloop_w2930_pc_r : std_logic_vector(23 downto 0) := (others => '0');
 -- v228: I-flag diagnostics for SCPU.
 --  scpu_iclr_r = '1' once dbg_p_816(2) was ever observed = 0 with SCPU
 --                active. If stays '0', SCPU never reaches I=0 — IRQ off.
@@ -5164,6 +5170,7 @@ begin
 						wloop_w292e_cnt_r <= std_logic_vector(unsigned(wloop_w292e_cnt_r) + 1);
 					end if;
 					wloop_w292e_val_r <= std_logic_vector(cpuDo_pre);
+					wloop_w292e_pc_r  <= cpu_pc_now;
 				end if;
 				if cpuAddr_pre = x"2930"
 				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
@@ -5171,6 +5178,7 @@ begin
 						wloop_w2930_cnt_r <= std_logic_vector(unsigned(wloop_w2930_cnt_r) + 1);
 					end if;
 					wloop_w2930_val_r <= std_logic_vector(cpuDo_pre);
+					wloop_w2930_pc_r  <= cpu_pc_now;
 				end if;
 				if cpuAddr_pre = x"DF01" then
 					wr_df01_pc_r  <= cpu_pc_now;
@@ -6841,6 +6849,8 @@ dbg_wloop_w292e_cnt  <= wloop_w292e_cnt_r;
 dbg_wloop_w292e_val  <= wloop_w292e_val_r;
 dbg_wloop_w2930_cnt  <= wloop_w2930_cnt_r;
 dbg_wloop_w2930_val  <= wloop_w2930_val_r;
+dbg_wloop_w292e_pc   <= wloop_w292e_pc_r;
+dbg_wloop_w2930_pc   <= wloop_w2930_pc_r;
 dbg_scpu_iclr        <= scpu_iclr_r;
 dbg_irq_vec_count    <= std_logic_vector(irq_vec_count_r);
 dbg_min_p            <= min_p_r;

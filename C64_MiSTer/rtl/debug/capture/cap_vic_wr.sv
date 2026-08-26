@@ -132,6 +132,8 @@ module cap_vic_wr (
 	input  logic  [7:0] in_wloop_w292e_val,
 	input  logic  [7:0] in_wloop_w2930_cnt,
 	input  logic  [7:0] in_wloop_w2930_val,
+	input  logic [23:0] in_wloop_w292e_pc,
+	input  logic [23:0] in_wloop_w2930_pc,
 
 	output logic  [7:0] o_d018,
 	output logic  [7:0] o_d016,
@@ -255,7 +257,9 @@ module cap_vic_wr (
 	output logic  [7:0] o_wloop_w292e_cnt,
 	output logic  [7:0] o_wloop_w292e_val,
 	output logic  [7:0] o_wloop_w2930_cnt,
-	output logic  [7:0] o_wloop_w2930_val
+	output logic  [7:0] o_wloop_w2930_val,
+	output logic [23:0] o_wloop_w292e_pc,
+	output logic [23:0] o_wloop_w2930_pc
 );
 
 	assign o_d018        = in_d018;
@@ -381,5 +385,7 @@ module cap_vic_wr (
 	assign o_wloop_w292e_val = in_wloop_w292e_val;
 	assign o_wloop_w2930_cnt = in_wloop_w2930_cnt;
 	assign o_wloop_w2930_val = in_wloop_w2930_val;
+	assign o_wloop_w292e_pc  = in_wloop_w292e_pc;
+	assign o_wloop_w2930_pc  = in_wloop_w2930_pc;
 
 endmodule
