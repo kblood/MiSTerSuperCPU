@@ -2,6 +2,7 @@
 
 | Built (UTC)        | Branch              | SHA        | MD5 (short) | Subject                                    | Dirty |
 |--------------------|---------------------|------------|-------------|--------------------------------------------|-------|
+| 20260826 081405 | milestone-b-cdc-rew | 0e48c028d0 | b1ebe567    | debug(scpu): add always-live current-opcod | yes   |
 | 20260826 073453 | milestone-b-cdc-rew | 1fb08c7b5c | 9b1ddfaf    | debug(scpu): latch JSR-ring snapshot at la | yes   |
 | 20260826 064338 | milestone-b-cdc-rew | f0a8c57b65 | 3a9dc98c    | debug(scpu): extend Wolf3D trace ring to 4 | yes   |
 | 20260825 144154 | milestone-b-cdc-rew | 44149e4187 | 2510cae5    | debug(scpu): add screen-RAM write observer | yes   |

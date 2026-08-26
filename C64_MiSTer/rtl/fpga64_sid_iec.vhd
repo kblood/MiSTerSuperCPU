@@ -296,6 +296,17 @@ port(
 	dbg_op_count         : out std_logic_vector(23 downto 0);
 	-- 34th pass: always-live current opcode byte (see cur_op_r comment).
 	dbg_cur_op           : out std_logic_vector(7 downto 0);
+	-- 36th pass (Wolf3D freeze, 2026-08-26): static code-byte snoops of
+	-- the $0AC3-$0B0F copy-loop's compare operands, recovering the
+	-- embedded absolute-address operands of its LDA/SBC/LDX instructions
+	-- (bank-$00 code bytes, read as data during the CPU's own operand
+	-- fetch, so no separate memory-read mechanism is needed).
+	dbg_wloop_lda_lo     : out std_logic_vector(7 downto 0);
+	dbg_wloop_lda_hi     : out std_logic_vector(7 downto 0);
+	dbg_wloop_sbc_lo     : out std_logic_vector(7 downto 0);
+	dbg_wloop_sbc_hi     : out std_logic_vector(7 downto 0);
+	dbg_wloop_ldx_lo     : out std_logic_vector(7 downto 0);
+	dbg_wloop_ldx_hi     : out std_logic_vector(7 downto 0);
 	-- v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag ever
 	-- observed at 0; irq_vec_count counts $FFFE/$FFFF reads (IRQ
 	-- vector fetches); min_p = lowest dbg_p_816 ever observed.
@@ -1139,6 +1150,13 @@ signal mem_01_r : std_logic_vector(7 downto 0) := (others => '0');
 signal op_count_r : unsigned(23 downto 0) := (others => '0');
 -- 34th pass: always-live current opcode byte (see cur_op_r usage comment).
 signal cur_op_r : std_logic_vector(7 downto 0) := (others => '0');
+-- 36th pass: Wolf3D $0AC3-$0B0F copy-loop compare-operand snoops.
+signal wloop_lda_lo_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_lda_hi_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_sbc_lo_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_sbc_hi_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_ldx_lo_r : std_logic_vector(7 downto 0) := (others => '0');
+signal wloop_ldx_hi_r : std_logic_vector(7 downto 0) := (others => '0');
 -- v228: I-flag diagnostics for SCPU.
 --  scpu_iclr_r = '1' once dbg_p_816(2) was ever observed = 0 with SCPU
 --                active. If stays '0', SCPU never reaches I=0 — IRQ off.
@@ -5637,6 +5655,37 @@ begin
 				if cpuAddr_pre = x"0001" then
 					mem_01_r <= std_logic_vector(cpuDi);
 				end if;
+				-- 36th pass: Wolf3D $0AC3-$0B0F copy-loop compare-operand
+				-- snoops. These are static bank-$00 CODE bytes (the
+				-- embedded absolute-address operands of the loop's
+				-- LDA $0AC6/SBC $0AC9/LDX $0AD6 instructions), read as
+				-- data during the CPU's own operand-fetch cycles — no
+				-- separate memory-read mechanism needed. Gate to bank
+				-- $00 so no other bank's code shadows these addresses.
+				if cpuAddr_pre = x"0AC7"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_lda_lo_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AC8"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_lda_hi_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0ACA"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_sbc_lo_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0ACB"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_sbc_hi_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AD7"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_ldx_lo_r <= std_logic_vector(cpuDi);
+				end if;
+				if cpuAddr_pre = x"0AD8"
+				   and (supercpu_en = '0' or addr_hi_816 = x"00") then
+					wloop_ldx_hi_r <= std_logic_vector(cpuDi);
+				end if;
 				-- v341 doom bitmap probe: latch reads of $00:$1D02/$1D04
 				-- (page-flip handshake). Gate to bank $00 in SCPU mode so
 				-- bank-$XX:$1D02 in JIT code doesn't shadow these.
@@ -6287,6 +6336,12 @@ dbg_mem_00           <= mem_00_r;
 dbg_mem_01           <= mem_01_r;
 dbg_op_count         <= std_logic_vector(op_count_r);
 dbg_cur_op           <= cur_op_r;
+dbg_wloop_lda_lo     <= wloop_lda_lo_r;
+dbg_wloop_lda_hi     <= wloop_lda_hi_r;
+dbg_wloop_sbc_lo     <= wloop_sbc_lo_r;
+dbg_wloop_sbc_hi     <= wloop_sbc_hi_r;
+dbg_wloop_ldx_lo     <= wloop_ldx_lo_r;
+dbg_wloop_ldx_hi     <= wloop_ldx_hi_r;
 dbg_scpu_iclr        <= scpu_iclr_r;
 dbg_irq_vec_count    <= std_logic_vector(irq_vec_count_r);
 dbg_min_p            <= min_p_r;

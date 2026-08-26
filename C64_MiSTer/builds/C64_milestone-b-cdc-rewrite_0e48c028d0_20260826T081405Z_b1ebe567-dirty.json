@@ -1,0 +1,11 @@
+{
+  "name": "C64_milestone-b-cdc-rewrite_0e48c028d0_20260826T081405Z_b1ebe567-dirty",
+  "md5": "b1ebe567a8e77d7883f4fb1b730501ef",
+  "size_bytes": 4002952,
+  "git_branch": "milestone-b-cdc-rewrite",
+  "git_sha": "0e48c028d0",
+  "git_subject": "debug(scpu): add always-live current-opcode field for Wolf3D freeze (34th pass)",
+  "git_dirty": true,
+  "built_utc": "20260826T081405Z",
+  "source_rbf": "C64_MiSTer/output_files/C64.rbf"
+}

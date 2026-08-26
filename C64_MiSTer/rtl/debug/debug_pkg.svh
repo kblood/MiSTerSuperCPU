@@ -227,6 +227,13 @@ typedef struct packed {
   logic [23:0] op_count;
   // 34th pass: always-live current opcode byte.
   logic  [7:0] cur_op;
+  // 36th pass: Wolf3D $0AC3-$0B0F copy-loop compare-operand snoops.
+  logic  [7:0] wloop_lda_lo;
+  logic  [7:0] wloop_lda_hi;
+  logic  [7:0] wloop_sbc_lo;
+  logic  [7:0] wloop_sbc_hi;
+  logic  [7:0] wloop_ldx_lo;
+  logic  [7:0] wloop_ldx_hi;
 
   // v228: I-flag diagnostics. scpu_iclr=1 if SCPU's I-flag was ever
   // observed at 0 (CLI / PLP cleared it). irq_vec_count = 16-bit count

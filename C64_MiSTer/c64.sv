@@ -1340,6 +1340,12 @@ wire  [7:0] scpu_dbg_mem_00;
 wire  [7:0] scpu_dbg_mem_01;
 wire [23:0] scpu_dbg_op_count;
 wire  [7:0] scpu_dbg_cur_op;
+wire  [7:0] scpu_dbg_wloop_lda_lo;
+wire  [7:0] scpu_dbg_wloop_lda_hi;
+wire  [7:0] scpu_dbg_wloop_sbc_lo;
+wire  [7:0] scpu_dbg_wloop_sbc_hi;
+wire  [7:0] scpu_dbg_wloop_ldx_lo;
+wire  [7:0] scpu_dbg_wloop_ldx_hi;
 wire        scpu_dbg_scpu_iclr;
 wire [15:0] scpu_dbg_irq_vec_count;
 wire  [7:0] scpu_dbg_min_p;
@@ -1693,6 +1699,12 @@ cap_vic_wr u_cap_vic_wr (
 	.in_mem_01        (scpu_dbg_mem_01),
 	.in_op_count      (scpu_dbg_op_count),
 	.in_cur_op        (scpu_dbg_cur_op),
+	.in_wloop_lda_lo  (scpu_dbg_wloop_lda_lo),
+	.in_wloop_lda_hi  (scpu_dbg_wloop_lda_hi),
+	.in_wloop_sbc_lo  (scpu_dbg_wloop_sbc_lo),
+	.in_wloop_sbc_hi  (scpu_dbg_wloop_sbc_hi),
+	.in_wloop_ldx_lo  (scpu_dbg_wloop_ldx_lo),
+	.in_wloop_ldx_hi  (scpu_dbg_wloop_ldx_hi),
 	.o_d018        (dbg_pool.vic_d018),
 	.o_d016        (dbg_pool.vic_d016),
 	.o_dd00        (dbg_pool.vic_dd00),
@@ -1747,7 +1759,13 @@ cap_vic_wr u_cap_vic_wr (
 	.o_mem_00         (dbg_pool.mem_00),
 	.o_mem_01         (dbg_pool.mem_01),
 	.o_op_count       (dbg_pool.op_count),
-	.o_cur_op         (dbg_pool.cur_op)
+	.o_cur_op         (dbg_pool.cur_op),
+	.o_wloop_lda_lo   (dbg_pool.wloop_lda_lo),
+	.o_wloop_lda_hi   (dbg_pool.wloop_lda_hi),
+	.o_wloop_sbc_lo   (dbg_pool.wloop_sbc_lo),
+	.o_wloop_sbc_hi   (dbg_pool.wloop_sbc_hi),
+	.o_wloop_ldx_lo   (dbg_pool.wloop_ldx_lo),
+	.o_wloop_ldx_hi   (dbg_pool.wloop_ldx_hi)
 );
 `else
 assign dbg_pool.vic_d018         = '0;
@@ -1805,6 +1823,12 @@ assign dbg_pool.mem_00           = '0;
 assign dbg_pool.mem_01           = '0;
 assign dbg_pool.op_count         = '0;
 assign dbg_pool.cur_op           = '0;
+assign dbg_pool.wloop_lda_lo     = '0;
+assign dbg_pool.wloop_lda_hi     = '0;
+assign dbg_pool.wloop_sbc_lo     = '0;
+assign dbg_pool.wloop_sbc_hi     = '0;
+assign dbg_pool.wloop_ldx_lo     = '0;
+assign dbg_pool.wloop_ldx_hi     = '0;
 `endif
 
 `ifdef DBG_CAP_CPU_STATE
@@ -2316,6 +2340,12 @@ fpga64_sid_iec #(.SCPU_MCP_ACTIVE(MILESTONE_B ? 1'b1 : 1'b0)) fpga64
 	.dbg_mem_01           (scpu_dbg_mem_01),
 	.dbg_op_count         (scpu_dbg_op_count),
 	.dbg_cur_op           (scpu_dbg_cur_op),
+	.dbg_wloop_lda_lo     (scpu_dbg_wloop_lda_lo),
+	.dbg_wloop_lda_hi     (scpu_dbg_wloop_lda_hi),
+	.dbg_wloop_sbc_lo     (scpu_dbg_wloop_sbc_lo),
+	.dbg_wloop_sbc_hi     (scpu_dbg_wloop_sbc_hi),
+	.dbg_wloop_ldx_lo     (scpu_dbg_wloop_ldx_lo),
+	.dbg_wloop_ldx_hi     (scpu_dbg_wloop_ldx_hi),
 	.dbg_scpu_iclr        (scpu_dbg_scpu_iclr),
 	.dbg_irq_vec_count    (scpu_dbg_irq_vec_count),
 	.dbg_min_p            (scpu_dbg_min_p),
